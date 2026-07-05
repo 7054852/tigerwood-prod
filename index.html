@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Выработка — Тигервуд</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root{ --bg:#fff; --fg:#222; --muted:#888; --line:#e3e3e3; --accent:#2b7de9; --green:#137333; --red:#c00; }
+  *{box-sizing:border-box;}
+  body{ font-family:-apple-system,Roboto,Arial,sans-serif; margin:0; padding:16px; color:var(--fg); }
+  h2{ font-size:18px; margin:0 0 4px; }
+  label{ display:block; font-size:13px; color:var(--muted); margin:10px 0 4px; }
+  select,input{ width:100%; padding:10px; border:1px solid var(--line); border-radius:9px; font-size:16px; }
+  button{ width:100%; padding:12px; margin-top:14px; border:0; border-radius:9px; font-size:16px; font-weight:600; color:#fff; background:var(--accent); cursor:pointer; }
+  button.gray{ background:#eef; color:#334; } button.sm{ width:auto; padding:7px 12px; font-size:13px; margin:0; }
+  .sum{ font-size:20px; font-weight:700; color:var(--green); margin-top:12px; text-align:center; }
+  .msg{ font-size:14px; margin-top:10px; text-align:center; } .err{ color:var(--red); } .ok{ color:var(--green); }
+  .card{ border:1px solid var(--line); border-radius:11px; padding:10px 12px; margin-bottom:8px; }
+  .row{ display:flex; justify-content:space-between; gap:8px; align-items:center; flex-wrap:wrap; }
+  .muted{ color:var(--muted); font-size:12px; }
+  .tabs{ display:flex; gap:8px; margin-bottom:10px; }
+  .tabs button{ width:auto; margin:0; padding:8px 14px; background:#eef; color:#334; }
+  .tabs button.active{ background:var(--accent); color:#fff; }
+</style>
+</head>
+<body>
+<div class="tabs">
+  <button id="tab-w" class="active" onclick="showTab('w')">✍️ Выработка</button>
+  <button id="tab-m" onclick="showTab('m')">👏 Проверка (мастер)</button>
+</div>
+<div id="pane-w">
+  <h2>Отчёт о выработке</h2>
+  <div class="muted" id="who"></div>
+  <div id="wsel"></div>
+  <label>Партия</label><select id="batch"></select>
+  <label>Оборудование</label><select id="equip" onchange="fillDetails()"></select>
+  <label>Деталь</label><select id="detail" onchange="fillOps()"></select>
+  <label>Операция</label><select id="op" onchange="calc()"></select>
+  <label>Количество</label><input id="qty" type="number" min="0" inputmode="numeric" oninput="calc()" placeholder="сколько сделано">
+  <div class="sum" id="sum">—</div>
+  <button onclick="submitOut()">Отправить на проверку</button>
+  <div class="msg" id="wmsg"></div>
+</div>
+<div id="pane-m" style="display:none">
+  <h2>На проверке</h2>
+  <div class="muted">Подтвердите или отклоните выработку рабочих.</div>
+  <div id="mlist" style="margin-top:10px">Загрузка…</div>
+</div>
+<script>
+var BASE='https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';
+var APP='tw7prod', DATA={equipments:[],batches:[],workers:[],comp:{},worker:''}, TGID='';
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function opt(v,t){ return '<option value="'+esc(v)+'">'+esc(t||v)+'</option>'; }
+function api(p){ p.app=APP; var q=Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]);}).join('&'); return fetch(BASE+'?'+q).then(function(r){return r.json();}); }
+try{ if(window.Telegram&&Telegram.WebApp){ Telegram.WebApp.ready(); Telegram.WebApp.expand(); var u=Telegram.WebApp.initDataUnsafe&&Telegram.WebApp.initDataUnsafe.user; if(u) TGID=String(u.id); } }catch(e){}
+function showTab(t){
+  document.getElementById('pane-w').style.display=t==='w'?'':'none';
+  document.getElementById('pane-m').style.display=t==='m'?'':'none';
+  document.getElementById('tab-w').className=t==='w'?'active':'';
+  document.getElementById('tab-m').className=t==='m'?'active':'';
+  if(t==='m') loadPending();
+}
+function load(){
+  api({vapi:'data',tgid:TGID}).then(function(d){
+    DATA=d||DATA;
+    document.getElementById('batch').innerHTML=(DATA.batches||[]).map(function(b){return opt(b.id,b.num+' · '+b.name);}).join('')||opt('','нет активных партий');
+    document.getElementById('equip').innerHTML=(DATA.equipments||[]).map(function(e){return opt(e);}).join('')||opt('','нет оборудования');
+    fillDetails();
+    if(DATA.worker){ document.getElementById('who').textContent='Рабочий: '+DATA.worker; }
+    else { document.getElementById('wsel').innerHTML='<label>Кто вы</label><select id="worker">'+(DATA.workers||[]).map(function(w){return opt(w.name);}).join('')+'</select>'; }
+  }).catch(function(e){ document.getElementById('wmsg').innerHTML='<span class="err">Ошибка загрузки</span>'; });
+}
+function curProd(){ return (DATA.comp||{})[document.getElementById('equip').value]||{details:{},order:[]}; }
+function fillDetails(){ var p=curProd(); document.getElementById('detail').innerHTML=(p.order||[]).map(function(n){return opt(n);}).join('')||opt('','нет деталей'); fillOps(); }
+function fillOps(){ var p=curProd(), name=document.getElementById('detail').value; var ops=(p.details||{})[name]||[]; document.getElementById('op').innerHTML=ops.map(function(o){return opt(o.op,o.op+' — '+o.rate);}).join(''); calc(); }
+function curRate(){ var p=curProd(), name=document.getElementById('detail').value, op=document.getElementById('op').value; var o=((p.details||{})[name]||[]).filter(function(y){return y.op===op;})[0]; return o?o.rate:0; }
+function calc(){ var q=Number(document.getElementById('qty').value)||0, r=curRate(); document.getElementById('sum').textContent = q>0 ? ('ЗП: '+(Math.round(q*r*100)/100)+' руб. ('+q+' × '+r+')') : '—'; }
+function submitOut(){
+  var worker=DATA.worker||(document.getElementById('worker')&&document.getElementById('worker').value)||'';
+  var batch=document.getElementById('batch').value, equip=document.getElementById('equip').value, detail=document.getElementById('detail').value, op=document.getElementById('op').value, qty=document.getElementById('qty').value;
+  if(!worker){ document.getElementById('wmsg').innerHTML='<span class="err">Не выбран рабочий</span>'; return; }
+  if(!(Number(qty)>0)){ document.getElementById('wmsg').innerHTML='<span class="err">Укажите количество</span>'; return; }
+  document.getElementById('wmsg').textContent='Отправляю…';
+  api({vapi:'submit',worker:worker,tgid:TGID,batch:batch,equip:equip,detail:detail,op:op,qty:qty}).then(function(r){
+    if(r&&r.ok){ document.getElementById('wmsg').innerHTML='<span class="ok">✅ Принято: '+esc(r.detail)+' · '+esc(r.op)+' · '+r.qty+' → '+r.sum+' руб. (на проверке)</span>'; document.getElementById('qty').value=''; calc(); }
+    else document.getElementById('wmsg').innerHTML='<span class="err">⚠️ '+esc((r&&r.error)||'ошибка')+'</span>';
+  }).catch(function(e){ document.getElementById('wmsg').innerHTML='<span class="err">Ошибка отправки</span>'; });
+}
+function loadPending(){
+  var el=document.getElementById('mlist'); el.textContent='Загрузка…';
+  api({vapi:'pending'}).then(function(r){
+    var items=(r&&r.items)||[];
+    if(!items.length){ el.innerHTML='<div class="muted">Нет записей на проверке.</div>'; return; }
+    el.innerHTML=items.map(function(it){
+      return '<div class="card" id="o-'+esc(it.id)+'"><div class="row"><b>'+esc(it.worker)+'</b><span class="muted">'+esc(it.date)+'</span></div>'
+        +'<div>'+esc(it.detail)+' · '+esc(it.op)+' · '+it.qty+' шт → <b>'+it.sum+' руб.</b></div><div class="muted">'+esc(it.batch)+'</div>'
+        +'<div class="row" style="margin-top:8px"><button class="sm" onclick="appr(\''+esc(it.id)+'\',1)">✅ Подтвердить</button>'
+        +'<button class="sm gray" onclick="appr(\''+esc(it.id)+'\',0)">✖ Отклонить</button><span id="om-'+esc(it.id)+'" class="msg"></span></div></div>';
+    }).join('');
+  });
+}
+function appr(id,ok){
+  var m=document.getElementById('om-'+id); m.textContent='…';
+  api({vapi:'approve',id:id,master:DATA.worker||'мастер',ok:ok}).then(function(r){
+    if(r&&r.ok){ var c=document.getElementById('o-'+id); if(c) c.style.opacity=.4; m.innerHTML='<span class="ok">'+(ok?'подтверждено':'отклонено')+'</span>'; }
+    else m.innerHTML='<span class="err">ошибка</span>';
+  });
+}
+load();
+</script>
+</body>
+</html>
