@@ -3,117 +3,104 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Выработка — Тигервуд</title>
+<title>Тигервуд — рабочий стол</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
-  :root{ --bg:#fff; --fg:#222; --muted:#888; --line:#e3e3e3; --accent:#2b7de9; --green:#137333; --red:#c00; }
-  *{box-sizing:border-box;}
-  body{ font-family:-apple-system,Roboto,Arial,sans-serif; margin:0; padding:16px; color:var(--fg); }
-  h2{ font-size:18px; margin:0 0 4px; }
-  label{ display:block; font-size:13px; color:var(--muted); margin:10px 0 4px; }
-  select,input{ width:100%; padding:10px; border:1px solid var(--line); border-radius:9px; font-size:16px; }
-  button{ width:100%; padding:12px; margin-top:14px; border:0; border-radius:9px; font-size:16px; font-weight:600; color:#fff; background:var(--accent); cursor:pointer; }
-  button.gray{ background:#eef; color:#334; } button.sm{ width:auto; padding:7px 12px; font-size:13px; margin:0; }
-  .sum{ font-size:20px; font-weight:700; color:var(--green); margin-top:12px; text-align:center; }
-  .msg{ font-size:14px; margin-top:10px; text-align:center; } .err{ color:var(--red); } .ok{ color:var(--green); }
-  .card{ border:1px solid var(--line); border-radius:11px; padding:10px 12px; margin-bottom:8px; }
-  .row{ display:flex; justify-content:space-between; gap:8px; align-items:center; flex-wrap:wrap; }
-  .muted{ color:var(--muted); font-size:12px; }
-  .tabs{ display:flex; gap:8px; margin-bottom:10px; }
-  .tabs button{ width:auto; margin:0; padding:8px 14px; background:#eef; color:#334; }
-  .tabs button.active{ background:var(--accent); color:#fff; }
+  :root{ --bg:#f4f6fb; --card:#fff; --fg:#1b2333; --muted:#8a93a6; --line:#e6e9f2; --accent:#2b7de9; --green:#137333; --red:#c0392b; --amber:#b9770e; }
+  *{box-sizing:border-box;} html,body{margin:0;background:var(--bg);}
+  body{ font-family:-apple-system,Roboto,Segoe UI,Arial,sans-serif; color:var(--fg); padding:14px; max-width:820px; margin:0 auto; }
+  .top{ display:flex; align-items:center; gap:12px; margin-bottom:16px; }
+  .logo{ width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,#2b7de9,#1b56b0); color:#fff; display:flex;align-items:center;justify-content:center; font-size:22px; flex:0 0 auto; }
+  .hi{ font-size:19px; font-weight:700; line-height:1.15; }
+  .role{ display:inline-block; font-size:12px; color:#fff; background:var(--accent); padding:2px 9px; border-radius:20px; margin-top:3px; }
+  .muted{ color:var(--muted); font-size:13px; }
+  .grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:12px; }
+  a.card, div.card{ text-decoration:none; color:inherit; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:15px; display:block; transition:.12s; box-shadow:0 1px 2px rgba(20,30,60,.04); cursor:pointer; }
+  a.card:hover{ border-color:var(--accent); transform:translateY(-1px); box-shadow:0 4px 14px rgba(43,125,233,.12); }
+  .card .t{ font-size:16px; font-weight:700; margin-bottom:4px; }
+  .card .d{ font-size:12.5px; color:var(--muted); line-height:1.35; }
+  .sect{ font-size:13px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin:22px 4px 10px; }
+  .box{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; }
+  input,select{ padding:9px; border:1px solid var(--line); border-radius:9px; font-size:15px; width:100%; }
+  button{ padding:10px 15px; border:0; border-radius:9px; font-size:14px; font-weight:600; color:#fff; background:var(--accent); cursor:pointer; }
+  button.gray{ background:#eef1f8; color:#334; } button.sm{ padding:6px 10px; font-size:13px; }
+  table{ width:100%; border-collapse:collapse; font-size:14px; }
+  th,td{ text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); vertical-align:middle; }
+  th{ color:var(--muted); font-size:12px; font-weight:600; }
+  td select,td input{ padding:6px; font-size:13px; }
+  .pill{ font-size:11px; padding:2px 8px; border-radius:20px; background:#eef1f8; color:#556; }
+  .back{ background:none;border:0;color:var(--accent);font-size:14px;cursor:pointer;padding:6px 0;font-weight:600; }
+  .msg{ font-size:13px; } .err{ color:var(--red); } .ok{ color:var(--green); }
+  .center{ text-align:center; padding:40px 16px; }
 </style>
 </head>
 <body>
-<div class="tabs">
-  <button id="tab-w" class="active" onclick="showTab('w')">✍️ Выработка</button>
-  <button id="tab-m" onclick="showTab('m')">👏 Проверка (мастер)</button>
-</div>
-<div id="pane-w">
-  <h2>Отчёт о выработке</h2>
-  <div class="muted" id="who"></div>
-  <div id="wsel"></div>
-  <label>Партия</label><select id="batch"></select>
-  <label>Оборудование</label><select id="equip" onchange="fillDetails()"></select>
-  <label>Деталь</label><select id="detail" onchange="fillOps()"></select>
-  <label>Операция</label><select id="op" onchange="calc()"></select>
-  <label>Количество</label><input id="qty" type="number" min="0" inputmode="numeric" oninput="calc()" placeholder="сколько сделано">
-  <div class="sum" id="sum">—</div>
-  <button onclick="submitOut()">Отправить на проверку</button>
-  <div class="msg" id="wmsg"></div>
-</div>
-<div id="pane-m" style="display:none">
-  <h2>На проверке</h2>
-  <div class="muted">Подтвердите или отклоните выработку рабочих.</div>
-  <div id="mlist" style="margin-top:10px">Загрузка…</div>
-</div>
+<div id="app"><div class="center muted">Загрузка…</div></div>
 <script>
 var BASE='https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';
-var APP='tw7prod', DATA={equipments:[],batches:[],workers:[],comp:{},worker:''}, TGID='';
+var APP='tw7prod', TGID='', ME=null, app=document.getElementById('app');
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
-function opt(v,t){ return '<option value="'+esc(v)+'">'+esc(t||v)+'</option>'; }
+function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
 function api(p){ p.app=APP; var q=Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]);}).join('&'); return fetch(BASE+'?'+q).then(function(r){return r.json();}); }
 try{ if(window.Telegram&&Telegram.WebApp){ Telegram.WebApp.ready(); Telegram.WebApp.expand(); var u=Telegram.WebApp.initDataUnsafe&&Telegram.WebApp.initDataUnsafe.user; if(u) TGID=String(u.id); } }catch(e){}
-function showTab(t){
-  document.getElementById('pane-w').style.display=t==='w'?'':'none';
-  document.getElementById('pane-m').style.display=t==='m'?'':'none';
-  document.getElementById('tab-w').className=t==='w'?'active':'';
-  document.getElementById('tab-m').className=t==='m'?'active':'';
-  if(t==='m') loadPending();
-}
+if(!TGID){ TGID=qp('tgid')||localStorage.getItem('tw_tgid')||''; } if(TGID){ try{localStorage.setItem('tw_tgid',TGID);}catch(e){} }
+
+// same-origin (github) ссылки — добавляем tgid, чтобы форма знала рабочего
+function withTid(url){ if(!url) return url; if(url.indexOf('7054852.github.io')>=0 || url.charAt(0)!=='h'){ return url+(url.indexOf('?')>=0?'&':'?')+'tgid='+encodeURIComponent(TGID); } return url; }
+
 function load(){
-  api({vapi:'data',tgid:TGID}).then(function(d){
-    DATA=d||DATA;
-    document.getElementById('batch').innerHTML=(DATA.batches||[]).map(function(b){return opt(b.id,b.num+' · '+b.name);}).join('')||opt('','нет активных партий');
-    document.getElementById('equip').innerHTML=(DATA.equipments||[]).map(function(e){return opt(e);}).join('')||opt('','нет оборудования');
-    fillDetails();
-    if(DATA.worker){ document.getElementById('who').textContent='Рабочий: '+DATA.worker; document.getElementById('wsel').innerHTML=''; }
-    else if(TGID){ document.getElementById('wsel').innerHTML='<label>Вы впервые. Представьтесь — <b>Фамилия Имя</b>:</label><input id="reg-fio" placeholder="Иванов Иван"><button onclick="doRegister()">Зарегистрироваться</button><div class="msg" id="reg-msg"></div>'; }
-    else { document.getElementById('wsel').innerHTML='<label>Кто вы</label><select id="worker">'+(DATA.workers||[]).map(function(w){return opt(w.name);}).join('')+'</select>'; }
-  }).catch(function(e){ document.getElementById('wmsg').innerHTML='<span class="err">Ошибка загрузки</span>'; });
+  if(!TGID){ return identify(); }
+  app.innerHTML='<div class="center muted">Загрузка…</div>';
+  api({vapi:'me',tgid:TGID}).then(function(m){
+    ME=m;
+    if(!m||!m.ok){ app.innerHTML='<div class="center err">Ошибка доступа</div>'; return; }
+    if(!m.registered) return register();
+    home();
+  }).catch(function(e){ app.innerHTML='<div class="center err">Ошибка загрузки</div>'; });
 }
-function curProd(){ return (DATA.comp||{})[document.getElementById('equip').value]||{details:{},order:[]}; }
-function fillDetails(){ var p=curProd(); document.getElementById('detail').innerHTML=(p.order||[]).map(function(n){return opt(n);}).join('')||opt('','нет деталей'); fillOps(); }
-function fillOps(){ var p=curProd(), name=document.getElementById('detail').value; var ops=(p.details||{})[name]||[]; document.getElementById('op').innerHTML=ops.map(function(o){return opt(o.op,o.op+' — '+o.rate);}).join(''); calc(); }
-function curRate(){ var p=curProd(), name=document.getElementById('detail').value, op=document.getElementById('op').value; var o=((p.details||{})[name]||[]).filter(function(y){return y.op===op;})[0]; return o?o.rate:0; }
-function calc(){ var q=Number(document.getElementById('qty').value)||0, r=curRate(); document.getElementById('sum').textContent = q>0 ? ('ЗП: '+(Math.round(q*r*100)/100)+' руб. ('+q+' × '+r+')') : '—'; }
-function submitOut(){
-  var worker=DATA.worker||(document.getElementById('worker')&&document.getElementById('worker').value)||'';
-  var batch=document.getElementById('batch').value, equip=document.getElementById('equip').value, detail=document.getElementById('detail').value, op=document.getElementById('op').value, qty=document.getElementById('qty').value;
-  if(!worker){ document.getElementById('wmsg').innerHTML='<span class="err">Не выбран рабочий</span>'; return; }
-  if(!(Number(qty)>0)){ document.getElementById('wmsg').innerHTML='<span class="err">Укажите количество</span>'; return; }
-  document.getElementById('wmsg').textContent='Отправляю…';
-  api({vapi:'submit',worker:worker,tgid:TGID,batch:batch,equip:equip,detail:detail,op:op,qty:qty}).then(function(r){
-    if(r&&r.ok){ document.getElementById('wmsg').innerHTML='<span class="ok">✅ Принято: '+esc(r.detail)+' · '+esc(r.op)+' · '+r.qty+' → '+r.sum+' руб. (на проверке)</span>'; document.getElementById('qty').value=''; calc(); }
-    else document.getElementById('wmsg').innerHTML='<span class="err">⚠️ '+esc((r&&r.error)||'ошибка')+'</span>';
-  }).catch(function(e){ document.getElementById('wmsg').innerHTML='<span class="err">Ошибка отправки</span>'; });
+function identify(){
+  app.innerHTML='<div class="box"><div class="hi">Вход</div><p class="muted">Откройте портал из бота <b>@TWOtchbot</b> (кнопка ☰). Для теста введите Telegram ID:</p><input id="tid" placeholder="напр. 7054852"><div style="height:10px"></div><button onclick="setTid()">Войти</button></div>';
 }
-function loadPending(){
-  var el=document.getElementById('mlist'); el.textContent='Загрузка…';
-  api({vapi:'pending'}).then(function(r){
-    var items=(r&&r.items)||[];
-    if(!items.length){ el.innerHTML='<div class="muted">Нет записей на проверке.</div>'; return; }
-    el.innerHTML=items.map(function(it){
-      return '<div class="card" id="o-'+esc(it.id)+'"><div class="row"><b>'+esc(it.worker)+'</b><span class="muted">'+esc(it.date)+'</span></div>'
-        +'<div>'+esc(it.detail)+' · '+esc(it.op)+' · '+it.qty+' шт → <b>'+it.sum+' руб.</b></div><div class="muted">'+esc(it.batch)+'</div>'
-        +'<div class="row" style="margin-top:8px"><button class="sm" onclick="appr(\''+esc(it.id)+'\',1)">✅ Подтвердить</button>'
-        +'<button class="sm gray" onclick="appr(\''+esc(it.id)+'\',0)">✖ Отклонить</button><span id="om-'+esc(it.id)+'" class="msg"></span></div></div>';
-    }).join('');
-  });
+function setTid(){ var v=document.getElementById('tid').value.trim(); if(v){ TGID=v; try{localStorage.setItem('tw_tgid',v);}catch(e){} load(); } }
+
+function register(){
+  app.innerHTML='<div class="box"><div class="hi">👋 Добро пожаловать в Тигервуд</div><p class="muted">Вы ещё не в системе. Введите <b>Фамилию и Имя</b> — администратор назначит вам роль.</p><input id="fio" placeholder="Иванов Иван"><div style="height:10px"></div><button onclick="doReg()">Зарегистрироваться</button> <span class="msg" id="rmsg"></span></div>';
 }
-function appr(id,ok){
-  var m=document.getElementById('om-'+id); m.textContent='…';
-  api({vapi:'approve',id:id,master:DATA.worker||'мастер',ok:ok}).then(function(r){
-    if(r&&r.ok){ var c=document.getElementById('o-'+id); if(c) c.style.opacity=.4; m.innerHTML='<span class="ok">'+(ok?'подтверждено':'отклонено')+'</span>'; }
-    else m.innerHTML='<span class="err">ошибка</span>';
-  });
+function doReg(){
+  var fio=document.getElementById('fio').value.trim(), m=document.getElementById('rmsg');
+  if(fio.length<3){ m.innerHTML='<span class="err">Укажите фамилию и имя</span>'; return; }
+  m.textContent='…';
+  api({vapi:'register',tgid:TGID,fio:fio}).then(function(r){ if(r&&r.ok){ load(); } else m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; });
 }
-function doRegister(){
-  var fio=(document.getElementById('reg-fio')||{}).value||'';
-  var m=document.getElementById('reg-msg');
-  if(fio.trim().length<3){ if(m){m.innerHTML='<span class="err">Введите Фамилию и Имя</span>';} return; }
-  if(m){ m.textContent='Регистрирую…'; }
-  api({vapi:'register',tgid:TGID,fio:fio}).then(function(r){ if(r&&r.ok){ load(); } else if(m){ m.innerHTML='<span class="err">'+((r&&r.error)||'ошибка')+'</span>'; } });
+
+function home(){
+  var cards=(ME.sections||[]).map(function(s){
+    if(s.url&&s.url.charAt(0)==='#') return '<div class="card" onclick="openSection(\''+s.id+'\')"><div class="t">'+esc(s.title)+'</div><div class="d">'+esc(s.desc)+'</div></div>';
+    return '<a class="card" href="'+esc(withTid(s.url))+'" target="_blank" rel="noopener"><div class="t">'+esc(s.title)+'</div><div class="d">'+esc(s.desc)+'</div></a>';
+  }).join('');
+  app.innerHTML='<div class="top"><div class="logo">🌲</div><div><div class="hi">Здравствуйте, '+esc((ME.name||'').split(' ')[0]||ME.name)+'!</div><span class="role">'+esc(ME.roleTitle||ME.role)+'</span></div></div><div class="sect">Разделы</div><div class="grid">'+(cards||'<div class="muted" style="padding:20px">Разделы пока не назначены. Обратитесь к администратору.</div>')+'</div>';
+}
+function openSection(id){ if(id==='users'||id==='myteam') usersView(); }
+
+function usersView(){
+  app.innerHTML='<button class="back" onclick="home()">← Назад</button><div class="hi">👥 Сотрудники и доступы</div><div class="center muted">Загрузка…</div>';
+  api({vapi:'users',tgid:TGID}).then(renderUsers).catch(function(e){ app.innerHTML='<button class="back" onclick="home()">← Назад</button><div class="err">Ошибка</div>'; });
+}
+function renderUsers(r){
+  if(!r||!r.ok){ app.innerHTML='<button class="back" onclick="home()">← Назад</button><div class="err">'+esc((r&&r.error)||'нет прав')+'</div>'; return; }
+  var roles=r.roles||[], canEdit=r.canEdit;
+  var rows=(r.users||[]).map(function(u,i){
+    var roleCell=canEdit?'<select id="ro'+i+'">'+roles.map(function(x){return '<option value="'+x+'"'+(x===u.role?' selected':'')+'>'+esc(r.roleTitles[x]||x)+'</option>';}).join('')+'</select>':'<span class="pill">'+esc(r.roleTitles[u.role]||u.role)+'</span>';
+    var masterCell=canEdit?'<input id="ma'+i+'" value="'+esc(u.master)+'" placeholder="—" style="max-width:120px">':esc(u.master||'—');
+    var actCell=canEdit?'<button class="sm" onclick="saveUser('+i+',\''+esc(u.tgId)+'\')">💾</button>':'';
+    var reg=u.tgId?'<span class="pill" style="background:#e7f5ea;color:#137333">в системе</span>':'<span class="pill" style="background:#fdeee7;color:#b9770e">без Telegram</span>';
+    return '<tr><td><b>'+esc(u.name)+'</b><br><span class="muted" style="font-size:11px">'+esc(u.tgId||'')+'</span></td><td>'+roleCell+'</td><td>'+masterCell+'</td><td>'+reg+'</td><td><span class="msg" id="um'+i+'"></span> '+actCell+'</td></tr>';
+  }).join('');
+  app.innerHTML='<button class="back" onclick="home()">← Назад</button><div class="hi">👥 Сотрудники и доступы</div><p class="muted">Все, кто зарегистрировался через бота. '+(canEdit?'Назначайте роль и (рабочим) мастера/участок — сохраняйте 💾.':'')+'</p><div class="box"><table><thead><tr><th>Сотрудник</th><th>Роль</th><th>Мастер/участок</th><th>Статус</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan=5 class="muted">пусто</td></tr>')+'</tbody></table></div>';
+}
+function saveUser(i,tgid){
+  var role=document.getElementById('ro'+i).value, master=document.getElementById('ma'+i).value, m=document.getElementById('um'+i); m.textContent='…';
+  api({vapi:'setuser',tgid:TGID,target:tgid,role:role,master:master}).then(function(r){ m.innerHTML=(r&&r.ok)?'<span class="ok">✅</span>':'<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; }).catch(function(e){ m.innerHTML='<span class="err">ошибка</span>'; });
 }
 load();
 </script>
