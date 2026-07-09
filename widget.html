@@ -38,6 +38,13 @@
 <div id="err" class="sec err hide"></div>
 
 <div id="main" class="hide">
+  <!-- передать сделку в SCRM (явный триггер: создать + присвоить №N) -->
+  <div class="sec" id="secPush">
+    <button class="green" style="width:100%" onclick="pushScrm()">📥 Передать в SCRM</button>
+    <div class="sub" id="pushHint" style="margin-top:6px">Создаст сделку в программе и присвоит сквозной номер.</div>
+    <div class="msg" id="pushMsg"></div>
+  </div>
+
   <!-- тип клиента -->
   <div class="sec">
     <div class="lbl">Клиент</div>
@@ -131,6 +138,16 @@ function loadDeal(){
 }
 function showErr(m){ $('err').className='sec err'; $('err').innerHTML='⚠️ '+esc(m); $('sub').textContent=''; }
 
+// «Передать в SCRM» — явный триггер: создать сделку + присвоить сквозной №N + переименовать лид
+function pushScrm(){
+  var m=$('pushMsg'); m.className='msg'; m.innerHTML='Передаю в SCRM…';
+  api({vapi:'pushscrm', lead:LEAD}).then(function(r){
+    if(!r||!r.ok){ m.className='msg err'; m.innerHTML='⚠️ '+esc((r&&r.error)||'ошибка'); return; }
+    m.className='msg ok'; m.innerHTML='✅ Сделка в SCRM'+(r.num?(' · '+esc(r.num)):'');
+    setTimeout(loadDeal, 600);
+  }).catch(function(e){ m.className='msg err'; m.innerHTML='Ошибка: '+esc(e.message||String(e)); });
+}
+
 function render(){
   $('main').className='';
   var d=DEAL;
@@ -139,6 +156,8 @@ function render(){
   CTYPE=d.clientType||'юрлицо'; syncType();
   if(attached()){ var b=d.buyer||{}; $('cliBadge').className='badge b-ok'; $('cliBadge').textContent=(b['Наименование ЮЛ (полное)']||d.client||'клиент')+' · привязан'; }
   else { $('cliBadge').className='badge'; $('cliBadge').textContent='не привязан'; }
+  var hasNum=/№\s*\d/.test(String(d.num||''));
+  $('pushHint').textContent = hasNum ? ('✓ В SCRM · '+String(d.num)) : 'Создаст сделку в программе и присвоит сквозной номер.';
   applyType();
   renderConTiles();
   renderDocsList();
