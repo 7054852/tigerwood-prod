@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Тигервуд — документы</title>
+<style>
+  :root{ --fg:#1b2333; --muted:#8a93a6; --line:#e6e9f2; --accent:#2b7de9; --green:#137333; --red:#c0392b; --bg:#f4f6fb; }
+  *{box-sizing:border-box;} body{ font-family:-apple-system,Roboto,Segoe UI,Arial,sans-serif; margin:0; padding:12px; color:var(--fg); font-size:14px; background:#fff; }
+  .hd{ font-weight:800; font-size:15px; } .sub{ font-size:12px; color:var(--muted); margin-top:2px; }
+  .sec{ border:1px solid var(--line); border-radius:12px; padding:12px; margin-top:10px; }
+  .lbl{ font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; margin-bottom:6px; }
+  .seg{ display:inline-flex; border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  .seg button{ background:#fff; color:#556; padding:7px 16px; font-weight:600; border:0; cursor:pointer; }
+  .seg button.on{ background:var(--accent); color:#fff; }
+  button{ padding:9px 13px; border:0; border-radius:9px; font-size:13px; font-weight:600; color:#fff; background:var(--accent); cursor:pointer; }
+  button.gray{ background:#eef1f8; color:#334; } button.green{ background:var(--green); } button.sm{ padding:6px 10px; font-size:12px; }
+  button:disabled{ opacity:.5; cursor:default; }
+  .tiles{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px; }
+  .tile{ display:flex; flex-direction:column; align-items:flex-start; gap:2px; padding:12px; border:1px solid var(--line); border-radius:11px; background:#fbfcfe; color:var(--fg); font-weight:700; text-align:left; }
+  .tile:hover{ border-color:var(--accent); }
+  .tile .t2{ font-size:11px; font-weight:500; color:var(--muted); }
+  .row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:8px; }
+  input,textarea{ width:100%; padding:9px 10px; border:1px solid var(--line); border-radius:9px; font-size:14px; font-family:inherit; }
+  textarea{ min-height:96px; }
+  .msg{ font-size:12.5px; margin-top:8px; } .err{ color:var(--red); } .ok{ color:var(--green); }
+  a{ color:var(--accent); }
+  .badge{ display:inline-block; padding:2px 9px; border-radius:20px; font-size:11px; font-weight:700; background:#eef1f8; color:#334; }
+  .badge.b-ok{ background:#e6f4ea; color:var(--green); }
+  .hide{ display:none; }
+  .cli{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .out{ margin-top:8px; font-size:13px; }
+</style>
+</head>
+<body>
+<div id="hd" class="hd">Документы по сделке…</div>
+<div id="sub" class="sub">загрузка…</div>
+<div id="err" class="sec err hide"></div>
+
+<div id="main" class="hide">
+  <!-- тип клиента -->
+  <div class="sec">
+    <div class="lbl">Клиент</div>
+    <div class="cli">
+      <span class="seg" id="segType">
+        <button data-v="юрлицо" onclick="setType('юрлицо')">Юрлицо</button>
+        <button data-v="физлицо" onclick="setType('физлицо')">Физлицо</button>
+      </span>
+      <span id="cliBadge" class="badge">не привязан</span>
+    </div>
+  </div>
+
+  <!-- СФОРМИРОВАННЫЕ ДОКУМЕНТЫ (остаются в виджете) -->
+  <div id="secDocs" class="sec hide">
+    <div class="lbl">Сформированные документы</div>
+    <div id="docsList"></div>
+  </div>
+
+  <!-- ЮРЛИЦО: реквизиты -->
+  <div id="secReq" class="sec hide">
+    <div class="lbl">Реквизиты юрлица</div>
+    <div id="reqStart">
+      <button class="gray" onclick="openReq()">📋 Загрузить реквизиты</button>
+      <div class="sub" style="margin-top:6px">Распознаю текст или файл/фото → создам клиента и разнесу реквизиты в карточку amoCRM.</div>
+    </div>
+    <div id="reqPanel" class="hide">
+      <textarea id="raw" placeholder="Вставьте реквизиты: ООО «...», УНП…, р/с…, банк, БИК, адрес, тел, e-mail"></textarea>
+      <div class="row">
+        <button class="gray sm" onclick="parseText()">🔍 Распознать текст</button>
+        <label class="gray sm" style="padding:6px 10px;border-radius:9px;background:#eef1f8;color:#334;cursor:pointer;font-weight:600">📎 Файл/фото<input type="file" id="file" style="display:none" accept="application/pdf,image/*,.doc,.docx,.xls,.xlsx" onchange="parseFile()"></label>
+        <button class="gray sm" onclick="closeReq()">отмена</button>
+      </div>
+      <div class="msg" id="reqMsg"></div>
+    </div>
+  </div>
+
+  <!-- ДОГОВОР -->
+  <div class="sec">
+    <div class="lbl">Договор</div>
+    <div id="freightRow" class="row hide" style="margin-top:0">
+      <span class="sub">Заказчик перевозки:</span>
+      <span class="seg" id="segFreight">
+        <button data-v="Мы" class="on" onclick="setFreight('Мы')">Мы</button>
+        <button data-v="Клиент" onclick="setFreight('Клиент')">Клиент</button>
+      </span>
+    </div>
+    <div class="tiles" id="conTiles"></div>
+    <div class="msg" id="conMsg"></div>
+    <div class="out" id="conOut"></div>
+  </div>
+
+  <!-- СЧЁТ (только юрлицо) -->
+  <div id="secInv" class="sec hide">
+    <div class="lbl">Счёт</div>
+    <button class="green" style="width:100%" onclick="genInvoice()">🧾 Сформировать счёт</button>
+    <div class="sub" id="invHint" style="margin-top:6px"></div>
+    <div class="msg" id="invMsg"></div>
+    <div class="out" id="invOut"></div>
+  </div>
+</div>
+
+<script>
+// ── бэкенд: анонимный @200 vapi (тот же, что у vyrab). Без GAS-iframe → работает в amoCRM. ──
+var BASE='https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';
+var APP='tw7prod';
+function api(p, post){
+  p.app=APP;
+  var body=Object.keys(p).map(function(k){ return encodeURIComponent(k)+'='+encodeURIComponent(p[k]==null?'':p[k]); }).join('&');
+  if(post){ return fetch(BASE, {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'}, body:body}).then(function(r){return r.json();}); }
+  return fetch(BASE+'?'+body).then(function(r){return r.json();});
+}
+function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]*)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
+
+var LEAD=qp('lead');
+var KEY=LEAD, DEAL=null, CTYPE='юрлицо', FREIGHT='Мы';
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function $(id){ return document.getElementById(id); }
+function money(n){ n=Number(n)||0; return n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,' '); }
+function EX(k){ return (DEAL&&DEAL.extra&&DEAL.extra[k]!=null)?String(DEAL.extra[k]):''; }
+function attached(){ return DEAL && DEAL.buyerKey; }
+
+function boot(){
+  if(!LEAD){ showErr('Не передан ID сделки'); return; }
+  loadDeal();
+}
+function loadDeal(){
+  api({vapi:'deal', deal:KEY}).then(function(r){
+    if(!r||!r.ok){ showErr((r&&r.error)||'сделка не найдена'); return; }
+    DEAL=r.deal; render();
+  }).catch(function(e){ showErr(e.message||String(e)); });
+}
+function showErr(m){ $('err').className='sec err'; $('err').innerHTML='⚠️ '+esc(m); $('sub').textContent=''; }
+
+function render(){
+  $('main').className='';
+  var d=DEAL;
+  $('hd').textContent='Документы · Сделка № '+String(d.num||d.id).replace(/^№\s*/,'');
+  $('sub').textContent=(d.client||'клиент не указан')+' · '+money(d.sum||0)+' руб';
+  CTYPE=d.clientType||'юрлицо'; syncType();
+  if(attached()){ var b=d.buyer||{}; $('cliBadge').className='badge b-ok'; $('cliBadge').textContent=(b['Наименование ЮЛ (полное)']||d.client||'клиент')+' · привязан'; }
+  else { $('cliBadge').className='badge'; $('cliBadge').textContent='не привязан'; }
+  applyType();
+  renderConTiles();
+  renderDocsList();
+}
+
+function renderDocsList(){
+  var d=DEAL, h='';
+  (d.contracts||[]).forEach(function(c){
+    h+='<div class="out">📄 Договор № '+esc(c.number)+' <span class="sub">('+esc(c.type||'')+')</span>'+(c.url?(' — <a href="'+esc(c.url)+'" target="_blank">открыть</a>'):'')+'</div>';
+  });
+  (d.invoices||[]).forEach(function(v){
+    h+='<div class="out">🧾 Счёт № '+esc(v.number)+(v.validUntil?(' <span class="sub">до '+esc(v.validUntil)+'</span>'):'')+(v.url?(' — <a href="'+esc(v.url)+'" target="_blank">открыть</a>'):'')+'</div>';
+  });
+  if(h){ $('secDocs').className='sec'; $('docsList').innerHTML=h; }
+  else { $('secDocs').className='sec hide'; $('docsList').innerHTML=''; }
+}
+
+// проверка данных под конкретный документ (по клику)
+function checkReady(docName, msgEl, cb){
+  msgEl.className='msg'; msgEl.innerHTML='Проверяю данные…';
+  api({vapi:'readiness', deal:KEY}).then(function(r){
+    if(!r||!r.ok){ msgEl.className='msg err'; msgEl.innerHTML='⚠️ '+esc((r&&r.error)||'ошибка'); return; }
+    var c=(r.checks||[]).filter(function(x){ return x.doc===docName; })[0];
+    if(c && !c.ready){ msgEl.className='msg err'; msgEl.innerHTML='⚠ Не хватает данных для «'+esc(docName)+'»: '+esc((c.missing||[]).join(', ')); return; }
+    msgEl.className='msg ok'; msgEl.innerHTML='✓ Данные готовы — формирую…';
+    cb();
+  }).catch(function(e){ msgEl.className='msg err'; msgEl.innerHTML='Ошибка: '+esc(e.message||String(e)); });
+}
+
+// тип клиента
+function setType(t){ CTYPE=t; syncType(); applyType(); renderConTiles(); }
+function syncType(){ var bs=document.querySelectorAll('#segType button'); for(var i=0;i<bs.length;i++){ bs[i].className=bs[i].getAttribute('data-v')===CTYPE?'on':''; } }
+function applyType(){
+  var jur=(CTYPE==='юрлицо');
+  $('secReq').className = jur ? 'sec' : 'sec hide';
+  $('secInv').className = jur ? 'sec' : 'sec hide';
+  if(jur){ var need=!attached(); $('invHint').textContent = need?'Сначала загрузите реквизиты клиента.':''; }
+}
+
+// реквизиты
+function openReq(){ $('reqStart').className='hide'; $('reqPanel').className=''; }
+function closeReq(){ $('reqPanel').className='hide'; $('reqStart').className=''; $('reqMsg').innerHTML=''; $('raw').value=''; }
+function parseText(){
+  var t=$('raw').value, m=$('reqMsg');
+  if(t.trim().length<5){ m.className='msg err'; m.innerHTML='Вставьте текст реквизитов'; return; }
+  m.className='msg'; m.innerHTML='Распознаю…';
+  api({vapi:'parsereq', text:t}, true).then(onParsed).catch(function(e){ m.className='msg err'; m.innerHTML='Ошибка: '+esc(e.message||String(e)); });
+}
+function parseFile(){
+  var f=$('file').files[0], m=$('reqMsg'); if(!f) return;
+  m.className='msg'; m.innerHTML='Загружаю и распознаю…';
+  var rd=new FileReader();
+  rd.onload=function(){ var b64=String(rd.result).split(',')[1]||'';
+    api({vapi:'parsereqfile', b64:b64, mime:(f.type||''), name:(f.name||'')}, true).then(onParsed).catch(function(e){ m.className='msg err'; m.innerHTML='Ошибка: '+esc(e.message||String(e)); }); };
+  rd.readAsDataURL(f);
+}
+function onParsed(r){
+  var m=$('reqMsg');
+  if(!r||!r.ok || !(r.count>0)){ m.className='msg err'; m.innerHTML='⚠️ Не удалось распознать реквизиты. Проверьте текст/файл.'; return; }
+  var f=r.fields||{}; f['Тип']='юрлицо';
+  if(!f['Валюта']) f['Валюта']=(f['Страна']==='Россия')?'RUB':'BYN';
+  m.innerHTML='Сохраняю клиента и разношу в amoCRM…';
+  api({vapi:'savebuyer', data:JSON.stringify(f)}, true).then(function(rs){
+    if(!rs||!rs.ok){ m.className='msg err'; m.innerHTML='⚠️ '+esc((rs&&rs.error)||'ошибка сохранения'); return; }
+    var key=rs.key||rs.unp||rs.id, nm=rs.name||f['Наименование ЮЛ (полное)']||'клиент';
+    api({vapi:'setdealbuyer', deal:KEY, buyer:key, clientType:'юрлицо'}).then(function(){
+      if(/^\d+$/.test(String(LEAD))) api({vapi:'linkbuyer', lead:LEAD, unp:key});
+      m.className='msg ok'; m.innerHTML='✅ Клиент «'+esc(nm)+'» привязан, реквизиты внесены в карточку amoCRM.';
+      setTimeout(function(){ loadDeal(); }, 500);
+    }).catch(function(e){ m.className='msg err'; m.innerHTML='Привязка: '+esc(e.message||String(e)); });
+  }).catch(function(e){ m.className='msg err'; m.innerHTML='Ошибка: '+esc(e.message||String(e)); });
+}
+
+// договор: плитки типов
+function setFreight(v){ FREIGHT=v; var bs=document.querySelectorAll('#segFreight button'); for(var i=0;i<bs.length;i++){ bs[i].className=bs[i].getAttribute('data-v')===v?'on':''; } }
+function conTypes(){ return CTYPE==='физлицо'
+  ? [['Договор рассрочки','рассрочка платежей'],['Договор 100%','полная оплата']]
+  : [['Договор поставки','товар юрлицу'],['Договор услуг','работы/услуги'],['Договор сотрудничества','рамочный']]; }
+function renderConTiles(){
+  var jur=(CTYPE==='юрлицо');
+  $('freightRow').className = jur ? 'row' : 'row hide';
+  $('conTiles').innerHTML = conTypes().map(function(t){
+    return '<button class="tile" onclick="genContract(\''+esc(t[0])+'\')"><span>'+esc(t[0])+'</span><span class="t2">'+esc(t[1])+'</span></button>';
+  }).join('');
+}
+function genContract(type){
+  var m=$('conMsg'); $('conOut').innerHTML='';
+  checkReady(type, m, function(){
+    var cf={}; if(type==='Договор поставки') cf['Заказчик перевозки']=FREIGHT;
+    var opts={ total:(DEAL&&DEAL.sum)||0, prodDays:14, seller:'TW', contractFields:cf };
+    api({vapi:'contractfordeal', deal:KEY, type:type, opts:JSON.stringify(opts)}, true).then(function(r){
+      if(!r||!r.ok){ m.className='msg err'; m.innerHTML='⚠️ '+esc((r&&(r.error||(r.missing&&('не хватает: '+r.missing.join(', ')))))||'ошибка'); return; }
+      m.className='msg ok'; m.innerHTML='✅ Договор сформирован';
+      if(r.contract&&r.contract.url) $('conOut').innerHTML='📄 <a href="'+esc(r.contract.url)+'" target="_blank">Договор № '+esc(r.contract.number)+' — открыть</a>';
+      loadDeal();
+    }).catch(function(e){ m.className='msg err'; m.innerHTML='Ошибка: '+esc(e.message||String(e)); });
+  });
+}
+
+// счёт (юрлицо)
+function scenarioFromAmo(){ var p=EX('Оплата').toLowerCase();
+  if(/рассрочк/.test(p)) return 'prepay_balance';
+  if(/(по\s*факт|отгруз|постоплат)/.test(p)) return 'on_ship';
+  return 'prepay100'; }
+function genInvoice(){
+  var m=$('invMsg'); $('invOut').innerHTML='';
+  checkReady('Счёт', m, function(){
+    var pay1=Number(EX('Сумма 1-го платежа'))||0, scen=scenarioFromAmo();
+    var opts={ total:(DEAL&&DEAL.sum)||0, scenario:scen, prepay:(scen==='prepay_balance'?pay1:0), genInvoiceDoc:true, shipDate:EX('Дата забора со склада') };
+    api({vapi:'invoicefordeal', deal:KEY, opts:JSON.stringify(opts)}, true).then(function(r){
+      if(!r||!r.ok){ m.className='msg err'; m.innerHTML='⚠️ '+esc((r&&r.error)||'ошибка'); return; }
+      m.className='msg ok'; m.innerHTML='✅ Счёт выставлен';
+      var h='';
+      if(r.invoice) h+='🧾 Счёт № '+esc(r.invoice.number)+(r.invoice.validUntil?(' · до '+esc(r.invoice.validUntil)):'')+'<br>';
+      if(r.invoiceDoc&&r.invoiceDoc.url) h+='<a href="'+esc(r.invoiceDoc.url)+'" target="_blank">открыть документ</a>';
+      $('invOut').innerHTML=h; loadDeal();
+    }).catch(function(e){ m.className='msg err'; m.innerHTML='Ошибка: '+esc(e.message||String(e)); });
+  });
+}
+
+boot();
+</script>
+</body>
+</html>
