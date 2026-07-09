@@ -185,7 +185,7 @@ function parseText(){
   var t=$('raw').value, m=$('reqMsg');
   if(t.trim().length<5){ m.className='msg err'; m.innerHTML='Вставьте текст реквизитов'; return; }
   m.className='msg'; m.innerHTML='Распознаю…';
-  api({vapi:'parsereq', text:t}, true).then(onParsed).catch(function(e){ m.className='msg err'; m.innerHTML='Ошибка: '+esc(e.message||String(e)); });
+  api({vapi:'parsereq', text:t}).then(onParsed).catch(function(e){ m.className='msg err'; m.innerHTML='Ошибка: '+esc(e.message||String(e)); });
 }
 function parseFile(){
   var f=$('file').files[0], m=$('reqMsg'); if(!f) return;
@@ -201,7 +201,7 @@ function onParsed(r){
   var f=r.fields||{}; f['Тип']='юрлицо';
   if(!f['Валюта']) f['Валюта']=(f['Страна']==='Россия')?'RUB':'BYN';
   m.innerHTML='Сохраняю клиента и разношу в amoCRM…';
-  api({vapi:'savebuyer', data:JSON.stringify(f)}, true).then(function(rs){
+  api({vapi:'savebuyer', data:JSON.stringify(f)}).then(function(rs){
     if(!rs||!rs.ok){ m.className='msg err'; m.innerHTML='⚠️ '+esc((rs&&rs.error)||'ошибка сохранения'); return; }
     var key=rs.key||rs.unp||rs.id, nm=rs.name||f['Наименование ЮЛ (полное)']||'клиент';
     api({vapi:'setdealbuyer', deal:KEY, buyer:key, clientType:'юрлицо'}).then(function(){
@@ -229,7 +229,7 @@ function genContract(type){
   checkReady(type, m, function(){
     var cf={}; if(type==='Договор поставки') cf['Заказчик перевозки']=FREIGHT;
     var opts={ total:(DEAL&&DEAL.sum)||0, prodDays:14, seller:'TW', contractFields:cf };
-    api({vapi:'contractfordeal', deal:KEY, type:type, opts:JSON.stringify(opts)}, true).then(function(r){
+    api({vapi:'contractfordeal', deal:KEY, type:type, opts:JSON.stringify(opts)}).then(function(r){
       if(!r||!r.ok){ m.className='msg err'; m.innerHTML='⚠️ '+esc((r&&(r.error||(r.missing&&('не хватает: '+r.missing.join(', ')))))||'ошибка'); return; }
       m.className='msg ok'; m.innerHTML='✅ Договор сформирован';
       if(r.contract&&r.contract.url) $('conOut').innerHTML='📄 <a href="'+esc(r.contract.url)+'" target="_blank">Договор № '+esc(r.contract.number)+' — открыть</a>';
@@ -248,7 +248,7 @@ function genInvoice(){
   checkReady('Счёт', m, function(){
     var pay1=Number(EX('Сумма 1-го платежа'))||0, scen=scenarioFromAmo();
     var opts={ total:(DEAL&&DEAL.sum)||0, scenario:scen, prepay:(scen==='prepay_balance'?pay1:0), genInvoiceDoc:true, shipDate:EX('Дата забора со склада') };
-    api({vapi:'invoicefordeal', deal:KEY, opts:JSON.stringify(opts)}, true).then(function(r){
+    api({vapi:'invoicefordeal', deal:KEY, opts:JSON.stringify(opts)}).then(function(r){
       if(!r||!r.ok){ m.className='msg err'; m.innerHTML='⚠️ '+esc((r&&r.error)||'ошибка'); return; }
       m.className='msg ok'; m.innerHTML='✅ Счёт выставлен';
       var h='';
