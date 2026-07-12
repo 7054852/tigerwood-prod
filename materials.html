@@ -12,9 +12,9 @@
   .muted{ color:var(--muted); font-size:13px; }
   .bar{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:12px 0; }
   input,select{ padding:8px 10px; border:1px solid var(--line); border-radius:9px; font-size:14px; background:#fff; }
-  input.search{ flex:1; min-width:180px; }
+  input.search{ flex:1; min-width:160px; }
   button{ padding:8px 13px; border:0; border-radius:9px; font-size:13px; font-weight:600; color:#fff; background:var(--accent); cursor:pointer; }
-  button.gray{ background:#eef1f8; color:#334; } button.sm{ padding:5px 9px; font-size:12px; }
+  button.gray{ background:#eef1f8; color:#334; } button.green{ background:var(--green); } button.sm{ padding:5px 9px; font-size:12px; }
   .chips{ display:flex; gap:6px; flex-wrap:wrap; }
   .chip{ padding:5px 11px; border-radius:20px; font-size:12.5px; font-weight:600; background:#eef1f8; color:#556; border:1px solid var(--line); cursor:pointer; }
   .chip.on{ background:var(--accent); color:#fff; border-color:var(--accent); }
@@ -23,29 +23,44 @@
   th,td{ text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); vertical-align:middle; }
   th{ color:var(--muted); font-size:11.5px; font-weight:600; text-transform:uppercase; letter-spacing:.03em; }
   td.num,th.num{ text-align:right; font-variant-numeric:tabular-nums; }
-  td input.p{ width:80px; text-align:right; } td input.u{ width:56px; }
+  td input.p{ width:78px; text-align:right; } td input.u{ width:52px; }
+  .nm{ cursor:pointer; color:var(--accent); font-weight:700; }
   .role{ font-size:11px; padding:2px 8px; border-radius:20px; background:#f0edfb; color:var(--accent); font-weight:700; }
   .up{ color:var(--red); } .down{ color:var(--green); }
   .msg{ font-size:13px; } .err{ color:var(--red); } .ok{ color:var(--green); }
   .center{ text-align:center; padding:36px 16px; }
+  /* modal */
+  .ov{ position:fixed; inset:0; background:rgba(20,25,50,.45); display:none; align-items:flex-start; justify-content:center; padding:24px 12px; overflow:auto; z-index:9; }
+  .ov.on{ display:flex; }
+  .modal{ background:#fff; border-radius:16px; max-width:720px; width:100%; padding:18px; }
+  .modal h3{ margin:0 0 4px; font-size:17px; } .modal .x{ float:right; background:#eef1f8; color:#334; }
+  .lbl{ font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; margin:14px 0 6px; font-weight:700; }
+  .frm{ display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+  .frm input,.frm select{ padding:6px 8px; font-size:13px; }
+  .frm input.s{ width:88px; } .frm input.xs{ width:60px; }
 </style>
 </head>
 <body>
 <div class="hi">🧱 Материалы</div>
 <div class="muted" id="cnt">загрузка…</div>
 <div class="bar">
-  <input class="search" id="q" placeholder="поиск по названию…" oninput="draw()">
+  <input class="search" id="q" placeholder="поиск…" oninput="draw()">
+  <label class="gray" style="padding:8px 12px;border-radius:9px;background:#eef1f8;color:#334;cursor:pointer;font-weight:600">📄 Загрузить счёт/накладную<input type="file" id="docf" style="display:none" accept="application/pdf,image/*,.xls,.xlsx,.doc,.docx" onchange="onDoc()"></label>
   <button class="gray sm" onclick="doImport()">⬇︎ Импорт из файла</button>
   <span class="msg" id="imsg"></span>
 </div>
 <div class="chips" id="roles"></div>
 <div style="height:10px"></div>
-<div class="box"><table><thead><tr><th>Материал</th><th>Ед</th><th>Роль</th><th class="num">Цена</th><th>Комментарий</th><th></th></tr></thead><tbody id="tb"><tr><td colspan=6 class="center muted">Загрузка…</td></tr></tbody></table></div>
+<div class="box"><table><thead><tr><th>Материал</th><th>Ед</th><th>Роль</th><th class="num">Последняя цена</th><th>Комментарий</th><th></th></tr></thead><tbody id="tb"><tr><td colspan=6 class="center muted">Загрузка…</td></tr></tbody></table></div>
+<datalist id="matlist"></datalist>
+
+<div class="ov" id="ov"><div class="modal" id="modal"></div></div>
 
 <script>
 var BASE='https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';
 var APP='tw7prod';
 function api(p){ p.app=APP; var q=Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]==null?'':p[k]);}).join('&'); return fetch(BASE+'?'+q).then(function(r){return r.json();}); }
+function apiPost(p){ p.app=APP; var b=Object.keys(p).map(function(k){return encodeURIComponent(k)+'='+encodeURIComponent(p[k]==null?'':p[k]);}).join('&'); return fetch(BASE,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body:b}).then(function(r){return r.json();}); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function $(id){ return document.getElementById(id); }
 function money(n){ n=Number(n)||0; return n.toFixed(2).replace('.',','); }
@@ -57,28 +72,26 @@ function load(){
     $('roles').innerHTML='<span class="chip'+(FROLE?'':' on')+'" onclick="setRole(\'\')">все</span>'+ROLES.map(function(x){
       return '<span class="chip'+(FROLE===x?' on':'')+'" onclick="setRole(\''+x+'\')">'+esc(x)+'</span>';
     }).join('');
+    $('matlist').innerHTML=ROWS.map(function(m){return '<option value="'+esc(m.name)+'">';}).join('');
     draw();
   }).catch(function(e){ $('tb').innerHTML='<tr><td colspan=6 class="center err">Ошибка: '+esc(e.message||e)+'</td></tr>'; });
 }
 function setRole(r){ FROLE=r; load(); }
 function draw(){
   var q=$('q').value.trim().toLowerCase();
-  var list=ROWS.filter(function(m){
-    if(FROLE && m.role!==FROLE) return false;
-    if(q && m.name.toLowerCase().indexOf(q)<0) return false;
-    return true;
-  });
+  var list=ROWS.filter(function(m){ if(FROLE&&m.role!==FROLE)return false; if(q&&m.name.toLowerCase().indexOf(q)<0)return false; return true; });
   $('cnt').textContent=list.length+' из '+ROWS.length+' материалов';
-  $('tb').innerHTML=list.map(function(m,i){
+  $('tb').innerHTML=list.map(function(m){
     var idx=ROWS.indexOf(m);
     var roleSel='<select onchange="save('+idx+',\'role\',this.value)">'+ROLES.map(function(x){return '<option'+(x===m.role?' selected':'')+'>'+esc(x)+'</option>';}).join('')+'</select>';
     var dyn='';
-    if(m.hasBuys && m.prevPrice){ var d=m.lastPrice-m.prevPrice; if(Math.abs(d)>=0.005) dyn=' <span class="'+(d>0?'up':'down')+'">'+(d>0?'▲':'▼')+money(Math.abs(d))+'</span>'; }
+    if(m.hasBuys&&m.prevPrice){ var d=m.lastPrice-m.prevPrice; if(Math.abs(d)>=0.005) dyn=' <span class="'+(d>0?'up':'down')+'">'+(d>0?'▲':'▼')+money(Math.abs(d))+'</span>'; }
+    var price=m.hasBuys?('<b>'+money(m.lastPrice)+'</b>'+dyn):('<span class="muted">'+money(m.calcPrice)+'</span>');
     return '<tr>'
-      +'<td><b>'+esc(m.name)+'</b> <button class="gray sm" onclick="rename(\''+esc(m.name)+'\')">✎</button></td>'
+      +'<td><span class="nm" onclick="openCard(\''+esc(m.name).replace(/\x27/g,"\\x27")+'\')">'+esc(m.name)+'</span></td>'
       +'<td><input class="u" value="'+esc(m.unit)+'" onchange="save('+idx+',\'unit\',this.value)"></td>'
       +'<td>'+roleSel+'</td>'
-      +'<td class="num"><input class="p" value="'+money(m.calcPrice)+'" onchange="save('+idx+',\'calcPrice\',this.value.replace(\',\',\'.\'))">'+dyn+'</td>'
+      +'<td class="num">'+price+'</td>'
       +'<td class="muted">'+esc(m.note||'')+'</td>'
       +'<td><span class="msg" id="m'+idx+'"></span></td>'
       +'</tr>';
@@ -91,19 +104,89 @@ function save(i,field,val){
     else if(el) el.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>';
   });
 }
-function rename(old){
-  var nn=prompt('Переименовать материал «'+old+'» во всей системе в:', old); if(!nn||nn.trim()===old) return;
-  api({vapi:'renamematerial', old:old, new:nn.trim()}).then(function(r){
-    if(r&&r.ok){ alert('Готово: заменено в '+r.changed+' местах'); load(); }
-    else alert('Ошибка: '+((r&&r.error)||'?'));
-  });
-}
 function doImport(){
   var m=$('imsg'); m.className='msg'; m.textContent='Импортирую…';
-  api({vapi:'importmaterials'}).then(function(r){
-    if(r&&r.ok){ m.className='msg ok'; m.textContent='✓ +'+r.added+' новых, '+r.updated+' обновлено'; load(); }
+  api({vapi:'importmaterials'}).then(function(r){ if(r&&r.ok){ m.className='msg ok'; m.textContent='✓ +'+r.added+' новых, '+r.updated+' обновлено'; load(); } else { m.className='msg err'; m.textContent='Ошибка'; } });
+}
+
+// ── карточка материала: поставщики + журнал + добавить закупку ──
+function closeOv(){ $('ov').className='ov'; }
+function openCard(name){
+  $('ov').className='ov on'; $('modal').innerHTML='<div class="center muted">Загрузка…</div>';
+  api({vapi:'matsuppliers', name:name}).then(function(r){ renderCard(name, r); });
+}
+function renderCard(name, r){
+  var sups=(r&&r.suppliers)||[], buys=(r&&r.buys)||[];
+  var supRows=sups.map(function(s){ return '<tr><td>'+esc(s.supplier)+'</td><td class="muted">'+esc(s.supName||'')+'</td><td class="num">'+(s.coef||'')+'</td><td class="num">'+money(s.price)+' '+esc(s.cur)+'</td><td class="muted">'+esc(s.terms||'')+'</td></tr>'; }).join('')||'<tr><td colspan=5 class="muted">нет поставщиков</td></tr>';
+  var buyRows=buys.map(function(b){ return '<tr><td>'+esc(b.date)+'</td><td>'+esc(b.supplier)+'</td><td class="muted">'+esc(b.docNo)+'</td><td class="num">'+b.qtyW+'</td><td class="num"><b>'+money(b.priceW)+'</b></td><td class="num">'+money(b.sum)+' '+esc(b.cur)+'</td></tr>'; }).join('')||'<tr><td colspan=6 class="muted">закупок нет</td></tr>';
+  $('modal').innerHTML=
+    '<button class="x sm" onclick="closeOv()">✕</button><h3>'+esc(name)+'</h3>'
+    +'<div class="lbl">Поставщики</div><div class="box"><table><thead><tr><th>Поставщик</th><th>У поставщика</th><th class="num">Коэф</th><th class="num">Цена</th><th>Условия</th></tr></thead><tbody>'+supRows+'</tbody></table></div>'
+    +'<div class="lbl">Добавить закупку</div>'
+    +'<div class="frm">'
+      +'<input class="s" id="p_sup" placeholder="поставщик">'
+      +'<input class="s" id="p_doc" placeholder="№ док">'
+      +'<input class="xs" id="p_date" placeholder="дд.мм.гггг">'
+      +'<input class="xs" id="p_qty" placeholder="кол-во">'
+      +'<input class="xs" id="p_unit" placeholder="ед">'
+      +'<input class="xs" id="p_coef" placeholder="коэф" value="1">'
+      +'<input class="s" id="p_sum" placeholder="сумма BYN">'
+      +'<button class="green sm" onclick="addBuy(\''+esc(name).replace(/\x27/g,"\\x27")+'\')">＋ провести</button>'
+    +'</div><div class="muted" style="margin-top:4px">коэф = сколько рабочих ед в 1 ед. документа (пачка→листы). Цена за лист = сумма ÷ (кол-во × коэф).</div>'
+    +'<div class="msg" id="p_msg"></div>'
+    +'<div class="lbl">Журнал закупок</div><div class="box"><table><thead><tr><th>Дата</th><th>Поставщик</th><th>№</th><th class="num">Кол-во (раб.)</th><th class="num">Цена/ед</th><th class="num">Сумма</th></tr></thead><tbody>'+buyRows+'</tbody></table></div>';
+}
+function addBuy(name){
+  var f={ material:name, supplier:$('p_sup').value, docNo:$('p_doc').value, docType:'Накладная', date:$('p_date').value,
+    qtyDoc:$('p_qty').value, unitDoc:$('p_unit').value, coef:$('p_coef').value||1, sum:$('p_sum').value, cur:'BYN', rate:1, docName:$('p_sup').value?name:'' };
+  var m=$('p_msg'); m.className='msg'; m.textContent='…';
+  api({vapi:'addpurchase', data:JSON.stringify(f)}).then(function(r){
+    if(r&&r.ok){ m.className='msg ok'; m.textContent='✓ цена/ед '+money(r.priceW); openCard(name); load(); }
     else { m.className='msg err'; m.textContent='Ошибка: '+((r&&r.error)||'?'); }
   });
+}
+
+// ── распознавание счёта/накладной → позиции → журнал ──
+function onDoc(){
+  var f=$('docf').files[0]; if(!f) return;
+  var m=$('imsg'); m.className='msg'; m.textContent='Распознаю документ…';
+  var rd=new FileReader();
+  rd.onload=function(){ var b64=String(rd.result).split(',')[1]||'';
+    apiPost({vapi:'parsesupplydoc', b64:b64, mime:(f.type||''), name:(f.name||'')}).then(function(r){
+      m.textContent='';
+      if(!r||!r.ok){ m.className='msg err'; m.textContent='Ошибка: '+((r&&r.error)||'?'); return; }
+      renderDoc(r);
+    }).catch(function(e){ m.className='msg err'; m.textContent='Ошибка: '+(e.message||e); });
+  };
+  rd.readAsDataURL(f); $('docf').value='';
+}
+function renderDoc(r){
+  var h=r.header||{}, pos=r.positions||[];
+  window.DOCH=h; window.DOCP=pos;
+  var rows=pos.map(function(p,i){
+    return '<tr><td class="muted">'+esc(p.name)+'</td>'
+      +'<td><input list="matlist" id="dm'+i+'" value="'+esc(p.material||'')+'" style="width:150px"></td>'
+      +'<td class="num"><input class="xs" id="dq'+i+'" value="'+p.qty+'"></td>'
+      +'<td><input class="xs" id="du'+i+'" value="'+esc(p.unit)+'"></td>'
+      +'<td class="num"><input class="xs" id="dc'+i+'" value="1"></td>'
+      +'<td class="num"><input class="s" id="ds'+i+'" value="'+p.sum+'"></td></tr>';
+  }).join('');
+  $('ov').className='ov on';
+  $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><h3>Позиции документа</h3>'
+    +'<div class="muted">'+esc(h.supplier||'')+' · '+esc(h.docType||'')+' '+esc(h.docNo||'')+' · '+esc(h.date||'')+' · '+esc(h.currency||'BYN')+'</div>'
+    +'<div class="box" style="margin-top:8px"><table><thead><tr><th>В документе</th><th>Наш материал</th><th class="num">Кол-во</th><th>Ед</th><th class="num">Коэф</th><th class="num">Сумма</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+    +'<div style="margin-top:10px"><button class="green" onclick="commitDoc()">✓ Провести все в журнал</button> <span class="msg" id="d_msg"></span></div>';
+}
+function commitDoc(){
+  var h=window.DOCH||{}, pos=window.DOCP||[], m=$('d_msg'); m.className='msg'; m.textContent='Провожу…';
+  var tasks=[];
+  pos.forEach(function(p,i){
+    var mat=$('dm'+i).value.trim(); if(!mat) return;
+    tasks.push(api({vapi:'addpurchase', data:JSON.stringify({ material:mat, supplier:h.supplier, docType:h.docType, docNo:h.docNo, date:h.date,
+      qtyDoc:$('dq'+i).value, unitDoc:$('du'+i).value, coef:$('dc'+i).value||1, sum:$('ds'+i).value, cur:h.currency||'BYN', rate:1, docName:p.name })));
+  });
+  if(!tasks.length){ m.className='msg err'; m.textContent='Нет сопоставленных позиций'; return; }
+  Promise.all(tasks).then(function(rs){ var ok=rs.filter(function(x){return x&&x.ok;}).length; m.className='msg ok'; m.textContent='✓ Проведено '+ok+' из '+tasks.length; load(); setTimeout(closeOv,1200); });
 }
 load();
 </script>
