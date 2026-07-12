@@ -45,7 +45,7 @@
 <div class="muted" id="cnt">загрузка…</div>
 <div class="bar">
   <input class="search" id="q" placeholder="поиск…" oninput="draw()">
-  <button class="gray" onclick="openSupplyDocs()">📥 Накладные из Снаба</button>
+  <button class="gray" id="snabBtn" onclick="openSupplyDocs()">📥 Накладные из Снаба</button>
   <button class="gray sm" onclick="doImport()">⬇︎ Импорт из файла</button>
   <span class="msg" id="imsg"></span>
 </div>
@@ -74,7 +74,8 @@ function load(){
     }).join('');
     $('matlist').innerHTML=ROWS.map(function(m){return '<option value="'+esc(m.name)+'">';}).join('');
     draw();
-  }).catch(function(e){ $('tb').innerHTML='<tr><td colspan=6 class="center err">Ошибка: '+esc(e.message||e)+'</td></tr>'; });
+    refreshSnabCount();
+  }).catch(function(e){ $('tb').innerHTML='<tr><td colspan=7 class="center err">Ошибка: '+esc(e.message||e)+'</td></tr>'; });
 }
 function setRole(r){ FROLE=r; load(); }
 function draw(){
@@ -170,42 +171,62 @@ function openSupplyDocs(){
     $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><h3>Накладные из Снаба</h3><div class="muted">загружены ботом @SnabTW_bot — повторно грузить не нужно</div><div class="box" style="margin-top:8px"><table><thead><tr><th>Тип</th><th>Поставщик</th><th>№</th><th class="num">Сумма</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan=5 class="muted">нет документов с файлом</td></tr>')+'</tbody></table></div>';
   }).catch(function(e){ $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><div class="err">'+esc(e.message||e)+'</div>'; });
 }
+function docHeadFrom(d){ return { supplier:d.contr, docType:d.type, docNo:d.docNo, date:d.date, currency:d.cur }; }
 function pickDoc(i){
   var d=window.SDOCS[i]; $('modal').innerHTML='<div class="center muted">Распознаю позиции документа…<br><span class="muted">'+esc(d.contr)+' · '+esc(d.docNo)+'</span></div>';
   api({vapi:'supplydocpos', fileId:d.fileId}).then(function(r){
-    if(!r||!r.ok){ $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><div class="err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
-    r.header=r.header||{};
-    r.header.supplier=r.header.supplier||d.contr; r.header.docType=d.type; r.header.docNo=d.docNo; r.header.date=r.header.date||d.date; r.header.currency=d.cur;
-    renderDoc(r);
-  }).catch(function(e){ $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><div class="err">'+esc(e.message||e)+'</div>'; });
+    if(!r||!r.ok||!(r.positions&&r.positions.length)){
+      var why=(r&&r.ok)?'в документе не найдено товарных позиций':((r&&r.error)||'ошибка распознавания');
+      $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><h3>Не распозналось</h3><div class="err" style="margin-top:6px">⚠️ '+esc(why)+'</div>'
+        +'<div class="muted" style="margin-top:6px">'+esc(d.contr)+' · '+esc(d.type)+' '+esc(d.docNo)+'</div>'
+        +'<div style="margin-top:12px"><button class="gray" onclick="pickDoc('+i+')">↻ Повторить</button> <button onclick="manualDoc('+i+')">✍️ Ввести вручную</button></div>';
+      return;
+    }
+    r.header=Object.assign(docHeadFrom(d), {date:(r.header&&r.header.date)||d.date, supplier:(r.header&&r.header.supplier)||d.contr});
+    renderDoc(r.header, r.positions);
+  }).catch(function(e){ $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><h3>Ошибка</h3><div class="err">'+esc(e.message||e)+'</div><div style="margin-top:12px"><button class="gray" onclick="pickDoc('+i+')">↻ Повторить</button> <button onclick="manualDoc('+i+')">✍️ Ввести вручную</button></div>'; });
 }
-function renderDoc(r){
-  var h=r.header||{}, pos=r.positions||[];
+function manualDoc(i){ var d=window.SDOCS[i]; renderDoc(docHeadFrom(d), [{name:'',qty:'',unit:'',sum:'',material:''},{name:'',qty:'',unit:'',sum:'',material:''}]); }
+function docRead(){ // считать текущие правки в DOCP
+  window.DOCP=(window.DOCP||[]).map(function(p,i){ return {
+    name:$('dn'+i)?$('dn'+i).value:p.name, material:$('dm'+i)?$('dm'+i).value:(p.material||''),
+    qty:$('dq'+i)?$('dq'+i).value:p.qty, unit:$('du'+i)?$('du'+i).value:p.unit,
+    coef:$('dc'+i)?$('dc'+i).value:(p.coef||1), sum:$('ds'+i)?$('ds'+i).value:p.sum }; });
+}
+function addRow(){ docRead(); window.DOCP.push({name:'',material:'',qty:'',unit:'',coef:1,sum:''}); renderDoc(window.DOCH, window.DOCP); }
+function renderDoc(h, pos){
   window.DOCH=h; window.DOCP=pos;
   var rows=pos.map(function(p,i){
-    return '<tr><td class="muted">'+esc(p.name)+'</td>'
-      +'<td><input list="matlist" id="dm'+i+'" value="'+esc(p.material||'')+'" style="width:150px"></td>'
-      +'<td class="num"><input class="xs" id="dq'+i+'" value="'+p.qty+'"></td>'
-      +'<td><input class="xs" id="du'+i+'" value="'+esc(p.unit)+'"></td>'
-      +'<td class="num"><input class="xs" id="dc'+i+'" value="1"></td>'
-      +'<td class="num"><input class="s" id="ds'+i+'" value="'+p.sum+'"></td></tr>';
+    return '<tr><td><input id="dn'+i+'" value="'+esc(p.name||'')+'" style="width:150px" placeholder="строка документа"></td>'
+      +'<td><input list="matlist" id="dm'+i+'" value="'+esc(p.material||'')+'" style="width:150px" placeholder="наш материал"></td>'
+      +'<td class="num"><input class="xs" id="dq'+i+'" value="'+(p.qty!=null?p.qty:'')+'"></td>'
+      +'<td><input class="xs" id="du'+i+'" value="'+esc(p.unit||'')+'"></td>'
+      +'<td class="num"><input class="xs" id="dc'+i+'" value="'+(p.coef||1)+'"></td>'
+      +'<td class="num"><input class="s" id="ds'+i+'" value="'+(p.sum!=null?p.sum:'')+'"></td></tr>';
   }).join('');
   $('ov').className='ov on';
   $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><h3>Позиции документа</h3>'
     +'<div class="muted">'+esc(h.supplier||'')+' · '+esc(h.docType||'')+' '+esc(h.docNo||'')+' · '+esc(h.date||'')+' · '+esc(h.currency||'BYN')+'</div>'
+    +'<div class="muted" style="font-size:11px;margin-top:4px">не сопоставилось — впиши новое имя материала (создастся), лишние строки оставь без «нашего материала»</div>'
     +'<div class="box" style="margin-top:8px"><table><thead><tr><th>В документе</th><th>Наш материал</th><th class="num">Кол-во</th><th>Ед</th><th class="num">Коэф</th><th class="num">Сумма</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
-    +'<div style="margin-top:10px"><button class="green" onclick="commitDoc()">✓ Провести все в журнал</button> <span class="msg" id="d_msg"></span></div>';
+    +'<div style="margin-top:10px"><button class="gray sm" onclick="addRow()">＋ строка</button> <button class="green" onclick="commitDoc()">✓ Провести все в журнал</button> <span class="msg" id="d_msg"></span></div>';
 }
 function commitDoc(){
-  var h=window.DOCH||{}, pos=window.DOCP||[], m=$('d_msg'); m.className='msg'; m.textContent='Провожу…';
-  var tasks=[];
-  pos.forEach(function(p,i){
-    var mat=$('dm'+i).value.trim(); if(!mat) return;
-    tasks.push(api({vapi:'addpurchase', data:JSON.stringify({ material:mat, supplier:h.supplier, docType:h.docType, docNo:h.docNo, date:h.date,
-      qtyDoc:$('dq'+i).value, unitDoc:$('du'+i).value, coef:$('dc'+i).value||1, sum:$('ds'+i).value, cur:h.currency||'BYN', rate:1, docName:p.name })}));
+  docRead(); var h=window.DOCH||{}, pos=window.DOCP||[], m=$('d_msg'); m.className='msg'; m.textContent='Провожу…';
+  var tasks=pos.filter(function(p){ return String(p.material||'').trim(); }).map(function(p){
+    return api({vapi:'addpurchase', data:JSON.stringify({ material:String(p.material).trim(), supplier:h.supplier, docType:h.docType, docNo:h.docNo, date:h.date,
+      qtyDoc:p.qty, unitDoc:p.unit, coef:p.coef||1, sum:p.sum, cur:h.currency||'BYN', rate:1, docName:p.name })});
   });
-  if(!tasks.length){ m.className='msg err'; m.textContent='Нет сопоставленных позиций'; return; }
-  Promise.all(tasks).then(function(rs){ var ok=rs.filter(function(x){return x&&x.ok;}).length; m.className='msg ok'; m.textContent='✓ Проведено '+ok+' из '+tasks.length; load(); setTimeout(closeOv,1200); });
+  if(!tasks.length){ m.className='msg err'; m.textContent='Нет сопоставленных позиций (укажи «наш материал»)'; return; }
+  Promise.all(tasks).then(function(rs){ var ok=rs.filter(function(x){return x&&x.ok;}).length; m.className='msg ok'; m.textContent='✓ Проведено '+ok+' из '+tasks.length; load(); setTimeout(closeOv,1400); });
+}
+function refreshSnabCount(){
+  api({vapi:'supplydocs'}).then(function(r){
+    if(!r||!r.ok) return; window.SDOCS=r.docs||[];
+    var nw=window.SDOCS.filter(function(d){return !d.done;}).length, btn=$('snabBtn'); if(!btn) return;
+    btn.textContent='📥 Накладные из Снаба'+(nw?(' · '+nw+' новых'):'');
+    if(nw){ btn.style.background='var(--accent)'; btn.style.color='#fff'; } else { btn.style.background='#eef1f8'; btn.style.color='#334'; }
+  }).catch(function(){});
 }
 load();
 </script>
