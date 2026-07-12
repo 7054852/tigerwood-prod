@@ -51,7 +51,7 @@
 </div>
 <div class="chips" id="roles"></div>
 <div style="height:10px"></div>
-<div class="box"><table><thead><tr><th>Материал</th><th>Ед</th><th>Роль</th><th class="num">Последняя цена</th><th>Комментарий</th><th></th></tr></thead><tbody id="tb"><tr><td colspan=6 class="center muted">Загрузка…</td></tr></tbody></table></div>
+<div class="box"><table><thead><tr><th>Материал</th><th>Ед</th><th>Роль</th><th class="num">Последняя цена</th><th class="num">Для расчёта</th><th>Комментарий</th><th></th></tr></thead><tbody id="tb"><tr><td colspan=7 class="center muted">Загрузка…</td></tr></tbody></table></div>
 <datalist id="matlist"></datalist>
 
 <div class="ov" id="ov"><div class="modal" id="modal"></div></div>
@@ -87,11 +87,13 @@ function draw(){
     var dyn='';
     if(m.hasBuys&&m.prevPrice){ var d=m.lastPrice-m.prevPrice; if(Math.abs(d)>=0.005) dyn=' <span class="'+(d>0?'up':'down')+'">'+(d>0?'▲':'▼')+money(Math.abs(d))+'</span>'; }
     var price=m.hasBuys?('<b>'+money(m.lastPrice)+'</b>'+dyn):('<span class="muted">'+money(m.calcPrice)+'</span>');
+    var forCost=(Number(m.priceForCost)||0)>0?('<b>'+Math.round(m.priceForCost)+'</b>'):'<span class="muted">—</span>';
     return '<tr>'
       +'<td><span class="nm" onclick="openCard(\''+esc(m.name).replace(/\x27/g,"\\x27")+'\')">'+esc(m.name)+'</span></td>'
       +'<td><input class="u" value="'+esc(m.unit)+'" onchange="save('+idx+',\'unit\',this.value)"></td>'
       +'<td>'+roleSel+'</td>'
       +'<td class="num">'+price+'</td>'
+      +'<td class="num" title="средняя поставок + 10%, округл.">'+forCost+'</td>'
       +'<td class="muted">'+esc(m.note||'')+'</td>'
       +'<td><span class="msg" id="m'+idx+'"></span></td>'
       +'</tr>';
@@ -117,11 +119,12 @@ function openCard(name){
 }
 function renderCard(name, r){
   var sups=(r&&r.suppliers)||[], buys=(r&&r.buys)||[];
-  var supRows=sups.map(function(s){ return '<tr><td>'+esc(s.supplier)+'</td><td class="muted">'+esc(s.supName||'')+'</td><td class="num">'+(s.coef||'')+'</td><td class="num">'+money(s.price)+' '+esc(s.cur)+'</td><td class="muted">'+esc(s.terms||'')+'</td></tr>'; }).join('')||'<tr><td colspan=5 class="muted">нет поставщиков</td></tr>';
-  var buyRows=buys.map(function(b){ return '<tr><td>'+esc(b.date)+'</td><td>'+esc(b.supplier)+'</td><td class="muted">'+esc(b.docNo)+'</td><td class="num">'+b.qtyW+'</td><td class="num"><b>'+money(b.priceW)+'</b></td><td class="num">'+money(b.sum)+' '+esc(b.cur)+'</td></tr>'; }).join('')||'<tr><td colspan=6 class="muted">закупок нет</td></tr>';
+  var qn=function(s){ return esc(String(s)).replace(/\x27/g,"\\x27"); };
+  var supRows=sups.map(function(s){ return '<tr><td>'+esc(s.supplier)+'</td><td class="muted">'+esc(s.supName||'')+'</td><td class="num">'+(s.coef||'')+'</td><td class="num">'+money(s.price)+' '+esc(s.cur)+'</td><td class="muted">'+esc(s.terms||'')+'</td><td><button class="gray sm" title="удалить поставщика" onclick="delSup(\''+qn(name)+'\',\''+qn(s.supplier)+'\')">🗑</button></td></tr>'; }).join('')||'<tr><td colspan=6 class="muted">нет поставщиков</td></tr>';
+  var buyRows=buys.map(function(b){ return '<tr><td>'+esc(b.date)+'</td><td>'+esc(b.supplier)+'</td><td class="muted">'+esc(b.docNo)+'</td><td class="num">'+b.qtyW+'</td><td class="num"><b>'+money(b.priceW)+'</b></td><td class="num">'+money(b.sum)+' '+esc(b.cur)+'</td><td><button class="gray sm" title="удалить запись" onclick="delBuy(\''+qn(name)+'\',\''+qn(b.docNo)+'\',\''+qn(b.supplier)+'\')">🗑</button></td></tr>'; }).join('')||'<tr><td colspan=7 class="muted">закупок нет</td></tr>';
   $('modal').innerHTML=
     '<button class="x sm" onclick="closeOv()">✕</button><h3>'+esc(name)+'</h3>'
-    +'<div class="lbl">Поставщики</div><div class="box"><table><thead><tr><th>Поставщик</th><th>У поставщика</th><th class="num">Коэф</th><th class="num">Цена</th><th>Условия</th></tr></thead><tbody>'+supRows+'</tbody></table></div>'
+    +'<div class="lbl">Поставщики</div><div class="box"><table><thead><tr><th>Поставщик</th><th>У поставщика</th><th class="num">Коэф</th><th class="num">Цена</th><th>Условия</th><th></th></tr></thead><tbody>'+supRows+'</tbody></table></div>'
     +'<div class="lbl">Добавить закупку</div>'
     +'<div class="frm">'
       +'<input class="s" id="p_sup" placeholder="поставщик">'
@@ -134,7 +137,7 @@ function renderCard(name, r){
       +'<button class="green sm" onclick="addBuy(\''+esc(name).replace(/\x27/g,"\\x27")+'\')">＋ провести</button>'
     +'</div><div class="muted" style="margin-top:4px">коэф = сколько рабочих ед в 1 ед. документа (пачка→листы). Цена за лист = сумма ÷ (кол-во × коэф).</div>'
     +'<div class="msg" id="p_msg"></div>'
-    +'<div class="lbl">Журнал закупок</div><div class="box"><table><thead><tr><th>Дата</th><th>Поставщик</th><th>№</th><th class="num">Кол-во (раб.)</th><th class="num">Цена/ед</th><th class="num">Сумма</th></tr></thead><tbody>'+buyRows+'</tbody></table></div>';
+    +'<div class="lbl">Журнал закупок</div><div class="box"><table><thead><tr><th>Дата</th><th>Поставщик</th><th>№</th><th class="num">Кол-во (раб.)</th><th class="num">Цена/ед</th><th class="num">Сумма</th><th></th></tr></thead><tbody>'+buyRows+'</tbody></table></div>';
 }
 function addBuy(name){
   var f={ material:name, supplier:$('p_sup').value, docNo:$('p_doc').value, docType:'Накладная', date:$('p_date').value,
@@ -144,6 +147,15 @@ function addBuy(name){
     if(r&&r.ok){ m.className='msg ok'; m.textContent='✓ цена/ед '+money(r.priceW); openCard(name); load(); }
     else { m.className='msg err'; m.textContent='Ошибка: '+((r&&r.error)||'?'); }
   });
+}
+
+function delBuy(name,docNo,supplier){
+  if(!confirm('Удалить запись закупки '+docNo+' ('+supplier+')?')) return;
+  api({vapi:'delpurchase', name:name, docNo:docNo, supplier:supplier}).then(function(){ openCard(name); load(); });
+}
+function delSup(name,supplier){
+  if(!confirm('Удалить поставщика '+supplier+' у «'+name+'»?')) return;
+  api({vapi:'delsupplier', name:name, supplier:supplier}).then(function(){ openCard(name); load(); });
 }
 
 // ── накладные из Снаба (уже загружены ботом) → распознать позиции → журнал ──
