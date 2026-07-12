@@ -44,21 +44,37 @@ function $(id){ return document.getElementById(id); }
 function money(n){ n=Number(n)||0; return n.toFixed(2).replace('.',','); }
 function pct(a,b){ return b>0?Math.round(a/b*100):0; }
 
-api({vapi:'stats'}).then(function(r){
+function spark(vals,color){ vals=vals.filter(function(v){return v!=null&&!isNaN(v);}); if(vals.length<2) return ''; var w=110,h=26,mn=Math.min.apply(null,vals),mx=Math.max.apply(null,vals),rng=(mx-mn)||1; var pts=vals.map(function(v,i){ return (i/(vals.length-1)*w).toFixed(1)+','+(h-((v-mn)/rng)*(h-3)-1.5).toFixed(1); }).join(' '); return '<svg width="'+w+'" height="'+h+'" style="vertical-align:middle;margin-left:4px"><polyline fill="none" stroke="'+color+'" stroke-width="2" points="'+pts+'"/></svg>'; }
+function delta(cur,prev){ var d=cur-prev; if(d>0) return '<span style="color:var(--green);font-weight:800"> +'+d+'</span>'; if(d<0) return '<span style="color:var(--red)"> '+d+'</span>'; return '<span class="muted"> ±0</span>'; }
+function doSnap(){ var b=$('snapBtn'); if(b){b.textContent='…';b.disabled=true;} api({vapi:'statsnap'}).then(function(){ render(); }); }
+function render(){
+ Promise.all([api({vapi:'stats'}), api({vapi:'statshist'})]).then(function(res){
+  var r=res[0], hist=(res[1]&&res[1].rows)||[];
   if(!r||!r.ok){ $('app').innerHTML='<div class="center err">Ошибка</div>'; return; }
   var c=r.catalog, o=r.ops;
-  $('upd').textContent='обновлено сейчас';
+  var st=o.byStatus, tot=o.rates||1, curChecked=st.chief+st.master;
+  var last=hist.length?hist[hist.length-1]:null;
+  $('upd').textContent='обновлено сейчас · срезов: '+hist.length;
 
-  // Каталог
+  // Динамика
+  var dyn='';
+  if(last){
+    dyn='<div class="box" style="margin-bottom:12px"><div class="muted">Динамика с последнего среза · '+esc(last.date)+'</div><div class="chips" style="margin-top:8px">'
+      +'<span class="chip">собрано изделий: <b>'+c.assembled+'</b>'+delta(c.assembled,last.assembled)+spark(hist.map(function(x){return x.assembled;}).concat([c.assembled]),'#137333')+'</span>'
+      +'<span class="chip">проверено расценок: <b>'+curChecked+'</b>'+delta(curChecked,last.checked)+spark(hist.map(function(x){return x.checked;}).concat([curChecked]),'#7c3aed')+'</span>'
+      +'<span class="chip">расценок: <b>'+o.rates+'</b>'+delta(o.rates,last.rates)+'</span>'
+      +'<span class="chip">деталей: <b>'+o.details+'</b>'+delta(o.details,last.details)+'</span>'
+      +'</div></div>';
+  } else { dyn='<div class="muted" style="margin-bottom:12px">Срезов пока нет — нажми «Снять срез», чтобы зафиксировать точку отсчёта.</div>'; }
+
   var brand=c.byBrand.map(function(b){ return '<tr><td>'+esc(b.brand)+'</td><td class="num">'+b.total+'</td><td class="num" style="color:var(--green)">'+b.assembled+'</td><td class="num" style="color:var(--red)">'+b.notAssembled+'</td><td class="num">'+pct(b.assembled,b.total)+'%</td></tr>'; }).join('');
   var notChips=c.notList.slice(0,200).map(function(a){ return '<span class="chip">'+esc(a)+'</span>'; }).join('');
-
-  // Расценки
-  var st=o.byStatus, tot=o.rates||1;
   var equip=o.byEquip.map(function(e){ return '<tr><td>'+esc(e.equip)+'</td><td class="num">'+e.details+'</td><td class="num">'+e.ops+'</td><td class="num">'+money(e.cost)+'</td></tr>'; }).join('');
 
   $('app').innerHTML=
-    '<div class="sect">Каталог изделий — собрано / не собрано</div>'
+    '<div style="text-align:right;margin-bottom:10px"><button id="snapBtn" style="background:var(--accent);color:#fff;border:0;border-radius:9px;padding:9px 14px;font-weight:600;cursor:pointer" onclick="doSnap()">📸 Снять срез</button></div>'
+    +dyn
+    +'<div class="sect">Каталог изделий — собрано / не собрано</div>'
     +'<div class="kpis">'
       +'<div class="kpi ac"><div class="n">'+c.total+'</div><div class="l">всего изделий (артикулов)</div></div>'
       +'<div class="kpi ok"><div class="n">'+c.assembled+'</div><div class="l">собрано (есть состав)</div></div>'
@@ -85,7 +101,9 @@ api({vapi:'stats'}).then(function(r){
     +'</div>'
     +'<div class="sect">По оборудованию — сколько и какой работы</div>'
     +'<div class="box"><table><thead><tr><th>Оборудование</th><th class="num">Деталей</th><th class="num">Операций</th><th class="num">Стоимость работ, р</th></tr></thead><tbody>'+equip+'</tbody></table></div>';
-}).catch(function(e){ $('app').innerHTML='<div class="center err">Ошибка: '+esc(e.message||e)+'</div>'; });
+ }).catch(function(e){ $('app').innerHTML='<div class="center err">Ошибка: '+esc(e.message||e)+'</div>'; });
+}
+render();
 </script>
 </body>
 </html>
