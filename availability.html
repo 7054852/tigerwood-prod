@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Тигервуд — наличие и срок</title>
+<style>
+  :root{ --fg:#1b2333; --muted:#8a93a6; --line:#e6e9f2; --accent:#2b7de9; --green:#137333; --amber:#b7791f; --red:#c0392b; }
+  *{box-sizing:border-box;} body{ font-family:-apple-system,Roboto,Segoe UI,Arial,sans-serif; margin:0; padding:12px; color:var(--fg); font-size:14px; background:#fff; }
+  .hd{ font-weight:800; font-size:15px; } .sub{ font-size:12px; color:var(--muted); margin-top:2px; }
+  .err{ border:1px solid var(--line); border-radius:12px; padding:12px; margin-top:10px; color:var(--red); }
+  .card{ border:1px solid var(--line); border-radius:12px; padding:12px; margin-top:10px; }
+  .card .nm{ font-weight:700; font-size:14px; }
+  .card .art{ font-size:11px; color:var(--muted); margin-top:1px; }
+  .stats{ display:flex; gap:14px; flex-wrap:wrap; margin-top:9px; }
+  .st{ font-size:12px; } .st b{ display:block; font-size:16px; font-variant-numeric:tabular-nums; }
+  .st .lbl{ color:var(--muted); }
+  .badge{ display:inline-block; padding:4px 11px; border-radius:20px; font-size:12px; font-weight:700; margin-top:10px; }
+  .b-ok{ background:#e6f4ea; color:var(--green); }
+  .b-wip{ background:#f7efdc; color:var(--amber); }
+  .b-plan{ background:#eef1f8; color:#556; }
+  .hide{ display:none; }
+</style>
+</head>
+<body>
+<div id="hd" class="hd">Наличие и срок…</div>
+<div id="sub" class="sub">загрузка…</div>
+<div id="err" class="err hide"></div>
+<div id="list"></div>
+
+<script>
+var BASE='https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';
+var APP='tw7prod';
+function api(p){ p.app=APP; var q=Object.keys(p).map(function(k){ return encodeURIComponent(k)+'='+encodeURIComponent(p[k]==null?'':p[k]); }).join('&'); return fetch(BASE+'?'+q).then(function(r){return r.json();}); }
+function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]*)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function $(id){ return document.getElementById(id); }
+var LEAD=qp('lead');
+
+function srokBadge(it){
+  var s=String(it.srok||'');
+  if(it.available>0) return '<span class="badge b-ok">✓ '+esc(s)+'</span>';
+  if(it.inProduction>0) return '<span class="badge b-wip">⏳ '+esc(s)+'</span>';
+  return '<span class="badge b-plan">🗓 '+esc(s)+'</span>';
+}
+function render(items){
+  $('hd').textContent='Наличие и срок';
+  $('sub').textContent=items.length+' поз. в сделке';
+  if(!items.length){ $('list').innerHTML='<div class="card sub">По этой сделке пока нет позиций в программе. Передайте сделку в SCRM.</div>'; return; }
+  $('list').innerHTML=items.map(function(it){
+    var name=[it.equip,it.model].filter(Boolean).join(' · ')||it.sku||'позиция';
+    return '<div class="card"><div class="nm">'+esc(name)+'</div>'
+      +(it.sku?'<div class="art">'+esc(it.sku)+'</div>':'')
+      +'<div class="stats">'
+      +'<div class="st"><span class="lbl">Заказано</span><b>'+(Number(it.qty)||0)+'</b></div>'
+      +'<div class="st"><span class="lbl">Доступно</span><b>'+(Number(it.available)||0)+'</b></div>'
+      +'<div class="st"><span class="lbl">В производстве</span><b>'+(Number(it.inProduction)||0)+'</b></div>'
+      +'</div>'+srokBadge(it)+'</div>';
+  }).join('');
+}
+function showErr(m){ $('err').className='err'; $('err').innerHTML='⚠️ '+esc(m); $('sub').textContent=''; }
+
+function boot(){
+  if(!LEAD){ showErr('Не передан ID сделки'); return; }
+  api({vapi:'dealavail', deal:LEAD}).then(function(r){
+    if(!r||!r.ok){ showErr((r&&r.error)||'не удалось получить наличие'); return; }
+    render(r.items||[]);
+  }).catch(function(e){ showErr(e.message||String(e)); });
+}
+boot();
+</script>
+</body>
+</html>
