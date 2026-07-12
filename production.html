@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Тигервуд — производство</title>
+<style>
+  :root{ --bg:#f4f6fb; --card:#fff; --fg:#1b2333; --muted:#8a93a6; --line:#e6e9f2; --accent:#2b7de9; --green:#137333; --amber:#b7791f; --red:#c0392b; }
+  *{box-sizing:border-box;} html,body{margin:0;background:var(--bg);}
+  body{ font-family:-apple-system,Roboto,Segoe UI,Arial,sans-serif; color:var(--fg); padding:14px; max-width:900px; margin:0 auto; font-size:14px; }
+  .hi{ font-size:19px; font-weight:800; }
+  .muted{ color:var(--muted); font-size:13px; }
+  .sect{ font-size:13px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin:20px 4px 8px; display:flex; justify-content:space-between; align-items:center; }
+  .box{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; overflow-x:auto; }
+  table{ width:100%; border-collapse:collapse; font-size:13.5px; }
+  th,td{ text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); vertical-align:middle; white-space:nowrap; }
+  th{ color:var(--muted); font-size:11.5px; font-weight:600; text-transform:uppercase; letter-spacing:.03em; }
+  td.num,th.num{ text-align:right; font-variant-numeric:tabular-nums; }
+  button{ padding:8px 13px; border:0; border-radius:9px; font-size:13px; font-weight:600; color:#fff; background:var(--accent); cursor:pointer; }
+  button.gray{ background:#eef1f8; color:#334; } button.green{ background:var(--green); } button.sm{ padding:5px 9px; font-size:12px; }
+  button:disabled{ opacity:.5; cursor:default; }
+  input,select{ padding:6px 8px; border:1px solid var(--line); border-radius:8px; font-size:13px; }
+  input.q{ width:64px; text-align:right; font-variant-numeric:tabular-nums; }
+  .pill{ font-size:11px; padding:2px 9px; border-radius:20px; font-weight:700; }
+  .p-need{ background:#fdeee7; color:var(--amber); } .p-ok{ background:#e7f5ea; color:var(--green); }
+  .prio{ cursor:pointer; }
+  .prio.on{ background:#fdecea; color:var(--red); } .prio.off{ background:#eef1f8; color:#556; }
+  .bcard{ border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:10px; }
+  .bhead{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .bnum{ font-weight:800; font-size:15px; } .bpct{ font-variant-numeric:tabular-nums; }
+  .bar{ height:6px; background:#eef1f8; border-radius:6px; overflow:hidden; flex:1; min-width:80px; }
+  .bar>i{ display:block; height:100%; background:var(--green); }
+  .msg{ font-size:13px; margin-left:8px; } .err{ color:var(--red); } .ok{ color:var(--green); }
+  .row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .center{ text-align:center; padding:36px 16px; }
+</style>
+</head>
+<body>
+<div class="hi">🏭 Производство · план и наличие</div>
+<div id="app"><div class="center muted">Загрузка…</div></div>
+<script>
+var BASE='https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';
+var APP='tw7prod';
+function api(p){ p.app=APP; var q=Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]==null?'':p[k]);}).join('&'); return fetch(BASE+'?'+q).then(function(r){return r.json();}); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function $(id){ return document.getElementById(id); }
+var app=$('app'), NEEDS=[], BATCHES=[];
+
+function load(){
+  app.innerHTML='<div class="center muted">Загрузка…</div>';
+  Promise.all([api({vapi:'prodneeds'}), api({vapi:'batches'})]).then(function(res){
+    NEEDS=(res[0]&&res[0].rows)||[]; BATCHES=(res[1]&&res[1].batches)||[];
+    render();
+  }).catch(function(e){ app.innerHTML='<div class="center err">Ошибка загрузки: '+esc(e.message||e)+'</div>'; });
+}
+
+function nm(x){ return [x.equip,x.model].filter(Boolean).join(' · ')||x.sku||'—'; }
+
+function render(){
+  var needRows=NEEDS.map(function(n,i){
+    var badge=n.toProduce>0?'<span class="pill p-need">'+n.toProduce+'</span>':'<span class="pill p-ok">0</span>';
+    return '<tr><td>'+esc(nm(n))+(n.sku?' <span class="muted">'+esc(n.sku)+'</span>':'')+'</td>'
+      +'<td class="num">'+n.sold+'</td><td class="num">'+n.available+'</td><td class="num">'+n.inProduction+'</td>'
+      +'<td class="num"><input class="q" id="tg'+i+'" value="'+(n.target||0)+'"> <button class="gray sm" onclick="saveTarget('+i+')">✓</button></td>'
+      +'<td class="num">'+badge+'</td></tr>';
+  }).join('');
+  var needTotal=NEEDS.reduce(function(s,n){return s+(n.toProduce||0);},0);
+
+  var batchCards=BATCHES.map(function(b){
+    var opts=['новая','в работе','готово','отгружено'].map(function(s){return '<option'+(s===b.status?' selected':'')+'>'+s+'</option>';}).join('');
+    var items=(b.items||[]).map(function(it,j){
+      return '<tr><td>'+esc([it.equip,it.model].filter(Boolean).join(' · ')||it.sku||'—')+'</td>'
+        +'<td class="num">'+it.qty+'</td>'
+        +'<td class="num"><input class="q" id="d_'+b.id+'_'+j+'" value="'+(it.done||0)+'"> <button class="gray sm" onclick="saveDone(\''+b.id+'\',\''+esc(it.sku)+'\',\''+esc(it.model)+'\','+j+')">✓</button></td></tr>';
+    }).join('');
+    var prio=b.prio==='срочно';
+    return '<div class="bcard"><div class="bhead">'
+      +'<span class="bnum">'+esc(b.num)+'</span>'
+      +'<select onchange="setStatus(\''+b.id+'\',this.value)">'+opts+'</select>'
+      +'<span class="pill prio '+(prio?'on':'off')+'" onclick="togglePrio(\''+b.id+'\','+(prio?0:1)+')">'+(prio?'🔥 срочно':'обычный')+'</span>'
+      +'<span class="bar"><i style="width:'+(Number(b.pct)||0)+'%"></i></span><span class="bpct">'+(Number(b.pct)||0)+'% труда</span>'
+      +(b.plan?'<span class="muted">план '+esc(b.plan)+'</span>':'')
+      +'<button class="gray sm" onclick="ship(\''+b.id+'\')">📦 Отгрузить</button>'
+      +'<span class="msg" id="bm_'+b.id+'"></span>'
+      +'</div>'
+      +(items?'<table style="margin-top:8px"><thead><tr><th>Позиция</th><th class="num">Нужно</th><th class="num">Готово (шт → склад)</th></tr></thead><tbody>'+items+'</tbody></table>':'<div class="muted" style="margin-top:6px">нет позиций</div>')
+      +'</div>';
+  }).join('');
+
+  app.innerHTML=
+    '<div class="sect">Потребность к производству <button class="sm" onclick="planNow()">⚙️ Спланировать партию</button></div>'
+    +'<div class="box"><table><thead><tr><th>Товар</th><th class="num">Продано-ждёт</th><th class="num">Доступно</th><th class="num">В произв.</th><th class="num">Целевой запас</th><th class="num">К произв.</th></tr></thead><tbody>'
+    +(needRows||'<tr><td colspan=6 class="muted">потребности нет</td></tr>')+'</tbody></table>'
+    +'<div class="muted" style="margin-top:8px">Итого к производству: <b>'+needTotal+'</b> · «Спланировать» соберёт партию: наличие в резерв, нехватку и добор до целевого — в производство.</div></div>'
+    +'<div class="sect">Партии</div>'
+    +(batchCards||'<div class="box muted">партий нет</div>');
+}
+
+function planNow(){
+  api({vapi:'planprod'}).then(function(r){
+    if(!r||!r.ok){ alert((r&&r.error)||'не удалось спланировать'); return; }
+    load();
+  }).catch(function(e){ alert('Ошибка: '+(e.message||e)); });
+}
+function saveTarget(i){
+  var n=NEEDS[i], v=$('tg'+i).value;
+  api({vapi:'settarget', sku:n.sku||'', target:v, min:'', eq:n.equip||'', mod:n.model||''}).then(function(){ load(); });
+}
+function setStatus(id,st){ api({vapi:'setbstatus', batch:id, status:st}).then(function(){ load(); }); }
+function togglePrio(id,on){ api({vapi:'setprio', batch:id, prio:on?'срочно':'обычный'}).then(function(){ load(); }); }
+function saveDone(id,sku,mod,j){
+  var v=$('d_'+id+'_'+j).value, m=$('bm_'+id); m.textContent='…';
+  api({vapi:'batchdone', batch:id, sku:sku, mod:mod, done:v}).then(function(r){
+    m.innerHTML=(r&&r.ok)?'<span class="ok">✓ на склад</span>':'<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; setTimeout(load,700);
+  });
+}
+function ship(id){ var m=$('bm_'+id); m.textContent='…'; api({vapi:'shipbatch', batch:id}).then(function(r){ m.innerHTML=(r&&r.ok)?'<span class="ok">отгружено '+(r.shipped||0)+'</span>':'<span class="err">ошибка</span>'; setTimeout(load,700); }); }
+
+load();
+</script>
+</body>
+</html>
