@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Тигервуд — материалы</title>
+<style>
+  :root{ --bg:#f4f6fb; --card:#fff; --fg:#1b2333; --muted:#8a93a6; --line:#e6e9f2; --accent:#7c3aed; --green:#137333; --amber:#b7791f; --red:#c0392b; }
+  *{box-sizing:border-box;} html,body{margin:0;background:var(--bg);}
+  body{ font-family:-apple-system,Roboto,Segoe UI,Arial,sans-serif; color:var(--fg); padding:14px; max-width:1000px; margin:0 auto; font-size:14px; }
+  .hi{ font-size:19px; font-weight:800; }
+  .muted{ color:var(--muted); font-size:13px; }
+  .bar{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:12px 0; }
+  input,select{ padding:8px 10px; border:1px solid var(--line); border-radius:9px; font-size:14px; background:#fff; }
+  input.search{ flex:1; min-width:180px; }
+  button{ padding:8px 13px; border:0; border-radius:9px; font-size:13px; font-weight:600; color:#fff; background:var(--accent); cursor:pointer; }
+  button.gray{ background:#eef1f8; color:#334; } button.sm{ padding:5px 9px; font-size:12px; }
+  .chips{ display:flex; gap:6px; flex-wrap:wrap; }
+  .chip{ padding:5px 11px; border-radius:20px; font-size:12.5px; font-weight:600; background:#eef1f8; color:#556; border:1px solid var(--line); cursor:pointer; }
+  .chip.on{ background:var(--accent); color:#fff; border-color:var(--accent); }
+  .box{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:6px 12px; overflow-x:auto; }
+  table{ width:100%; border-collapse:collapse; font-size:13.5px; }
+  th,td{ text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); vertical-align:middle; }
+  th{ color:var(--muted); font-size:11.5px; font-weight:600; text-transform:uppercase; letter-spacing:.03em; }
+  td.num,th.num{ text-align:right; font-variant-numeric:tabular-nums; }
+  td input.p{ width:80px; text-align:right; } td input.u{ width:56px; }
+  .role{ font-size:11px; padding:2px 8px; border-radius:20px; background:#f0edfb; color:var(--accent); font-weight:700; }
+  .up{ color:var(--red); } .down{ color:var(--green); }
+  .msg{ font-size:13px; } .err{ color:var(--red); } .ok{ color:var(--green); }
+  .center{ text-align:center; padding:36px 16px; }
+</style>
+</head>
+<body>
+<div class="hi">🧱 Материалы</div>
+<div class="muted" id="cnt">загрузка…</div>
+<div class="bar">
+  <input class="search" id="q" placeholder="поиск по названию…" oninput="draw()">
+  <button class="gray sm" onclick="doImport()">⬇︎ Импорт из файла</button>
+  <span class="msg" id="imsg"></span>
+</div>
+<div class="chips" id="roles"></div>
+<div style="height:10px"></div>
+<div class="box"><table><thead><tr><th>Материал</th><th>Ед</th><th>Роль</th><th class="num">Цена</th><th>Комментарий</th><th></th></tr></thead><tbody id="tb"><tr><td colspan=6 class="center muted">Загрузка…</td></tr></tbody></table></div>
+
+<script>
+var BASE='https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';
+var APP='tw7prod';
+function api(p){ p.app=APP; var q=Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]==null?'':p[k]);}).join('&'); return fetch(BASE+'?'+q).then(function(r){return r.json();}); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function $(id){ return document.getElementById(id); }
+function money(n){ n=Number(n)||0; return n.toFixed(2).replace('.',','); }
+var ROWS=[], ROLES=[], FROLE='';
+
+function load(){
+  api({vapi:'matdata'}).then(function(r){
+    ROWS=(r&&r.rows)||[]; ROLES=(r&&r.roles)||[];
+    $('roles').innerHTML='<span class="chip'+(FROLE?'':' on')+'" onclick="setRole(\'\')">все</span>'+ROLES.map(function(x){
+      return '<span class="chip'+(FROLE===x?' on':'')+'" onclick="setRole(\''+x+'\')">'+esc(x)+'</span>';
+    }).join('');
+    draw();
+  }).catch(function(e){ $('tb').innerHTML='<tr><td colspan=6 class="center err">Ошибка: '+esc(e.message||e)+'</td></tr>'; });
+}
+function setRole(r){ FROLE=r; load(); }
+function draw(){
+  var q=$('q').value.trim().toLowerCase();
+  var list=ROWS.filter(function(m){
+    if(FROLE && m.role!==FROLE) return false;
+    if(q && m.name.toLowerCase().indexOf(q)<0) return false;
+    return true;
+  });
+  $('cnt').textContent=list.length+' из '+ROWS.length+' материалов';
+  $('tb').innerHTML=list.map(function(m,i){
+    var idx=ROWS.indexOf(m);
+    var roleSel='<select onchange="save('+idx+',\'role\',this.value)">'+ROLES.map(function(x){return '<option'+(x===m.role?' selected':'')+'>'+esc(x)+'</option>';}).join('')+'</select>';
+    var dyn='';
+    if(m.hasBuys && m.prevPrice){ var d=m.lastPrice-m.prevPrice; if(Math.abs(d)>=0.005) dyn=' <span class="'+(d>0?'up':'down')+'">'+(d>0?'▲':'▼')+money(Math.abs(d))+'</span>'; }
+    return '<tr>'
+      +'<td><b>'+esc(m.name)+'</b> <button class="gray sm" onclick="rename(\''+esc(m.name)+'\')">✎</button></td>'
+      +'<td><input class="u" value="'+esc(m.unit)+'" onchange="save('+idx+',\'unit\',this.value)"></td>'
+      +'<td>'+roleSel+'</td>'
+      +'<td class="num"><input class="p" value="'+money(m.calcPrice)+'" onchange="save('+idx+',\'calcPrice\',this.value.replace(\',\',\'.\'))">'+dyn+'</td>'
+      +'<td class="muted">'+esc(m.note||'')+'</td>'
+      +'<td><span class="msg" id="m'+idx+'"></span></td>'
+      +'</tr>';
+  }).join('')||'<tr><td colspan=6 class="center muted">ничего не найдено</td></tr>';
+}
+function save(i,field,val){
+  var m=ROWS[i], f={name:m.name}; f[field]=val; var el=$('m'+i); if(el) el.textContent='…';
+  api({vapi:'savematerial', data:JSON.stringify(f)}).then(function(r){
+    if(r&&r.ok){ m[field]=val; if(el){el.innerHTML='<span class="ok">✓</span>'; setTimeout(function(){el.innerHTML='';},900);} }
+    else if(el) el.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>';
+  });
+}
+function rename(old){
+  var nn=prompt('Переименовать материал «'+old+'» во всей системе в:', old); if(!nn||nn.trim()===old) return;
+  api({vapi:'renamematerial', old:old, new:nn.trim()}).then(function(r){
+    if(r&&r.ok){ alert('Готово: заменено в '+r.changed+' местах'); load(); }
+    else alert('Ошибка: '+((r&&r.error)||'?'));
+  });
+}
+function doImport(){
+  var m=$('imsg'); m.className='msg'; m.textContent='Импортирую…';
+  api({vapi:'importmaterials'}).then(function(r){
+    if(r&&r.ok){ m.className='msg ok'; m.textContent='✓ +'+r.added+' новых, '+r.updated+' обновлено'; load(); }
+    else { m.className='msg err'; m.textContent='Ошибка: '+((r&&r.error)||'?'); }
+  });
+}
+load();
+</script>
+</body>
+</html>
