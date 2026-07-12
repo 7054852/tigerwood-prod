@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Тигервуд — статистика</title>
+<style>
+  :root{ --bg:#f4f6fb; --card:#fff; --fg:#1b2333; --muted:#8a93a6; --line:#e6e9f2; --accent:#7c3aed; --green:#137333; --amber:#b7791f; --red:#c0392b; --blue:#2f6fb0; }
+  *{box-sizing:border-box;} html,body{margin:0;background:var(--bg);}
+  body{ font-family:-apple-system,Roboto,Segoe UI,Arial,sans-serif; color:var(--fg); padding:14px; max-width:960px; margin:0 auto; font-size:14px; }
+  .hi{ font-size:19px; font-weight:800; }
+  .muted{ color:var(--muted); font-size:13px; }
+  .sect{ font-size:13px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin:22px 4px 10px; }
+  .box{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; overflow-x:auto; }
+  .kpis{ display:flex; gap:12px; flex-wrap:wrap; }
+  .kpi{ flex:1; min-width:130px; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px 16px; }
+  .kpi .n{ font-size:28px; font-weight:800; font-variant-numeric:tabular-nums; }
+  .kpi .l{ font-size:12px; color:var(--muted); margin-top:2px; }
+  .kpi.ok .n{ color:var(--green);} .kpi.no .n{ color:var(--red);} .kpi.ac .n{ color:var(--accent);}
+  .barwrap{ height:10px; background:#eef1f8; border-radius:6px; overflow:hidden; display:flex; margin:12px 0 4px; }
+  .barwrap i{ display:block; height:100%; } .barwrap .g{ background:var(--green);} .barwrap .r{ background:#f0c9c2;}
+  table{ width:100%; border-collapse:collapse; font-size:13.5px; }
+  th,td{ text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); }
+  th{ color:var(--muted); font-size:11.5px; font-weight:600; text-transform:uppercase; letter-spacing:.03em; }
+  td.num,th.num{ text-align:right; font-variant-numeric:tabular-nums; }
+  .pill{ font-size:11px; padding:2px 8px; border-radius:20px; font-weight:700; }
+  .p-chief{ background:#e7f5ea; color:var(--green);} .p-master{ background:#fbf1de; color:var(--amber);} .p-none{ background:#eef1f8; color:#556;}
+  .stbar{ display:flex; height:22px; border-radius:6px; overflow:hidden; font-size:11px; font-weight:700; color:#fff; margin-top:8px; }
+  .stbar i{ display:flex; align-items:center; justify-content:center; min-width:2px; }
+  details{ margin-top:10px; } summary{ cursor:pointer; color:var(--accent); font-weight:600; font-size:13px; }
+  .chips{ display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; } .chip{ font-size:12px; background:#f5f6f8; border:1px solid var(--line); border-radius:7px; padding:3px 8px; }
+  .center{ text-align:center; padding:40px; }
+</style>
+</head>
+<body>
+<div class="hi">📊 Статистика</div>
+<div class="muted" id="upd">загрузка…</div>
+<div id="app"><div class="center muted">Загрузка…</div></div>
+<script>
+var BASE='https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';
+function api(p){ p.app='tw7prod'; var q=Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]==null?'':p[k]);}).join('&'); return fetch(BASE+'?'+q).then(function(r){return r.json();}); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function $(id){ return document.getElementById(id); }
+function money(n){ n=Number(n)||0; return n.toFixed(2).replace('.',','); }
+function pct(a,b){ return b>0?Math.round(a/b*100):0; }
+
+api({vapi:'stats'}).then(function(r){
+  if(!r||!r.ok){ $('app').innerHTML='<div class="center err">Ошибка</div>'; return; }
+  var c=r.catalog, o=r.ops;
+  $('upd').textContent='обновлено сейчас';
+
+  // Каталог
+  var brand=c.byBrand.map(function(b){ return '<tr><td>'+esc(b.brand)+'</td><td class="num">'+b.total+'</td><td class="num" style="color:var(--green)">'+b.assembled+'</td><td class="num" style="color:var(--red)">'+b.notAssembled+'</td><td class="num">'+pct(b.assembled,b.total)+'%</td></tr>'; }).join('');
+  var notChips=c.notList.slice(0,200).map(function(a){ return '<span class="chip">'+esc(a)+'</span>'; }).join('');
+
+  // Расценки
+  var st=o.byStatus, tot=o.rates||1;
+  var equip=o.byEquip.map(function(e){ return '<tr><td>'+esc(e.equip)+'</td><td class="num">'+e.details+'</td><td class="num">'+e.ops+'</td><td class="num">'+money(e.cost)+'</td></tr>'; }).join('');
+
+  $('app').innerHTML=
+    '<div class="sect">Каталог изделий — собрано / не собрано</div>'
+    +'<div class="kpis">'
+      +'<div class="kpi ac"><div class="n">'+c.total+'</div><div class="l">всего изделий (артикулов)</div></div>'
+      +'<div class="kpi ok"><div class="n">'+c.assembled+'</div><div class="l">собрано (есть состав)</div></div>'
+      +'<div class="kpi no"><div class="n">'+c.notAssembled+'</div><div class="l">не собрано</div></div>'
+    +'</div>'
+    +'<div class="barwrap"><i class="g" style="width:'+pct(c.assembled,c.total)+'%"></i><i class="r" style="width:'+(100-pct(c.assembled,c.total))+'%"></i></div>'
+    +'<div class="muted">'+pct(c.assembled,c.total)+'% каталога собрано</div>'
+    +'<div class="box" style="margin-top:12px"><table><thead><tr><th>Бренд</th><th class="num">Всего</th><th class="num">Собрано</th><th class="num">Не собрано</th><th class="num">%</th></tr></thead><tbody>'+brand+'</tbody></table>'
+      +'<details><summary>Показать не собранные ('+c.notList.length+')</summary><div class="chips">'+notChips+(c.notList.length>200?'<span class="chip">…</span>':'')+'</div></details></div>'
+
+    +'<div class="sect">Операции и расценки — сколько работы заведено</div>'
+    +'<div class="kpis">'
+      +'<div class="kpi ac"><div class="n">'+o.rates+'</div><div class="l">всего расценок</div></div>'
+      +'<div class="kpi"><div class="n">'+o.details+'</div><div class="l">деталей</div></div>'
+      +'<div class="kpi"><div class="n">'+o.operations+'</div><div class="l">видов операций</div></div>'
+    +'</div>'
+    +'<div class="box" style="margin-top:12px"><div class="muted">Статус проверки расценок</div>'
+      +'<div class="stbar">'
+        +'<i class="p-chief" style="width:'+pct(st.chief,tot)+'%;background:var(--green)" title="начальник">'+(st.chief||'')+'</i>'
+        +'<i class="p-master" style="width:'+pct(st.master,tot)+'%;background:var(--amber)" title="мастер">'+(st.master||'')+'</i>'
+        +'<i class="p-none" style="width:'+pct(st.none,tot)+'%;background:#b9c0cc" title="не подтверждено">'+(st.none||'')+'</i>'
+      +'</div>'
+      +'<div class="chips"><span class="chip">🟢 начальник: '+st.chief+'</span><span class="chip">🟡 мастер: '+st.master+'</span><span class="chip">⚪ не подтверждено: '+st.none+'</span></div>'
+    +'</div>'
+    +'<div class="sect">По оборудованию — сколько и какой работы</div>'
+    +'<div class="box"><table><thead><tr><th>Оборудование</th><th class="num">Деталей</th><th class="num">Операций</th><th class="num">Стоимость работ, р</th></tr></thead><tbody>'+equip+'</tbody></table></div>';
+}).catch(function(e){ $('app').innerHTML='<div class="center err">Ошибка: '+esc(e.message||e)+'</div>'; });
+</script>
+</body>
+</html>
