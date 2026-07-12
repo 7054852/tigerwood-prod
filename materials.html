@@ -45,7 +45,7 @@
 <div class="muted" id="cnt">загрузка…</div>
 <div class="bar">
   <input class="search" id="q" placeholder="поиск…" oninput="draw()">
-  <label class="gray" style="padding:8px 12px;border-radius:9px;background:#eef1f8;color:#334;cursor:pointer;font-weight:600">📄 Загрузить счёт/накладную<input type="file" id="docf" style="display:none" accept="application/pdf,image/*,.xls,.xlsx,.doc,.docx" onchange="onDoc()"></label>
+  <button class="gray" onclick="openSupplyDocs()">📥 Накладные из Снаба</button>
   <button class="gray sm" onclick="doImport()">⬇︎ Импорт из файла</button>
   <span class="msg" id="imsg"></span>
 </div>
@@ -146,19 +146,26 @@ function addBuy(name){
   });
 }
 
-// ── распознавание счёта/накладной → позиции → журнал ──
-function onDoc(){
-  var f=$('docf').files[0]; if(!f) return;
-  var m=$('imsg'); m.className='msg'; m.textContent='Распознаю документ…';
-  var rd=new FileReader();
-  rd.onload=function(){ var b64=String(rd.result).split(',')[1]||'';
-    apiPost({vapi:'parsesupplydoc', b64:b64, mime:(f.type||''), name:(f.name||'')}).then(function(r){
-      m.textContent='';
-      if(!r||!r.ok){ m.className='msg err'; m.textContent='Ошибка: '+((r&&r.error)||'?'); return; }
-      renderDoc(r);
-    }).catch(function(e){ m.className='msg err'; m.textContent='Ошибка: '+(e.message||e); });
-  };
-  rd.readAsDataURL(f); $('docf').value='';
+// ── накладные из Снаба (уже загружены ботом) → распознать позиции → журнал ──
+function openSupplyDocs(){
+  $('ov').className='ov on'; $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><h3>Накладные из Снаба</h3><div class="center muted">Загрузка…</div>';
+  api({vapi:'supplydocs'}).then(function(r){
+    if(!r||!r.ok){ $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><div class="err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
+    window.SDOCS=r.docs||[];
+    var rows=window.SDOCS.map(function(d,i){
+      return '<tr><td>'+esc(d.type)+'</td><td>'+esc(d.contr)+'</td><td class="muted">'+esc(d.docNo)+'</td><td class="num">'+money(d.sum)+' '+esc(d.cur)+'</td><td>'+(d.done?'<span class="muted">разнесён</span>':'<button class="sm" onclick="pickDoc('+i+')">распознать</button>')+'</td></tr>';
+    }).join('');
+    $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><h3>Накладные из Снаба</h3><div class="muted">загружены ботом @SnabTW_bot — повторно грузить не нужно</div><div class="box" style="margin-top:8px"><table><thead><tr><th>Тип</th><th>Поставщик</th><th>№</th><th class="num">Сумма</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan=5 class="muted">нет документов с файлом</td></tr>')+'</tbody></table></div>';
+  }).catch(function(e){ $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><div class="err">'+esc(e.message||e)+'</div>'; });
+}
+function pickDoc(i){
+  var d=window.SDOCS[i]; $('modal').innerHTML='<div class="center muted">Распознаю позиции документа…<br><span class="muted">'+esc(d.contr)+' · '+esc(d.docNo)+'</span></div>';
+  api({vapi:'supplydocpos', fileId:d.fileId}).then(function(r){
+    if(!r||!r.ok){ $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><div class="err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
+    r.header=r.header||{};
+    r.header.supplier=r.header.supplier||d.contr; r.header.docType=d.type; r.header.docNo=d.docNo; r.header.date=r.header.date||d.date; r.header.currency=d.cur;
+    renderDoc(r);
+  }).catch(function(e){ $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><div class="err">'+esc(e.message||e)+'</div>'; });
 }
 function renderDoc(r){
   var h=r.header||{}, pos=r.positions||[];
