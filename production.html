@@ -49,11 +49,17 @@ var app=$('app'), NEEDS=[], BATCHES=[], MODELS=[], MODMAP={};
 
 function load(){
   app.innerHTML='<div class="center muted">Загрузка…</div>';
-  Promise.all([api({vapi:'prodneeds'}), api({vapi:'batches'}), api({vapi:'catmodels'})]).then(function(res){
-    NEEDS=(res[0]&&res[0].rows)||[]; BATCHES=(res[1]&&res[1].batches)||[]; MODELS=(res[2]&&res[2].rows)||[];
-    MODMAP={}; MODELS.forEach(function(m){ MODMAP[modLabel(m)]=m; });
+  Promise.all([api({vapi:'prodneeds'}), api({vapi:'batches'})]).then(function(res){
+    NEEDS=(res[0]&&res[0].rows)||[]; BATCHES=(res[1]&&res[1].batches)||[];
     render();
+    if(!MODELS.length) loadModels();
   }).catch(function(e){ app.innerHTML='<div class="center err">Ошибка загрузки: '+esc(e.message||e)+'</div>'; });
+}
+function loadModels(){
+  api({vapi:'catmodels'}).then(function(r){
+    MODELS=(r&&r.rows)||[]; MODMAP={}; MODELS.forEach(function(m){ MODMAP[modLabel(m)]=m; });
+    var dl=$('modlist'); if(dl) dl.innerHTML=MODELS.map(function(m){ return '<option value="'+esc(modLabel(m))+'">'; }).join('');
+  }).catch(function(){});
 }
 function modLabel(m){ var v=[m.size,m.color,m.kit].filter(Boolean).join(' '); return [m.equip,m.model].filter(Boolean).join(' · ')+(v?(' ('+v+')'):'')+(m.sku?(' — '+m.sku):''); }
 function costBadge(s){ if(s==='полностью') return '<span class="pill" style="background:#e7f5ea;color:#137333">✓ посчитано</span>'; if(s==='частично') return '<span class="pill" style="background:#fbf1de;color:#b7791f">~ частично</span>'; return '<span class="pill" style="background:#fdeee7;color:#c0392b">✗ не посчитано</span>'; }
@@ -98,7 +104,7 @@ function render(){
       +'<div class="row" style="margin-top:8px"><input list="modlist" id="am_'+b.id+'" placeholder="модель из каталога…" style="min-width:240px"><input class="q" id="aq_'+b.id+'" placeholder="кол-во"><button class="green sm" onclick="addItem(\''+b.id+'\')">＋ добавить модель</button></div>'
       +'</div>';
   }).join('');
-  var datalist='<datalist id="modlist">'+MODELS.map(function(m){ return '<option value="'+esc(modLabel(m))+'">'; }).join('')+'</datalist>';
+  var datalist='<datalist id="modlist">'+MODELS.map(function(m){ return '<option value="'+esc(modLabel(m))+'">'; }).join('')+'</datalist>';   // наполняется loadModels()
 
   app.innerHTML=datalist
     +'<div class="sect">Потребность к производству <button class="sm" onclick="planNow()">⚙️ Собрать из продаж</button></div>'
