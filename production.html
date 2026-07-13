@@ -95,13 +95,17 @@ function render(){
       +'<select onchange="setStatus(\''+b.id+'\',this.value)">'+opts+'</select>'
       +'<span class="pill prio '+(prio?'on':'off')+'" onclick="togglePrio(\''+b.id+'\','+(prio?0:1)+')">'+(prio?'🔥 срочно':'обычный')+'</span>'
       +'<span class="pill" style="background:#f0edfb;color:'+costCol+'">посчитано '+costSum+' · труд '+money(b.labor||0)+' р</span>'
+      +(b.opsCount?'<span class="pill" style="background:#eaf1fd;color:#2b7de9">по труду '+(b.pctLabor||0)+'%</span>':'')
+      +(b.overflow?'<span class="pill" style="background:#fdecea;color:#c0392b" title="есть перевыполненные операции">⚠ перевыполнено</span>':'')
       +(b.plan?'<span class="muted">план '+esc(b.plan)+'</span>':'')
       +'<button class="gray sm" onclick="ship(\''+b.id+'\')">📦 Отгрузить</button>'
       +'<button class="gray sm" title="удалить партию" onclick="delBatch(\''+b.id+'\')">🗑</button>'
       +'<span class="msg" id="bm_'+b.id+'"></span>'
       +'</div>'
       +(items?'<table style="margin-top:8px"><thead><tr><th>Модель</th><th>Труд</th><th class="num">Кол-во</th><th class="num">Готово→склад</th><th></th></tr></thead><tbody>'+items+'</tbody></table>':'<div class="muted" style="margin-top:6px">позиций нет — добавьте модель ниже</div>')
-      +'<div class="row" style="margin-top:8px"><input list="modlist" id="am_'+b.id+'" placeholder="модель из каталога…" style="min-width:240px"><input class="q" id="aq_'+b.id+'" placeholder="кол-во"><button class="green sm" onclick="addItem(\''+b.id+'\')">＋ добавить модель</button></div>'
+      +'<div class="row" style="margin-top:8px"><input list="modlist" id="am_'+b.id+'" placeholder="модель из каталога…" style="min-width:240px"><input class="q" id="aq_'+b.id+'" placeholder="кол-во"><button class="green sm" onclick="addItem(\''+b.id+'\')">＋ добавить модель</button>'
+      +'<button class="gray sm" onclick="toggleOps(\''+b.id+'\')" id="opsbtn_'+b.id+'">▸ по операциям</button></div>'
+      +'<div id="ops_'+b.id+'" style="display:none;margin-top:10px"></div>'
       +'</div>';
   }).join('');
   var datalist='<datalist id="modlist">'+MODELS.map(function(m){ return '<option value="'+esc(modLabel(m))+'">'; }).join('')+'</datalist>';   // наполняется loadModels()
@@ -116,6 +120,39 @@ function render(){
     +(batchCards||'<div class="box muted">партий нет — создайте новую</div>');
 }
 
+function toggleOps(id){
+  var box=$('ops_'+id), btn=$('opsbtn_'+id);
+  if(box.style.display!=='none'){ box.style.display='none'; btn.textContent='▸ по операциям'; return; }
+  box.style.display=''; btn.textContent='▾ по операциям'; box.innerHTML='<div class="muted">Загрузка операций…</div>';
+  api({vapi:'orderops',batch:id}).then(function(r){ if(!r||!r.ok){ box.innerHTML='<div class="err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; } renderOps(id,r); });
+}
+function renderOps(id,r){
+  var box=$('ops_'+id), k=r.kpi||{};
+  var warn = (r.notAssembled&&r.notAssembled.length) ? '<div class="pill" style="background:#fbf1de;color:#b7791f;display:inline-block;margin-bottom:8px">⚠ не подтверждены директором как «собрано»: '+r.notAssembled.map(esc).join(', ')+'</div>' : '';
+  var kpi='<div class="row" style="gap:14px;margin-bottom:8px;font-weight:700">'
+    +'<span>Готовность по труду: <span style="color:#2b7de9">'+(k.pct||0)+'%</span></span>'
+    +'<span class="muted" style="font-weight:400">нужно '+money(k.needRub)+' р · сделано '+money(k.doneRub)+' р · осталось '+money(k.leftRub)+' р</span>'
+    +(k.overflow?'<span class="pill" style="background:#fdecea;color:#c0392b">⚠ перевыполнение +'+Math.round(k.over)+'</span>':'')+'</div>';
+  var prods=(r.products||[]).map(function(p){
+    var rows=p.ops.map(function(o){
+      var over=o.over>0?' <span class="pill" style="background:#fdecea;color:#c0392b">+'+o.over+'</span>':'';
+      var leftCol=o.left>0?'color:#c0392b':'color:#137333';
+      return '<tr><td>'+esc(o.detail)+'</td><td>'+esc(o.op)+'</td>'
+        +'<td class="num">'+o.need+'</td>'
+        +'<td class="num"><input class="q" value="'+(o.stock||0)+'" title="начальные остатки — работа уже выполнена (не важно кем)" onchange="setStock(\''+id+'\',\''+o.id+'\',this.value)"></td>'
+        +'<td class="num">'+o.done+'</td>'
+        +'<td class="num" style="'+leftCol+'">'+o.left+over+'</td></tr>';
+    }).join('');
+    return '<div style="margin-top:8px"><div style="font-weight:700">'+esc(p.eq)+' · '+esc(p.model)+' ×'+p.ordered
+      +(p.assembled?' <span class="pill p-ok">✔ собрано</span>':' <span class="pill" style="background:#fbf1de;color:#b7791f">⚠ не подтверждено</span>')
+      +' <span class="muted" style="font-weight:400">'+(p.pct||0)+'% · осталось '+money(p.leftRub)+' р</span></div>'
+      +'<table style="margin-top:4px"><thead><tr><th>Деталь</th><th>Операция</th><th class="num">Нужно</th><th class="num">Нач. остатки</th><th class="num">Сделано</th><th class="num">Осталось</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+  }).join('');
+  box.innerHTML=warn+kpi+(prods||'<div class="muted">нет операций — у изделий заказа не задан состав в каталоге</div>');
+}
+function setStock(batchId,opId,val){
+  api({vapi:'setopstock',op:opId,stock:val}).then(function(r){ if(r&&r.ok){ renderOps(batchId,r); } else alert((r&&r.error)||'не сохранилось'); });
+}
 function planNow(){
   api({vapi:'planprod'}).then(function(r){
     if(!r||!r.ok){ alert((r&&r.error)||'не удалось спланировать'); return; }
