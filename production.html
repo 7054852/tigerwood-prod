@@ -25,7 +25,12 @@
   .p-need{ background:#fdeee7; color:var(--amber); } .p-ok{ background:#e7f5ea; color:var(--green); }
   .prio{ cursor:pointer; }
   .prio.on{ background:#fdecea; color:var(--red); } .prio.off{ background:#eef1f8; color:#556; }
-  .bcard{ border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:10px; }
+  .bcard{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px 16px; margin-bottom:16px; box-shadow:0 1px 3px rgba(20,30,60,.06); }
+  .bcard.click{ cursor:pointer; transition:box-shadow .15s ease, transform .05s ease; }
+  .bcard.click:hover{ box-shadow:0 4px 16px rgba(20,30,60,.14); border-color:#d3d9ea; }
+  .bcard.click:active{ transform:translateY(1px); }
+  .bcard .mrow{ display:flex; justify-content:space-between; gap:6px; align-items:baseline; padding:6px 0; border-top:1px solid #f0f2f8; }
+  .bcard .mrow:first-of-type{ border-top:0; }
   .bhead{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
   .bnum{ font-weight:800; font-size:15px; } .bpct{ font-variant-numeric:tabular-nums; }
   .bar{ height:6px; background:#eef1f8; border-radius:6px; overflow:hidden; flex:1; min-width:80px; }
@@ -68,6 +73,7 @@ function nm(x){ return [x.equip,x.model].filter(Boolean).join(' · ')||x.sku||'�
 
 var VIEW='list', CUR=null;
 function statusPill(st){ var m={'новая':'#eef1f8|#556','в работе':'#eaf1fd|#2b7de9','готово':'#e7f5ea|#137333','отгружено':'#f0edfb|#7c3aed'}; var p=(m[st]||'#eef1f8|#556').split('|'); return '<span class="pill" style="background:'+p[0]+';color:'+p[1]+'">'+esc(st)+'</span>'; }
+function statusColor(st){ var m={'новая':'#c3cad9','в работе':'#2b7de9','готово':'#137333','отгружено':'#7c3aed'}; return m[st]||'#c3cad9'; }
 function itemName(it){ return [it.equip,it.model].filter(Boolean).join(' · ')||it.sku||'—'; }
 
 function render(){ if(VIEW==='detail'&&CUR){ renderDetail(CUR); } else { renderList(); } }
@@ -93,14 +99,14 @@ function renderList(){
   var cards=BATCHES.map(function(b){
     var models=(b.items||[]).map(function(it){
       var pct=it.pctLabor||0;
-      return '<div style="margin:5px 0"><div class="row" style="justify-content:space-between;gap:6px">'
-        +'<span>'+esc(itemName(it))+' <span class="muted">×'+it.qty+'</span>'+(it.over?' <span class="pill" style="background:#fdecea;color:#c0392b">перевып +'+it.over+'</span>':'')+'</span>'
-        +'<span class="muted" style="font-variant-numeric:tabular-nums">'+pct+'%</span></div>'
-        +'<div class="bar"><i style="width:'+Math.min(100,pct)+'%'+(pct>=100?';background:#137333':'')+'"></i></div></div>';
-    }).join('')||'<div class="muted">позиций нет</div>';
+      return '<div class="mrow"><span>'+esc(itemName(it))+' <span class="muted">×'+it.qty+'</span>'+(it.over?' <span class="pill" style="background:#fdecea;color:#c0392b">перевып +'+it.over+'</span>':'')+'</span>'
+        +'<span style="min-width:120px;display:flex;align-items:center;gap:8px;justify-content:flex-end">'
+        +'<span class="bar" style="width:70px"><i style="width:'+Math.min(100,pct)+'%'+(pct>=100?';background:#137333':'')+'"></i></span>'
+        +'<span class="muted" style="font-variant-numeric:tabular-nums;min-width:34px;text-align:right">'+pct+'%</span></span></div>';
+    }).join('')||'<div class="muted" style="padding:6px 0">позиций нет</div>';
     var prio=b.prio==='срочно';
-    return '<div class="bcard" style="cursor:pointer" onclick="openOrder(\''+b.id+'\')">'
-      +'<div class="bhead">'
+    return '<div class="bcard click" style="border-left:5px solid '+statusColor(b.status)+'" onclick="openOrder(\''+b.id+'\')">'
+      +'<div class="bhead" style="padding-bottom:10px;border-bottom:1px solid #eef0f6;margin-bottom:4px">'
       +'<span class="bnum">'+esc(b.num)+'</span>'
       +'<span style="font-weight:600">'+esc(b.name)+'</span>'
       +statusPill(b.status)
@@ -110,7 +116,7 @@ function renderList(){
       +'<span class="pill" style="background:#eaf1fd;color:#2b7de9;font-size:13px">'+(b.pctLabor||0)+'% по труду</span>'
       +(b.overflow?'<span class="pill" style="background:#fdecea;color:#c0392b">⚠ перевыполнено</span>':'')
       +'</div>'
-      +'<div style="margin-top:8px">'+models+'</div>'
+      +models
       +'<div class="muted" style="margin-top:8px;font-size:12px;text-align:right">открыть заказ →</div>'
       +'</div>';
   }).join('');
