@@ -27,7 +27,8 @@
 <body>
 <div class="tabs">
   <button id="tab-w" class="active" onclick="showTab('w')">✍️ Выработка</button>
-  <button id="tab-m" onclick="showTab('m')">👏 Проверка (мастер)</button>
+  <button id="tab-m" onclick="showTab('m')">👏 Проверка</button>
+  <button id="tab-j" onclick="showTab('j')">📋 Журнал</button>
 </div>
 <div id="pane-w">
   <h2>Отчёт о выработке</h2>
@@ -44,8 +45,18 @@
 </div>
 <div id="pane-m" style="display:none">
   <h2>На проверке</h2>
-  <div class="muted">Подтвердите или отклоните выработку рабочих.</div>
+  <div class="muted">Подтвердите, измените кол-во или отклоните — рабочий получит уведомление.</div>
   <div id="mlist" style="margin-top:10px">Загрузка…</div>
+</div>
+<div id="pane-j" style="display:none">
+  <h2>Журнал выработки</h2>
+  <div class="row" style="margin-top:8px">
+    <input id="jfrom" type="date" style="width:auto;flex:1">
+    <input id="jto" type="date" style="width:auto;flex:1">
+    <button class="sm" onclick="loadJournal()">Показать</button>
+  </div>
+  <div id="jpay" style="margin-top:12px"></div>
+  <div id="jlist" style="margin-top:10px"></div>
 </div>
 <script>
 var BASE='https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';
@@ -57,11 +68,12 @@ function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); ret
 try{ if(window.Telegram&&Telegram.WebApp){ Telegram.WebApp.ready(); Telegram.WebApp.expand(); var u=Telegram.WebApp.initDataUnsafe&&Telegram.WebApp.initDataUnsafe.user; if(u) TGID=String(u.id); } }catch(e){}
 if(!TGID){ TGID=qp('tgid')||localStorage.getItem('tw_tgid')||''; } if(TGID){ try{localStorage.setItem('tw_tgid',TGID);}catch(e){} }
 function showTab(t){
-  document.getElementById('pane-w').style.display=t==='w'?'':'none';
-  document.getElementById('pane-m').style.display=t==='m'?'':'none';
-  document.getElementById('tab-w').className=t==='w'?'active':'';
-  document.getElementById('tab-m').className=t==='m'?'active':'';
+  ['w','m','j'].forEach(function(x){
+    document.getElementById('pane-'+x).style.display = x===t?'':'none';
+    document.getElementById('tab-'+x).className = x===t?'active':'';
+  });
   if(t==='m') loadPending();
+  if(t==='j') loadJournal();
 }
 function load(){
   api({vapi:'data',tgid:TGID}).then(function(d){
@@ -99,16 +111,47 @@ function loadPending(){
       return '<div class="card" id="o-'+esc(it.id)+'"><div class="row"><b>'+esc(it.worker)+'</b><span class="muted">'+esc(it.date)+'</span></div>'
         +'<div>'+esc(it.detail)+' · '+esc(it.op)+' · '+it.qty+' шт → <b>'+it.sum+' руб.</b></div><div class="muted">'+esc(it.batch)+'</div>'
         +'<div class="row" style="margin-top:8px"><button class="sm" onclick="appr(\''+esc(it.id)+'\',1)">✅ Подтвердить</button>'
+        +'<button class="sm gray" onclick="editOut(\''+esc(it.id)+'\','+it.qty+')">✏️ Изменить</button>'
         +'<button class="sm gray" onclick="appr(\''+esc(it.id)+'\',0)">✖ Отклонить</button><span id="om-'+esc(it.id)+'" class="msg"></span></div></div>';
     }).join('');
   });
 }
 function appr(id,ok){
   var m=document.getElementById('om-'+id); m.textContent='…';
-  api({vapi:'approve',id:id,master:DATA.worker||'мастер',ok:ok}).then(function(r){
-    if(r&&r.ok){ var c=document.getElementById('o-'+id); if(c) c.style.opacity=.4; m.innerHTML='<span class="ok">'+(ok?'подтверждено':'отклонено')+'</span>'; }
+  api({vapi:'approve',id:id,master:DATA.worker||'мастер',ok:ok?1:0}).then(function(r){
+    if(r&&r.ok){ var c=document.getElementById('o-'+id); if(c) c.style.opacity=.4; m.innerHTML='<span class="ok">'+(ok?'подтверждено ✔':'отклонено ✖')+'</span>'; }
     else m.innerHTML='<span class="err">ошибка</span>';
   });
+}
+function editOut(id,cur){
+  var q=prompt('Изменить количество (было '+cur+'):', cur);
+  if(q===null) return; q=Number(q); if(!(q>0)){ alert('Кол-во должно быть > 0'); return; }
+  var m=document.getElementById('om-'+id); if(m) m.textContent='…';
+  api({vapi:'editoutput',id:id,qty:q,master:DATA.worker||'мастер'}).then(function(r){
+    if(r&&r.ok){ var c=document.getElementById('o-'+id); if(c) c.style.opacity=.4; if(m) m.innerHTML='<span class="ok">изменено на '+r.qty+' → '+r.sum+' руб. ✔</span>'; }
+    else if(m) m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>';
+  });
+}
+function loadJournal(){
+  var lst=document.getElementById('jlist'), pay=document.getElementById('jpay');
+  lst.textContent='Загрузка…'; pay.innerHTML='';
+  var from=document.getElementById('jfrom').value, to=document.getElementById('jto').value;
+  var fromRu=from?from.split('-').reverse().join('.'):'', toRu=to?to.split('-').reverse().join('.'):'';
+  api({vapi:'journal',from:fromRu,to:toRu}).then(function(r){
+    var items=(r&&r.items)||[], pr=(r&&r.payroll)||[];
+    if(pr.length){
+      var tot=pr.reduce(function(s,p){return s+p.sum;},0);
+      pay.innerHTML='<div class="card"><div class="row"><b>💰 ЗП за период (подтв.)</b><b class="ok">'+(Math.round(tot*100)/100)+' руб.</b></div>'
+        +pr.map(function(p){return '<div class="row"><span>'+esc(p.worker)+'</span><span>'+p.sum+' руб.</span></div>';}).join('')+'</div>';
+    }
+    if(!items.length){ lst.innerHTML='<div class="muted">Нет записей за период.</div>'; return; }
+    var stz={'подтверждено':'ok','отклонено':'err','на проверке':'muted'};
+    lst.innerHTML=items.map(function(it){
+      return '<div class="card"><div class="row"><b>'+esc(it.worker)+'</b><span class="muted">'+esc(it.date)+'</span></div>'
+        +'<div>'+esc(it.detail)+' · '+esc(it.op)+' · '+it.qty+' шт → <b>'+it.sum+' руб.</b></div>'
+        +'<div class="row"><span class="muted">'+esc(it.batch)+'</span><span class="'+(stz[it.status]||'muted')+'">'+esc(it.status)+'</span></div></div>';
+    }).join('');
+  }).catch(function(){ lst.innerHTML='<span class="err">Ошибка загрузки</span>'; });
 }
 function doRegister(){
   var fio=(document.getElementById('reg-fio')||{}).value||'';
@@ -117,8 +160,12 @@ function doRegister(){
   if(m){ m.textContent='Регистрирую…'; }
   api({vapi:'register',tgid:TGID,fio:fio}).then(function(r){ if(r&&r.ok){ load(); } else if(m){ m.innerHTML='<span class="err">'+((r&&r.error)||'ошибка')+'</span>'; } });
 }
+(function(){ var n=new Date(), m=String(n.getMonth()+1).padStart(2,'0');
+  document.getElementById('jfrom').value=n.getFullYear()+'-'+m+'-01';
+  document.getElementById('jto').value=n.toISOString().slice(0,10); })();
 load();
 if(qp('tab')==='m'||qp('tab')==='check') showTab('m');
+if(qp('tab')==='j') showTab('j');
 </script>
 </body>
 </html>
