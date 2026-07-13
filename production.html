@@ -44,15 +44,19 @@ var APP='tw7prod';
 function api(p){ p.app=APP; var q=Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]==null?'':p[k]);}).join('&'); return fetch(BASE+'?'+q).then(function(r){return r.json();}); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function $(id){ return document.getElementById(id); }
-var app=$('app'), NEEDS=[], BATCHES=[];
+function money(n){ n=Number(n)||0; return n.toFixed(2).replace('.',','); }
+var app=$('app'), NEEDS=[], BATCHES=[], MODELS=[], MODMAP={};
 
 function load(){
   app.innerHTML='<div class="center muted">Загрузка…</div>';
-  Promise.all([api({vapi:'prodneeds'}), api({vapi:'batches'})]).then(function(res){
-    NEEDS=(res[0]&&res[0].rows)||[]; BATCHES=(res[1]&&res[1].batches)||[];
+  Promise.all([api({vapi:'prodneeds'}), api({vapi:'batches'}), api({vapi:'catmodels'})]).then(function(res){
+    NEEDS=(res[0]&&res[0].rows)||[]; BATCHES=(res[1]&&res[1].batches)||[]; MODELS=(res[2]&&res[2].rows)||[];
+    MODMAP={}; MODELS.forEach(function(m){ MODMAP[modLabel(m)]=m; });
     render();
   }).catch(function(e){ app.innerHTML='<div class="center err">Ошибка загрузки: '+esc(e.message||e)+'</div>'; });
 }
+function modLabel(m){ var v=[m.size,m.color,m.kit].filter(Boolean).join(' '); return [m.equip,m.model].filter(Boolean).join(' · ')+(v?(' ('+v+')'):'')+(m.sku?(' — '+m.sku):''); }
+function costBadge(s){ if(s==='полностью') return '<span class="pill" style="background:#e7f5ea;color:#137333">✓ посчитано</span>'; if(s==='частично') return '<span class="pill" style="background:#fbf1de;color:#b7791f">~ частично</span>'; return '<span class="pill" style="background:#fdeee7;color:#c0392b">✗ не посчитано</span>'; }
 
 function nm(x){ return [x.equip,x.model].filter(Boolean).join(' · ')||x.sku||'—'; }
 
@@ -66,34 +70,44 @@ function render(){
   }).join('');
   var needTotal=NEEDS.reduce(function(s,n){return s+(n.toProduce||0);},0);
 
+  var opts0=['новая','в работе','готово','отгружено'];
   var batchCards=BATCHES.map(function(b){
-    var opts=['новая','в работе','готово','отгружено'].map(function(s){return '<option'+(s===b.status?' selected':'')+'>'+s+'</option>';}).join('');
-    var items=(b.items||[]).map(function(it,j){
-      return '<tr><td>'+esc([it.equip,it.model].filter(Boolean).join(' · ')||it.sku||'—')+'</td>'
-        +'<td class="num">'+it.qty+'</td>'
-        +'<td class="num"><input class="q" id="d_'+b.id+'_'+j+'" value="'+(it.done||0)+'"> <button class="gray sm" onclick="saveDone(\''+b.id+'\',\''+esc(it.sku)+'\',\''+esc(it.model)+'\','+j+')">✓</button></td></tr>';
+    var opts=opts0.map(function(s){return '<option'+(s===b.status?' selected':'')+'>'+s+'</option>';}).join('');
+    var items=(b.items||[]).map(function(it){
+      return '<tr><td>'+esc([it.equip,it.model].filter(Boolean).join(' · ')||it.sku||'—')+(it.sku?' <span class="muted">'+esc(it.sku)+'</span>':'')+'</td>'
+        +'<td>'+costBadge(it.costing)+(it.unitCost?' <span class="muted">'+it.unitCost.toFixed(2).replace('.',',')+' р/шт</span>':'')+'</td>'
+        +'<td class="num"><input class="q" value="'+it.qty+'" onchange="updItem(\''+it.id+'\',this.value)"></td>'
+        +'<td class="num"><input class="q" value="'+(it.done||0)+'" onchange="saveDone(\''+b.id+'\',\''+esc(it.sku)+'\',\''+esc(it.model)+'\',this.value)"></td>'
+        +'<td><button class="gray sm" title="убрать" onclick="rmItem(\''+it.id+'\')">🗑</button></td></tr>';
     }).join('');
     var prio=b.prio==='срочно';
+    var costSum=(b.modelsCosted||0)+'/'+(b.modelsTotal||0);
+    var costCol=(b.modelsTotal&&b.modelsCosted===b.modelsTotal)?'#137333':(b.modelsCosted?'#b7791f':'#c0392b');
     return '<div class="bcard"><div class="bhead">'
       +'<span class="bnum">'+esc(b.num)+'</span>'
+      +'<span class="muted" style="cursor:pointer" onclick="renameBatch(\''+b.id+'\',\''+esc(b.name).replace(/\x27/g,"")+'\')">'+esc(b.name)+' ✎</span>'
       +'<select onchange="setStatus(\''+b.id+'\',this.value)">'+opts+'</select>'
       +'<span class="pill prio '+(prio?'on':'off')+'" onclick="togglePrio(\''+b.id+'\','+(prio?0:1)+')">'+(prio?'🔥 срочно':'обычный')+'</span>'
-      +'<span class="bar"><i style="width:'+(Number(b.pct)||0)+'%"></i></span><span class="bpct">'+(Number(b.pct)||0)+'% труда</span>'
+      +'<span class="pill" style="background:#f0edfb;color:'+costCol+'">посчитано '+costSum+' · труд '+money(b.labor||0)+' р</span>'
       +(b.plan?'<span class="muted">план '+esc(b.plan)+'</span>':'')
       +'<button class="gray sm" onclick="ship(\''+b.id+'\')">📦 Отгрузить</button>'
+      +'<button class="gray sm" title="удалить партию" onclick="delBatch(\''+b.id+'\')">🗑</button>'
       +'<span class="msg" id="bm_'+b.id+'"></span>'
       +'</div>'
-      +(items?'<table style="margin-top:8px"><thead><tr><th>Позиция</th><th class="num">Нужно</th><th class="num">Готово (шт → склад)</th></tr></thead><tbody>'+items+'</tbody></table>':'<div class="muted" style="margin-top:6px">нет позиций</div>')
+      +(items?'<table style="margin-top:8px"><thead><tr><th>Модель</th><th>Труд</th><th class="num">Кол-во</th><th class="num">Готово→склад</th><th></th></tr></thead><tbody>'+items+'</tbody></table>':'<div class="muted" style="margin-top:6px">позиций нет — добавьте модель ниже</div>')
+      +'<div class="row" style="margin-top:8px"><input list="modlist" id="am_'+b.id+'" placeholder="модель из каталога…" style="min-width:240px"><input class="q" id="aq_'+b.id+'" placeholder="кол-во"><button class="green sm" onclick="addItem(\''+b.id+'\')">＋ добавить модель</button></div>'
       +'</div>';
   }).join('');
+  var datalist='<datalist id="modlist">'+MODELS.map(function(m){ return '<option value="'+esc(modLabel(m))+'">'; }).join('')+'</datalist>';
 
-  app.innerHTML=
-    '<div class="sect">Потребность к производству <button class="sm" onclick="planNow()">⚙️ Спланировать партию</button></div>'
+  app.innerHTML=datalist
+    +'<div class="sect">Потребность к производству <button class="sm" onclick="planNow()">⚙️ Собрать из продаж</button></div>'
     +'<div class="box"><table><thead><tr><th>Товар</th><th class="num">Продано-ждёт</th><th class="num">Доступно</th><th class="num">В произв.</th><th class="num">Целевой запас</th><th class="num">К произв.</th></tr></thead><tbody>'
     +(needRows||'<tr><td colspan=6 class="muted">потребности нет</td></tr>')+'</tbody></table>'
-    +'<div class="muted" style="margin-top:8px">Итого к производству: <b>'+needTotal+'</b> · «Спланировать» соберёт партию: наличие в резерв, нехватку и добор до целевого — в производство.</div></div>'
-    +'<div class="sect">Партии</div>'
-    +(batchCards||'<div class="box muted">партий нет</div>');
+    +'<div class="muted" style="margin-top:8px">«Собрать из продаж» соберёт партию по непроведённым продажам (наличие в резерв, нехватку — в производство).</div></div>'
+    +'<div class="sect">Партии на производство <button class="sm" onclick="newBatch()">＋ Новая партия</button></div>'
+    +'<div class="muted" style="margin:-4px 4px 8px">Заказ на производство ≠ отгрузка клиенту — готовое ложится на склад. «Труд» и «посчитано» считаются вживую из состава каталога.</div>'
+    +(batchCards||'<div class="box muted">партий нет — создайте новую</div>');
 }
 
 function planNow(){
@@ -108,12 +122,24 @@ function saveTarget(i){
 }
 function setStatus(id,st){ api({vapi:'setbstatus', batch:id, status:st}).then(function(){ load(); }); }
 function togglePrio(id,on){ api({vapi:'setprio', batch:id, prio:on?'срочно':'обычный'}).then(function(){ load(); }); }
-function saveDone(id,sku,mod,j){
-  var v=$('d_'+id+'_'+j).value, m=$('bm_'+id); m.textContent='…';
+function saveDone(id,sku,mod,v){
+  var m=$('bm_'+id); if(m) m.textContent='…';
   api({vapi:'batchdone', batch:id, sku:sku, mod:mod, done:v}).then(function(r){
-    m.innerHTML=(r&&r.ok)?'<span class="ok">✓ на склад</span>':'<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; setTimeout(load,700);
+    if(m) m.innerHTML=(r&&r.ok)?'<span class="ok">✓ на склад</span>':'<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; setTimeout(load,700);
   });
 }
+function newBatch(){ var nm=prompt('Название партии (или пусто — авто):',''); if(nm===null) return; api({vapi:'createbatch', name:nm}).then(function(r){ if(r&&r.ok) load(); else alert('Ошибка'); }); }
+function renameBatch(id,cur){ var nm=prompt('Название партии:',cur||''); if(nm===null||!nm.trim()) return; api({vapi:'renamebatch', batch:id, name:nm.trim()}).then(function(){ load(); }); }
+function delBatch(id){ if(!confirm('Удалить партию со всеми позициями?')) return; api({vapi:'delbatch', batch:id}).then(function(){ load(); }); }
+function addItem(id){
+  var lbl=$('am_'+id).value.trim(), qty=$('aq_'+id).value, m=$('bm_'+id);
+  var mod=MODMAP[lbl];
+  if(!mod){ if(m) m.innerHTML='<span class="err">выберите модель из списка</span>'; return; }
+  if(!(Number(qty)>0)){ if(m) m.innerHTML='<span class="err">укажите количество</span>'; return; }
+  api({vapi:'additem', batch:id, sku:mod.sku, eq:mod.equip, mod:mod.model, qty:qty}).then(function(r){ if(r&&r.ok) load(); else if(m) m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; });
+}
+function updItem(itemId,v){ api({vapi:'upditem', item:itemId, qty:v}).then(function(){ load(); }); }
+function rmItem(itemId){ api({vapi:'rmitem', item:itemId}).then(function(){ load(); }); }
 function ship(id){ var m=$('bm_'+id); m.textContent='…'; api({vapi:'shipbatch', batch:id}).then(function(r){ m.innerHTML=(r&&r.ok)?'<span class="ok">отгружено '+(r.shipped||0)+'</span>':'<span class="err">ошибка</span>'; setTimeout(load,700); }); }
 
 load();
