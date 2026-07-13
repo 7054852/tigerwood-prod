@@ -34,6 +34,7 @@
   <h2>Отчёт о выработке</h2>
   <div class="muted" id="who"></div>
   <div id="wsel"></div>
+  <label>Дата отчёта</label><input id="wdate" type="date">
   <label>Партия</label><select id="batch"></select>
   <label>Оборудование</label><select id="equip" onchange="fillDetails()"></select>
   <label>Деталь</label><select id="detail" onchange="fillOps()"></select>
@@ -94,10 +95,11 @@ function calc(){ var q=Number(document.getElementById('qty').value)||0, r=curRat
 function submitOut(){
   var worker=DATA.worker||(document.getElementById('worker')&&document.getElementById('worker').value)||'';
   var batch=document.getElementById('batch').value, equip=document.getElementById('equip').value, detail=document.getElementById('detail').value, op=document.getElementById('op').value, qty=document.getElementById('qty').value;
+  var wd=document.getElementById('wdate').value, dateRu=wd?wd.split('-').reverse().join('.'):'';
   if(!worker){ document.getElementById('wmsg').innerHTML='<span class="err">Не выбран рабочий</span>'; return; }
   if(!(Number(qty)>0)){ document.getElementById('wmsg').innerHTML='<span class="err">Укажите количество</span>'; return; }
   document.getElementById('wmsg').textContent='Отправляю…';
-  api({vapi:'submit',worker:worker,tgid:TGID,batch:batch,equip:equip,detail:detail,op:op,qty:qty}).then(function(r){
+  api({vapi:'submit',worker:worker,tgid:TGID,batch:batch,equip:equip,detail:detail,op:op,qty:qty,date:dateRu}).then(function(r){
     if(r&&r.ok){ document.getElementById('wmsg').innerHTML='<span class="ok">✅ Принято: '+esc(r.detail)+' · '+esc(r.op)+' · '+r.qty+' → '+r.sum+' руб. (на проверке)</span>'; document.getElementById('qty').value=''; calc(); }
     else document.getElementById('wmsg').innerHTML='<span class="err">⚠️ '+esc((r&&r.error)||'ошибка')+'</span>';
   }).catch(function(e){ document.getElementById('wmsg').innerHTML='<span class="err">Ошибка отправки</span>'; });
@@ -132,6 +134,24 @@ function editOut(id,cur){
     else if(m) m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>';
   });
 }
+function editJournal(id,curQty,curDate){
+  var q=prompt('Количество (было '+curQty+'):', curQty);
+  if(q===null) return; q=Number(q); if(!(q>0)){ alert('Кол-во должно быть > 0'); return; }
+  var d=prompt('Дата отчёта (дд.мм.гггг):', curDate||'');
+  if(d===null) return;
+  var m=document.getElementById('jm-'+id); if(m) m.textContent='…';
+  api({vapi:'updoutput',id:id,qty:q,date:(d||'').trim()}).then(function(r){
+    if(r&&r.ok){ loadJournal(); } else if(m){ m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; }
+  });
+}
+function delJournal(id){
+  if(!confirm('Удалить эту запись выработки? Пересчитается выполнение заказа.')) return;
+  var m=document.getElementById('jm-'+id); if(m) m.textContent='…';
+  api({vapi:'deloutput',id:id}).then(function(r){
+    if(r&&r.ok){ var c=document.getElementById('j-'+id); if(c) c.style.opacity=.3; loadJournal(); }
+    else if(m){ m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; }
+  });
+}
 function loadJournal(){
   var lst=document.getElementById('jlist'), pay=document.getElementById('jpay');
   lst.textContent='Загрузка…'; pay.innerHTML='';
@@ -147,9 +167,13 @@ function loadJournal(){
     if(!items.length){ lst.innerHTML='<div class="muted">Нет записей за период.</div>'; return; }
     var stz={'подтверждено':'ok','отклонено':'err','на проверке':'muted'};
     lst.innerHTML=items.map(function(it){
-      return '<div class="card"><div class="row"><b>'+esc(it.worker)+'</b><span class="muted">'+esc(it.date)+'</span></div>'
+      return '<div class="card" id="j-'+esc(it.id)+'"><div class="row"><b>'+esc(it.worker)+'</b><span class="muted">'+esc(it.date)+'</span></div>'
         +'<div>'+esc(it.detail)+' · '+esc(it.op)+' · '+it.qty+' шт → <b>'+it.sum+' руб.</b></div>'
-        +'<div class="row"><span class="muted">'+esc(it.batch)+'</span><span class="'+(stz[it.status]||'muted')+'">'+esc(it.status)+'</span></div></div>';
+        +'<div class="row"><span class="muted">'+esc(it.batch)+'</span><span class="'+(stz[it.status]||'muted')+'">'+esc(it.status)+'</span>'
+        +'<span style="flex:1"></span>'
+        +'<button class="sm gray" onclick="editJournal(\''+esc(it.id)+'\','+it.qty+',\''+esc(it.date)+'\')">✏️ изменить</button>'
+        +'<button class="sm gray" onclick="delJournal(\''+esc(it.id)+'\')">🗑 удалить</button>'
+        +'<span id="jm-'+esc(it.id)+'" class="msg"></span></div></div>';
     }).join('');
   }).catch(function(){ lst.innerHTML='<span class="err">Ошибка загрузки</span>'; });
 }
@@ -160,9 +184,10 @@ function doRegister(){
   if(m){ m.textContent='Регистрирую…'; }
   api({vapi:'register',tgid:TGID,fio:fio}).then(function(r){ if(r&&r.ok){ load(); } else if(m){ m.innerHTML='<span class="err">'+((r&&r.error)||'ошибка')+'</span>'; } });
 }
-(function(){ var n=new Date(), m=String(n.getMonth()+1).padStart(2,'0');
+(function(){ var n=new Date(), m=String(n.getMonth()+1).padStart(2,'0'), today=n.getFullYear()+'-'+m+'-'+String(n.getDate()).padStart(2,'0');
   document.getElementById('jfrom').value=n.getFullYear()+'-'+m+'-01';
-  document.getElementById('jto').value=n.toISOString().slice(0,10); })();
+  document.getElementById('jto').value=today;
+  document.getElementById('wdate').value=today; })();
 load();
 if(qp('tab')==='m'||qp('tab')==='check') showTab('m');
 if(qp('tab')==='j') showTab('j');
