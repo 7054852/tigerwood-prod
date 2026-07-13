@@ -36,7 +36,7 @@
   <div class="muted" id="who"></div>
   <div id="wsel"></div>
   <label>Дата</label><input id="wdate" type="date">
-  <label>Партия</label><select id="batch"></select>
+  <label>Партия</label><select id="batch" onchange="onBatchChange()"></select>
   <label>Оборудование</label><select id="equip" onchange="fillDetails()"></select>
   <label>Деталь</label><select id="detail" onchange="fillOps()"></select>
   <label>Операция</label><select id="op" onchange="calc()"></select>
@@ -65,6 +65,7 @@
 <script>
 var BASE='https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';
 var APP='tw7prod', DATA={equipments:[],batches:[],workers:[],comp:{},worker:''}, TGID='';
+var COMP={}, EQUIPS=[];   // состав операций ВЫБРАННОЙ партии
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function opt(v,t){ return '<option value="'+esc(v)+'">'+esc(t||v)+'</option>'; }
 function api(p){ p.app=APP; var q=Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]);}).join('&'); return fetch(BASE+'?'+q).then(function(r){return r.json();}); }
@@ -83,15 +84,27 @@ function load(){
   api({vapi:'data',tgid:TGID}).then(function(d){
     DATA=d||DATA;
     document.getElementById('batch').innerHTML=(DATA.batches||[]).map(function(b){return opt(b.id,b.num+' · '+b.name);}).join('')||opt('','нет активных партий');
-    document.getElementById('equip').innerHTML=(DATA.equipments||[]).map(function(e){return opt(e);}).join('')||opt('','нет оборудования');
-    fillDetails();
+    onBatchChange();
     loadMySummary();
     if(DATA.worker){ document.getElementById('who').textContent='Рабочий: '+DATA.worker; document.getElementById('wsel').innerHTML=''; }
     else if(TGID){ document.getElementById('wsel').innerHTML='<label>Вы впервые. Представьтесь — <b>Фамилия Имя</b>:</label><input id="reg-fio" placeholder="Иванов Иван"><button onclick="doRegister()">Зарегистрироваться</button><div class="msg" id="reg-msg"></div>'; }
     else { document.getElementById('wsel').innerHTML='<label>Кто вы</label><select id="worker">'+(DATA.workers||[]).map(function(w){return opt(w.name);}).join('')+'</select>'; }
   }).catch(function(e){ document.getElementById('wmsg').innerHTML='<span class="err">Ошибка загрузки</span>'; });
 }
-function curProd(){ return (DATA.comp||{})[document.getElementById('equip').value]||{details:{},order:[]}; }
+function onBatchChange(){
+  var bid=document.getElementById('batch').value;
+  if(!bid){ COMP={}; EQUIPS=[]; refillEquip(); return; }
+  document.getElementById('equip').innerHTML=opt('','загрузка…');
+  api({vapi:'ordercomp',batch:bid}).then(function(r){
+    COMP=(r&&r.byEquip)||{}; EQUIPS=(r&&r.equipments)||[];
+    refillEquip();
+  }).catch(function(){ COMP={}; EQUIPS=[]; refillEquip(); });
+}
+function refillEquip(){
+  document.getElementById('equip').innerHTML=EQUIPS.map(function(e){return opt(e);}).join('')||opt('','в этой партии нет операций');
+  fillDetails();
+}
+function curProd(){ return (COMP||{})[document.getElementById('equip').value]||{details:{},order:[]}; }
 function fillDetails(){ var p=curProd(); document.getElementById('detail').innerHTML=(p.order||[]).map(function(n){return opt(n);}).join('')||opt('','нет деталей'); fillOps(); }
 function fillOps(){ var p=curProd(), name=document.getElementById('detail').value; var ops=(p.details||{})[name]||[]; document.getElementById('op').innerHTML=ops.map(function(o){return opt(o.op,o.op+' — '+o.rate);}).join(''); calc(); }
 function curRate(){ var p=curProd(), name=document.getElementById('detail').value, op=document.getElementById('op').value; var o=((p.details||{})[name]||[]).filter(function(y){return y.op===op;})[0]; return o?o.rate:0; }
