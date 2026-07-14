@@ -22,6 +22,13 @@
   input,select{ padding:6px 8px; border:1px solid var(--line); border-radius:8px; font-size:13px; }
   input.q{ width:64px; text-align:right; font-variant-numeric:tabular-nums; }
   .pill{ font-size:11px; padding:2px 9px; border-radius:20px; font-weight:700; }
+  /* компактная отметка «собрано»: иконка, надпись выезжает по наведению (не двигает соседние колонки) */
+  .asm{ position:relative; display:inline-flex; align-items:center; justify-content:center; width:22px; height:20px; border-radius:20px; font-size:12px; font-weight:700; text-decoration:none; vertical-align:middle; }
+  .asm.ok{ background:#e7f5ea; color:#137333; }
+  .asm.no{ background:#fbf1de; color:#b7791f; cursor:pointer; }
+  .asm .t{ position:absolute; left:100%; top:0; margin-left:4px; height:20px; line-height:20px; padding:0 9px; white-space:nowrap; border-radius:20px; max-width:0; overflow:hidden; opacity:0; transition:max-width .18s ease, opacity .18s ease; pointer-events:none; box-shadow:0 1px 6px rgba(20,30,60,.14); z-index:5; }
+  .asm.ok .t{ background:#e7f5ea; color:#137333; } .asm.no .t{ background:#fbf1de; color:#b7791f; }
+  .asm:hover .t{ max-width:150px; opacity:1; }
   .p-need{ background:#fdeee7; color:var(--amber); } .p-ok{ background:#e7f5ea; color:var(--green); }
   .prio{ cursor:pointer; }
   .prio.on{ background:#fdecea; color:var(--red); } .prio.off{ background:#eef1f8; color:#556; }
@@ -152,7 +159,7 @@ function renderDetail(id){
       +'<button class="gray sm" title="удалить заказ" onclick="delBatch(\''+b.id+'\')">🗑</button>'
       +'<span class="msg" id="bm_'+b.id+'"></span>'
       +'</div>'
-      +'<table style="margin-top:8px"><thead><tr><th>Модель</th><th>Труд</th><th class="num">Кол-во</th><th class="num">Готово→склад</th><th></th></tr></thead><tbody id="items_'+b.id+'">'+items+'</tbody></table>'
+      +'<div style="overflow-x:auto"><table style="margin-top:8px"><thead><tr><th>Модель</th><th>Труд</th><th class="num">Кол-во</th><th class="num">Готово→склад</th><th></th></tr></thead><tbody id="items_'+b.id+'">'+items+'</tbody></table></div>'
       +'<div class="row" style="margin-top:8px"><input list="modlist" id="am_'+b.id+'" placeholder="модель из каталога…" style="min-width:240px"><input class="q" id="aq_'+b.id+'" placeholder="кол-во"><button class="green sm" onclick="addItem(\''+b.id+'\')">＋ добавить модель</button></div>'
     +'</div>'
     +'<div class="sect">Операции заказа</div>'
@@ -216,10 +223,10 @@ function delBatch(id){ if(!confirm('Удалить заказ со всеми п
 // строка позиции (общий шаблон для рендера и оптимистичного добавления)
 function itemRowHtml(it,batchId){
   var asmBadge = it.assembled
-    ? '<span class="pill" style="background:#e7f5ea;color:#137333">✓ собрано</span>'
-    : '<a href="'+catUrl(it.sku||it.model)+'" target="_blank" style="text-decoration:none" title="открыть в каталоге — проверить состав и отметить собранным"><span class="pill" style="background:#fbf1de;color:#b7791f">⚠ не собрано →</span></a>';
+    ? '<span class="asm ok" title="собрано">✓<span class="t">собрано</span></span>'
+    : '<a href="'+catUrl(it.sku||it.model)+'" target="_blank" class="asm no" title="не собрано — открыть в каталоге, проверить состав и отметить">⚠<span class="t">не собрано → открыть в каталоге</span></a>';
   return '<tr data-item="'+esc(it.id)+'"><td>'+esc(itemName(it))+(it.sku?' <span class="muted">'+esc(it.sku)+'</span>':'')+'</td>'
-    +'<td><span style="display:inline-block;min-width:120px">'+asmBadge+'</span>'+(it.unitCost?'<span class="muted">'+it.unitCost.toFixed(2).replace('.',',')+' р/шт</span>':'')+'</td>'
+    +'<td>'+asmBadge+(it.unitCost?' <span class="muted">'+it.unitCost.toFixed(2).replace('.',',')+' р/шт</span>':'')+'</td>'
     +'<td class="num"><input class="q" value="'+it.qty+'" onchange="updItem(\''+it.id+'\',this.value)"></td>'
     +'<td class="num"><input class="q" value="'+(it.done||0)+'" onchange="saveDone(\''+batchId+'\',\''+esc(it.sku)+'\',\''+esc(it.model)+'\',this.value)"></td>'
     +'<td><button class="gray sm" title="убрать" onclick="rmItem(\''+it.id+'\')">🗑</button></td></tr>';
