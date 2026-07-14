@@ -134,8 +134,8 @@ function renderDetail(id){
   var opts=['новая','в работе','готово','отгружено'].map(function(s){return '<option'+(s===b.status?' selected':'')+'>'+s+'</option>';}).join('');
   var items=(b.items||[]).map(function(it){ return itemRowHtml(it,b.id); }).join('');
   var prio=b.prio==='срочно';
-  var costSum=(b.modelsCosted||0)+'/'+(b.modelsTotal||0);
-  var costCol=(b.modelsTotal&&b.modelsCosted===b.modelsTotal)?'#137333':(b.modelsCosted?'#b7791f':'#c0392b');
+  var costSum=(b.modelsAssembled||0)+'/'+(b.modelsTotal||0);
+  var costCol=(b.modelsTotal&&b.modelsAssembled===b.modelsTotal)?'#137333':(b.modelsAssembled?'#b7791f':'#c0392b');
   var datalist='<datalist id="modlist">'+MODELS.map(function(m){ return '<option value="'+esc(modLabel(m))+'">'; }).join('')+'</datalist>';
   app.innerHTML=datalist
     +'<div class="row" style="margin-bottom:10px"><button class="gray" onclick="backToList()">← ко всем заказам</button></div>'
@@ -144,7 +144,7 @@ function renderDetail(id){
       +'<span class="muted" style="cursor:pointer" onclick="renameBatch(\''+b.id+'\',\''+esc(b.name).replace(/\x27/g,"")+'\')">'+esc(b.name)+' ✎</span>'
       +'<select onchange="setStatus(\''+b.id+'\',this.value)">'+opts+'</select>'
       +'<span class="pill prio '+(prio?'on':'off')+'" onclick="togglePrio(\''+b.id+'\','+(prio?0:1)+')">'+(prio?'🔥 срочно':'обычный')+'</span>'
-      +'<span class="pill" style="background:#f0edfb;color:'+costCol+'">посчитано '+costSum+' · труд '+money(b.labor||0)+' р</span>'
+      +'<span class="pill" style="background:#f0edfb;color:'+costCol+'">собрано '+costSum+' · труд '+money(b.labor||0)+' р</span>'
       +(b.opsCount?'<span class="pill" style="background:#eaf1fd;color:#2b7de9">по труду '+(b.pctLabor||0)+'%</span>':'')
       +(b.overflow?'<span class="pill" style="background:#fdecea;color:#c0392b" title="есть перевыполненные операции">⚠ перевыполнено</span>':'')
       +(b.plan?'<span class="muted">план '+esc(b.plan)+'</span>':'')
@@ -215,8 +215,11 @@ function renameBatch(id,cur){ var nm=prompt('Название партии:',cur
 function delBatch(id){ if(!confirm('Удалить заказ со всеми позициями?')) return; api({vapi:'delbatch', batch:id}).then(function(){ VIEW='list'; CUR=null; load(); }); }
 // строка позиции (общий шаблон для рендера и оптимистичного добавления)
 function itemRowHtml(it,batchId){
+  var asmBadge = it.assembled
+    ? '<span class="pill" style="background:#e7f5ea;color:#137333">✓ собрано</span>'
+    : '<a href="'+catUrl(it.sku||it.model)+'" target="_blank" style="text-decoration:none" title="открыть в каталоге — проверить состав и отметить собранным"><span class="pill" style="background:#fbf1de;color:#b7791f">⚠ не подтверждено →</span></a>';
   return '<tr data-item="'+esc(it.id)+'"><td>'+esc(itemName(it))+(it.sku?' <span class="muted">'+esc(it.sku)+'</span>':'')+'</td>'
-    +'<td>'+costBadge(it.costing)+(it.unitCost?' <span class="muted">'+it.unitCost.toFixed(2).replace('.',',')+' р/шт</span>':'')+'</td>'
+    +'<td>'+asmBadge+(it.unitCost?' <span class="muted">'+it.unitCost.toFixed(2).replace('.',',')+' р/шт</span>':'')+'</td>'
     +'<td class="num"><input class="q" value="'+it.qty+'" onchange="updItem(\''+it.id+'\',this.value)"></td>'
     +'<td class="num"><input class="q" value="'+(it.done||0)+'" onchange="saveDone(\''+batchId+'\',\''+esc(it.sku)+'\',\''+esc(it.model)+'\',this.value)"></td>'
     +'<td><button class="gray sm" title="убрать" onclick="rmItem(\''+it.id+'\')">🗑</button></td></tr>';
@@ -233,7 +236,7 @@ function addItem(id){
   if(!mod){ if(m) m.innerHTML='<span class="err">выберите модель из списка</span>'; return; }
   if(!(qty>0)){ if(m) m.innerHTML='<span class="err">укажите количество</span>'; return; }
   var b=curBatch(id); if(!b) return;
-  var it={ id:'tmp'+Date.now(), sku:mod.sku, equip:mod.equip, model:mod.model, qty:qty, done:0, costing:mod.costing, unitCost:mod.cost };
+  var it={ id:'tmp'+Date.now(), sku:mod.sku, equip:mod.equip, model:mod.model, qty:qty, done:0, costing:mod.costing, unitCost:mod.cost, assembled:!!mod.assembled };
   b.items=b.items||[]; b.items.push(it);
   renderItems(id);                       // мгновенно показать позицию
   el.value=''; qEl.value=''; el.focus();  // готово вводить следующую
