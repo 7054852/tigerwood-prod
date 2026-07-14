@@ -57,7 +57,7 @@ function api(p){ p.app=APP; var q=Object.keys(p).map(function(k){return k+'='+en
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function $(id){ return document.getElementById(id); }
 function money(n){ n=Number(n)||0; return n.toFixed(2).replace('.',','); }
-var app=$('app'), NEEDS=[], BATCHES=[], MODELS=[], MODMAP={};
+var app=$('app'), NEEDS=[], BATCHES=[], MODELS=[], MODMAP={}, DETAIL=null;
 
 function load(){
   app.innerHTML='<div class="center muted">Загрузка…</div>';
@@ -84,9 +84,17 @@ function statusColor(st){ var m={'новая':'#c3cad9','в работе':'#2b7d
 function itemName(it){ return [it.equip,it.model].filter(Boolean).join(' · ')||it.sku||'—'; }
 function catUrl(x){ return BASE+'?page=catalog&find='+encodeURIComponent(x||''); }   // каталог хаба с фокусом на изделие
 
-function render(){ if(VIEW==='detail'&&CUR){ renderDetail(CUR); } else { renderList(); } }
-function openOrder(id){ VIEW='detail'; CUR=id; render(); window.scrollTo(0,0); }
-function backToList(){ VIEW='list'; CUR=null; render(); }
+function render(){ if(VIEW==='detail'&&CUR){ if(DETAIL&&DETAIL.id===CUR) renderDetail(); else loadDetail(CUR); } else { renderList(); } }
+function openOrder(id){ VIEW='detail'; CUR=id; DETAIL=null; app.innerHTML='<div class="center muted">Загрузка заказа…</div>'; window.scrollTo(0,0); if(!MODELS.length) loadModels(); loadDetail(id); }
+function backToList(){ VIEW='list'; CUR=null; DETAIL=null; load(); }
+// загрузить полный разворот ОДНОГО заказа по требованию (себестоимость/собрано считаются только для него)
+function loadDetail(id){
+  api({vapi:'batch', batch:id}).then(function(r){
+    if(r&&r.ok&&r.batch){ DETAIL=r.batch; if(VIEW==='detail'&&CUR===id) renderDetail(); }
+    else { alert((r&&r.error)||'заказ не найден'); backToList(); }
+  }).catch(function(e){ app.innerHTML='<div class="center err">Ошибка: '+esc(e.message||e)+'</div>'; });
+}
+function reloadDetail(){ if(CUR) loadDetail(CUR); }
 
 function needSection(){
   var needRows=NEEDS.map(function(n,i){
@@ -135,9 +143,9 @@ function renderList(){
 }
 
 // ── ДЕТАЛЬ: полная карточка одного заказа ──
-function renderDetail(id){
-  var b=null; for(var i=0;i<BATCHES.length;i++) if(BATCHES[i].id===id) b=BATCHES[i];
-  if(!b){ backToList(); return; }
+function renderDetail(){
+  var b=DETAIL; if(!b){ backToList(); return; }
+  var id=b.id;
   var opts=['новая','в работе','готово','отгружено'].map(function(s){return '<option'+(s===b.status?' selected':'')+'>'+s+'</option>';}).join('');
   var items=(b.items||[]).map(function(it){ return itemRowHtml(it,b.id); }).join('');
   var prio=b.prio==='срочно';
@@ -209,17 +217,17 @@ function saveTarget(i){
   var n=NEEDS[i], v=$('tg'+i).value;
   api({vapi:'settarget', sku:n.sku||'', target:v, min:'', eq:n.equip||'', mod:n.model||''}).then(function(){ load(); });
 }
-function setStatus(id,st){ api({vapi:'setbstatus', batch:id, status:st}).then(function(){ load(); }); }
-function togglePrio(id,on){ api({vapi:'setprio', batch:id, prio:on?'срочно':'обычный'}).then(function(){ load(); }); }
+function setStatus(id,st){ api({vapi:'setbstatus', batch:id, status:st}).then(function(){ if(VIEW==='detail') reloadDetail(); else load(); }); }
+function togglePrio(id,on){ api({vapi:'setprio', batch:id, prio:on?'срочно':'обычный'}).then(function(){ if(VIEW==='detail') reloadDetail(); else load(); }); }
 function saveDone(id,sku,mod,v){
   var m=$('bm_'+id); if(m) m.textContent='…';
   api({vapi:'batchdone', batch:id, sku:sku, mod:mod, done:v}).then(function(r){
-    if(m) m.innerHTML=(r&&r.ok)?'<span class="ok">✓ на склад</span>':'<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; setTimeout(load,700);
+    if(m) m.innerHTML=(r&&r.ok)?'<span class="ok">✓ на склад</span>':'<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; setTimeout(reloadDetail,700);
   });
 }
-function newBatch(){ var nm=prompt('Название заказа (или пусто — авто):',''); if(nm===null) return; api({vapi:'createbatch', name:nm}).then(function(r){ if(r&&r.ok){ CUR=r.batchId; VIEW='detail'; load(); } else alert('Ошибка'); }); }
-function renameBatch(id,cur){ var nm=prompt('Название партии:',cur||''); if(nm===null||!nm.trim()) return; api({vapi:'renamebatch', batch:id, name:nm.trim()}).then(function(){ load(); }); }
-function delBatch(id){ if(!confirm('Удалить заказ со всеми позициями?')) return; api({vapi:'delbatch', batch:id}).then(function(){ VIEW='list'; CUR=null; load(); }); }
+function newBatch(){ var nm=prompt('Название заказа (или пусто — авто):',''); if(nm===null) return; api({vapi:'createbatch', name:nm}).then(function(r){ if(r&&r.ok){ openOrder(r.batchId); } else alert('Ошибка'); }); }
+function renameBatch(id,cur){ var nm=prompt('Название партии:',cur||''); if(nm===null||!nm.trim()) return; api({vapi:'renamebatch', batch:id, name:nm.trim()}).then(function(){ if(VIEW==='detail') reloadDetail(); else load(); }); }
+function delBatch(id){ if(!confirm('Удалить заказ со всеми позициями?')) return; api({vapi:'delbatch', batch:id}).then(function(){ backToList(); }); }
 // строка позиции (общий шаблон для рендера и оптимистичного добавления)
 function itemRowHtml(it,batchId){
   var asmBadge = it.assembled
@@ -231,7 +239,7 @@ function itemRowHtml(it,batchId){
     +'<td class="num"><input class="q" value="'+(it.done||0)+'" onchange="saveDone(\''+batchId+'\',\''+esc(it.sku)+'\',\''+esc(it.model)+'\',this.value)"></td>'
     +'<td><button class="gray sm" title="убрать" onclick="rmItem(\''+it.id+'\')">🗑</button></td></tr>';
 }
-function curBatch(id){ for(var i=0;i<BATCHES.length;i++) if(BATCHES[i].id===id) return BATCHES[i]; return null; }
+function curBatch(id){ if(DETAIL&&DETAIL.id===id) return DETAIL; for(var i=0;i<BATCHES.length;i++) if(BATCHES[i].id===id) return BATCHES[i]; return null; }
 function renderItems(id){ var b=curBatch(id), tb=$('items_'+id); if(b&&tb) tb.innerHTML=(b.items||[]).map(function(it){ return itemRowHtml(it,id); }).join(''); }
 // операции — редкое обновление: пересобираем один раз через паузу после последнего изменения позиций (expand дорогой)
 var _opsTimer=null;
@@ -254,12 +262,14 @@ function addItem(id){
   }).catch(function(e){ b.items=b.items.filter(function(x){ return x!==it; }); renderItems(id); if(m) m.innerHTML='<span class="err">'+esc(e.message||e)+'</span>'; });
 }
 function updItem(itemId,v){
-  for(var i=0;i<BATCHES.length;i++){ var b=BATCHES[i]; if(!b.items) continue; for(var j=0;j<b.items.length;j++) if(b.items[j].id===itemId){ b.items[j].qty=Number(v)||0; api({vapi:'upditem', item:itemId, qty:v}).then(function(){ scheduleOpsRefresh(b.id); }); return; } }
+  var b=DETAIL; if(!b||!b.items) return;
+  for(var j=0;j<b.items.length;j++) if(b.items[j].id===itemId){ b.items[j].qty=Number(v)||0; api({vapi:'upditem', item:itemId, qty:v}).then(function(){ scheduleOpsRefresh(b.id); }); return; }
 }
 function rmItem(itemId){
-  for(var i=0;i<BATCHES.length;i++){ var b=BATCHES[i]; if(!b.items) continue; for(var j=0;j<b.items.length;j++) if(b.items[j].id===itemId){ b.items.splice(j,1); renderItems(b.id); (function(bid){ api({vapi:'rmitem', item:itemId}).then(function(){ scheduleOpsRefresh(bid); }); })(b.id); return; } }
+  var b=DETAIL; if(!b||!b.items) return;
+  for(var j=0;j<b.items.length;j++) if(b.items[j].id===itemId){ b.items.splice(j,1); renderItems(b.id); (function(bid){ api({vapi:'rmitem', item:itemId}).then(function(){ scheduleOpsRefresh(bid); }); })(b.id); return; }
 }
-function ship(id){ var m=$('bm_'+id); m.textContent='…'; api({vapi:'shipbatch', batch:id}).then(function(r){ m.innerHTML=(r&&r.ok)?'<span class="ok">отгружено '+(r.shipped||0)+'</span>':'<span class="err">ошибка</span>'; setTimeout(load,700); }); }
+function ship(id){ var m=$('bm_'+id); m.textContent='…'; api({vapi:'shipbatch', batch:id}).then(function(r){ m.innerHTML=(r&&r.ok)?'<span class="ok">отгружено '+(r.shipped||0)+'</span>':'<span class="err">ошибка</span>'; setTimeout(reloadDetail,700); }); }
 
 load();
 </script>
