@@ -131,13 +131,7 @@ function renderDetail(id){
   var b=null; for(var i=0;i<BATCHES.length;i++) if(BATCHES[i].id===id) b=BATCHES[i];
   if(!b){ backToList(); return; }
   var opts=['новая','в работе','готово','отгружено'].map(function(s){return '<option'+(s===b.status?' selected':'')+'>'+s+'</option>';}).join('');
-  var items=(b.items||[]).map(function(it){
-    return '<tr><td>'+esc(itemName(it))+(it.sku?' <span class="muted">'+esc(it.sku)+'</span>':'')+'</td>'
-      +'<td>'+costBadge(it.costing)+(it.unitCost?' <span class="muted">'+it.unitCost.toFixed(2).replace('.',',')+' р/шт</span>':'')+'</td>'
-      +'<td class="num"><input class="q" value="'+it.qty+'" onchange="updItem(\''+it.id+'\',this.value)"></td>'
-      +'<td class="num"><input class="q" value="'+(it.done||0)+'" onchange="saveDone(\''+b.id+'\',\''+esc(it.sku)+'\',\''+esc(it.model)+'\',this.value)"></td>'
-      +'<td><button class="gray sm" title="убрать" onclick="rmItem(\''+it.id+'\')">🗑</button></td></tr>';
-  }).join('');
+  var items=(b.items||[]).map(function(it){ return itemRowHtml(it,b.id); }).join('');
   var prio=b.prio==='срочно';
   var costSum=(b.modelsCosted||0)+'/'+(b.modelsTotal||0);
   var costCol=(b.modelsTotal&&b.modelsCosted===b.modelsTotal)?'#137333':(b.modelsCosted?'#b7791f':'#c0392b');
@@ -157,7 +151,7 @@ function renderDetail(id){
       +'<button class="gray sm" title="удалить заказ" onclick="delBatch(\''+b.id+'\')">🗑</button>'
       +'<span class="msg" id="bm_'+b.id+'"></span>'
       +'</div>'
-      +(items?'<table style="margin-top:8px"><thead><tr><th>Модель</th><th>Труд</th><th class="num">Кол-во</th><th class="num">Готово→склад</th><th></th></tr></thead><tbody>'+items+'</tbody></table>':'<div class="muted" style="margin-top:6px">позиций нет — добавьте модель ниже</div>')
+      +'<table style="margin-top:8px"><thead><tr><th>Модель</th><th>Труд</th><th class="num">Кол-во</th><th class="num">Готово→склад</th><th></th></tr></thead><tbody id="items_'+b.id+'">'+items+'</tbody></table>'
       +'<div class="row" style="margin-top:8px"><input list="modlist" id="am_'+b.id+'" placeholder="модель из каталога…" style="min-width:240px"><input class="q" id="aq_'+b.id+'" placeholder="кол-во"><button class="green sm" onclick="addItem(\''+b.id+'\')">＋ добавить модель</button></div>'
     +'</div>'
     +'<div class="sect">Операции заказа</div>'
@@ -217,15 +211,42 @@ function saveDone(id,sku,mod,v){
 function newBatch(){ var nm=prompt('Название заказа (или пусто — авто):',''); if(nm===null) return; api({vapi:'createbatch', name:nm}).then(function(r){ if(r&&r.ok){ CUR=r.batchId; VIEW='detail'; load(); } else alert('Ошибка'); }); }
 function renameBatch(id,cur){ var nm=prompt('Название партии:',cur||''); if(nm===null||!nm.trim()) return; api({vapi:'renamebatch', batch:id, name:nm.trim()}).then(function(){ load(); }); }
 function delBatch(id){ if(!confirm('Удалить заказ со всеми позициями?')) return; api({vapi:'delbatch', batch:id}).then(function(){ VIEW='list'; CUR=null; load(); }); }
+// строка позиции (общий шаблон для рендера и оптимистичного добавления)
+function itemRowHtml(it,batchId){
+  return '<tr data-item="'+esc(it.id)+'"><td>'+esc(itemName(it))+(it.sku?' <span class="muted">'+esc(it.sku)+'</span>':'')+'</td>'
+    +'<td>'+costBadge(it.costing)+(it.unitCost?' <span class="muted">'+it.unitCost.toFixed(2).replace('.',',')+' р/шт</span>':'')+'</td>'
+    +'<td class="num"><input class="q" value="'+it.qty+'" onchange="updItem(\''+it.id+'\',this.value)"></td>'
+    +'<td class="num"><input class="q" value="'+(it.done||0)+'" onchange="saveDone(\''+batchId+'\',\''+esc(it.sku)+'\',\''+esc(it.model)+'\',this.value)"></td>'
+    +'<td><button class="gray sm" title="убрать" onclick="rmItem(\''+it.id+'\')">🗑</button></td></tr>';
+}
+function curBatch(id){ for(var i=0;i<BATCHES.length;i++) if(BATCHES[i].id===id) return BATCHES[i]; return null; }
+function renderItems(id){ var b=curBatch(id), tb=$('items_'+id); if(b&&tb) tb.innerHTML=(b.items||[]).map(function(it){ return itemRowHtml(it,id); }).join(''); }
+// операции — редкое обновление: пересобираем один раз через паузу после последнего изменения позиций (expand дорогой)
+var _opsTimer=null;
+function scheduleOpsRefresh(id){ var box=$('ops_'+id); if(box) box.innerHTML='<div class="muted">операции обновятся…</div>'; if(_opsTimer) clearTimeout(_opsTimer); _opsTimer=setTimeout(function(){ loadOps(id); },2500); }
+
 function addItem(id){
-  var lbl=$('am_'+id).value.trim(), qty=$('aq_'+id).value, m=$('bm_'+id);
+  var el=$('am_'+id), lbl=el.value.trim(), qEl=$('aq_'+id), qty=Number(qEl.value), m=$('bm_'+id);
   var mod=MODMAP[lbl];
   if(!mod){ if(m) m.innerHTML='<span class="err">выберите модель из списка</span>'; return; }
-  if(!(Number(qty)>0)){ if(m) m.innerHTML='<span class="err">укажите количество</span>'; return; }
-  api({vapi:'additem', batch:id, sku:mod.sku, eq:mod.equip, mod:mod.model, qty:qty}).then(function(r){ if(r&&r.ok) load(); else if(m) m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; });
+  if(!(qty>0)){ if(m) m.innerHTML='<span class="err">укажите количество</span>'; return; }
+  var b=curBatch(id); if(!b) return;
+  var it={ id:'tmp'+Date.now(), sku:mod.sku, equip:mod.equip, model:mod.model, qty:qty, done:0 };
+  b.items=b.items||[]; b.items.push(it);
+  renderItems(id);                       // мгновенно показать позицию
+  el.value=''; qEl.value=''; el.focus();  // готово вводить следующую
+  if(m) m.innerHTML='<span class="ok">＋ '+esc(itemName(it))+'</span>';
+  api({vapi:'additem', batch:id, sku:mod.sku, eq:mod.equip, mod:mod.model, qty:qty}).then(function(r){
+    if(r&&r.ok&&r.item){ it.id=r.item.id; renderItems(id); scheduleOpsRefresh(id); }
+    else { b.items=b.items.filter(function(x){ return x!==it; }); renderItems(id); if(m) m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; }
+  }).catch(function(e){ b.items=b.items.filter(function(x){ return x!==it; }); renderItems(id); if(m) m.innerHTML='<span class="err">'+esc(e.message||e)+'</span>'; });
 }
-function updItem(itemId,v){ api({vapi:'upditem', item:itemId, qty:v}).then(function(){ load(); }); }
-function rmItem(itemId){ api({vapi:'rmitem', item:itemId}).then(function(){ load(); }); }
+function updItem(itemId,v){
+  for(var i=0;i<BATCHES.length;i++){ var b=BATCHES[i]; if(!b.items) continue; for(var j=0;j<b.items.length;j++) if(b.items[j].id===itemId){ b.items[j].qty=Number(v)||0; api({vapi:'upditem', item:itemId, qty:v}).then(function(){ scheduleOpsRefresh(b.id); }); return; } }
+}
+function rmItem(itemId){
+  for(var i=0;i<BATCHES.length;i++){ var b=BATCHES[i]; if(!b.items) continue; for(var j=0;j<b.items.length;j++) if(b.items[j].id===itemId){ b.items.splice(j,1); renderItems(b.id); (function(bid){ api({vapi:'rmitem', item:itemId}).then(function(){ scheduleOpsRefresh(bid); }); })(b.id); return; } }
+}
 function ship(id){ var m=$('bm_'+id); m.textContent='…'; api({vapi:'shipbatch', batch:id}).then(function(r){ m.innerHTML=(r&&r.ok)?'<span class="ok">отгружено '+(r.shipped||0)+'</span>':'<span class="err">ошибка</span>'; setTimeout(load,700); }); }
 
 load();
