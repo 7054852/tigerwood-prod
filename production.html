@@ -75,6 +75,7 @@ var VIEW='list', CUR=null;
 function statusPill(st){ var m={'новая':'#eef1f8|#556','в работе':'#eaf1fd|#2b7de9','готово':'#e7f5ea|#137333','отгружено':'#f0edfb|#7c3aed'}; var p=(m[st]||'#eef1f8|#556').split('|'); return '<span class="pill" style="background:'+p[0]+';color:'+p[1]+'">'+esc(st)+'</span>'; }
 function statusColor(st){ var m={'новая':'#c3cad9','в работе':'#2b7de9','готово':'#137333','отгружено':'#7c3aed'}; return m[st]||'#c3cad9'; }
 function itemName(it){ return [it.equip,it.model].filter(Boolean).join(' · ')||it.sku||'—'; }
+function catUrl(x){ return BASE+'?page=catalog&find='+encodeURIComponent(x||''); }   // каталог хаба с фокусом на изделие
 
 function render(){ if(VIEW==='detail'&&CUR){ renderDetail(CUR); } else { renderList(); } }
 function openOrder(id){ VIEW='detail'; CUR=id; render(); window.scrollTo(0,0); }
@@ -181,7 +182,8 @@ function renderOps(id,r){
         +'<td class="num" style="'+leftCol+'">'+o.left+over+'</td></tr>';
     }).join('');
     return '<div style="margin-top:8px"><div style="font-weight:700">'+esc(p.eq)+' · '+esc(p.model)+' ×'+p.ordered
-      +(p.assembled?' <span class="pill p-ok">✔ собрано</span>':' <span class="pill" style="background:#fbf1de;color:#b7791f">⚠ не подтверждено</span>')
+      +' <a href="'+catUrl(p.sku||p.model)+'" target="_blank" style="text-decoration:none" title="открыть изделие в каталоге — проверить состав/отметить собранным">'
+      +(p.assembled?'<span class="pill p-ok">✔ собрано</span>':'<span class="pill" style="background:#fbf1de;color:#b7791f">⚠ не подтверждено · проверить в каталоге →</span>')+'</a>'
       +' <span class="muted" style="font-weight:400">'+(p.pct||0)+'% · осталось '+money(p.leftRub)+' р</span></div>'
       +'<table style="margin-top:4px"><thead><tr><th>Деталь</th><th>Операция</th><th class="num">Нужно</th><th class="num">Нач. остатки</th><th class="num">Сделано</th><th class="num">Осталось</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
   }).join('');
