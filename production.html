@@ -57,12 +57,12 @@ function api(p){ p.app=APP; var q=Object.keys(p).map(function(k){return k+'='+en
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function $(id){ return document.getElementById(id); }
 function money(n){ n=Number(n)||0; return n.toFixed(2).replace('.',','); }
-var app=$('app'), NEEDS=[], BATCHES=[], MODELS=[], MODMAP={}, DETAIL=null;
+var app=$('app'), NEEDS=[], BATCHES=[], MODELS=[], MODMAP={}, DETAIL=null, PULSE=null;
 
 function load(){
   app.innerHTML='<div class="center muted">Загрузка…</div>';
   Promise.all([api({vapi:'prodneeds'}), api({vapi:'batches'})]).then(function(res){
-    NEEDS=(res[0]&&res[0].rows)||[]; BATCHES=(res[1]&&res[1].batches)||[];
+    NEEDS=(res[0]&&res[0].rows)||[]; BATCHES=(res[1]&&res[1].batches)||[]; PULSE=(res[1]&&res[1].pulse)||null;
     render();
     if(!MODELS.length) loadModels();
   }).catch(function(e){ app.innerHTML='<div class="center err">Ошибка загрузки: '+esc(e.message||e)+'</div>'; });
@@ -110,6 +110,45 @@ function needSection(){
     +'<div class="muted" style="margin-top:8px">«Собрать из продаж» соберёт партию по непроведённым продажам (наличие в резерв, нехватку — в производство).</div></div>';
 }
 
+// ── ПУЛЬС / ПРИОРИТЕТ / РИСК (управленческий обзор) ──
+function pulseStrip(){
+  var p=PULSE; if(!p) return '';
+  var tr = p.trend==='up'?'<span style="color:#137333" title="темп растёт">↑</span>':(p.trend==='down'?'<span style="color:#c0392b" title="темп падает">↓</span>':'<span class="muted">→</span>');
+  var cap = p.capacityDays!=null ? ('~'+p.capacityDays+' дн') : '—';
+  var riskTxt = p.atRisk>0 ? '<b style="color:#c0392b">🔴 в риске: '+p.atRisk+'</b>' : '<span style="color:#137333">✓ все в срок</span>';
+  return '<div class="box" style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;font-size:13px;margin-bottom:10px;background:#f6f9ff;border-color:#dbe6fb">'
+    +'<span>⚡ <b>Пульс фабрики</b></span>'
+    +'<span>сегодня: <b>'+money(p.today)+' ₽</b> труда</span>'
+    +'<span>ср/день: <b>'+money(p.avgDay)+' ₽</b> '+tr+'</span>'
+    +'<span>'+riskTxt+'</span>'
+    +'<span>в работе: <b>'+(p.activeCount||0)+'</b> заказ.</span>'
+    +'<span>очередь труда: <b>'+money(p.totalLeft)+' ₽</b> · разгребём за <b>'+cap+'</b></span>'
+    +'</div>';
+}
+function recoLine(){
+  var top=null; for(var i=0;i<BATCHES.length;i++){ if(BATCHES[i].top){ top=BATCHES[i]; break; } }
+  if(!top) return '';
+  var why = top.risk==='late'?('⚠ не успеваем'+(top.slack!=null?(' на '+Math.abs(top.slack)+' дн':'')))
+          : top.risk==='tight'?'дедлайн впритык'
+          : top.deadline?('дедлайн '+esc(top.deadline)):'наибольший объём';
+  return '<div class="box" style="margin-bottom:10px;background:#fffdf3;border-color:#f0e2b8;cursor:pointer" onclick="openOrder(\''+top.id+'\')">'
+    +'🎯 <b>Сейчас в приоритете: '+esc(top.num)+' '+esc(top.name)+'</b> — '+why+', осталось <b>'+money(top.leftRub||0)+' ₽</b> труда'+(top.velocity?(' · темп '+money(top.velocity)+' ₽/дн'):'')+' →</div>';
+}
+function riskBadge(b){
+  var r=b.risk;
+  if(r==='late') return '<span class="pill" style="background:#fdecea;color:#c0392b" title="прогноз позже дедлайна">🔴 не успеваем'+(b.slack!=null?(' на '+Math.abs(b.slack)+' дн'):'')+'</span>';
+  if(r==='tight') return '<span class="pill" style="background:#fbf1de;color:#b7791f" title="мало запаса до дедлайна">🟡 впритык'+(b.slack!=null?(' · запас '+b.slack+' дн'):'')+'</span>';
+  if(r==='ok') return '<span class="pill" style="background:#e7f5ea;color:#137333">🟢 успеваем'+(b.forecast?(' к '+esc(b.forecast)):'')+'</span>';
+  if(r==='nodeadline') return '<span class="pill" style="background:#eef1f8;color:#556" title="прогноз есть, дедлайн не задан">📅 срок не задан · прогноз '+esc(b.forecast)+'</span>';
+  if(r==='unknown') return '<span class="pill" style="background:#eef1f8;color:#556" title="нет подтверждённой выработки — темп неизвестен">⏳ нет темпа</span>';
+  if(r==='noops') return '<span class="pill" style="background:#eef1f8;color:#556" title="операции не собраны — прогноз невозможен">⚙️ нет операций</span>';
+  if(r==='done') return '<span class="pill" style="background:#e7f5ea;color:#137333">✓ готово</span>';
+  return '';
+}
+function setDeadline(id,cur){
+  var d=prompt('Срок (дедлайн) заказа, дд.мм.гггг:', cur||''); if(d===null) return; d=d.trim();
+  api({vapi:'renamebatch', batch:id, plan:d}).then(function(r){ if(r&&r.ok) load(); else alert((r&&r.error)||'не сохранилось'); });
+}
 // ── СПИСОК: компактные карточки-обзор ──
 function renderList(){
   var cards=BATCHES.map(function(b){
@@ -121,25 +160,32 @@ function renderList(){
         +'<span class="muted" style="font-variant-numeric:tabular-nums;min-width:34px;text-align:right">'+pct+'%</span></span></div>';
     }).join('')||'<div class="muted" style="padding:6px 0">позиций нет</div>';
     var prio=b.prio==='срочно';
-    return '<div class="bcard click" style="border-left:5px solid '+statusColor(b.status)+'" onclick="openOrder(\''+b.id+'\')">'
-      +'<div class="bhead" style="padding-bottom:10px;border-bottom:1px solid #eef0f6;margin-bottom:4px">'
+    return '<div class="bcard click" style="border-left:5px solid '+(b.risk==='late'?'#c0392b':b.risk==='tight'?'#b7791f':statusColor(b.status))+'" onclick="openOrder(\''+b.id+'\')">'
+      +'<div class="bhead" style="padding-bottom:8px;border-bottom:1px solid #eef0f6;margin-bottom:4px">'
+      +(b.top?'<span class="pill" style="background:#fff3cd;color:#8a6d00">🎯 делать сейчас</span> ':'')
       +'<span class="bnum">'+esc(b.num)+'</span>'
       +'<span style="font-weight:600">'+esc(b.name)+'</span>'
       +statusPill(b.status)
       +(prio?'<span class="pill prio on">🔥 срочно</span>':'')
-      +(b.plan?'<span class="muted">план '+esc(b.plan)+'</span>':'')
       +'<span style="flex:1"></span>'
       +'<span class="pill" style="background:#eaf1fd;color:#2b7de9;font-size:13px">'+(b.pctLabor||0)+'% по труду</span>'
       +(b.overflow?'<span class="pill" style="background:#fdecea;color:#c0392b">⚠ перевыполнено</span>':'')
+      +'</div>'
+      +'<div class="row" style="gap:12px;font-size:12.5px;margin:4px 0 6px;flex-wrap:wrap;align-items:center">'
+        + riskBadge(b)
+        +'<span class="muted">Срок: '+(b.deadline?('<b>'+esc(b.deadline)+'</b>'):'—')+' <a href="javascript:void(0)" onclick="event.stopPropagation();setDeadline(\''+b.id+'\',\''+esc(b.deadline||'')+'\')" title="задать/изменить срок" style="text-decoration:none">✎</a></span>'
+        +'<span class="muted">темп: <b>'+(b.velocity?money(b.velocity)+' ₽/дн':'—')+'</b></span>'
+        +'<span class="muted">осталось: <b>'+money(b.leftRub||0)+' ₽</b> труда</span>'
       +'</div>'
       +models
       +'<div class="muted" style="margin-top:8px;font-size:12px;text-align:right">открыть заказ →</div>'
       +'</div>';
   }).join('');
-  app.innerHTML=needSection()
+  app.innerHTML=pulseStrip()+recoLine()
     +'<div class="sect">Заказы на производство <button class="sm" onclick="newBatch()">＋ Новый заказ</button></div>'
-    +'<div class="muted" style="margin:-4px 4px 8px">Быстрый обзор: что производится и % готовности каждого. Нажмите на заказ — полное управление (операции, остатки, отгрузка).</div>'
-    +(cards||'<div class="box muted">заказов нет — создайте новый</div>');
+    +'<div class="muted" style="margin:-4px 4px 8px">Отсортированы по приоритету: что делать первым — сверху. 🔴 в риске срока — вверху и с красной полосой. Нажмите на заказ — полное управление.</div>'
+    +(cards||'<div class="box muted">заказов нет — создайте новый</div>')
+    +needSection();
 }
 
 // ── ДЕТАЛЬ: полная карточка одного заказа ──
