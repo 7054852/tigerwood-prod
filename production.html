@@ -258,8 +258,11 @@ function opsKpiHtml(k){
 // точечное обновление цифр без пересборки таблицы (не трогаем поля, в которых работает пользователь)
 var pendingStock={};
 function applyOpsNumbers(id,r){
-  var kb=$('opskpi_'+id); if(kb) kb.innerHTML=opsKpiHtml(r.kpi||{});
   var box=$('ops_'+id); if(!box) return;
+  // структура изменилась (операции добавились/убрались) → честная перерисовка, точечным обновлением не обойтись
+  var nOps=0; (r.products||[]).forEach(function(p){ nOps+=(p.ops||[]).length; });
+  if(nOps!==box.querySelectorAll('tr[data-op]').length){ renderOps(id,r); return; }
+  var kb=$('opskpi_'+id); if(kb) kb.innerHTML=opsKpiHtml(r.kpi||{});
   (r.products||[]).forEach(function(p,pi){
     var st=$('opsp_'+id+'_'+pi); if(st) st.innerHTML=opProdStat(p);
     (p.ops||[]).forEach(function(o){
@@ -289,6 +292,7 @@ function setStock(batchId,opId,val,inp){
     } else {
       if(inp){ inp.style.background='#fdecea'; }
       alert((r&&r.error)||'не сохранилось');
+      loadOps(batchId);                                  // не оставляем протухшие цифры — пересинхронизируем
     }
   }).catch(function(e){ delete pendingStock[opId]; if(inp){ inp.style.background='#fdecea'; } alert('Ошибка: '+(e.message||e)); });
 }
