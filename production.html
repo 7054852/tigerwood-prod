@@ -228,30 +228,69 @@ function loadOps(id){
 function renderOps(id,r){
   var box=$('ops_'+id), k=r.kpi||{};
   var warn = (r.notAssembled&&r.notAssembled.length) ? '<div class="pill" style="background:#fbf1de;color:#b7791f;display:inline-block;margin-bottom:8px">⚠ не подтверждены директором как «собрано»: '+r.notAssembled.map(esc).join(', ')+'</div>' : '';
-  var kpi='<div class="row" style="gap:14px;margin-bottom:8px;font-weight:700">'
-    +'<span>Готовность по труду: <span style="color:#2b7de9">'+(k.pct||0)+'%</span></span>'
-    +'<span class="muted" style="font-weight:400">нужно '+money(k.needRub)+' р · сделано '+money(k.doneRub)+' р · осталось '+money(k.leftRub)+' р</span>'
-    +(k.overflow?'<span class="pill" style="background:#fdecea;color:#c0392b">⚠ перевыполнение +'+Math.round(k.over)+'</span>':'')+'</div>';
-  var prods=(r.products||[]).map(function(p){
+  var kpi=opsKpiHtml(k);
+  var prods=(r.products||[]).map(function(p,pi){
     var rows=p.ops.map(function(o){
-      var over=o.over>0?' <span class="pill" style="background:#fdecea;color:#c0392b">+'+o.over+'</span>':'';
-      var leftCol=o.left>0?'color:#c0392b':'color:#137333';
-      return '<tr><td>'+esc(o.detail)+'</td><td>'+esc(o.op)+'</td>'
+      return '<tr data-op="'+esc(o.id)+'"><td>'+esc(o.detail)+'</td><td>'+esc(o.op)+'</td>'
         +'<td class="num">'+o.need+'</td>'
-        +'<td class="num"><input class="q" value="'+(o.stock||0)+'" title="начальные остатки — работа уже выполнена (не важно кем)" onchange="setStock(\''+id+'\',\''+o.id+'\',this.value)"></td>'
-        +'<td class="num">'+o.done+'</td>'
-        +'<td class="num" style="'+leftCol+'">'+o.left+over+'</td></tr>';
+        +'<td class="num"><input class="q c-stock" value="'+(o.stock||0)+'" inputmode="numeric" title="начальные остатки — работа уже выполнена (не важно кем)"'
+        +' onchange="setStock(\''+id+'\',\''+esc(o.id)+'\',this.value,this)" onkeydown="stockKey(event,this)"></td>'
+        +'<td class="num c-done">'+o.done+'</td>'
+        +'<td class="num c-left" style="'+opLeftCss(o)+'">'+opLeftHtml(o)+'</td></tr>';
     }).join('');
     return '<div style="margin-top:8px"><div style="font-weight:700">'+esc(p.eq)+' · '+esc(p.model)+' ×'+p.ordered
       +' <a href="'+catUrl(p.sku||p.model)+'" target="_blank" style="text-decoration:none" title="открыть изделие в каталоге — проверить состав/отметить собранным">'
       +(p.assembled?'<span class="pill p-ok">✔ собрано</span>':'<span class="pill" style="background:#fbf1de;color:#b7791f">⚠ не подтверждено · проверить в каталоге →</span>')+'</a>'
-      +' <span class="muted" style="font-weight:400">'+(p.pct||0)+'% · осталось '+money(p.leftRub)+' р</span></div>'
+      +' <span class="muted" style="font-weight:400" id="opsp_'+id+'_'+pi+'">'+opProdStat(p)+'</span></div>'
       +'<table style="margin-top:4px"><thead><tr><th>Деталь</th><th>Операция</th><th class="num">Нужно</th><th class="num">Нач. остатки</th><th class="num">Сделано</th><th class="num">Осталось</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
   }).join('');
-  box.innerHTML=warn+kpi+(prods||'<div class="muted">нет операций — у изделий заказа не задан состав в каталоге</div>');
+  box.innerHTML=warn+'<div id="opskpi_'+id+'">'+kpi+'</div>'+(prods||'<div class="muted">нет операций — у изделий заказа не задан состав в каталоге</div>');
 }
-function setStock(batchId,opId,val){
-  api({vapi:'setopstock',op:opId,stock:val}).then(function(r){ if(r&&r.ok){ renderOps(batchId,r); } else alert((r&&r.error)||'не сохранилось'); });
+function opLeftCss(o){ return o.left>0?'color:#c0392b':'color:#137333'; }
+function opLeftHtml(o){ return o.left+(o.over>0?' <span class="pill" style="background:#fdecea;color:#c0392b">+'+o.over+'</span>':''); }
+function opProdStat(p){ return (p.pct||0)+'% · осталось '+money(p.leftRub)+' р'; }
+function opsKpiHtml(k){
+  return '<div class="row" style="gap:14px;margin-bottom:8px;font-weight:700">'
+    +'<span>Готовность по труду: <span style="color:#2b7de9">'+(k.pct||0)+'%</span></span>'
+    +'<span class="muted" style="font-weight:400">нужно '+money(k.needRub)+' р · сделано '+money(k.doneRub)+' р · осталось '+money(k.leftRub)+' р</span>'
+    +(k.overflow?'<span class="pill" style="background:#fdecea;color:#c0392b">⚠ перевыполнение +'+Math.round(k.over)+'</span>':'')+'</div>';
+}
+// точечное обновление цифр без пересборки таблицы (не трогаем поля, в которых работает пользователь)
+var pendingStock={};
+function applyOpsNumbers(id,r){
+  var kb=$('opskpi_'+id); if(kb) kb.innerHTML=opsKpiHtml(r.kpi||{});
+  var box=$('ops_'+id); if(!box) return;
+  (r.products||[]).forEach(function(p,pi){
+    var st=$('opsp_'+id+'_'+pi); if(st) st.innerHTML=opProdStat(p);
+    (p.ops||[]).forEach(function(o){
+      var tr=box.querySelector('tr[data-op="'+String(o.id).replace(/"/g,'\\"')+'"]'); if(!tr) return;
+      var d=tr.querySelector('.c-done'); if(d) d.textContent=o.done;
+      var l=tr.querySelector('.c-left'); if(l){ l.setAttribute('style',opLeftCss(o)); l.innerHTML=opLeftHtml(o); }
+      var inp=tr.querySelector('.c-stock');
+      // поле обновляем только если пользователь в нём не работает и по нему нет несохранённой правки
+      if(inp && !pendingStock[o.id] && document.activeElement!==inp && Number(inp.value)!==Number(o.stock||0)) inp.value=(o.stock||0);
+    });
+  });
+}
+function stockKey(ev,inp){
+  if(ev.key!=='Enter') return;
+  ev.preventDefault(); inp.blur();                       // Enter = сохранить и перейти к следующему полю
+  var all=Array.prototype.slice.call(document.querySelectorAll('.c-stock'));
+  var i=all.indexOf(inp); if(i>=0&&i<all.length-1){ all[i+1].focus(); all[i+1].select(); }
+}
+function setStock(batchId,opId,val,inp){
+  pendingStock[opId]=true;
+  if(inp){ inp.style.background='#fffbe6'; }             // жёлтый = сохраняется
+  api({vapi:'setopstock',op:opId,stock:val}).then(function(r){
+    delete pendingStock[opId];
+    if(r&&r.ok){
+      if(inp){ inp.style.background='#eafaef'; setTimeout(function(){ inp.style.background=''; },700); }
+      applyOpsNumbers(batchId,r);                        // только цифры, без пересборки
+    } else {
+      if(inp){ inp.style.background='#fdecea'; }
+      alert((r&&r.error)||'не сохранилось');
+    }
+  }).catch(function(e){ delete pendingStock[opId]; if(inp){ inp.style.background='#fdecea'; } alert('Ошибка: '+(e.message||e)); });
 }
 function planNow(){
   api({vapi:'planprod'}).then(function(r){
