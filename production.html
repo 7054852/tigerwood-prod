@@ -45,6 +45,24 @@
   .msg{ font-size:13px; margin-left:8px; } .err{ color:var(--red); } .ok{ color:var(--green); }
   .row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
   .center{ text-align:center; padding:36px 16px; }
+  /* ── участки работ ── */
+  .gcard{ border:1px solid var(--line); border-left-width:4px; border-radius:10px; margin-bottom:8px; background:#fff; }
+  .grow{ display:flex; align-items:center; gap:10px; padding:9px 12px; cursor:pointer; user-select:none; }
+  .grow:hover{ background:#fafbfe; }
+  .gname{ font-weight:700; min-width:96px; }
+  .gpct{ font-variant-numeric:tabular-nums; font-weight:700; min-width:48px; text-align:right; }
+  .gcar{ color:var(--muted); font-size:12px; width:12px; transition:transform .15s ease; }
+  .gcard.open .gcar{ transform:rotate(90deg); }
+  .gbody{ display:none; padding:0 12px 10px; } .gcard.open .gbody{ display:block; }
+  /* ── изделие: сворачиваемая карточка ── */
+  .pcard{ border:1px solid var(--line); border-radius:12px; margin-bottom:8px; background:#fff; }
+  .phead{ display:flex; align-items:center; gap:10px; padding:10px 12px; cursor:pointer; user-select:none; flex-wrap:wrap; }
+  .phead:hover{ background:#fafbfe; }
+  .pname{ font-weight:700; flex:1; min-width:160px; }
+  .ppct{ font-variant-numeric:tabular-nums; font-weight:700; min-width:44px; text-align:right; }
+  .pcar{ color:var(--muted); font-size:12px; width:12px; transition:transform .15s ease; }
+  .pcard.open .pcar{ transform:rotate(90deg); }
+  .pbody{ display:none; padding:0 12px 12px; overflow-x:auto; } .pcard.open .pbody{ display:block; }
 </style>
 </head>
 <body>
@@ -238,13 +256,54 @@ function renderOps(id,r){
         +'<td class="num c-done">'+o.done+'</td>'
         +'<td class="num c-left" style="'+opLeftCss(o)+'">'+opLeftHtml(o)+'</td></tr>';
     }).join('');
-    return '<div style="margin-top:8px"><div style="font-weight:700">'+esc(p.eq)+' · '+esc(p.model)+' ×'+p.ordered
-      +' <a href="'+catUrl(p.sku||p.model)+'" target="_blank" style="text-decoration:none" title="открыть изделие в каталоге — проверить состав/отметить собранным">'
-      +(p.assembled?'<span class="pill p-ok">✔ собрано</span>':'<span class="pill" style="background:#fbf1de;color:#b7791f">⚠ не подтверждено · проверить в каталоге →</span>')+'</a>'
-      +' <span class="muted" style="font-weight:400" id="opsp_'+id+'_'+pi+'">'+opProdStat(p)+'</span></div>'
-      +'<table style="margin-top:4px"><thead><tr><th>Деталь</th><th>Операция</th><th class="num">Нужно</th><th class="num">Нач. остатки</th><th class="num">Сделано</th><th class="num">Осталось</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+    var pct=Math.min(100,p.pct||0);
+    // изделие свёрнуто по умолчанию: видно список изделий с % — сразу открываешь нужное, не листая всё
+    return '<div class="pcard" id="pc_'+id+'_'+pi+'">'
+      +'<div class="phead" onclick="toggleProd(\''+id+'\','+pi+')">'
+        +'<span class="pcar">▸</span>'
+        +'<span class="pname">'+esc(p.eq)+' · '+esc(p.model)+' <span class="muted">×'+p.ordered+'</span></span>'
+        +'<span class="bar" style="max-width:110px"><i id="pbar_'+id+'_'+pi+'" style="width:'+pct+'%'+(pct>=100?';background:#137333':'')+'"></i></span>'
+        +'<span class="ppct" id="ppct_'+id+'_'+pi+'">'+(p.pct||0)+'%</span>'
+        +'<a href="'+catUrl(p.sku||p.model)+'" target="_blank" onclick="event.stopPropagation()" class="asm '+(p.assembled?'ok':'no')+'" title="открыть изделие в каталоге">'
+          +(p.assembled?'✔':'⚠')+'<span class="t">'+(p.assembled?'собрано':'не подтверждено — проверить')+'</span></a>'
+      +'</div>'
+      +'<div class="pbody">'
+        +'<div class="muted" style="margin-bottom:6px" id="opsp_'+id+'_'+pi+'">'+opProdStat(p)+'</div>'
+        +'<table><thead><tr><th>Деталь</th><th>Операция</th><th class="num">Нужно</th><th class="num">Нач. остатки</th><th class="num">Сделано</th><th class="num">Осталось</th></tr></thead><tbody>'+rows+'</tbody></table>'
+      +'</div></div>';
   }).join('');
-  box.innerHTML=warn+'<div id="opskpi_'+id+'">'+kpi+'</div>'+(prods||'<div class="muted">нет операций — у изделий заказа не задан состав в каталоге</div>');
+  box.innerHTML=warn+'<div id="opskpi_'+id+'">'+kpi+'</div>'+'<div id="opsdash_'+id+'">'+opsDashHtml(id,r.dash||{})+'</div>'
+    +(prods?'<div class="sect" style="margin:14px 4px 8px">Изделия заказа <span class="muted" style="font-weight:400;text-transform:none">нажми на изделие — раскроются его операции</span></div>'+prods
+           :'<div class="muted">нет операций — у изделий заказа не задан состав в каталоге</div>');
+}
+function toggleProd(id,pi){ var c=$('pc_'+id+'_'+pi); if(c) c.classList.toggle('open'); }
+function toggleGroup(id,gi){ var c=$('gc_'+id+'_'+gi); if(c) c.classList.toggle('open'); }
+// дашборд по участкам работ: сколько труда в каждом участке и сколько осталось
+function opsDashHtml(id,dash){
+  var groups=dash.groups||[]; if(!groups.length) return '';
+  var cards=groups.map(function(g,gi){
+    var pct=Math.min(100,g.pct||0);
+    var color=(g.ops&&g.ops[0]&&g.ops[0].color)||'#dfe3ee';
+    var opRows=(g.ops||[]).map(function(t){
+      var tp=Math.min(100,t.pct||0);
+      return '<tr><td>'+esc(t.op)+'</td>'
+        +'<td class="num">'+t.needQty+'</td><td class="num">'+t.doneQty+'</td>'
+        +'<td class="num" style="'+(t.leftQty>0?'color:#c0392b':'color:#137333')+'">'+t.leftQty+'</td>'
+        +'<td class="num">'+money(t.needRub)+'</td>'
+        +'<td class="num" style="'+(t.leftRub>0?'color:#c0392b':'color:#137333')+'">'+money(t.leftRub)+'</td>'
+        +'<td class="num" style="min-width:96px"><span class="bar" style="display:inline-block;width:52px;vertical-align:middle;min-width:0"><i style="width:'+tp+'%'+(tp>=100?';background:#137333':'')+'"></i></span> '+(t.pct||0)+'%</td></tr>';
+    }).join('');
+    return '<div class="gcard" id="gc_'+id+'_'+gi+'" style="border-left-color:'+color+'">'
+      +'<div class="grow" onclick="toggleGroup(\''+id+'\','+gi+')">'
+        +'<span class="gcar">▸</span><span class="gname">'+esc(g.group)+'</span>'
+        +'<span class="bar"><i style="width:'+pct+'%'+(pct>=100?';background:#137333':'')+'"></i></span>'
+        +'<span class="gpct">'+(g.pct||0)+'%</span>'
+        +'<span class="muted" style="min-width:170px;text-align:right">осталось '+money(g.leftRub)+' ₽ · '+g.leftQty+' оп.</span>'
+      +'</div>'
+      +'<div class="gbody"><table><thead><tr><th>Тип операции</th><th class="num">Нужно</th><th class="num">Сделано</th><th class="num">Остаток</th><th class="num">Нужно ₽</th><th class="num">Остаток ₽</th><th class="num">% вып.</th></tr></thead><tbody>'+opRows+'</tbody></table></div>'
+    +'</div>';
+  }).join('');
+  return '<div class="sect" style="margin:14px 4px 8px">Участки работ <span class="muted" style="font-weight:400;text-transform:none">нажми на участок — разбивка по типам операций</span></div>'+cards;
 }
 function opLeftCss(o){ return o.left>0?'color:#c0392b':'color:#137333'; }
 function opLeftHtml(o){ return o.left+(o.over>0?' <span class="pill" style="background:#fdecea;color:#c0392b">+'+o.over+'</span>':''); }
@@ -263,8 +322,17 @@ function applyOpsNumbers(id,r){
   var nOps=0; (r.products||[]).forEach(function(p){ nOps+=(p.ops||[]).length; });
   if(nOps!==box.querySelectorAll('tr[data-op]').length){ renderOps(id,r); return; }
   var kb=$('opskpi_'+id); if(kb) kb.innerHTML=opsKpiHtml(r.kpi||{});
+  // участки пересчитываются целиком (в них не вводят) — сохраняем, какие раскрыты
+  var db=$('opsdash_'+id);
+  if(db && r.dash){
+    var open={}; Array.prototype.forEach.call(db.querySelectorAll('.gcard.open'), function(c){ open[c.id]=1; });
+    db.innerHTML=opsDashHtml(id,r.dash);
+    Array.prototype.forEach.call(db.querySelectorAll('.gcard'), function(c){ if(open[c.id]) c.classList.add('open'); });
+  }
   (r.products||[]).forEach(function(p,pi){
     var st=$('opsp_'+id+'_'+pi); if(st) st.innerHTML=opProdStat(p);
+    var pp=$('ppct_'+id+'_'+pi); if(pp) pp.textContent=(p.pct||0)+'%';
+    var pb=$('pbar_'+id+'_'+pi); if(pb){ var w=Math.min(100,p.pct||0); pb.style.width=w+'%'; pb.style.background=(w>=100?'#137333':''); }
     (p.ops||[]).forEach(function(o){
       var tr=box.querySelector('tr[data-op="'+String(o.id).replace(/"/g,'\\"')+'"]'); if(!tr) return;
       var d=tr.querySelector('.c-done'); if(d) d.textContent=o.done;
