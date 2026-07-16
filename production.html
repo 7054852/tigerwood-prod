@@ -53,7 +53,9 @@
   .gpct{ font-variant-numeric:tabular-nums; font-weight:700; min-width:48px; text-align:right; }
   .gcar{ color:var(--muted); font-size:12px; width:12px; transition:transform .15s ease; }
   .gcard.open .gcar{ transform:rotate(90deg); }
-  .gbody{ display:none; padding:0 12px 10px; } .gcard.open .gbody{ display:block; }
+  .gbody{ display:none; padding:0 12px 10px; overflow-x:auto; } .gcard.open .gbody{ display:block; }
+  .pill.zn{ background:#eef1f8; color:#556; font-weight:600; }
+  .pill.sh{ background:#e8eefc; color:#2b5fd9; cursor:help; }   /* деталь идёт в нескольких изделиях */
   /* ── изделие: сворачиваемая карточка ── */
   .pcard{ border:1px solid var(--line); border-radius:12px; margin-bottom:8px; background:#fff; }
   .phead{ display:flex; align-items:center; gap:10px; padding:10px 12px; cursor:pointer; user-select:none; flex-wrap:wrap; }
@@ -272,12 +274,45 @@ function renderOps(id,r){
         +'<table><thead><tr><th>Деталь</th><th>Операция</th><th class="num">Нужно</th><th class="num">Нач. остатки</th><th class="num">Сделано</th><th class="num">Осталось</th></tr></thead><tbody>'+rows+'</tbody></table>'
       +'</div></div>';
   }).join('');
-  box.innerHTML=warn+'<div id="opskpi_'+id+'">'+kpi+'</div>'+'<div id="opsdash_'+id+'">'+opsDashHtml(id,r.dash||{})+'</div>'
-    +(prods?'<div class="sect" style="margin:14px 4px 8px">Изделия заказа <span class="muted" style="font-weight:400;text-transform:none">нажми на изделие — раскроются его операции</span></div>'+prods
+  box.innerHTML=warn+'<div id="opskpi_'+id+'">'+kpi+'</div>'
+    +'<div id="opsdash_'+id+'">'+opsDashHtml(id,r.dash||{})+'</div>'
+    +'<div id="opsbyop_'+id+'">'+opsByOpHtml(id,r.dash||{})+'</div>'
+    +(prods?'<div class="sect" style="margin:14px 4px 8px">Изделия заказа <span class="muted" style="font-weight:400;text-transform:none">нажми на изделие — раскроются его операции; остатки вводятся здесь</span></div>'+prods
            :'<div class="muted">нет операций — у изделий заказа не задан состав в каталоге</div>');
 }
 function toggleProd(id,pi){ var c=$('pc_'+id+'_'+pi); if(c) c.classList.toggle('open'); }
 function toggleGroup(id,gi){ var c=$('gc_'+id+'_'+gi); if(c) c.classList.toggle('open'); }
+function toggleOp(id,oi){ var c=$('oc_'+id+'_'+oi); if(c) c.classList.toggle('open'); }
+// заказ, собранный ПО ОПЕРАЦИЯМ: одна деталь идёт в нескольких изделиях — здесь всё сведено в одну строку
+function opsByOpHtml(id,dash){
+  var ops=dash.ops||[]; if(!ops.length) return '';
+  var cards=ops.map(function(t,oi){
+    var pct=Math.min(100,t.pct||0);
+    var rows=(t.details||[]).map(function(dd){
+      var shared=dd.shared?'<span class="pill sh" title="'+esc(dd.models.join(' · '))+'">×'+dd.models.length+'</span>':'';
+      return '<tr><td>'+esc(dd.detail)+' '+shared+'</td>'
+        +'<td class="num">'+dd.need+'</td>'
+        +'<td class="num">'+dd.stock+'</td>'
+        +'<td class="num">'+dd.done+'</td>'
+        +'<td class="num" style="'+(dd.left>0?'color:#c0392b':'color:#137333')+'">'+dd.left
+          +(dd.over>0?' <span class="pill" style="background:#fdecea;color:#c0392b">+'+dd.over+'</span>':'')+'</td>'
+        +'<td class="num">'+money(dd.leftRub)+'</td></tr>';
+    }).join('');
+    return '<div class="gcard" id="oc_'+id+'_'+oi+'" style="border-left-color:'+esc(t.color||'#dfe3ee')+'">'
+      +'<div class="grow" onclick="toggleOp(\''+id+'\','+oi+')">'
+        +'<span class="gcar">▸</span>'
+        +'<span class="gname" style="min-width:150px">'+esc(t.op)+'</span>'
+        +'<span class="pill zn">'+esc(t.group)+'</span>'
+        +'<span class="bar"><i style="width:'+pct+'%'+(pct>=100?';background:#137333':'')+'"></i></span>'
+        +'<span class="gpct">'+(t.pct||0)+'%</span>'
+        +'<span class="muted" style="min-width:150px;text-align:right">осталось '+t.leftQty+' из '+t.needQty+'</span>'
+      +'</div>'
+      +'<div class="gbody"><table><thead><tr><th>Деталь</th><th class="num">Нужно</th><th class="num">Нач. остатки</th><th class="num">Сделано</th><th class="num">Осталось</th><th class="num">Осталось ₽</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+    +'</div>';
+  }).join('');
+  return '<div class="sect" style="margin:14px 4px 8px">Заказ по операциям '
+    +'<span class="muted" style="font-weight:400;text-transform:none">одна деталь идёт в нескольких изделиях — здесь сведено по всему заказу</span></div>'+cards;
+}
 // дашборд по участкам работ: сколько труда в каждом участке и сколько осталось
 function opsDashHtml(id,dash){
   var groups=dash.groups||[]; if(!groups.length) return '';
@@ -322,13 +357,13 @@ function applyOpsNumbers(id,r){
   var nOps=0; (r.products||[]).forEach(function(p){ nOps+=(p.ops||[]).length; });
   if(nOps!==box.querySelectorAll('tr[data-op]').length){ renderOps(id,r); return; }
   var kb=$('opskpi_'+id); if(kb) kb.innerHTML=opsKpiHtml(r.kpi||{});
-  // участки пересчитываются целиком (в них не вводят) — сохраняем, какие раскрыты
-  var db=$('opsdash_'+id);
-  if(db && r.dash){
-    var open={}; Array.prototype.forEach.call(db.querySelectorAll('.gcard.open'), function(c){ open[c.id]=1; });
-    db.innerHTML=opsDashHtml(id,r.dash);
-    Array.prototype.forEach.call(db.querySelectorAll('.gcard'), function(c){ if(open[c.id]) c.classList.add('open'); });
-  }
+  // агрегатные блоки (участки, заказ по операциям) пересчитываются целиком — в них не вводят; сохраняем раскрытое
+  [['opsdash_',opsDashHtml],['opsbyop_',opsByOpHtml]].forEach(function(cfg){
+    var b=$(cfg[0]+id); if(!b || !r.dash) return;
+    var open={}; Array.prototype.forEach.call(b.querySelectorAll('.gcard.open'), function(c){ open[c.id]=1; });
+    b.innerHTML=cfg[1](id,r.dash);
+    Array.prototype.forEach.call(b.querySelectorAll('.gcard'), function(c){ if(open[c.id]) c.classList.add('open'); });
+  });
   (r.products||[]).forEach(function(p,pi){
     var st=$('opsp_'+id+'_'+pi); if(st) st.innerHTML=opProdStat(p);
     var pp=$('ppct_'+id+'_'+pi); if(pp) pp.textContent=(p.pct||0)+'%';
