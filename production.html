@@ -76,6 +76,24 @@
   .gbody{ display:none; padding:0 12px 10px; overflow-x:auto; } .gcard.open .gbody{ display:block; }
   .pill.zn{ background:#eef1f8; color:#556; font-weight:600; }
   .pill.sh{ background:#e8eefc; color:#2b5fd9; cursor:help; }   /* деталь идёт в нескольких изделиях */
+  /* ── проверки логики ── */
+  .chkok{ margin-top:18px; font-size:13px; color:var(--green); background:#e7f5ea; border:1px solid #cfe9d7; border-radius:10px; padding:9px 12px; }
+  .chktray{ border-color:#f0d9b5; background:#fdf7ec; }
+  .cbadge{ font-size:12px; font-weight:700; border-radius:20px; padding:1px 9px; font-variant-numeric:tabular-nums; }
+  .cbadge.red{ background:#fdecea; color:#c0392b; } .cbadge.amber{ background:#f7efdb; color:#b7791f; } .cbadge.info{ background:#e8eefc; color:#2b5fd9; }
+  .chklist{ max-height:300px; overflow-y:auto; display:flex; flex-direction:column; gap:5px; }
+  .cissue{ display:flex; gap:9px; align-items:flex-start; font-size:12.5px; background:#fff; border:1px solid var(--line); border-left-width:3px; border-radius:9px; padding:8px 10px; }
+  .cissue .cdot{ width:8px; height:8px; border-radius:50%; margin-top:5px; flex:none; }
+  .cissue.red{ border-left-color:#c0392b; } .cissue.red .cdot{ background:#c0392b; }
+  .cissue.amber{ border-left-color:#b7791f; } .cissue.amber .cdot{ background:#b7791f; }
+  .cissue.info{ border-left-color:#2b5fd9; } .cissue.info .cdot{ background:#2b5fd9; }
+  .cissue[data-jump]:hover{ background:#fafbfe; }
+  .cgo{ color:var(--accent); font-weight:600; white-space:nowrap; }
+  .chk{ font-size:11px; cursor:help; } .chk.red{ color:#c0392b; } .chk.amber{ color:#b7791f; } .chk.info{ color:#2b5fd9; }
+  tr.hl{ background:#fff6d8; transition:background .3s ease; }
+  /* значок «⚠ N» в списке заказов */
+  .abadge{ font-size:11px; font-weight:700; border-radius:20px; padding:1px 8px; background:#fdecea; color:#c0392b; }
+  .abadge.amberonly{ background:#f7efdb; color:#b7791f; }
   /* ── изделие: сворачиваемая карточка ── */
   .pcard{ border:1px solid var(--line); border-radius:12px; margin-bottom:8px; background:#fff; }
   .phead{ display:flex; align-items:center; gap:10px; padding:10px 12px; cursor:pointer; user-select:none; flex-wrap:wrap; }
@@ -210,6 +228,7 @@ function renderList(){
       +'<span style="flex:1"></span>'
       +'<span class="pill" style="background:#eaf1fd;color:#2b7de9;font-size:13px">'+(b.pctLabor||0)+'% по труду</span>'
       +(b.overflow?'<span class="pill" style="background:#fdecea;color:#c0392b">⚠ перевыполнено</span>':'')
+      +'<span id="aud_'+b.id+'"></span>'
       +'</div>'
       +'<div class="row" style="gap:12px;font-size:12.5px;margin:4px 0 6px;flex-wrap:wrap;align-items:center">'
         + riskBadge(b)
@@ -223,9 +242,29 @@ function renderList(){
   }).join('');
   app.innerHTML=pulseStrip()+recoLine()
     +'<div class="sect">Заказы на производство <button class="sm" onclick="newBatch()">＋ Новый заказ</button></div>'
+    +'<div id="auditsum"></div>'
     +'<div class="muted" style="margin:-4px 4px 8px">Отсортированы по приоритету: что делать первым — сверху. 🔴 в риске срока — вверху и с красной полосой. Нажмите на заказ — полное управление.</div>'
     +(cards||'<div class="box muted">заказов нет — создайте новый</div>')
     +needSection();
+  loadAudit();
+}
+// сводка проверок по всем заказам (лениво, чтобы не тормозить список)
+function loadAudit(){
+  api({vapi:'ordersaudit'}).then(function(r){
+    if(!r||!r.ok||VIEW!=='list') return;
+    var byId={}; (r.orders||[]).forEach(function(o){ byId[o.id]=o; });
+    BATCHES.forEach(function(b){
+      var el=$('aud_'+b.id); if(!el) return;
+      var o=byId[b.id]; if(!o){ el.innerHTML=''; return; }
+      var n=o.red+o.amber, cls=o.red?'abadge':'abadge amberonly';
+      el.innerHTML=' <span class="'+cls+'" title="нестыковки в данных — открой заказ, блок «Проверки логики»">⚠ '+n+'</span>';
+    });
+    var sum=$('auditsum'); if(!sum) return;
+    var withIssues=(r.orders||[]).length, red=(r.orders||[]).reduce(function(a,o){return a+o.red;},0);
+    sum.innerHTML=withIssues
+      ? '<div class="box" style="margin:0 0 10px;border-color:#f0d9b5;background:#fdf7ec;font-size:13px">⚠ <b>'+plural(withIssues,'заказ','заказа','заказов')+'</b> с вопросами к данным'+(red?' · 🔴 '+red+' критично':'')+' — значок ⚠ на карточке ведёт внутрь.</div>'
+      : '<div class="box" style="margin:0 0 10px;border-color:#cfe9d7;background:#e7f5ea;color:#137333;font-size:13px">✓ по всем заказам логика в порядке</div>';
+  }).catch(function(){});
 }
 
 // ── ДЕТАЛЬ: полная карточка одного заказа ──
@@ -269,9 +308,11 @@ function renderOps(id,r){
   var box=$('ops_'+id), k=r.kpi||{};
   var warn = (r.notAssembled&&r.notAssembled.length) ? '<div class="pill" style="background:#fbf1de;color:#b7791f;display:inline-block;margin-bottom:8px">⚠ не подтверждены директором как «собрано»: '+r.notAssembled.map(esc).join(', ')+'</div>' : '';
   var kpi=opsKpiHtml(k);
+  var flags=(r.checks&&r.checks.opFlags)||{};
   var prods=(r.products||[]).map(function(p,pi){
     var rows=p.ops.map(function(o){
-      return '<tr data-op="'+esc(o.id)+'"><td>'+esc(o.detail)+'</td><td>'+esc(o.op)+'</td>'
+      var fl=flags[o.id]?' <span class="chk '+flags[o.id]+'" title="есть замечание — см. блок «Проверки логики»">⚠</span>':'';
+      return '<tr data-op="'+esc(o.id)+'"><td>'+esc(o.detail)+fl+'</td><td>'+esc(o.op)+'</td>'
         +'<td class="num">'+o.need+'</td>'
         +'<td class="num"><input class="q c-stock" value="'+(o.stock||0)+'" inputmode="numeric" title="начальные остатки — работа уже выполнена (не важно кем)"'
         +' onchange="setStock(\''+id+'\',\''+esc(o.id)+'\',this.value,this)" onkeydown="stockKey(event,this)"></td>'
@@ -296,6 +337,7 @@ function renderOps(id,r){
   }).join('');
   var dash=r.dash||{}, nG=(dash.groups||[]).length, nO=(dash.ops||[]).length, nP=(r.products||[]).length;
   box.innerHTML=warn+'<div id="opskpi_'+id+'">'+kpi+'</div>'
+    +'<div id="opschecks_'+id+'">'+opsChecksHtml(id,r.checks||{})+'</div>'
     +trayHtml('Участки работ', nG?plural(nG,'участок','участка','участков'):'', 'нажми на участок — разбивка по типам операций',
               '<div id="opsdash_'+id+'">'+opsDashHtml(id,dash)+'</div>')
     +trayHtml('Заказ по операциям', nO?plural(nO,'операция','операции','операций'):'', 'одна деталь идёт в нескольких изделиях — здесь сведено по заказу',
@@ -305,6 +347,32 @@ function renderOps(id,r){
 }
 function toggleProd(id,pi){ var c=$('pc_'+id+'_'+pi); if(c) c.classList.toggle('open'); }
 function toggleGroup(id,gi){ var c=$('gc_'+id+'_'+gi); if(c) c.classList.toggle('open'); }
+// панель «Проверки логики»: нестыковки в данных заказа, чтобы админ видел и проверял
+var CHK_TITLE={sequence:'Последовательность',over:'Перевыполнение',stockover:'Остатки больше нужного',norate:'Нет расценки',orphan:'Висячая выработка',assembly:'«Собрано» ≠ факт'};
+function opsChecksHtml(id,c){
+  var iss=(c&&c.issues)||[], cn=(c&&c.counts)||{red:0,amber:0,info:0};
+  if(!iss.length) return '<div class="chkok">✓ логика в порядке — нестыковок в данных нет</div>';
+  var badges='';
+  if(cn.red) badges+='<span class="cbadge red">🔴 '+cn.red+'</span>';
+  if(cn.amber) badges+='<span class="cbadge amber">🟠 '+cn.amber+'</span>';
+  if(cn.info) badges+='<span class="cbadge info">🔵 '+cn.info+'</span>';
+  var list=iss.map(function(x){
+    var click=x.opId?' data-jump="'+esc(x.opId)+'" onclick="jumpToOp(\''+id+'\',\''+esc(x.opId)+'\')" style="cursor:pointer"':'';
+    return '<div class="cissue '+x.sev+'"'+click+'><span class="cdot"></span><span>'+esc(x.msg)+(x.opId?' <span class="cgo">показать →</span>':'')+'</span></div>';
+  }).join('');
+  return '<div class="tray chktray"><div class="trayhd">'
+    +'<span class="tt">Проверки логики</span>'+badges
+    +'<span class="th">нестыковки в данных — проверь и поправь</span></div>'
+    +'<div class="chklist">'+list+'</div></div>';
+}
+// клик по проблеме → раскрыть изделие с этой операцией, подсветить строку
+function jumpToOp(id,opId){
+  var tr=document.querySelector('[data-op="'+String(opId).replace(/"/g,'\\"')+'"]');
+  if(!tr) return;
+  var card=tr.closest('.pcard'); if(card&&!card.classList.contains('open')) card.classList.add('open');
+  tr.scrollIntoView({block:'center',behavior:'smooth'});
+  tr.classList.add('hl'); setTimeout(function(){ tr.classList.remove('hl'); },2200);
+}
 function toggleOp(id,oi){ var c=$('oc_'+id+'_'+oi); if(c) c.classList.toggle('open'); }
 // заказ, собранный ПО ОПЕРАЦИЯМ: одна деталь идёт в нескольких изделиях — здесь всё сведено в одну строку
 function opsByOpHtml(id,dash){
@@ -387,6 +455,8 @@ function applyOpsNumbers(id,r){
   var nOps=0; (r.products||[]).forEach(function(p){ nOps+=(p.ops||[]).length; });
   if(nOps!==box.querySelectorAll('tr[data-op]').length){ renderOps(id,r); return; }
   var kb=$('opskpi_'+id); if(kb) kb.innerHTML=opsKpiHtml(r.kpi||{});
+  var cb=$('opschecks_'+id); if(cb) cb.innerHTML=opsChecksHtml(id,r.checks||{});   // проверки пересчитываются целиком
+  var oflags=(r.checks&&r.checks.opFlags)||{};
   // агрегатные блоки (участки, заказ по операциям) пересчитываются целиком — в них не вводят; сохраняем раскрытое
   [['opsdash_',opsDashHtml],['opsbyop_',opsByOpHtml]].forEach(function(cfg){
     var b=$(cfg[0]+id); if(!b || !r.dash) return;
@@ -402,6 +472,9 @@ function applyOpsNumbers(id,r){
       var tr=box.querySelector('tr[data-op="'+String(o.id).replace(/"/g,'\\"')+'"]'); if(!tr) return;
       var d=tr.querySelector('.c-done'); if(d) d.textContent=o.done;
       var l=tr.querySelector('.c-left'); if(l){ l.setAttribute('style',opLeftCss(o)); l.innerHTML=opLeftHtml(o); }
+      var f1=tr.querySelector('td'), cur=f1&&f1.querySelector('.chk'), sev=oflags[o.id];   // значок ⚠ на строке
+      if(sev){ if(!cur){ cur=document.createElement('span'); cur.textContent=' ⚠'; cur.title='есть замечание — см. блок «Проверки логики»'; f1.appendChild(cur);} cur.className='chk '+sev; }
+      else if(cur){ cur.parentNode.removeChild(cur); }
       var inp=tr.querySelector('.c-stock');
       // поле обновляем только если пользователь в нём не работает и по нему нет несохранённой правки
       if(inp && !pendingStock[o.id] && document.activeElement!==inp && Number(inp.value)!==Number(o.stock||0)) inp.value=(o.stock||0);
@@ -414,11 +487,17 @@ function stockKey(ev,inp){
   var all=Array.prototype.slice.call(document.querySelectorAll('.c-stock'));
   var i=all.indexOf(inp); if(i>=0&&i<all.length-1){ all[i+1].focus(); all[i+1].select(); }
 }
-function setStock(batchId,opId,val,inp){
+function setStock(batchId,opId,val,inp,force){
   pendingStock[opId]=true;
   if(inp){ inp.style.background='#fffbe6'; }             // жёлтый = сохраняется
-  api({vapi:'setopstock',op:opId,stock:val}).then(function(r){
+  api({vapi:'setopstock',op:opId,stock:val,force:force?1:''}).then(function(r){
     delete pendingStock[opId];
+    if(r&&r.warn){                                       // предупреждение (остаток>нужного) — разрешаем через confirm
+      if(inp) inp.style.background='';
+      if(confirm(r.msg||'Значение больше, чем нужно. Записать всё равно?')) setStock(batchId,opId,val,inp,true);
+      else loadOps(batchId);                             // отказ → вернуть фактическое значение
+      return;
+    }
     if(r&&r.ok){
       if(inp){ inp.style.background='#eafaef'; setTimeout(function(){ inp.style.background=''; },700); }
       applyOpsNumbers(batchId,r);                        // только цифры, без пересборки
