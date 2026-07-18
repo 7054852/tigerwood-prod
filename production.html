@@ -359,12 +359,16 @@ function renderOps(id,r){
 // ── Панель директора: «ЗП начальника» — ставка ₽/шт за упаковку по каждому изделию заказа ──
 function loadBossPanel(id){
   if(!isDir()) return; var box=$('bosspanel_'+id); if(!box) return;
-  api({vapi:'bossorder',batch:id}).then(function(r){ if(!r||!r.ok||CUR!==id) return; box.innerHTML=bossPanelHtml(id,r); });
+  box.innerHTML='<div class="tray" style="border-color:#f4c7c3;background:#fdf3f2"><div class="trayhd">'
+    +'<span class="tt">💰 ЗП начальника — мотивация за упаковку</span></div>'
+    +'<div class="muted">считаю ставки…</div></div>';
+  api({vapi:'bossorder',batch:id}).then(function(r){ if(!r||!r.ok||CUR!==id) return; box.innerHTML=bossPanelHtml(id,r); })
+    .catch(function(){ if(CUR===id&&box) box.innerHTML=''; });
 }
 function bossPanelHtml(id,r){
   var rows=(r.products||[]).map(function(p){
-    return '<tr><td>'+esc(p.eq)+' · '+esc(p.model)+' <span class="muted">×'+p.ordered+'</span></td>'
-      +'<td class="num"><input class="q" style="width:70px" value="'+p.rate+'" inputmode="decimal"'
+    return '<tr><td style="white-space:normal;min-width:120px">'+esc(p.eq)+' · '+esc(p.model)+' <span class="muted">×'+p.ordered+'</span></td>'
+      +'<td class="num"><input class="q" style="width:60px" value="'+p.rate+'" inputmode="decimal"'
       +' title="ставка ₽ за упакованную штуку (по умолчанию '+p.base+' = 10% труда)"'
       +' onchange="saveBossRate(\''+id+'\',\''+esc(p.sku)+'\',this.value,this)">'
       +(p.overridden?' <span class="pill" style="background:#eef1f8;color:#556" title="базовая '+p.base+'">✎</span>':'')+'</td>'
@@ -376,8 +380,8 @@ function bossPanelHtml(id,r){
     +'<span class="tt">💰 ЗП начальника — мотивация за упаковку</span>'
     +'<span class="cnt">'+money(r.earned)+' / '+money(r.potential)+' ₽</span>'
     +'<span class="th">ставку ₽/шт можно менять в этом заказе — базовая берётся из справочника (10% труда)</span></div>'
-    +'<table><thead><tr><th>Изделие</th><th class="num">Ставка ₽/шт</th><th class="num">Упаковано</th><th class="num">Заработано</th><th class="num">Потенциал</th></tr></thead>'
-    +'<tbody>'+rows+'</tbody></table>'
+    +'<div style="overflow-x:auto"><table style="min-width:340px"><thead><tr><th>Изделие</th><th class="num">Ставка</th><th class="num">Упак.</th><th class="num">Зарабо-<br>тано</th><th class="num">Потен-<br>циал</th></tr></thead>'
+    +'<tbody>'+rows+'</tbody></table></div>'
     +'<div class="muted" style="margin-top:6px">Оклад начальника ('+money(r.salary)+' ₽/мес) — в его месячной сводке; здесь только мотивация по заказу.</div></div>';
 }
 function saveBossRate(id,sku,val,el){
