@@ -12,6 +12,8 @@
   h2{ font-size:18px; margin:0 0 4px; }
   label{ display:block; font-size:13px; color:var(--muted); margin:10px 0 4px; }
   select,input{ width:100%; padding:10px; border:1px solid var(--line); border-radius:9px; font-size:16px; }
+  select.vsel{ width:auto; flex:1; min-width:120px; padding:5px 8px; font-size:13px; }
+  select.vsel.need{ border-color:#b7791f; background:#fdf7ec; }
   button{ width:100%; padding:12px; margin-top:14px; border:0; border-radius:9px; font-size:16px; font-weight:600; color:#fff; background:var(--accent); cursor:pointer; }
   button.gray{ background:#eef; color:#334; } button.sm{ width:auto; padding:7px 12px; font-size:13px; margin:0; }
   .sum{ font-size:20px; font-weight:700; color:var(--green); margin-top:12px; text-align:center; }
@@ -162,9 +164,18 @@ function loadPending(){
     el.innerHTML=reps.map(function(rp){
       var rid=rp.report;
       var lines=rp.lines.map(function(l){
-        return '<div class="row" style="border-top:1px solid #eee;padding-top:5px"><span>'+esc(l.detail)+' · '+esc(l.op)+' · '+l.qty+' шт</span>'
+        var vsel='';
+        if(l.variants && l.variants.length>1){   // деталь есть в нескольких изделиях (напр. цвет на покраске) — мастер уточняет
+          var opts='<option value="">↔ распределить по заказу</option>'+l.variants.map(function(m){ return '<option value="'+esc(m)+'"'+(m===l.model?' selected':'')+'>'+esc(m)+'</option>'; }).join('');
+          var need=!l.model;
+          vsel='<div class="row" style="margin-top:3px"><span class="muted" style="font-size:12px">изделие/цвет:</span>'
+            +'<select class="vsel'+(need?' need':'')+'" onchange="setOutModel(\''+esc(l.id)+'\',this.value,this)">'+opts+'</select></div>';
+        }
+        return '<div style="border-top:1px solid #eee;padding-top:5px">'
+          +'<div class="row"><span>'+esc(l.detail)+' · '+esc(l.op)+' · '+l.qty+' шт</span>'
           +'<span>'+l.sum+' р. <button class="sm gray" onclick="editOut(\''+esc(l.id)+'\','+l.qty+')">✏️</button>'
-          +'<button class="sm gray" onclick="appr(\''+esc(l.id)+'\',0)" title="убрать эту строку из наряда">✖</button></span></div>';
+          +'<button class="sm gray" onclick="appr(\''+esc(l.id)+'\',0)" title="убрать эту строку из наряда">✖</button></span></div>'
+          +vsel+'</div>';
       }).join('');
       return '<div class="card"><div class="row"><b>'+esc(rp.worker)+'</b><span class="muted">'+esc(rp.date)+' · '+esc(rp.batch)+'</span></div>'
         +'<div class="muted">'+(rp.single?'одиночная запись':'наряд')+': '+rp.lines.length+' оп. · <b>'+rp.sum+' руб.</b></div>'
@@ -179,6 +190,11 @@ function apprRep(rid,ok){
   var single=rid.charAt(0)==='_';
   var p=single?{vapi:'approve',id:rid.slice(1),master:DATA.worker||'мастер',ok:ok?1:0}:{vapi:'approvereport',report:rid,master:DATA.worker||'мастер',ok:ok?1:0};
   api(p).then(function(r){ if(r&&r.ok){ loadPending(); } else if(m) m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; });
+}
+// мастер указывает изделие/цвет для строки выработки (привязка к варианту); пусто = распределить по заказу
+function setOutModel(id,model,sel){
+  if(sel) sel.classList.remove('need');
+  api({vapi:'setoutputmodel',id:id,model:model}).then(function(r){ if(!(r&&r.ok)&&sel){ sel.classList.add('need'); } });
 }
 // правка строки внутри наряда (кол-во сохраняется, статус не меняется)
 function editOut(id,cur){
