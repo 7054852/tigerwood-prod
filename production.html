@@ -118,6 +118,12 @@ function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){retur
 function $(id){ return document.getElementById(id); }
 function money(n){ n=Number(n)||0; return n.toFixed(2).replace('.',','); }
 var app=$('app'), NEEDS=[], BATCHES=[], MODELS=[], MODMAP={}, DETAIL=null, PULSE=null;
+function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
+var TGID=qp('tgid')||(function(){try{return localStorage.getItem('tw_tgid')||'';}catch(e){return '';}})();
+if(TGID){ try{localStorage.setItem('tw_tgid',TGID);}catch(e){} }
+var ROLE='';   // роль для гейтинга панели «ЗП начальника»
+function isDir(){ return ROLE==='директор'||ROLE==='админ'; }
+function loadRole(){ if(!TGID) return; api({vapi:'me',tgid:TGID}).then(function(r){ if(r&&r.ok&&r.role){ ROLE=r.role; if(VIEW==='detail'&&CUR&&DETAIL&&DETAIL.id===CUR&&isDir()) loadBossPanel(CUR); } }).catch(function(){}); }
 
 function load(){
   app.innerHTML='<div class="center muted">Загрузка…</div>';
@@ -125,6 +131,7 @@ function load(){
     NEEDS=(res[0]&&res[0].rows)||[]; BATCHES=(res[1]&&res[1].batches)||[]; PULSE=(res[1]&&res[1].pulse)||null;
     render();
     if(!MODELS.length) loadModels();
+    if(!ROLE) loadRole();
   }).catch(function(e){ app.innerHTML='<div class="center err">Ошибка загрузки: '+esc(e.message||e)+'</div>'; });
 }
 function loadModels(){
@@ -345,7 +352,40 @@ function renderOps(id,r){
     +trayHtml('Заказ по операциям', nO?plural(nO,'операция','операции','операций'):'', 'одна деталь идёт в нескольких изделиях — здесь сведено по заказу',
               '<div id="opsbyop_'+id+'">'+opsByOpHtml(id,dash)+'</div>')
     +(prods?trayHtml('Изделия заказа', plural(nP,'изделие','изделия','изделий'), 'нажми на изделие — его операции; остатки вводятся здесь', prods)
-           :'<div class="muted" style="margin-top:14px">нет операций — у изделий заказа не задан состав в каталоге</div>');
+           :'<div class="muted" style="margin-top:14px">нет операций — у изделий заказа не задан состав в каталоге</div>')
+    +'<div id="bosspanel_'+id+'"></div>';
+  if(isDir()) loadBossPanel(id);
+}
+// ── Панель директора: «ЗП начальника» — ставка ₽/шт за упаковку по каждому изделию заказа ──
+function loadBossPanel(id){
+  if(!isDir()) return; var box=$('bosspanel_'+id); if(!box) return;
+  api({vapi:'bossorder',batch:id}).then(function(r){ if(!r||!r.ok||CUR!==id) return; box.innerHTML=bossPanelHtml(id,r); });
+}
+function bossPanelHtml(id,r){
+  var rows=(r.products||[]).map(function(p){
+    return '<tr><td>'+esc(p.eq)+' · '+esc(p.model)+' <span class="muted">×'+p.ordered+'</span></td>'
+      +'<td class="num"><input class="q" style="width:70px" value="'+p.rate+'" inputmode="decimal"'
+      +' title="ставка ₽ за упакованную штуку (по умолчанию '+p.base+' = 10% труда)"'
+      +' onchange="saveBossRate(\''+id+'\',\''+esc(p.sku)+'\',this.value,this)">'
+      +(p.overridden?' <span class="pill" style="background:#eef1f8;color:#556" title="базовая '+p.base+'">✎</span>':'')+'</td>'
+      +'<td class="num">'+p.packed+'/'+p.ordered+'</td>'
+      +'<td class="num">'+money(p.earned)+'</td>'
+      +'<td class="num">'+money(p.potential)+'</td></tr>';
+  }).join('');
+  return '<div class="tray" style="border-color:#f4c7c3;background:#fdf3f2"><div class="trayhd">'
+    +'<span class="tt">💰 ЗП начальника — мотивация за упаковку</span>'
+    +'<span class="cnt">'+money(r.earned)+' / '+money(r.potential)+' ₽</span>'
+    +'<span class="th">ставку ₽/шт можно менять в этом заказе — базовая берётся из справочника (10% труда)</span></div>'
+    +'<table><thead><tr><th>Изделие</th><th class="num">Ставка ₽/шт</th><th class="num">Упаковано</th><th class="num">Заработано</th><th class="num">Потенциал</th></tr></thead>'
+    +'<tbody>'+rows+'</tbody></table>'
+    +'<div class="muted" style="margin-top:6px">Оклад начальника ('+money(r.salary)+' ₽/мес) — в его месячной сводке; здесь только мотивация по заказу.</div></div>';
+}
+function saveBossRate(id,sku,val,el){
+  var v=String(val).trim().replace(',','.'); if(el) el.disabled=true;
+  api({vapi:'setbossorderrate',batch:id,sku:sku,rate:v}).then(function(r){
+    if(r&&r.ok){ var box=$('bosspanel_'+id); if(box&&CUR===id) box.innerHTML=bossPanelHtml(id,r); }
+    else { if(el) el.disabled=false; alert((r&&r.error)||'не сохранилось'); }
+  }).catch(function(){ if(el) el.disabled=false; });
 }
 function toggleProd(id,pi){ var c=$('pc_'+id+'_'+pi); if(c) c.classList.toggle('open'); }
 function toggleGroup(id,gi){ var c=$('gc_'+id+'_'+gi); if(c) c.classList.toggle('open'); }
