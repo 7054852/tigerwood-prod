@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Тигервуд — начальник производства</title>
+<style>
+  :root{ --bg:#f4f6fb; --card:#fff; --fg:#1b2333; --muted:#8a93a6; --line:#e6e9f2; --accent:#2b7de9; --green:#137333; --amber:#b7791f; --red:#c0392b; }
+  *{box-sizing:border-box;} html,body{margin:0;background:var(--bg);}
+  body{ font-family:-apple-system,Roboto,Segoe UI,Arial,sans-serif; color:var(--fg); padding:14px; max-width:900px; margin:0 auto; font-size:14px; }
+  .hi{ font-size:19px; font-weight:800; }
+  .muted{ color:var(--muted); font-size:13px; }
+  .sect{ font-size:13px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin:18px 4px 8px; }
+  .box{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px 16px; }
+  /* месяц — крупные плитки */
+  .month{ background:linear-gradient(180deg,#eef5ff,#fff); border:1px solid #d7e6fb; border-radius:16px; padding:16px; margin-top:6px; }
+  .mrow{ display:flex; gap:10px; flex-wrap:wrap; align-items:stretch; }
+  .tile{ flex:1 1 130px; background:#fff; border:1px solid var(--line); border-radius:12px; padding:11px 13px; }
+  .tile .t{ font-size:11.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; }
+  .tile .v{ font-size:22px; font-weight:800; font-variant-numeric:tabular-nums; margin-top:2px; }
+  .tile .v small{ font-size:13px; font-weight:600; color:var(--muted); }
+  .big{ color:var(--green); }
+  /* карточка заказа */
+  .ocard{ background:var(--card); border:1px solid var(--line); border-radius:14px; margin-bottom:10px; box-shadow:0 1px 3px rgba(20,30,60,.05); }
+  .ohead{ display:flex; align-items:center; gap:10px; padding:12px 14px; cursor:pointer; flex-wrap:wrap; }
+  .ohead:hover{ background:#fafbfe; }
+  .onum{ font-weight:800; } .oname{ font-weight:600; flex:1; min-width:100px; }
+  .money{ font-weight:800; font-variant-numeric:tabular-nums; }
+  .car{ color:var(--muted); font-size:12px; width:12px; transition:transform .15s ease; }
+  .ocard.open .car{ transform:rotate(90deg); }
+  .obody{ display:none; padding:0 14px 12px; } .ocard.open .obody{ display:block; }
+  .bar{ height:7px; border-radius:6px; background:#eef1f8; overflow:hidden; min-width:70px; flex:1; max-width:160px; }
+  .bar>i{ display:block; height:100%; background:var(--green); }
+  .kpis{ display:flex; gap:8px; flex-wrap:wrap; margin:6px 0 2px; }
+  .kpi{ font-size:12px; background:#f2f5fb; border:1px solid var(--line); border-radius:20px; padding:2px 10px; color:#445; }
+  .kpi b{ color:var(--fg); }
+  .pill{ font-size:11px; font-weight:700; border-radius:20px; padding:2px 9px; }
+  .p-ok{ background:#e7f5ea; color:var(--green); } .p-warn{ background:#fdecea; color:var(--red); } .p-neu{ background:#eef1f8; color:#556; }
+  table{ width:100%; border-collapse:collapse; font-size:13px; margin-top:6px; }
+  th,td{ text-align:left; padding:6px 6px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  th{ color:var(--muted); font-size:11px; text-transform:uppercase; }
+  td.num,th.num{ text-align:right; font-variant-numeric:tabular-nums; }
+  .center{ text-align:center; padding:34px 16px; color:var(--muted); }
+</style>
+</head>
+<body>
+<div class="hi">🏭 Начальник производства</div>
+<div class="muted">Оклад + мотивация за упакованные изделия. Ставки задаёт директор.</div>
+<div id="app"><div class="center">Загрузка…</div></div>
+<script>
+var BASE='https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';
+var APP='tw7prod';
+function api(p){ p.app=APP; var q=Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]==null?'':p[k]);}).join('&'); return fetch(BASE+'?'+q).then(function(r){return r.json();}); }
+function $(id){ return document.getElementById(id); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function money(n){ return (Number(n)||0).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+var ORDERS=[];
+
+function load(){
+  Promise.all([api({vapi:'bossmonth'}), api({vapi:'bossorders'})]).then(function(r){
+    var mo=r[0]||{}, od=r[1]||{};
+    ORDERS=od.orders||[];
+    render(mo);
+  }).catch(function(e){ $('app').innerHTML='<div class="center">Сеть недоступна</div>'; });
+}
+function render(mo){
+  var app=$('app');
+  var month='<div class="sect">Этот месяц ('+esc(mo.month||'')+')</div>'
+    +'<div class="month"><div class="mrow">'
+    +'<div class="tile"><div class="t">Оклад</div><div class="v">'+money(mo.salary)+' <small>р</small></div></div>'
+    +'<div class="tile"><div class="t">Мотивация за упаковку</div><div class="v big">'+money(mo.motivation)+' <small>р</small></div></div>'
+    +'<div class="tile"><div class="t">Итого за месяц</div><div class="v">'+money(mo.total)+' <small>р</small></div></div>'
+    +'<div class="tile"><div class="t">Упаковано изделий</div><div class="v">'+(mo.packed||0)+'</div></div>'
+    +'</div>'
+    +(mo.packedNoVariant? '<div class="muted" style="margin-top:8px">⚠ '+mo.packedNoVariant+' шт упаковки без указанного варианта — мастер не проставил изделие, мотивация по ним не начислена.</div>':'')
+    +'</div>';
+  var pot=ORDERS.reduce(function(s,o){return s+(o.potential||0);},0);
+  var earn=ORDERS.reduce(function(s,o){return s+(o.earned||0);},0);
+  var orders='<div class="sect">Заказы в работе — деньги для меня <span class="muted" style="text-transform:none;font-weight:400">потенциал '+money(pot)+' · заработано '+money(earn)+' р</span></div>'
+    +(ORDERS.length? ORDERS.map(orderCard).join('') : '<div class="box muted">активных заказов нет</div>');
+  app.innerHTML=month+orders;
+}
+function riskPill(k){
+  if(!k.deadline) return '<span class="pill p-neu">срок не задан</span>';
+  if(k.risk==='late') return '<span class="pill p-warn">🔴 не успеваем</span>';
+  if(k.risk==='tight') return '<span class="pill p-neu" style="background:#f7efdb;color:#b7791f">🟡 впритык</span>';
+  if(k.risk==='done') return '<span class="pill p-ok">✔ готов</span>';
+  return '<span class="pill p-ok">🟢 в срок ('+esc(k.deadline)+')</span>';
+}
+function orderCard(o,i){
+  var k=o.kpi||{}, pct=Math.min(100,k.pct||0);
+  var rows=(o.products||[]).map(function(p){
+    return '<tr><td>'+esc(p.model||p.eq)+'</td>'
+      +'<td class="num">'+p.rate+(p.overridden?' ✎':'')+'</td>'
+      +'<td class="num">'+p.packed+'/'+p.ordered+'</td>'
+      +'<td class="num">'+money(p.earned)+'</td>'
+      +'<td class="num">'+money(p.potential)+'</td></tr>';
+  }).join('');
+  return '<div class="ocard" id="oc_'+i+'">'
+    +'<div class="ohead" onclick="tog('+i+')">'
+      +'<span class="car">▸</span>'
+      +'<span class="onum">'+esc(o.num)+'</span><span class="oname">'+esc(o.name)+'</span>'
+      +'<span class="bar"><i style="width:'+pct+'%'+(pct>=100?';background:#137333':'')+'"></i></span>'
+      +'<span class="money">'+money(o.earned)+' / '+money(o.potential)+' р</span>'
+    +'</div>'
+    +'<div class="obody">'
+      +'<div class="kpis">'
+        +'<span class="kpi">Готовность <b>'+(k.pct||0)+'%</b></span>'
+        +'<span class="kpi">Упаковано <b>'+k.packedUnits+'/'+k.totalUnits+'</b></span>'
+        +'<span class="kpi">Заработано <b>'+money(o.earned)+' р</b> из '+money(o.potential)+'</span>'
+        +riskPill(k)
+        +(k.checksTotal? '<span class="pill p-warn">нестыковок: '+k.checksTotal+'</span>':'<span class="pill p-ok">данные чисты</span>')
+      +'</div>'
+      +'<div class="kpis"><span class="muted">Бонусы:</span>'
+        +'<span class="pill '+(k.bonusSrok==='ок'?'p-ok':(k.bonusSrok==='риск'?'p-warn':'p-neu'))+'">срок: '+esc(k.bonusSrok)+'</span>'
+        +'<span class="pill '+(k.bonusEcon==='ок'?'p-ok':'p-warn')+'">экономия: '+esc(k.bonusEcon)+'</span>'
+      +'</div>'
+      +'<table><thead><tr><th>Изделие</th><th class="num">Ставка ₽/шт</th><th class="num">Упаковано</th><th class="num">Заработано</th><th class="num">Потенциал</th></tr></thead><tbody>'+rows+'</tbody></table>'
+    +'</div></div>';
+}
+function tog(i){ var c=$('oc_'+i); if(c) c.classList.toggle('open'); }
+load();
+</script>
+</body>
+</html>
