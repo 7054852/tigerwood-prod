@@ -88,8 +88,10 @@
   .cissue.amber{ border-left-color:#b7791f; } .cissue.amber .cdot{ background:#b7791f; }
   .cissue.info{ border-left-color:#2b5fd9; } .cissue.info .cdot{ background:#2b5fd9; }
   .cissue[data-jump]:hover{ background:#fafbfe; }
-  .cgo{ color:var(--accent); font-weight:600; white-space:nowrap; }
-  .chk{ font-size:11px; cursor:help; } .chk.red{ color:#c0392b; } .chk.amber{ color:#b7791f; } .chk.info{ color:#2b5fd9; }
+  .cgo{ color:var(--accent); font-weight:600; white-space:nowrap; cursor:pointer; }
+  .cx{ color:var(--muted); font-weight:600; white-space:nowrap; cursor:pointer; margin-left:6px; }
+  .cx:hover{ color:var(--red); }
+  .chk{ font-size:11px; cursor:pointer; } .chk.red{ color:#c0392b; } .chk.amber{ color:#b7791f; } .chk.info{ color:#2b5fd9; }
   tr.hl{ background:#fff6d8; transition:background .3s ease; }
   /* значок «⚠ N» в списке заказов */
   .abadge{ font-size:11px; font-weight:700; border-radius:20px; padding:1px 8px; background:#fdecea; color:#c0392b; }
@@ -311,7 +313,7 @@ function renderOps(id,r){
   var flags=(r.checks&&r.checks.opFlags)||{};
   var prods=(r.products||[]).map(function(p,pi){
     var rows=p.ops.map(function(o){
-      var fl=flags[o.id]?' <span class="chk '+flags[o.id]+'" title="есть замечание — см. блок «Проверки логики»">⚠</span>':'';
+      var fl=flags[o.id]?' <span class="chk '+flags[o.id]+'" onclick="showOpIssues(\''+id+'\',\''+esc(o.id)+'\')" title="нажми — показать замечание">⚠</span>':'';
       return '<tr data-op="'+esc(o.id)+'"><td>'+esc(o.detail)+fl+'</td><td>'+esc(o.op)+'</td>'
         +'<td class="num">'+o.need+'</td>'
         +'<td class="num"><input class="q c-stock" value="'+(o.stock||0)+'" inputmode="numeric" title="начальные остатки — работа уже выполнена (не важно кем)"'
@@ -348,8 +350,10 @@ function renderOps(id,r){
 function toggleProd(id,pi){ var c=$('pc_'+id+'_'+pi); if(c) c.classList.toggle('open'); }
 function toggleGroup(id,gi){ var c=$('gc_'+id+'_'+gi); if(c) c.classList.toggle('open'); }
 // панель «Проверки логики»: нестыковки в данных заказа, чтобы админ видел и проверял
-var CHK_TITLE={sequence:'Последовательность',over:'Перевыполнение',stockover:'Остатки больше нужного',norate:'Нет расценки',orphan:'Висячая выработка',assembly:'«Собрано» ≠ факт'};
+var CHKMSG={};   // id заказа → { opId: [сообщения] } — для клика по ⚠ на строке
+function setChkMsg(id,c){ var m={}; ((c&&c.issues)||[]).forEach(function(x){ if(x.opId){ (m[x.opId]=m[x.opId]||[]).push(x.msg); } }); CHKMSG[id]=m; }
 function opsChecksHtml(id,c){
+  setChkMsg(id,c);
   var iss=(c&&c.issues)||[], cn=(c&&c.counts)||{red:0,amber:0,info:0};
   if(!iss.length) return '<div class="chkok">✓ логика в порядке — нестыковок в данных нет</div>';
   var badges='';
@@ -357,21 +361,28 @@ function opsChecksHtml(id,c){
   if(cn.amber) badges+='<span class="cbadge amber">🟠 '+cn.amber+'</span>';
   if(cn.info) badges+='<span class="cbadge info">🔵 '+cn.info+'</span>';
   var list=iss.map(function(x){
-    var click=x.opId?' data-jump="'+esc(x.opId)+'" onclick="jumpToOp(\''+id+'\',\''+esc(x.opId)+'\')" style="cursor:pointer"':'';
-    return '<div class="cissue '+x.sev+'"'+click+'><span class="cdot"></span><span>'+esc(x.msg)+(x.opId?' <span class="cgo">показать →</span>':'')+'</span></div>';
+    var jump=x.opId?' <span class="cgo" onclick="event.stopPropagation();jumpToOp(\''+id+'\',\''+esc(x.opId)+'\')">показать →</span>':'';
+    var hide=x.canHide?' <span class="cx" onclick="event.stopPropagation();dismissCheck(\''+id+'\',\''+esc(x.opId)+'\',\''+esc(x.type)+'\')" title="убрать из списка — вернётся, если цифры позиции изменятся">убрать ✕</span>':'';
+    return '<div class="cissue '+x.sev+'"><span class="cdot"></span><span>'+esc(x.msg)+jump+hide+'</span></div>';
   }).join('');
   return '<div class="tray chktray"><div class="trayhd">'
     +'<span class="tt">Проверки логики</span>'+badges
     +'<span class="th">нестыковки в данных — проверь и поправь</span></div>'
     +'<div class="chklist">'+list+'</div></div>';
 }
-// клик по проблеме → раскрыть изделие с этой операцией, подсветить строку
+// клик по ⚠ на строке операции → показать замечание
+function showOpIssues(id,opId){ var m=(CHKMSG[id]||{})[opId]; if(m&&m.length) alert(m.join('\n\n')); }
+// клик «показать →» → раскрыть изделие с этой операцией и подсветить строку
 function jumpToOp(id,opId){
   var tr=document.querySelector('[data-op="'+String(opId).replace(/"/g,'\\"')+'"]');
-  if(!tr) return;
+  if(!tr){ showOpIssues(id,opId); return; }
   var card=tr.closest('.pcard'); if(card&&!card.classList.contains('open')) card.classList.add('open');
-  tr.scrollIntoView({block:'center',behavior:'smooth'});
-  tr.classList.add('hl'); setTimeout(function(){ tr.classList.remove('hl'); },2200);
+  var y=tr.getBoundingClientRect().top+window.pageYOffset-120; window.scrollTo(0,Math.max(0,y));
+  tr.classList.add('hl'); setTimeout(function(){ tr.classList.remove('hl'); },2400);
+}
+// снять ошибку (перевыполнение/остатки) — вернётся при изменении цифр позиции
+function dismissCheck(id,opId,type){
+  api({vapi:'dismisscheck',op:opId,type:type}).then(function(r){ if(r&&r.ok) applyOpsNumbers(id,r); });
 }
 function toggleOp(id,oi){ var c=$('oc_'+id+'_'+oi); if(c) c.classList.toggle('open'); }
 // заказ, собранный ПО ОПЕРАЦИЯМ: одна деталь идёт в нескольких изделиях — здесь всё сведено в одну строку
@@ -473,7 +484,7 @@ function applyOpsNumbers(id,r){
       var d=tr.querySelector('.c-done'); if(d) d.textContent=o.done;
       var l=tr.querySelector('.c-left'); if(l){ l.setAttribute('style',opLeftCss(o)); l.innerHTML=opLeftHtml(o); }
       var f1=tr.querySelector('td'), cur=f1&&f1.querySelector('.chk'), sev=oflags[o.id];   // значок ⚠ на строке
-      if(sev){ if(!cur){ cur=document.createElement('span'); cur.textContent=' ⚠'; cur.title='есть замечание — см. блок «Проверки логики»'; f1.appendChild(cur);} cur.className='chk '+sev; }
+      if(sev){ if(!cur){ cur=document.createElement('span'); cur.textContent=' ⚠'; cur.title='нажми — показать замечание'; cur.onclick=(function(oid){return function(){ showOpIssues(id,oid); };})(o.id); f1.appendChild(cur);} cur.className='chk '+sev; }
       else if(cur){ cur.parentNode.removeChild(cur); }
       var inp=tr.querySelector('.c-stock');
       // поле обновляем только если пользователь в нём не работает и по нему нет несохранённой правки
