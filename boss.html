@@ -42,6 +42,8 @@
   td.num,th.num{ text-align:right; font-variant-numeric:tabular-nums; }
   .center{ text-align:center; padding:34px 16px; color:var(--muted); }
   .rin{ width:58px; padding:5px 6px; border:1px solid var(--line); border-radius:7px; font-size:13px; text-align:right; font-variant-numeric:tabular-nums; }
+  .rreset{ border:1px solid var(--line); background:#f2f5fb; color:#556; border-radius:7px; padding:4px 7px; font-size:13px; cursor:pointer; margin-left:2px; }
+  .rreset:hover{ background:#e7edf7; }
 </style>
 </head>
 <body>
@@ -95,9 +97,11 @@ function riskPill(k){
   return '<span class="pill p-ok">🟢 в срок ('+esc(k.deadline)+')</span>';
 }
 function rateCell(o,p){
-  if(DIR) return '<td class="num"><input class="rin" value="'+p.rate+'" inputmode="decimal" title="ставка ₽/шт (по умолчанию '+p.base+')" onchange="saveRate(\''+esc(o.id)+'\',\''+esc(p.sku)+'\',this.value,this)">'
-    +(p.overridden?' <span title="базовая '+p.base+'">✎</span>':'')+'</td>';
-  return '<td class="num">'+p.rate+(p.overridden?' ✎':'')+'</td>';
+  if(DIR){
+    var reset = p.overridden ? ' <button class="rreset" title="вернуть к расчётной ('+p.base+' ₽/шт)" onclick="resetRate(\''+esc(o.id)+'\',\''+esc(p.sku)+'\',this)">↩</button>' : '';
+    return '<td class="num" style="white-space:nowrap"><input class="rin" value="'+p.rate+'" inputmode="decimal" title="ставка ₽/шт (расчётная '+p.base+')" onchange="saveRate(\''+esc(o.id)+'\',\''+esc(p.sku)+'\',this.value,this)">'+reset+'</td>';
+  }
+  return '<td class="num">'+p.rate+'</td>';   // начальник: только число, без индикатора правки
 }
 function orderCard(o,i){
   var k=o.kpi||{}, pct=Math.min(100,k.pct||0);
@@ -136,6 +140,13 @@ function saveRate(orderId,sku,val,el){
   OPEN[orderId]=true;
   api({vapi:'setbossorderrate',batch:orderId,sku:sku,rate:v}).then(function(r){
     if(r&&r.ok){ load(); } else { if(el) el.disabled=false; alert((r&&r.error)||'не сохранилось'); }
+  }).catch(function(){ if(el) el.disabled=false; alert('сеть недоступна'); });
+}
+// вернуть расценку к расчётной (пустая ставка → бэкенд ставит базовую 10% труда)
+function resetRate(orderId,sku,el){
+  if(el) el.disabled=true; OPEN[orderId]=true;
+  api({vapi:'setbossorderrate',batch:orderId,sku:sku,rate:''}).then(function(r){
+    if(r&&r.ok){ load(); } else { if(el) el.disabled=false; alert((r&&r.error)||'не сбросилось'); }
   }).catch(function(){ if(el) el.disabled=false; alert('сеть недоступна'); });
 }
 load();
