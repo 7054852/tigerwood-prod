@@ -209,7 +209,41 @@ function renderUsers(box,r){
     var reg=u.tgId?'<span class="pill" style="background:#e7f5ea;color:#137333">в системе</span>':'<span class="pill" style="background:#fdeee7;color:#b9770e">без Telegram</span>';
     return '<tr><td><b>'+esc(u.name)+'</b><br><span class="muted" style="font-size:11px">'+esc(u.tgId||'')+'</span></td><td>'+roleCell+'</td><td>'+masterCell+'</td><td>'+reg+'</td><td><span class="msg" id="um'+i+'"></span> '+actCell+'</td></tr>';
   }).join('');
-  box.innerHTML='<div class="pad"><div class="hi">👥 Сотрудники и доступы</div><p class="muted">Все, кто зарегистрировался через бота. '+(canEdit?'Назначайте роль и (рабочим) мастера/участок — сохраняйте 💾.':'')+'</p><div class="box" style="overflow-x:auto"><table><thead><tr><th>Сотрудник</th><th>Роль</th><th>Мастер/участок</th><th>Статус</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan=5 class="muted">пусто</td></tr>')+'</tbody></table></div></div>';
+  var invite='';
+  if(canEdit){
+    var ropts=roles.map(function(x){ return '<option value="'+x+'">'+esc(r.roleTitles[x]||x)+'</option>'; }).join('');
+    invite='<div class="box" style="margin-bottom:14px;background:#f0f6ff;border-color:#d3e4fb">'
+      +'<div style="font-weight:700;margin-bottom:8px">➕ Пригласить сотрудника под ролью</div>'
+      +'<div class="muted" style="margin-bottom:8px">Выберите роль → получите ссылку. Отправьте человеку — он перейдёт, введёт ФИО и <b>сразу войдёт под этой ролью</b>. Ссылка многоразовая (годится на нескольких людей одной роли).</div>'
+      +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">'
+        +'<div><div class="muted" style="font-size:11px;margin-bottom:3px">Роль</div><select id="invRole" style="min-width:180px">'+ropts+'</select></div>'
+        +'<div><div class="muted" style="font-size:11px;margin-bottom:3px">Мастер/участок (для рабочего)</div><input id="invMaster" placeholder="—" style="max-width:160px"></div>'
+        +'<button onclick="makeInvite()">Создать ссылку</button>'
+      +'</div>'
+      +'<div id="invOut" style="margin-top:10px"></div>'
+    +'</div>';
+  }
+  box.innerHTML='<div class="pad"><div class="hi">👥 Сотрудники и доступы</div><p class="muted">Все, кто зарегистрировался через бота. '+(canEdit?'Приглашайте по ссылке (сразу под ролью) или правьте роль существующим — сохраняйте 💾.':'')+'</p>'+invite+'<div class="box" style="overflow-x:auto"><table><thead><tr><th>Сотрудник</th><th>Роль</th><th>Мастер/участок</th><th>Статус</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan=5 class="muted">пусто</td></tr>')+'</tbody></table></div></div>';
+}
+function makeInvite(){
+  var role=document.getElementById('invRole').value, master=document.getElementById('invMaster').value, out=document.getElementById('invOut');
+  out.innerHTML='<span class="muted">создаю…</span>';
+  api({vapi:'createinvite',tgid:TGID,role:role,master:master}).then(function(r){
+    if(!r||!r.ok){ out.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; return; }
+    if(!r.link){ out.innerHTML='<span class="err">не удалось получить имя бота (проверьте токен бота)</span>'; return; }
+    out.innerHTML='<div class="muted" style="font-size:12px;margin-bottom:4px">Ссылка-приглашение под роль «'+esc(r.roleTitle)+'»'+(r.master?(' · участок '+esc(r.master)):'')+':</div>'
+      +'<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">'
+      +'<input id="invLink" value="'+esc(r.link)+'" readonly style="flex:1;min-width:220px;font-size:12px">'
+      +'<button class="sm" onclick="copyInvite()">📋 Копировать</button>'
+      +'<a class="sm" href="'+esc(r.link)+'" target="_blank" style="text-decoration:none;background:#eef1f8;color:#334;padding:6px 10px;border-radius:9px">Открыть</a>'
+      +'</div><div class="msg" id="invCopied" style="margin-top:4px"></div>';
+  }).catch(function(){ out.innerHTML='<span class="err">сеть недоступна</span>'; });
+}
+function copyInvite(){
+  var el=document.getElementById('invLink'); if(!el) return; el.select();
+  var done=function(){ var m=document.getElementById('invCopied'); if(m) m.innerHTML='<span class="ok">скопировано ✓</span>'; };
+  if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(el.value).then(done,function(){ try{document.execCommand('copy');done();}catch(e){} }); }
+  else { try{document.execCommand('copy');done();}catch(e){} }
 }
 function saveUser(i,tgid){
   var role=document.getElementById('ro'+i).value, master=document.getElementById('ma'+i).value, m=document.getElementById('um'+i); m.textContent='…';
