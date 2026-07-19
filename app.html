@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Тигервуд — сервис</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root{ --bg:#f4f6fb; --card:#fff; --fg:#1b2333; --muted:#8a93a6; --line:#e6e9f2; --accent:#2b7de9; --green:#137333; --red:#c0392b; --amber:#b9770e; --side:#0f1830; --sidefg:#dfe6f5; --sidemut:#8592ad; }
+  *{box-sizing:border-box;} html,body{margin:0;height:100%;background:var(--bg);}
+  body{ font-family:-apple-system,Roboto,Segoe UI,Arial,sans-serif; color:var(--fg); font-size:14px; }
+  .muted{ color:var(--muted); font-size:13px; }
+  .center{ text-align:center; padding:44px 16px; color:var(--muted); }
+  .err{ color:var(--red); } .ok{ color:var(--green); }
+  input,select{ padding:9px; border:1px solid var(--line); border-radius:9px; font-size:15px; width:100%; }
+  button{ padding:10px 15px; border:0; border-radius:9px; font-size:14px; font-weight:600; color:#fff; background:var(--accent); cursor:pointer; }
+  button.gray{ background:#eef1f8; color:#334; } button.sm{ padding:6px 10px; font-size:13px; }
+  .box{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; }
+  table{ width:100%; border-collapse:collapse; font-size:14px; }
+  th,td{ text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); vertical-align:middle; }
+  th{ color:var(--muted); font-size:12px; font-weight:600; }
+  td select,td input{ padding:6px; font-size:13px; }
+  .pill{ font-size:11px; padding:2px 8px; border-radius:20px; background:#eef1f8; color:#556; }
+  .msg{ font-size:13px; }
+
+  /* ─── каркас сервиса ─── */
+  .shell{ display:flex; min-height:100vh; }
+  .side{ width:246px; flex:0 0 246px; background:var(--side); color:var(--sidefg); display:flex; flex-direction:column;
+         position:sticky; top:0; height:100vh; overflow-y:auto; }
+  .sbrand{ display:flex; align-items:center; gap:10px; padding:16px 16px 12px; }
+  .sbrand .logo{ width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,#2b7de9,#1b56b0);color:#fff;display:flex;align-items:center;justify-content:center;font-size:20px;flex:0 0 auto; }
+  .sbrand .who{ line-height:1.2; min-width:0; }
+  .sbrand .who .n{ font-weight:700; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .sbrand .who .r{ font-size:11.5px; color:var(--sidemut); }
+  .snav{ padding:6px 10px 20px; flex:1; }
+  .sgroup{ margin-top:12px; }
+  .sgroup>.gt{ font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--sidemut); padding:6px 10px 4px; font-weight:700; }
+  .sitem{ display:flex; align-items:center; gap:9px; padding:9px 11px; border-radius:9px; color:var(--sidefg); text-decoration:none; cursor:pointer; font-size:13.5px; line-height:1.2; }
+  .sitem:hover{ background:rgba(255,255,255,.06); }
+  .sitem.active{ background:var(--accent); color:#fff; font-weight:600; }
+  .sitem .ic{ width:20px; text-align:center; flex:0 0 auto; }
+  .sitem .ex{ margin-left:auto; font-size:11px; color:var(--sidemut); }
+
+  .main{ flex:1; min-width:0; display:flex; flex-direction:column; }
+  .topbar{ display:none; align-items:center; gap:10px; padding:10px 12px; background:var(--side); color:#fff; position:sticky; top:0; z-index:20; }
+  .topbar .burger{ font-size:22px; background:none; padding:2px 8px; color:#fff; }
+  .topbar .tt{ font-weight:700; font-size:15px; }
+  .view{ flex:1; min-height:0; position:relative; }
+  .view iframe{ width:100%; height:100%; border:0; display:block; }
+  .view .pad{ padding:16px; max-width:920px; margin:0 auto; }
+  .backdrop{ display:none; }
+
+  /* мобилка: сайдбар превращается в выезжающее меню */
+  @media(max-width:820px){
+    .topbar{ display:flex; }
+    .side{ position:fixed; left:0; top:0; z-index:40; transform:translateX(-100%); transition:transform .18s ease; box-shadow:2px 0 18px rgba(0,0,0,.35); }
+    body.drawer .side{ transform:translateX(0); }
+    body.drawer .backdrop{ display:block; position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:35; }
+    .view iframe{ height:calc(100vh - 52px); }
+  }
+  @media(min-width:821px){ .view iframe{ height:100vh; } }
+
+  /* экран входа/регистрации/сотрудников — по центру */
+  .plain{ max-width:820px; margin:0 auto; padding:16px; }
+  .top{ display:flex; align-items:center; gap:12px; margin-bottom:16px; }
+  .top .logo{ width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,#2b7de9,#1b56b0);color:#fff;display:flex;align-items:center;justify-content:center;font-size:22px;flex:0 0 auto; }
+  .hi{ font-size:19px; font-weight:700; line-height:1.15; }
+  .back{ background:none;border:0;color:var(--accent);font-size:14px;cursor:pointer;padding:6px 0;font-weight:600; }
+</style>
+</head>
+<body>
+<div id="app"><div class="center">Загрузка…</div></div>
+<script>
+var BASE='https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';
+var APP='tw7prod', TGID='', ME=null, ROLE='', app=document.getElementById('app');
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
+function api(p){ p.app=APP; var q=Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]);}).join('&'); return fetch(BASE+'?'+q).then(function(r){return r.json();}); }
+try{ if(window.Telegram&&Telegram.WebApp){ Telegram.WebApp.ready(); Telegram.WebApp.expand(); var u=Telegram.WebApp.initDataUnsafe&&Telegram.WebApp.initDataUnsafe.user; if(u) TGID=String(u.id); } }catch(e){}
+if(!TGID){ TGID=qp('tgid')||localStorage.getItem('tw_tgid')||''; } if(TGID){ try{localStorage.setItem('tw_tgid',TGID);}catch(e){} }
+
+// same-origin (github) и относительные ссылки получают tgid; GAS-панели — как есть (их поведение не меняем)
+function withTid(url){ if(!url) return url; if(url.indexOf('7054852.github.io')>=0 || url.charAt(0)!=='h'){ return url+(url.indexOf('?')>=0?'&':'?')+'tgid='+encodeURIComponent(TGID); } return url; }
+function isDir(){ return ROLE==='директор'||ROLE==='админ'; }
+
+// ─── доменная структура меню: id раздела → группа + порядок ───
+var GROUPS=[
+  { key:'sales',   title:'Продажи',               items:['deals','clients','invoices','contracts','docs','price'] },
+  { key:'catalog', title:'Каталог и расценки',     items:['catalog','izd','ops','cost'] },
+  { key:'prod',    title:'Производство',           items:['boss','plan','vyrab','vcheck','stats','myteam'] },
+  { key:'supply',  title:'Снабжение и материалы',  items:['materials','snab'] },
+  { key:'admin',   title:'Администрирование',      items:['dash','users'] }
+];
+// внешние (открываются новой вкладкой, не встраиваются): прайс — Google-таблица; снаб — отдельное приложение со своим входом
+var EXTERNAL={ price:1, snab:1 };
+// доп. разделы, которых нет в apiMe, но добавляем в сервис (только для админ/директор)
+var EXTRAS={ snab:{ id:'snab', title:'🧾 Снаб — входящие счёта', url:'https://7054852.github.io/SnabTW/', roles:['админ','директор'] } };
+// заголовки разделов начинаются с эмодзи + пробел → первый токен = иконка, остальное = подпись
+function itemIcon(it){ var t=String(it.title||'').trim(); var sp=t.indexOf(' '); var head=sp>0?t.slice(0,sp):''; return (head && !/[a-zа-яё0-9]/i.test(head))?head:'•'; }
+function itemLabel(it){ var t=String(it.title||'').trim(); var ic=itemIcon(it); return (ic!=='•'&&t.indexOf(ic)===0)?t.slice(ic.length).trim():t; }
+
+// собрать доступные разделы: из apiMe (по роли) + EXTRAS; с реорг-метками
+function buildItems(){
+  var map={};
+  (ME.sections||[]).forEach(function(s){ if(s.id==='prod') return; map[s.id]={ id:s.id, title:s.title, url:s.url }; });   // 'prod' — старый дубль, скрыт
+  // EXTRAS по роли
+  Object.keys(EXTRAS).forEach(function(k){ var e=EXTRAS[k]; if(e.roles.indexOf(ROLE)>=0) map[k]={ id:k, title:e.title, url:e.url }; });
+  // реорг-метки директора/начальника
+  if(map.plan) map.plan.title = isDir()? '🏭 Управление производством' : '🏭 Производство';
+  if(map.boss) map.boss.title = '💰 Мои деньги';
+  return map;
+}
+
+function load(){
+  if(!TGID){ return identify(); }
+  app.innerHTML='<div class="center">Загрузка…</div>';
+  api({vapi:'me',tgid:TGID}).then(function(m){
+    ME=m;
+    if(!m||!m.ok){ app.innerHTML='<div class="center err">Ошибка доступа</div>'; return; }
+    if(!m.registered) return register();
+    ROLE=m.role||'';
+    shell();
+  }).catch(function(e){ app.innerHTML='<div class="center err">Ошибка загрузки</div>'; });
+}
+
+// ─── вход / регистрация (перенос из портала) ───
+function identify(){
+  app.innerHTML='<div class="plain"><div class="box"><div class="hi">Вход</div><p class="muted">Откройте сервис из бота <b>@TWOtchbot</b> (кнопка ☰). Для теста введите Telegram ID:</p><input id="tid" placeholder="напр. 7054852"><div style="height:10px"></div><button onclick="setTid()">Войти</button></div></div>';
+}
+function setTid(){ var v=document.getElementById('tid').value.trim(); if(v){ TGID=v; try{localStorage.setItem('tw_tgid',v);}catch(e){} load(); } }
+function register(){
+  app.innerHTML='<div class="plain"><div class="box"><div class="hi">👋 Добро пожаловать в Тигервуд</div><p class="muted">Вы ещё не в системе. Введите <b>Фамилию и Имя</b> — администратор назначит вам роль.</p><input id="fio" placeholder="Иванов Иван"><div style="height:10px"></div><button onclick="doReg()">Зарегистрироваться</button> <span class="msg" id="rmsg"></span></div></div>';
+}
+function doReg(){
+  var fio=document.getElementById('fio').value.trim(), m=document.getElementById('rmsg');
+  if(fio.length<3){ m.innerHTML='<span class="err">Укажите фамилию и имя</span>'; return; }
+  m.textContent='…';
+  api({vapi:'register',tgid:TGID,fio:fio}).then(function(r){ if(r&&r.ok){ load(); } else m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; });
+}
+
+// ─── каркас с навигацией ───
+var ITEMS={}, NAVID='';
+function shell(){
+  ITEMS=buildItems();
+  var groupsHtml=GROUPS.map(function(g){
+    var its=g.items.filter(function(id){ return ITEMS[id]; });
+    if(!its.length) return '';
+    var links=its.map(function(id){
+      var it=ITEMS[id], ext=EXTERNAL[id];
+      if(ext) return '<a class="sitem" href="'+esc(withTid(it.url))+'" target="_blank" rel="noopener"><span class="ic">'+itemIcon(it)+'</span><span>'+esc(itemLabel(it))+'</span><span class="ex">↗</span></a>';
+      return '<div class="sitem" id="nav_'+id+'" onclick="go(\''+id+'\')"><span class="ic">'+itemIcon(it)+'</span><span>'+esc(itemLabel(it))+'</span></div>';
+    }).join('');
+    return '<div class="sgroup"><div class="gt">'+esc(g.title)+'</div>'+links+'</div>';
+  }).join('');
+  var first=(ME.name||'').split(' ')[0]||ME.name||'';
+  app.innerHTML=''
+    +'<div class="shell">'
+    +'<div class="backdrop" onclick="drawer(false)"></div>'
+    +'<aside class="side">'
+      +'<div class="sbrand"><div class="logo">🌲</div><div class="who"><div class="n">'+esc(first)+'</div><div class="r">'+esc(ME.roleTitle||ROLE)+'</div></div></div>'
+      +'<nav class="snav">'+groupsHtml+'</nav>'
+    +'</div>'
+    +'<div class="main">'
+      +'<div class="topbar"><button class="burger" onclick="drawer(true)">☰</button><span class="tt" id="topttl">Тигервуд</span></div>'
+      +'<div class="view" id="view"></div>'
+    +'</div>'
+    +'</div>';
+  window.onhashchange=route;
+  route();
+}
+function drawer(open){ document.body.classList.toggle('drawer',!!open); }
+function go(id){ location.hash='#/'+id; if(location.hash==='#/'+id) route(); }   // если хеш не сменился — форсим
+function route(){
+  // первый доступный встраиваемый раздел по умолчанию
+  var def=''; GROUPS.some(function(g){ return g.items.some(function(id){ if(ITEMS[id]&&!EXTERNAL[id]){ def=id; return true; } return false; }); });
+  var h=(location.hash||'').replace(/^#\//,'');
+  var id=(h&&ITEMS[h]&&!EXTERNAL[h])?h:def;
+  if(!id){ document.getElementById('view').innerHTML='<div class="pad muted">нет доступных разделов — обратитесь к администратору</div>'; return; }
+  NAVID=id;
+  // подсветка активного пункта
+  var prev=document.querySelector('.sitem.active'); if(prev) prev.classList.remove('active');
+  var cur=document.getElementById('nav_'+id); if(cur) cur.classList.add('active');
+  var tt=document.getElementById('topttl'); if(tt) tt.textContent=itemLabel(ITEMS[id]);
+  drawer(false);
+  showView(id);
+}
+function showView(id){
+  var box=document.getElementById('view');
+  if(id==='users'){ usersView(box); return; }
+  var url=withTid(ITEMS[id].url);
+  url += (url.indexOf('?')>=0?'&':'?')+'embed=1';
+  box.innerHTML='<iframe src="'+esc(url)+'" loading="eager"></iframe>';
+}
+
+// ─── «Сотрудники и доступы» (перенос из портала) ───
+function usersView(box){
+  box.innerHTML='<div class="pad"><div class="hi">👥 Сотрудники и доступы</div><div class="center">Загрузка…</div></div>';
+  api({vapi:'users',tgid:TGID}).then(function(r){ renderUsers(box,r); }).catch(function(e){ box.innerHTML='<div class="pad err">Ошибка</div>'; });
+}
+function renderUsers(box,r){
+  if(!r||!r.ok){ box.innerHTML='<div class="pad err">'+esc((r&&r.error)||'нет прав')+'</div>'; return; }
+  var roles=r.roles||[], canEdit=r.canEdit;
+  var rows=(r.users||[]).map(function(u,i){
+    var roleCell=canEdit?'<select id="ro'+i+'">'+roles.map(function(x){return '<option value="'+x+'"'+(x===u.role?' selected':'')+'>'+esc(r.roleTitles[x]||x)+'</option>';}).join('')+'</select>':'<span class="pill">'+esc(r.roleTitles[u.role]||u.role)+'</span>';
+    var masterCell=canEdit?'<input id="ma'+i+'" value="'+esc(u.master)+'" placeholder="—" style="max-width:120px">':esc(u.master||'—');
+    var actCell=canEdit?'<button class="sm" onclick="saveUser('+i+',\''+esc(u.tgId)+'\')">💾</button>':'';
+    var reg=u.tgId?'<span class="pill" style="background:#e7f5ea;color:#137333">в системе</span>':'<span class="pill" style="background:#fdeee7;color:#b9770e">без Telegram</span>';
+    return '<tr><td><b>'+esc(u.name)+'</b><br><span class="muted" style="font-size:11px">'+esc(u.tgId||'')+'</span></td><td>'+roleCell+'</td><td>'+masterCell+'</td><td>'+reg+'</td><td><span class="msg" id="um'+i+'"></span> '+actCell+'</td></tr>';
+  }).join('');
+  box.innerHTML='<div class="pad"><div class="hi">👥 Сотрудники и доступы</div><p class="muted">Все, кто зарегистрировался через бота. '+(canEdit?'Назначайте роль и (рабочим) мастера/участок — сохраняйте 💾.':'')+'</p><div class="box" style="overflow-x:auto"><table><thead><tr><th>Сотрудник</th><th>Роль</th><th>Мастер/участок</th><th>Статус</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan=5 class="muted">пусто</td></tr>')+'</tbody></table></div></div>';
+}
+function saveUser(i,tgid){
+  var role=document.getElementById('ro'+i).value, master=document.getElementById('ma'+i).value, m=document.getElementById('um'+i); m.textContent='…';
+  api({vapi:'setuser',tgid:TGID,target:tgid,role:role,master:master}).then(function(r){ m.innerHTML=(r&&r.ok)?'<span class="ok">✅</span>':'<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; }).catch(function(e){ m.innerHTML='<span class="err">ошибка</span>'; });
+}
+load();
+</script>
+</body>
+</html>
