@@ -41,6 +41,7 @@
   th{ color:var(--muted); font-size:11px; text-transform:uppercase; }
   td.num,th.num{ text-align:right; font-variant-numeric:tabular-nums; }
   .center{ text-align:center; padding:34px 16px; color:var(--muted); }
+  .rin{ width:58px; padding:5px 6px; border:1px solid var(--line); border-radius:7px; font-size:13px; text-align:right; font-variant-numeric:tabular-nums; }
 </style>
 </head>
 <body>
@@ -55,18 +56,21 @@ function api(p){ p.app=APP; var q=Object.keys(p).map(function(k){return k+'='+en
 function $(id){ return document.getElementById(id); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function money(n){ return (Number(n)||0).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2}); }
-var ORDERS=[];
+function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
+var TGID=qp('tgid')||(function(){try{return localStorage.getItem('tw_tgid')||'';}catch(e){return '';}})();
+if(TGID){ try{localStorage.setItem('tw_tgid',TGID);}catch(e){} }
+var ORDERS=[], MO={}, DIR=false, OPEN={};   // DIR=директор/админ (может менять ставки); OPEN — какие заказы раскрыты
 
 function load(){
-  Promise.all([api({vapi:'bossmonth'}), api({vapi:'bossorders'})]).then(function(r){
-    var mo=r[0]||{}, od=r[1]||{};
-    ORDERS=od.orders||[];
-    render(mo);
+  Promise.all([ api({vapi:'bossmonth'}), api({vapi:'bossorders'}), TGID?api({vapi:'me',tgid:TGID}):Promise.resolve(null) ]).then(function(r){
+    MO=r[0]||{}; ORDERS=(r[1]||{}).orders||[];
+    var me=r[2]; DIR=!!(me&&me.ok&&(me.role==='директор'||me.role==='админ'));
+    render();
   }).catch(function(e){ $('app').innerHTML='<div class="center">Сеть недоступна</div>'; });
 }
-function render(mo){
-  var app=$('app');
-  var month='<div class="sect">Этот месяц ('+esc(mo.month||'')+')</div>'
+function render(){
+  var app=$('app'), mo=MO;
+  var month='<div class="sect">Этот месяц ('+esc(mo.month||'')+')'+(DIR?' — начальник производства':'')+'</div>'
     +'<div class="month"><div class="mrow">'
     +'<div class="tile"><div class="t">Оклад</div><div class="v">'+money(mo.salary)+' <small>р</small></div></div>'
     +'<div class="tile"><div class="t">Мотивация за упаковку</div><div class="v big">'+money(mo.motivation)+' <small>р</small></div></div>'
@@ -77,9 +81,11 @@ function render(mo){
     +'</div>';
   var pot=ORDERS.reduce(function(s,o){return s+(o.potential||0);},0);
   var earn=ORDERS.reduce(function(s,o){return s+(o.earned||0);},0);
-  var orders='<div class="sect">Заказы в работе — деньги для меня <span class="muted" style="text-transform:none;font-weight:400">потенциал '+money(pot)+' · заработано '+money(earn)+' р</span></div>'
+  var hint=DIR? 'ставки ₽/шт можно менять — базовая берётся из справочника (10% труда)' : 'потенциал '+money(pot)+' · заработано '+money(earn)+' р';
+  var orders='<div class="sect">'+(DIR?'Заказы — ставки и деньги начальника':'Заказы в работе — деньги для меня')+' <span class="muted" style="text-transform:none;font-weight:400">'+hint+'</span></div>'
     +(ORDERS.length? ORDERS.map(orderCard).join('') : '<div class="box muted">активных заказов нет</div>');
   app.innerHTML=month+orders;
+  Object.keys(OPEN).forEach(function(id){ if(OPEN[id]){ var c=$('oc_'+id); if(c) c.classList.add('open'); } });
 }
 function riskPill(k){
   if(!k.deadline) return '<span class="pill p-neu">срок не задан</span>';
@@ -88,17 +94,22 @@ function riskPill(k){
   if(k.risk==='done') return '<span class="pill p-ok">✔ готов</span>';
   return '<span class="pill p-ok">🟢 в срок ('+esc(k.deadline)+')</span>';
 }
+function rateCell(o,p){
+  if(DIR) return '<td class="num"><input class="rin" value="'+p.rate+'" inputmode="decimal" title="ставка ₽/шт (по умолчанию '+p.base+')" onchange="saveRate(\''+esc(o.id)+'\',\''+esc(p.sku)+'\',this.value,this)">'
+    +(p.overridden?' <span title="базовая '+p.base+'">✎</span>':'')+'</td>';
+  return '<td class="num">'+p.rate+(p.overridden?' ✎':'')+'</td>';
+}
 function orderCard(o,i){
   var k=o.kpi||{}, pct=Math.min(100,k.pct||0);
   var rows=(o.products||[]).map(function(p){
     return '<tr><td>'+esc(p.model||p.eq)+'</td>'
-      +'<td class="num">'+p.rate+(p.overridden?' ✎':'')+'</td>'
+      +rateCell(o,p)
       +'<td class="num">'+p.packed+'/'+p.ordered+'</td>'
       +'<td class="num">'+money(p.earned)+'</td>'
       +'<td class="num">'+money(p.potential)+'</td></tr>';
   }).join('');
-  return '<div class="ocard" id="oc_'+i+'">'
-    +'<div class="ohead" onclick="tog('+i+')">'
+  return '<div class="ocard" id="oc_'+esc(o.id)+'">'
+    +'<div class="ohead" onclick="tog(\''+esc(o.id)+'\')">'
       +'<span class="car">▸</span>'
       +'<span class="onum">'+esc(o.num)+'</span><span class="oname">'+esc(o.name)+'</span>'
       +'<span class="bar"><i style="width:'+pct+'%'+(pct>=100?';background:#137333':'')+'"></i></span>'
@@ -108,7 +119,7 @@ function orderCard(o,i){
       +'<div class="kpis">'
         +'<span class="kpi">Готовность <b>'+(k.pct||0)+'%</b></span>'
         +'<span class="kpi">Упаковано <b>'+k.packedUnits+'/'+k.totalUnits+'</b></span>'
-        +'<span class="kpi">Заработано <b>'+money(o.earned)+' р</b> из '+money(o.potential)+'</span>'
+        +'<span class="kpi">'+(DIR?'Начислено':'Заработано')+' <b>'+money(o.earned)+' р</b> из '+money(o.potential)+'</span>'
         +riskPill(k)
         +(k.checksTotal? '<span class="pill p-warn">нестыковок: '+k.checksTotal+'</span>':'<span class="pill p-ok">данные чисты</span>')
       +'</div>'
@@ -116,10 +127,17 @@ function orderCard(o,i){
         +'<span class="pill '+(k.bonusSrok==='ок'?'p-ok':(k.bonusSrok==='риск'?'p-warn':'p-neu'))+'">срок: '+esc(k.bonusSrok)+'</span>'
         +'<span class="pill '+(k.bonusEcon==='ок'?'p-ok':'p-warn')+'">экономия: '+esc(k.bonusEcon)+'</span>'
       +'</div>'
-      +'<table><thead><tr><th>Изделие</th><th class="num">Ставка ₽/шт</th><th class="num">Упаковано</th><th class="num">Заработано</th><th class="num">Потенциал</th></tr></thead><tbody>'+rows+'</tbody></table>'
+      +'<table><thead><tr><th>Изделие</th><th class="num">Ставка ₽/шт</th><th class="num">Упаковано</th><th class="num">'+(DIR?'Начислено':'Заработано')+'</th><th class="num">Потенциал</th></tr></thead><tbody>'+rows+'</tbody></table>'
     +'</div></div>';
 }
-function tog(i){ var c=$('oc_'+i); if(c) c.classList.toggle('open'); }
+function tog(id){ var c=$('oc_'+id); if(c){ var open=c.classList.toggle('open'); OPEN[id]=open; } }
+function saveRate(orderId,sku,val,el){
+  var v=String(val).trim().replace(',','.'); if(el) el.disabled=true;
+  OPEN[orderId]=true;
+  api({vapi:'setbossorderrate',batch:orderId,sku:sku,rate:v}).then(function(r){
+    if(r&&r.ok){ load(); } else { if(el) el.disabled=false; alert((r&&r.error)||'не сохранилось'); }
+  }).catch(function(){ if(el) el.disabled=false; alert('сеть недоступна'); });
+}
 load();
 </script>
 </body>
