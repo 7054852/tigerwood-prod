@@ -128,6 +128,7 @@ function load(){
     ME=m;
     if(!m||!m.ok){ app.innerHTML='<div class="center err">Ошибка доступа</div>'; return; }
     if(!m.registered) return register();
+    if(m.blocked){ app.innerHTML='<div class="plain"><div class="box"><div class="hi">⛔ Доступ приостановлен</div><p class="muted">Ваша учётная запись в архиве. Обратитесь к администратору или мастеру.</p></div></div>'; return; }
     ROLE=m.role||'';
     shell();
   }).catch(function(e){ app.innerHTML='<div class="center err">Ошибка загрузки</div>'; });
@@ -228,12 +229,23 @@ function renderUsers(box,r){
   if(!r||!r.ok){ box.innerHTML='<div class="pad err">'+esc((r&&r.error)||'нет прав')+'</div>'; return; }
   var roles=r.roles||[], canEdit=r.canEdit, me=r.me||{}, isMaster=(me.role==='мастер');
   var pageTitle=isMaster?'👥 Моя бригада':'👥 Сотрудники и доступы';
+  var myTg=String(me.tgId||'');
   var rows=(r.users||[]).map(function(u,i){
+    var archived=!isActiveJs(u.active);
+    var self=!!u.tgId && String(u.tgId)===myTg;
+    var canManage=canEdit||(isMaster&&u.master===me.name);
+    var nm=String(u.name).replace(/[\\']/g,''), tg=String(u.tgId||'');
     var roleCell=canEdit?'<select id="ro'+i+'">'+roles.map(function(x){return '<option value="'+x+'"'+(x===u.role?' selected':'')+'>'+esc(r.roleTitles[x]||x)+'</option>';}).join('')+'</select>':'<span class="pill">'+esc(r.roleTitles[u.role]||u.role)+'</span>';
     var masterCell=canEdit?'<input id="ma'+i+'" value="'+esc(u.master)+'" placeholder="—" style="max-width:120px">':esc(u.master||'—');
-    var actCell=canEdit?'<button class="sm" onclick="saveUser('+i+',\''+esc(u.tgId)+'\')">💾</button>':'';
-    var reg=u.tgId?'<span class="pill" style="background:#e7f5ea;color:#137333">в системе</span>':'<span class="pill" style="background:#fdeee7;color:#b9770e">без Telegram</span>';
-    return '<tr><td><b>'+esc(u.name)+'</b><br><span class="muted" style="font-size:11px">'+esc(u.tgId||'')+'</span></td><td>'+roleCell+'</td><td>'+masterCell+'</td><td>'+reg+'</td><td><span class="msg" id="um'+i+'"></span> '+actCell+'</td></tr>';
+    var acts='';
+    if(canEdit&&!self) acts+='<button class="sm" title="сохранить роль/участок" onclick="saveUser('+i+',\''+esc(tg)+'\')">💾</button> ';
+    if(canManage&&!self){ acts+= archived
+      ? '<button class="sm" title="вернуть из архива" onclick="restoreWorker(\''+tg+'\',\''+nm+'\')">↩</button> '
+      : '<button class="sm" title="в архив — доступ пропадёт, история ЗП сохранится" onclick="archiveWorker(\''+tg+'\',\''+nm+'\')">🗄</button> '; }
+    if(canEdit&&!self) acts+='<button class="sm" style="color:#c0392b" title="удалить (только без выработки)" onclick="deleteWorker(\''+tg+'\',\''+nm+'\')">🗑</button>';
+    var reg=archived?'<span class="pill" style="background:#eceff4;color:#77808f">в архиве</span>'
+      :(u.tgId?'<span class="pill" style="background:#e7f5ea;color:#137333">в системе</span>':'<span class="pill" style="background:#fdeee7;color:#b9770e">без Telegram</span>');
+    return '<tr'+(archived?' style="opacity:.6"':'')+'><td><b>'+esc(u.name)+'</b><br><span class="muted" style="font-size:11px">'+esc(u.tgId||'')+'</span></td><td>'+roleCell+'</td><td>'+masterCell+'</td><td>'+reg+'</td><td><span class="msg" id="um'+i+'"></span> '+acts+'</td></tr>';
   }).join('');
   var invite='';
   if(canEdit){
@@ -283,6 +295,23 @@ function copyInvite(){
 function saveUser(i,tgid){
   var role=document.getElementById('ro'+i).value, master=document.getElementById('ma'+i).value, m=document.getElementById('um'+i); m.textContent='…';
   api({vapi:'setuser',tgid:TGID,target:tgid,role:role,master:master}).then(function(r){ m.innerHTML=(r&&r.ok)?'<span class="ok">✅</span>':'<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; }).catch(function(e){ m.innerHTML='<span class="err">ошибка</span>'; });
+}
+function isActiveJs(v){ var s=String(v==null?'':v).trim().toLowerCase(); return !(s==='нет'||s==='архив'||s==='no'||s==='false'||s==='0'||s==='off'); }
+function reloadUsers(){ var box=document.getElementById('view'); if(box) usersView(box); }
+function archiveWorker(tgId,name){
+  if(!confirm('Убрать «'+name+'» в архив?\nДоступ пропадёт, но выработка и ЗП сохранятся.')) return;
+  api({vapi:'archiveworker',tgid:TGID,target:tgId,name:name}).then(function(r){ if(r&&r.ok) reloadUsers(); else alert((r&&r.error)||'ошибка'); }).catch(function(){ alert('сеть недоступна'); });
+}
+function restoreWorker(tgId,name){
+  api({vapi:'restoreworker',tgid:TGID,target:tgId,name:name}).then(function(r){ if(r&&r.ok) reloadUsers(); else alert((r&&r.error)||'ошибка'); }).catch(function(){ alert('сеть недоступна'); });
+}
+function deleteWorker(tgId,name){
+  if(!confirm('Удалить «'+name+'» полностью? Это необратимо.')) return;
+  api({vapi:'delworker',tgid:TGID,target:tgId,name:name}).then(function(r){
+    if(r&&r.ok){ reloadUsers(); return; }
+    if(r&&r.hasOutput){ if(confirm((r.error||'у работника есть выработка')+'.\n\nУбрать в архив вместо удаления?')) archiveWorker(tgId,name); return; }
+    alert((r&&r.error)||'ошибка');
+  }).catch(function(){ alert('сеть недоступна'); });
 }
 // ─── «Доступ к разделам»: матрица роль → страницы (админ/директор) ───
 var ACCESS=null, ACCROLE='';
