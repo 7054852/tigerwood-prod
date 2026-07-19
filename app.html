@@ -61,6 +61,15 @@
   @media(min-width:821px){ .view iframe{ height:100vh; } }
 
   /* экран входа/регистрации/сотрудников — по центру */
+  /* матрица доступа */
+  .rchips{ display:flex; gap:6px; flex-wrap:wrap; margin:6px 0 4px; }
+  .rchip{ background:#eef1f8; color:#334; border:1px solid var(--line); font-weight:600; padding:7px 12px; border-radius:20px; }
+  .rchip.on{ background:var(--accent); color:#fff; border-color:var(--accent); }
+  .acc-grp{ margin-bottom:12px; } .acc-grp:last-child{ margin-bottom:0; }
+  .acc-gt{ font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin:4px 0 4px; }
+  .acc-row{ display:flex; align-items:center; gap:9px; padding:8px 6px; border-bottom:1px solid var(--line); cursor:pointer; font-size:14px; }
+  .acc-row:last-child{ border-bottom:0; }
+  .acc-row input{ width:18px; height:18px; flex:0 0 auto; }
   .plain{ max-width:820px; margin:0 auto; padding:16px; }
   .top{ display:flex; align-items:center; gap:12px; margin-bottom:16px; }
   .top .logo{ width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,#2b7de9,#1b56b0);color:#fff;display:flex;align-items:center;justify-content:center;font-size:22px;flex:0 0 auto; }
@@ -90,7 +99,7 @@ var GROUPS=[
   { key:'catalog', title:'Каталог и расценки',     items:['catalog','izd','ops','cost'] },
   { key:'prod',    title:'Производство',           items:['boss','plan','vyrab','vcheck','stats','myteam'] },
   { key:'supply',  title:'Снабжение и материалы',  items:['materials','snab'] },
-  { key:'admin',   title:'Администрирование',      items:['dash','users'] }
+  { key:'admin',   title:'Администрирование',      items:['dash','access','users'] }
 ];
 // внешние (открываются новой вкладкой, не встраиваются): прайс — Google-таблица; снаб — отдельное приложение со своим входом
 var EXTERNAL={ price:1, snab:1 };
@@ -188,6 +197,7 @@ function route(){
 function showView(id){
   var box=document.getElementById('view');
   if(id==='users'){ usersView(box); return; }
+  if(id==='access'){ accessView(box); return; }
   var url=withTid(ITEMS[id].url);
   url += (url.indexOf('?')>=0?'&':'?')+'embed=1';
   if(url.indexOf('7054852.github.io')>=0) url += '&v='+VER;   // версия только для наших stat-страниц (не для GAS)
@@ -248,6 +258,49 @@ function copyInvite(){
 function saveUser(i,tgid){
   var role=document.getElementById('ro'+i).value, master=document.getElementById('ma'+i).value, m=document.getElementById('um'+i); m.textContent='…';
   api({vapi:'setuser',tgid:TGID,target:tgid,role:role,master:master}).then(function(r){ m.innerHTML=(r&&r.ok)?'<span class="ok">✅</span>':'<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; }).catch(function(e){ m.innerHTML='<span class="err">ошибка</span>'; });
+}
+// ─── «Доступ к разделам»: матрица роль → страницы (админ/директор) ───
+var ACCESS=null, ACCROLE='';
+function accessView(box){
+  box.innerHTML='<div class="pad"><div class="hi">🔑 Доступ к разделам</div><div class="center">Загрузка…</div></div>';
+  api({vapi:'accessmatrix',tgid:TGID}).then(function(r){
+    if(!r||!r.ok){ box.innerHTML='<div class="pad err">'+esc((r&&r.error)||'нет прав')+'</div>'; return; }
+    ACCESS=r; if(!ACCROLE||r.roles.indexOf(ACCROLE)<0) ACCROLE=r.roles[0]; renderAccess(box);
+  }).catch(function(){ box.innerHTML='<div class="pad err">сеть недоступна</div>'; });
+}
+function renderAccess(box){
+  var r=ACCESS;
+  var chips=r.roles.map(function(role){ return '<button class="rchip'+(role===ACCROLE?' on':'')+'" onclick="pickAccRole(\''+role+'\')">'+esc(r.roleTitles[role]||role)+'</button>'; }).join('');
+  var tmap={}; r.sections.forEach(function(s){ tmap[s.id]=s.title; });
+  var have={}; (r.access[ACCROLE]||[]).forEach(function(id){ have[id]=1; });
+  var groups=GROUPS.map(function(g){
+    var its=g.items.filter(function(id){ return tmap[id]; });
+    if(!its.length) return '';
+    var rows=its.map(function(id){
+      return '<label class="acc-row"><input type="checkbox" '+(have[id]?'checked':'')+' onchange="toggleAcc(\''+id+'\',this.checked)"> <span>'+esc(tmap[id])+'</span></label>';
+    }).join('');
+    return '<div class="acc-grp"><div class="acc-gt">'+esc(g.title)+'</div>'+rows+'</div>';
+  }).join('');
+  var isMeta = (ACCROLE==='админ'||ACCROLE==='директор');
+  box.innerHTML='<div class="pad"><div class="hi">🔑 Доступ к разделам</div>'
+    +'<p class="muted">Выберите роль → отметьте разделы, которые ей видны. Сохраняется сразу.'+(isMeta?' У админа и директора «Сотрудники» и «Доступ» доступны всегда.':'')+'</p>'
+    +'<div class="rchips">'+chips+'</div>'
+    +'<div style="margin:8px 0"><button class="gray sm" onclick="resetAcc()">↩ по умолчанию для роли</button> <span class="msg" id="accMsg"></span></div>'
+    +'<div class="box">'+(groups||'<span class="muted">нет разделов</span>')+'</div></div>';
+}
+function pickAccRole(role){ ACCROLE=role; renderAccess(document.getElementById('view')); }
+function toggleAcc(id,on){
+  var list=(ACCESS.access[ACCROLE]||[]).slice(), i=list.indexOf(id);
+  if(on&&i<0) list.push(id); if(!on&&i>=0) list.splice(i,1);
+  ACCESS.access[ACCROLE]=list; saveAcc(list);
+}
+function resetAcc(){ var d=(ACCESS.defaults[ACCROLE]||[]).slice(); ACCESS.access[ACCROLE]=d; saveAcc(d); renderAccess(document.getElementById('view')); }
+function saveAcc(list){
+  var m=document.getElementById('accMsg'); if(m) m.textContent='…';
+  api({vapi:'setrolesections',tgid:TGID,role:ACCROLE,sections:list.join(',')}).then(function(r){
+    if(r&&r.ok){ ACCESS.access=r.access; ACCESS.defaults=r.defaults; if(m) m.innerHTML='<span class="ok">сохранено ✓</span>'; }
+    else if(m) m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>';
+  }).catch(function(){ if(m) m.innerHTML='<span class="err">сеть</span>'; });
 }
 load();
 </script>
