@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Тигервуд — директорский дашборд</title>
+<style>
+  :root{
+    --bg:#f4f6fb; --card:#fff; --fg:#1b2333; --muted:#8a93a6; --line:#e6e9f2;
+    --accent:#2b7de9; --bar:#bcd6f7; --barhi:#2b7de9;
+    --green:#137333; --green-bg:#e7f5ea; --amber:#b7791f; --amber-bg:#f7efdb; --red:#c0392b; --red-bg:#fdecea;
+    --grid:#eef1f8;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --bg:#14161b; --card:#1c1f26; --fg:#e9eaee; --muted:#9aa0ad; --line:#2a2e37;
+      --accent:#4f9bee; --bar:#274a72; --barhi:#4f9bee;
+      --green:#4bbd7e; --green-bg:#13291d; --amber:#d6a23c; --amber-bg:#2c2411; --red:#e5776b; --red-bg:#2b1714;
+      --grid:#23262e;
+    }
+  }
+  *{box-sizing:border-box;} html,body{margin:0;background:var(--bg);}
+  body{ font-family:-apple-system,Roboto,Segoe UI,Arial,sans-serif; color:var(--fg); padding:14px; max-width:940px; margin:0 auto; font-size:14px; }
+  html.emb>body>.hi,html.emb>body>.sub{display:none}
+  .hi{ font-size:19px; font-weight:800; }
+  .sub{ color:var(--muted); font-size:13px; margin-top:2px; }
+  .muted{ color:var(--muted); } .center{ text-align:center; padding:40px 16px; color:var(--muted); }
+  .sect{ font-size:12.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; margin:20px 4px 9px; display:flex; align-items:baseline; gap:8px; }
+  .sect .n{ text-transform:none; font-weight:400; font-size:12px; }
+  .card{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px 15px; box-shadow:0 1px 3px rgba(20,30,60,.05); }
+  .money{ font-variant-numeric:tabular-nums; }
+
+  /* период */
+  .period{ display:flex; align-items:center; gap:10px; margin-top:6px; }
+  .period button{ border:1px solid var(--line); background:var(--card); color:var(--fg); border-radius:9px; width:34px; height:32px; font-size:16px; cursor:pointer; }
+  .period button:disabled{ opacity:.4; cursor:default; }
+  .period .lbl{ font-weight:700; min-width:150px; text-align:center; }
+
+  /* пульс */
+  .tiles{ display:flex; gap:10px; flex-wrap:wrap; margin-top:6px; }
+  .tile{ flex:1 1 150px; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:11px 13px; }
+  .tile .t{ font-size:11.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; }
+  .tile .v{ font-size:21px; font-weight:800; font-variant-numeric:tabular-nums; margin-top:2px; }
+  .tile .v small{ font-size:12px; font-weight:600; color:var(--muted); }
+  .up{ color:var(--green); } .down{ color:var(--red); } .flat{ color:var(--muted); }
+
+  /* график */
+  .chart svg{ display:block; width:100%; height:auto; }
+  .xlabels{ display:flex; justify-content:space-between; font-size:10.5px; color:var(--muted); font-variant-numeric:tabular-nums; margin-top:2px; }
+
+  /* заказы */
+  .ocard{ background:var(--card); border:1px solid var(--line); border-radius:14px; margin-bottom:10px; box-shadow:0 1px 3px rgba(20,30,60,.05); border-left:4px solid var(--_c,var(--line)); }
+  .ohead{ display:flex; align-items:center; gap:9px; padding:12px 14px; cursor:pointer; flex-wrap:wrap; }
+  .ohead:hover{ background:rgba(127,140,170,.05); }
+  .onum{ font-weight:800; } .oname{ font-weight:600; flex:1; min-width:90px; }
+  .car{ color:var(--muted); font-size:12px; width:12px; transition:transform .15s; }
+  .ocard.open .car{ transform:rotate(90deg); }
+  .obody{ display:none; padding:0 14px 14px; } .ocard.open .obody{ display:block; }
+  .bar{ height:7px; border-radius:6px; background:var(--grid); overflow:hidden; min-width:60px; flex:1; max-width:150px; }
+  .bar>i{ display:block; height:100%; background:var(--green); }
+  .pill{ font-size:11px; font-weight:700; border-radius:20px; padding:2px 9px; }
+  .p-ok{ background:var(--green-bg); color:var(--green); } .p-warn{ background:var(--red-bg); color:var(--red); }
+  .p-tight{ background:var(--amber-bg); color:var(--amber); } .p-neu{ background:var(--grid); color:var(--muted); }
+  .kv{ display:flex; gap:7px; flex-wrap:wrap; margin:8px 0; }
+  .kv .k{ font-size:12px; background:var(--grid); border-radius:20px; padding:2px 10px; color:var(--fg); }
+  .kv .k b{ font-variant-numeric:tabular-nums; }
+  .subh{ font-size:11.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin:12px 0 5px; }
+
+  /* горизонтальные бары ЗП */
+  .hb{ display:flex; align-items:center; gap:10px; font-size:13px; padding:4px 0; }
+  .hb .nm{ min-width:130px; max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .hb .tr{ flex:1; height:9px; background:var(--grid); border-radius:6px; overflow:hidden; min-width:50px; }
+  .hb .tr>i{ display:block; height:100%; background:var(--accent); border-radius:6px; }
+  .hb .vl{ font-variant-numeric:tabular-nums; min-width:74px; text-align:right; color:var(--muted); }
+  .empty{ color:var(--muted); font-size:12.5px; padding:6px 0; }
+</style>
+</head>
+<body>
+<div class="hi">📊 Директорский дашборд</div>
+<div class="sub">Ежедневная выработка по заказам и общая, прогноз, ЗП — с графиками.</div>
+<div id="app"><div class="center">Загрузка…</div></div>
+<script>
+var BASE='https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';
+var APP='tw7prod';
+if(/[?&]embed=1/.test(location.search))document.documentElement.classList.add('emb');
+function api(p){ p.app=APP; var q=Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]==null?'':p[k]);}).join('&'); return fetch(BASE+'?'+q).then(function(r){return r.json();}); }
+function $(id){ return document.getElementById(id); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function money(n){ return (Number(n)||0).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function m0(n){ return Math.round(Number(n)||0).toLocaleString('ru-RU'); }
+var MONTHS=['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+function ddmm(iso){ var p=String(iso).split('-'); return p.length===3? (p[2]+'.'+p[1]) : iso; }
+
+var now=new Date(), CY=now.getFullYear(), CM=now.getMonth();  // выбранный месяц
+var DATA=null, OPEN={};
+
+function pad2(n){ return (n<10?'0':'')+n; }
+function load(){
+  var from=pad2(1)+'.'+pad2(CM+1)+'.'+CY;
+  var last=new Date(CY,CM+1,0).getDate();
+  var to=pad2(last)+'.'+pad2(CM+1)+'.'+CY;
+  $('app').innerHTML='<div class="center">Загрузка…</div>';
+  api({vapi:'directordash',from:from,to:to}).then(function(d){
+    if(!d||!d.ok){ $('app').innerHTML='<div class="center">Ошибка данных</div>'; return; }
+    DATA=d; render();
+  }).catch(function(){ $('app').innerHTML='<div class="center">Сеть недоступна</div>'; });
+}
+function stepMonth(dir){
+  var isFuture=(CY>now.getFullYear())||(CY===now.getFullYear()&&CM>=now.getMonth());
+  if(dir>0 && isFuture) return;
+  CM+=dir; if(CM<0){CM=11;CY--;} if(CM>11){CM=0;CY++;} load();
+}
+
+// ── вертикальный бар-чарт (один ряд, «сегодня» выделен) ──
+function barChart(data, todayIso, unit){
+  var n=data.length; if(!n) return '<div class="empty">за период выработки нет</div>';
+  var W=Math.max(n*20, 260), H=132, pad=14, gap=(W-pad*2)/n;
+  var bw=Math.min(15, gap*0.68);
+  var max=Math.max.apply(null, data.map(function(d){return d.sum;}).concat([1]));
+  var y=function(v){ return pad + (H-pad*2)*(1 - v/max); };
+  var baseY=H-pad;
+  var bars=data.map(function(d,i){
+    var xx=pad + i*gap + (gap-bw)/2;
+    var h=baseY - y(d.sum); if(d.sum>0 && h<2.5) h=2.5;
+    var hi=(d.d===todayIso);
+    return '<rect x="'+xx.toFixed(1)+'" y="'+(baseY-h).toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+h.toFixed(1)+'" rx="3" fill="'+(hi?'var(--barhi)':'var(--bar)')+'"><title>'+ddmm(d.d)+': '+money(d.sum)+' '+(unit||'₽')+'</title></rect>';
+  }).join('');
+  var gline='<line x1="'+pad+'" y1="'+y(max).toFixed(1)+'" x2="'+(W-pad)+'" y2="'+y(max).toFixed(1)+'" stroke="var(--grid)" stroke-width="1"/>';
+  var base='<line x1="'+pad+'" y1="'+baseY+'" x2="'+(W-pad)+'" y2="'+baseY+'" stroke="var(--line)" stroke-width="1"/>';
+  var lab='<div class="xlabels"><span>'+ddmm(data[0].d)+'</span>'+(n>2?'<span>'+ddmm(data[Math.floor(n/2)].d)+'</span>':'')+'<span>'+ddmm(data[n-1].d)+'</span></div>';
+  return '<div class="chart"><svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" role="img" aria-label="выработка по дням">'+gline+base+bars+'</svg></div>'+lab
+    +'<div class="muted" style="font-size:11.5px;margin-top:3px">макс '+money(max)+' '+(unit||'₽')+'/день</div>';
+}
+// ── burndown: линия остатка ₽ к дням, с заливкой и точкой-концом ──
+function burndown(data){
+  var n=data.length; if(n<2) return '';
+  var W=Math.max(n*18,220), H=90, pad=12, gap=(W-pad*2)/(n-1);
+  var max=Math.max.apply(null, data.map(function(d){return d.left;}).concat([1]));
+  var x=function(i){ return pad+i*gap; }, y=function(v){ return pad+(H-pad*2)*(v/max); };
+  var pts=data.map(function(d,i){ return x(i).toFixed(1)+','+y(d.left).toFixed(1); });
+  var line='<polyline points="'+pts.join(' ')+'" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"/>';
+  var area='<polygon points="'+x(0).toFixed(1)+','+(H-pad)+' '+pts.join(' ')+' '+x(n-1).toFixed(1)+','+(H-pad)+'" fill="var(--accent)" opacity="0.08"/>';
+  var last=data[n-1];
+  var end='<circle cx="'+x(n-1).toFixed(1)+'" cy="'+y(last.left).toFixed(1)+'" r="3.5" fill="var(--accent)"><title>осталось '+money(last.left)+' ₽</title></circle>';
+  return '<div class="subh">Остаток труда (burndown)</div><div class="chart"><svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" role="img" aria-label="остаток труда по дням">'+area+line+end+'</svg></div>';
+}
+function riskPill(b){
+  var r=b.risk;
+  if(r==='late') return '<span class="pill p-warn">🔴 не успеваем'+(b.slack!=null?' на '+Math.abs(b.slack)+' дн':'')+'</span>';
+  if(r==='tight') return '<span class="pill p-tight">🟡 впритык</span>';
+  if(r==='ok') return '<span class="pill p-ok">🟢 в срок'+(b.forecast?' ('+b.forecast+')':'')+'</span>';
+  if(r==='done') return '<span class="pill p-ok">✔ готов</span>';
+  if(r==='nodeadline') return '<span class="pill p-neu">срок не задан</span>';
+  if(r==='noops') return '<span class="pill p-neu">нет операций</span>';
+  return '<span class="pill p-neu">⏳ нет темпа</span>';
+}
+function riskColor(r){ return r==='late'?'var(--red)':(r==='tight'?'var(--amber)':(r==='ok'||r==='done'?'var(--green)':'var(--line)')); }
+
+function render(){
+  var d=DATA, p=d.pulse||{}, app=$('app');
+  var trendSym=p.trend==='up'?'↑':(p.trend==='down'?'↓':'→'), trendCls=p.trend==='up'?'up':(p.trend==='down'?'down':'flat');
+  // период
+  var futureNext=(CY>now.getFullYear())||(CY===now.getFullYear()&&CM>=now.getMonth());
+  var html='<div class="period"><button onclick="stepMonth(-1)">‹</button>'
+    +'<span class="lbl">'+MONTHS[CM]+' '+CY+'</span>'
+    +'<button onclick="stepMonth(1)"'+(futureNext?' disabled':'')+'>›</button></div>';
+  // пульс
+  html+='<div class="tiles">'
+    +'<div class="tile"><div class="t">Сегодня</div><div class="v">'+money(p.today)+' <small>₽ труда</small></div></div>'
+    +'<div class="tile"><div class="t">Средн./день</div><div class="v">'+money(p.avgDay)+' <small class="'+trendCls+'">'+trendSym+'</small></div></div>'
+    +'<div class="tile"><div class="t">Заказов в риске</div><div class="v '+(p.atRisk>0?'down':'')+'">'+(p.atRisk||0)+'</div></div>'
+    +'<div class="tile"><div class="t">Осталось труда</div><div class="v">'+m0(p.totalLeft)+' <small>₽'+(p.capacityDays?' · ~'+p.capacityDays+' дн':'')+'</small></div></div>'
+    +'</div>';
+  // общий график
+  html+='<div class="sect">Выработка по дням <span class="n">общая, ₽ труда · «сегодня» ярче</span></div>'
+    +'<div class="card">'+barChart(d.globalDays||[], d.today, '₽')+'</div>';
+  // заказы
+  var bs=(d.batches||[]).filter(function(b){ return b.status!=='отгружено'; });
+  html+='<div class="sect">Заказы <span class="n">по приоритету · клик — детали и графики</span></div>'
+    +(bs.length? bs.map(orderCard).join('') : '<div class="card empty">активных заказов нет</div>');
+  // ЗП
+  html+='<div class="sect">ЗП по рабочим <span class="n">'+esc(d.period.from)+'–'+esc(d.period.to)+'</span></div>'
+    +'<div class="card">'+hbars(d.zpByWorker||[], 'ЗП начислено')+'</div>';
+  // итоги
+  var t=d.totals||{};
+  html+='<div class="sect">Итого за период</div><div class="tiles">'
+    +'<div class="tile"><div class="t">ЗП начислено</div><div class="v">'+money(t.zp)+' <small>₽</small></div></div>'
+    +'<div class="tile"><div class="t">Сделано труда</div><div class="v">'+m0(t.doneRub)+' <small>₽</small></div></div>'
+    +'<div class="tile"><div class="t">Осталось труда</div><div class="v">'+m0(t.leftRub)+' <small>₽</small></div></div>'
+    +'</div>';
+  app.innerHTML=html;
+  Object.keys(OPEN).forEach(function(id){ if(OPEN[id]){ var c=$('oc_'+id); if(c) c.classList.add('open'); } });
+}
+function orderCard(b){
+  var pct=Math.min(100,b.pctLabor||0);
+  return '<div class="ocard" id="oc_'+esc(b.id)+'" style="--_c:'+riskColor(b.risk)+'">'
+    +'<div class="ohead" onclick="tog(\''+esc(b.id)+'\')">'
+      +'<span class="car">▸</span><span class="onum">'+esc(b.num)+'</span><span class="oname">'+esc(b.name)+'</span>'
+      +'<span class="bar"><i style="width:'+pct+'%'+(pct>=100?';background:var(--green)':'')+'"></i></span>'
+      +'<span class="money" style="font-weight:700">'+(b.pctLabor||0)+'%</span>'
+      +riskPill(b)
+    +'</div>'
+    +'<div class="obody">'
+      +'<div class="kv">'
+        +'<span class="k">Осталось <b>'+m0(b.leftRub)+' ₽</b></span>'
+        +'<span class="k">Темп <b>'+money(b.velocity)+' ₽/д</b></span>'
+        +(b.deadline?'<span class="k">Срок <b>'+esc(b.deadline)+'</b></span>':'')
+        +(b.forecast?'<span class="k">Прогноз <b>'+esc(b.forecast)+'</b></span>':'')
+      +'</div>'
+      +'<div class="subh">Выработка по дням</div>'+barChart(b.byDay||[], DATA.today, '₽')
+      +burndown(b.burndown||[])
+      +'<div class="subh">ЗП по рабочим на заказе'+(b.zpTotal?' · итого '+money(b.zpTotal)+' ₽':'')+'</div>'
+      +hbars(b.zp||[], '')
+    +'</div></div>';
+}
+function hbars(data, empty){
+  if(!data||!data.length) return '<div class="empty">'+(empty||'нет данных')+' — нет</div>';
+  var max=Math.max.apply(null, data.map(function(x){return x.sum;}).concat([1]));
+  return data.map(function(x){
+    return '<div class="hb"><span class="nm">'+esc(x.worker||'—')+'</span>'
+      +'<span class="tr"><i style="width:'+Math.max(2,Math.round(x.sum/max*100))+'%"></i></span>'
+      +'<span class="vl">'+money(x.sum)+' ₽</span></div>';
+  }).join('');
+}
+function tog(id){ var c=$('oc_'+id); if(c){ var o=c.classList.toggle('open'); OPEN[id]=o; } }
+load();
+</script>
+</body>
+</html>
