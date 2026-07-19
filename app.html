@@ -229,6 +229,10 @@ function renderUsers(box,r){
   if(!r||!r.ok){ box.innerHTML='<div class="pad err">'+esc((r&&r.error)||'нет прав')+'</div>'; return; }
   var roles=r.roles||[], canEdit=r.canEdit, me=r.me||{}, isMaster=(me.role==='мастер');
   var pageTitle=isMaster?'👥 Моя бригада':'👥 Сотрудники и доступы';
+  // список мастеров для выпадающего «Мастер/участок»
+  var masters=(r.users||[]).filter(function(u){ return u.role==='мастер'; }).map(function(u){ return u.name; });
+  function masterOpts(cur){ cur=String(cur||''); var list=masters.slice(); if(cur&&list.indexOf(cur)<0) list.unshift(cur);
+    return '<option value=""'+(cur===''?' selected':'')+'>—</option>'+list.map(function(nm){ return '<option'+(nm===cur?' selected':'')+'>'+esc(nm)+'</option>'; }).join(''); }
   var myTg=String(me.tgId||'');
   var rows=(r.users||[]).map(function(u,i){
     var archived=!isActiveJs(u.active);
@@ -236,7 +240,7 @@ function renderUsers(box,r){
     var canManage=canEdit||(isMaster&&u.master===me.name);
     var nm=String(u.name).replace(/[\\']/g,''), tg=String(u.tgId||'');
     var roleCell=canEdit?'<select id="ro'+i+'">'+roles.map(function(x){return '<option value="'+x+'"'+(x===u.role?' selected':'')+'>'+esc(r.roleTitles[x]||x)+'</option>';}).join('')+'</select>':'<span class="pill">'+esc(r.roleTitles[u.role]||u.role)+'</span>';
-    var masterCell=canEdit?'<input id="ma'+i+'" value="'+esc(u.master)+'" placeholder="—" style="max-width:120px">':esc(u.master||'—');
+    var masterCell=canEdit?'<select id="ma'+i+'" style="max-width:150px">'+masterOpts(u.master)+'</select>':esc(u.master||'—');
     var acts='';
     if(canEdit&&!self) acts+='<button class="sm" title="сохранить роль/участок" onclick="saveUser('+i+',\''+esc(tg)+'\')">💾</button> ';
     if(canManage&&!self){ acts+= archived
@@ -255,7 +259,7 @@ function renderUsers(box,r){
       +'<div class="muted" style="margin-bottom:8px">Выберите роль → получите ссылку. Отправьте человеку — он перейдёт, введёт ФИО и <b>сразу войдёт под этой ролью</b>. Ссылка многоразовая (годится на нескольких людей одной роли).</div>'
       +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">'
         +'<div><div class="muted" style="font-size:11px;margin-bottom:3px">Роль</div><select id="invRole" style="min-width:180px">'+ropts+'</select></div>'
-        +'<div><div class="muted" style="font-size:11px;margin-bottom:3px">Мастер/участок (для рабочего)</div><input id="invMaster" placeholder="—" style="max-width:160px"></div>'
+        +'<div><div class="muted" style="font-size:11px;margin-bottom:3px">Мастер/участок (для рабочего)</div><select id="invMaster" style="min-width:150px"><option value="">—</option>'+masters.map(function(nm){ return '<option>'+esc(nm)+'</option>'; }).join('')+'</select></div>'
         +'<button onclick="makeInvite()">Создать ссылку</button>'
       +'</div>'
       +'<div id="invOut" style="margin-top:10px"></div>'
