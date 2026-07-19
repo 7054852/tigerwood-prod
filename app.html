@@ -150,9 +150,9 @@ function doReg(){
 
 // ─── каркас с навигацией ───
 var ITEMS={}, NAVID='';
-function shell(){
+function navHtml(){
   ITEMS=buildItems();
-  var groupsHtml=GROUPS.map(function(g){
+  return GROUPS.map(function(g){
     var its=g.items.filter(function(id){ return ITEMS[id]; });
     if(!its.length) return '';
     var links=its.map(function(id){
@@ -162,6 +162,21 @@ function shell(){
     }).join('');
     return '<div class="sgroup"><div class="gt">'+esc(g.title)+'</div>'+links+'</div>';
   }).join('');
+}
+// перерисовать только меню (без перезагрузки страницы) + вернуть подсветку активного
+function renderNav(){
+  var nav=document.querySelector('.snav'); if(!nav) return;
+  nav.innerHTML=navHtml();
+  var cur=document.getElementById('nav_'+NAVID); if(cur) cur.classList.add('active');
+}
+// перечитать себя (роль/разделы) и живо обновить меню — после смены доступа
+function refreshMe(){
+  return api({vapi:'me',tgid:TGID}).then(function(m){
+    if(m&&m.ok&&m.registered){ ME=m; ROLE=m.role||ROLE; renderNav(); }
+  }).catch(function(){});
+}
+function shell(){
+  var groupsHtml=navHtml();
   var first=(ME.name||'').split(' ')[0]||ME.name||'';
   app.innerHTML=''
     +'<div class="shell">'
@@ -298,7 +313,9 @@ function resetAcc(){ var d=(ACCESS.defaults[ACCROLE]||[]).slice(); ACCESS.access
 function saveAcc(list){
   var m=document.getElementById('accMsg'); if(m) m.textContent='…';
   api({vapi:'setrolesections',tgid:TGID,role:ACCROLE,sections:list.join(',')}).then(function(r){
-    if(r&&r.ok){ ACCESS.access=r.access; ACCESS.defaults=r.defaults; if(m) m.innerHTML='<span class="ok">сохранено ✓</span>'; }
+    if(r&&r.ok){ ACCESS.access=r.access; ACCESS.defaults=r.defaults; if(m) m.innerHTML='<span class="ok">сохранено ✓</span>';
+      if(ACCROLE===ROLE) refreshMe();   // меняю доступ своей роли → меню слева обновляется сразу
+    }
     else if(m) m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>';
   }).catch(function(){ if(m) m.innerHTML='<span class="err">сеть</span>'; });
 }
