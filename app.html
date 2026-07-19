@@ -211,7 +211,7 @@ function route(){
 }
 function showView(id){
   var box=document.getElementById('view');
-  if(id==='users'){ usersView(box); return; }
+  if(id==='users'||id==='myteam'){ usersView(box); return; }
   if(id==='access'){ accessView(box); return; }
   var url=withTid(ITEMS[id].url);
   url += (url.indexOf('?')>=0?'&':'?')+'embed=1';
@@ -226,7 +226,8 @@ function usersView(box){
 }
 function renderUsers(box,r){
   if(!r||!r.ok){ box.innerHTML='<div class="pad err">'+esc((r&&r.error)||'нет прав')+'</div>'; return; }
-  var roles=r.roles||[], canEdit=r.canEdit;
+  var roles=r.roles||[], canEdit=r.canEdit, me=r.me||{}, isMaster=(me.role==='мастер');
+  var pageTitle=isMaster?'👥 Моя бригада':'👥 Сотрудники и доступы';
   var rows=(r.users||[]).map(function(u,i){
     var roleCell=canEdit?'<select id="ro'+i+'">'+roles.map(function(x){return '<option value="'+x+'"'+(x===u.role?' selected':'')+'>'+esc(r.roleTitles[x]||x)+'</option>';}).join('')+'</select>':'<span class="pill">'+esc(r.roleTitles[u.role]||u.role)+'</span>';
     var masterCell=canEdit?'<input id="ma'+i+'" value="'+esc(u.master)+'" placeholder="—" style="max-width:120px">':esc(u.master||'—');
@@ -247,11 +248,20 @@ function renderUsers(box,r){
       +'</div>'
       +'<div id="invOut" style="margin-top:10px"></div>'
     +'</div>';
+  } else if(isMaster){
+    invite='<div class="box" style="margin-bottom:14px;background:#f0f6ff;border-color:#d3e4fb">'
+      +'<div style="font-weight:700;margin-bottom:8px">➕ Пригласить рабочего в бригаду</div>'
+      +'<div class="muted" style="margin-bottom:8px">Получите ссылку и отправьте рабочему — он перейдёт, введёт ФИО и <b>сразу попадёт к вам в бригаду</b> как рабочий. Ссылка многоразовая.</div>'
+      +'<button onclick="makeInvite(\'рабочий\',\'\')">Создать ссылку для рабочего</button>'
+      +'<div id="invOut" style="margin-top:10px"></div>'
+    +'</div>';
   }
-  box.innerHTML='<div class="pad"><div class="hi">👥 Сотрудники и доступы</div><p class="muted">Все, кто зарегистрировался через бота. '+(canEdit?'Приглашайте по ссылке (сразу под ролью) или правьте роль существующим — сохраняйте 💾.':'')+'</p>'+invite+'<div class="box" style="overflow-x:auto"><table><thead><tr><th>Сотрудник</th><th>Роль</th><th>Мастер/участок</th><th>Статус</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan=5 class="muted">пусто</td></tr>')+'</tbody></table></div></div>';
+  var intro=canEdit?'Все, кто зарегистрировался через бота. Приглашайте по ссылке (сразу под ролью) или правьте роль существующим — сохраняйте 💾.'
+    :(isMaster?'Ваши рабочие. Пригласите нового по ссылке — он сразу попадёт к вам в бригаду.':'Все, кто зарегистрировался через бота.');
+  box.innerHTML='<div class="pad"><div class="hi">'+pageTitle+'</div><p class="muted">'+intro+'</p>'+invite+'<div class="box" style="overflow-x:auto"><table><thead><tr><th>Сотрудник</th><th>Роль</th><th>Мастер/участок</th><th>Статус</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan=5 class="muted">пусто</td></tr>')+'</tbody></table></div></div>';
 }
-function makeInvite(){
-  var role=document.getElementById('invRole').value, master=document.getElementById('invMaster').value, out=document.getElementById('invOut');
+function makeInvite(fixedRole,fixedMaster){
+  var role=fixedRole||((document.getElementById('invRole')||{}).value), master=(fixedMaster!=null)?fixedMaster:((document.getElementById('invMaster')||{}).value||''), out=document.getElementById('invOut');
   out.innerHTML='<span class="muted">создаю…</span>';
   api({vapi:'createinvite',tgid:TGID,role:role,master:master}).then(function(r){
     if(!r||!r.ok){ out.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; return; }
