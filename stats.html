@@ -43,6 +43,8 @@
 <div id="app"><div class="center muted">Загрузка…</div></div>
 <script>
 var BASE='https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';
+function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
+var TGID=qp('tgid')||(function(){try{return localStorage.getItem('tw_tgid')||'';}catch(e){return '';}})();
 function api(p){ p.app='tw7prod'; var q=Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]==null?'':p[k]);}).join('&'); return fetch(BASE+'?'+q).then(function(r){return r.json();}); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function $(id){ return document.getElementById(id); }
@@ -120,8 +122,50 @@ function render(){
     +'</div>'
     +'<div class="sect">По оборудованию — расценки и проверка</div>'
     +'<div class="muted" style="margin:-4px 4px 8px">Сколько деталей и расценок заведено по каждому оборудованию и сколько из них проверено.</div>'
-    +'<div class="box"><table><thead><tr><th>Оборудование</th><th class="num">Деталей</th><th class="num">Расценок</th><th class="num">Проверено</th><th></th></tr></thead><tbody>'+equip+'</tbody></table></div>';
+    +'<div class="box"><table><thead><tr><th>Оборудование</th><th class="num">Деталей</th><th class="num">Расценок</th><th class="num">Проверено</th><th></th></tr></thead><tbody>'+equip+'</tbody></table></div>'
+    +'<div id="rateaudit"></div>';
+  loadRateAudit();
  }).catch(function(e){ $('app').innerHTML='<div class="center err">Ошибка: '+esc(e.message||e)+'</div>'; });
+}
+// ── аудит расхождений расценок (состав ↔ справочник) ──
+var AUD=null;
+function loadRateAudit(){
+  var box=$('rateaudit'); if(!box) return;
+  box.innerHTML='<div class="sect">Проверка расценок в составах</div><div class="muted" style="margin:0 4px">сверяю со справочником…</div>';
+  api({vapi:'compaudit'}).then(function(d){ AUD=d; renderAudit(); }).catch(function(){ box.innerHTML=''; });
+}
+function renderAudit(){
+  var box=$('rateaudit'); if(!box||!AUD) return;
+  var vs=AUD.variants||[];
+  if(!vs.length){ box.innerHTML='<div class="sect">Проверка расценок в составах</div><div class="box" style="border-color:#cfe9d7;background:#eaf7ef;color:var(--green)">✓ расценки во всех составах совпадают со справочником</div>'; return; }
+  var totalDelta=vs.reduce(function(s,x){return s+x.delta;},0);
+  var rows=vs.map(function(x,i){
+    var dcol=x.delta<0?'var(--red)':'var(--green)';
+    var diffs=x.diffs.map(function(df){ return '<tr><td>'+esc(df.detail)+'</td><td>'+esc(df.op)+'</td><td class="num">×'+df.qty+'</td><td class="num" style="color:var(--red)">'+money(df.was)+'</td><td class="num" style="color:var(--green)">'+money(df.now)+'</td></tr>'; }).join('');
+    return '<div class="box" style="margin-bottom:10px;border-color:#f0d9b5">'
+      +'<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer" onclick="togAud('+i+')">'
+        +'<span id="audc'+i+'" style="color:var(--muted)">▸</span>'
+        +'<b style="flex:1;min-width:120px">'+esc(x.name)+'</b>'
+        +'<span class="chip">'+x.count+' расц.</span>'
+        +'<span class="chip" style="color:'+dcol+';font-weight:700">себест. '+(x.delta>0?'+':'')+money(x.delta)+' р</span>'
+        +'<button style="background:var(--accent);color:#fff;border:0;border-radius:8px;padding:6px 11px;font-weight:600;cursor:pointer" onclick="event.stopPropagation();fixVar(\''+jesc(x.id)+'\',\''+jesc(x.name)+'\')">Подтянуть</button>'
+      +'</div>'
+      +'<div id="audb'+i+'" style="display:none;margin-top:10px;overflow-x:auto"><table><thead><tr><th>Деталь</th><th>Операция</th><th class="num">Кол-во</th><th class="num">Было</th><th class="num">Станет</th></tr></thead><tbody>'+diffs+'</tbody></table></div>'
+    +'</div>';
+  }).join('');
+  box.innerHTML='<div class="sect">Проверка расценок в составах <span style="text-transform:none;font-weight:400;color:var(--red)">'+vs.length+' с расхождением · себест. '+money(totalDelta)+' р</span></div>'
+    +'<div class="muted" style="margin:-4px 4px 10px">Расценка в составе не совпадает со справочником «Расценки» (кривой импорт). «Подтянуть» заменит на справочник; операции без справочника (упаковка) не трогаются.</div>'
+    +'<div style="text-align:right;margin-bottom:10px"><button style="background:var(--red);color:#fff;border:0;border-radius:9px;padding:9px 14px;font-weight:600;cursor:pointer" onclick="fixVar(\'ALL\',\'все варианты\')">Исправить все ('+vs.length+')</button></div>'
+    +rows;
+}
+function togAud(i){ var b=$('audb'+i), c=$('audc'+i); if(b){ var open=b.style.display==='none'; b.style.display=open?'block':'none'; if(c)c.textContent=open?'▾':'▸'; } }
+function fixVar(target,name){
+  if(!TGID){ alert('нет входа (tgid) — откройте из сервиса'); return; }
+  if(!confirm('Подтянуть расценки из справочника для «'+name+'»?\nЗаменит завышенные расценки на справочные. Операции без справочника не трогаются.')) return;
+  api({vapi:'compratefix',tgid:TGID,target:target}).then(function(r){
+    if(r&&r.ok){ alert('Готово: обновлено расценок — '+r.rowsChanged+', вариантов — '+r.variantsFixed); render(); }
+    else alert((r&&r.error)||'ошибка');
+  }).catch(function(){ alert('сеть недоступна'); });
 }
 render();
 </script>
