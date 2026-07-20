@@ -85,6 +85,7 @@ function render(){
   var earn=ORDERS.reduce(function(s,o){return s+(o.earned||0);},0);
   var hint=DIR? 'ставки ₽/шт можно менять — базовая берётся из справочника (10% труда)' : 'потенциал '+money(pot)+' · заработано '+money(earn)+' р';
   var orders='<div class="sect">'+(DIR?'Заказы — ставки и деньги начальника':'Заказы в работе — деньги для меня')+' <span class="muted" style="text-transform:none;font-weight:400">'+hint+'</span></div>'
+    +(DIR? '<div style="margin:0 0 10px"><button onclick="recalcRates()" style="background:#eef1f8;color:#334;border:1px solid #d7dbe6;border-radius:9px;padding:8px 13px;font-weight:600;cursor:pointer" title="пересчитать базовые ставки от текущего труда изделий (10%)">↻ Пересчитать ставки от труда</button> <span class="msg" id="rrMsg"></span></div>' : '')
     +(ORDERS.length? ORDERS.map(orderCard).join('') : '<div class="box muted">активных заказов нет</div>');
   app.innerHTML=month+orders;
   Object.keys(OPEN).forEach(function(id){ if(OPEN[id]){ var c=$('oc_'+id); if(c) c.classList.add('open'); } });
@@ -135,6 +136,13 @@ function orderCard(o,i){
     +'</div></div>';
 }
 function tog(id){ var c=$('oc_'+id); if(c){ var open=c.classList.toggle('open'); OPEN[id]=open; } }
+function recalcRates(){
+  var m=$('rrMsg'); if(m) m.textContent='пересчитываю…';
+  api({vapi:'recalcbossrates'}).then(function(r){
+    if(r&&r.ok){ if(m) m.innerHTML='<span style="color:#137333">обновлено ставок: '+(r.changedCount||0)+'</span>'; load(); }
+    else if(m) m.innerHTML='<span style="color:#c0392b">'+((r&&r.error)||'ошибка')+'</span>';
+  }).catch(function(){ if(m) m.innerHTML='<span style="color:#c0392b">сеть</span>'; });
+}
 function saveRate(orderId,sku,val,el){
   var v=String(val).trim().replace(',','.'); if(el) el.disabled=true;
   OPEN[orderId]=true;
