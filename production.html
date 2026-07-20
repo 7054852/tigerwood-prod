@@ -159,6 +159,13 @@ function loadDetail(id){
   }).catch(function(e){ app.innerHTML='<div class="center err">Ошибка: '+esc(e.message||e)+'</div>'; });
 }
 function reloadDetail(){ if(CUR) loadDetail(CUR); }
+// пересобрать операции заказа из актуального состава/расценок (остатки и выработка сохраняются)
+function recalcOps(id){ var m=$('bm_'+id); if(m) m.textContent='пересчитываю…';
+  api({vapi:'recalcorderops', batch:id}).then(function(r){
+    if(r&&r.ok){ if(m) m.innerHTML='<span class="ok">пересчитано ✓</span>'; reloadDetail(); }
+    else if(m) m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>';
+  }).catch(function(){ if(m) m.innerHTML='<span class="err">сеть недоступна</span>'; });
+}
 
 function needSection(){
   var needRows=NEEDS.map(function(n,i){
@@ -294,6 +301,7 @@ function renderDetail(){
       +(b.opsCount?'<span class="pill" style="background:#eaf1fd;color:#2b7de9">по труду '+(b.pctLabor||0)+'%</span>':'')
       +(b.overflow?'<span class="pill" style="background:#fdecea;color:#c0392b" title="есть перевыполненные операции">⚠ перевыполнено</span>':'')
       +(b.plan?'<span class="muted">план '+esc(b.plan)+'</span>':'')
+      +'<button class="gray sm" title="пересобрать операции из актуального состава/расценок (остатки и выработка сохранятся)" onclick="recalcOps(\''+b.id+'\')">↻ Пересчитать расценки</button>'
       +'<button class="gray sm" onclick="ship(\''+b.id+'\')">📦 Отгрузить</button>'
       +'<button class="gray sm" title="удалить заказ" onclick="delBatch(\''+b.id+'\')">🗑</button>'
       +'<span class="msg" id="bm_'+b.id+'"></span>'
