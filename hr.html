@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Тигервуд — Кадры</title>
+<style>
+  :root{
+    --bg:#f4f6fb; --card:#fff; --fg:#1b2333; --muted:#8a93a6; --line:#e6e9f2; --accent:#2b7de9;
+    --green:#137333; --green-bg:#e7f5ea; --amber:#b7791f; --amber-bg:#f7efdb; --red:#c0392b; --red-bg:#fdecea; --grid:#eef1f8;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{ --bg:#14161b; --card:#1c1f26; --fg:#e9eaee; --muted:#9aa0ad; --line:#2a2e37; --accent:#4f9bee;
+           --green:#4bbd7e; --green-bg:#13291d; --amber:#d6a23c; --amber-bg:#2c2411; --red:#e5776b; --red-bg:#2b1714; --grid:#23262e; }
+  }
+  *{box-sizing:border-box;} html,body{margin:0;background:var(--bg);}
+  body{ font-family:-apple-system,Roboto,Segoe UI,Arial,sans-serif; color:var(--fg); padding:14px; max-width:1000px; margin:0 auto; font-size:14px; }
+  html.emb>body>.hi,html.emb>body>.sub{display:none}
+  .hi{ font-size:19px; font-weight:800; } .sub{ color:var(--muted); font-size:13px; margin-top:2px; }
+  .muted{ color:var(--muted); } .center{ text-align:center; padding:40px 16px; color:var(--muted); }
+  .card{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:13px 14px; box-shadow:0 1px 3px rgba(20,30,60,.05); margin-bottom:10px; }
+  .sect{ font-size:12.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; margin:18px 4px 8px; }
+  .tabs{ display:flex; gap:6px; flex-wrap:wrap; margin:10px 0 12px; }
+  .tabs button{ border:1px solid var(--line); background:var(--card); color:var(--fg); border-radius:999px; padding:7px 13px; font-size:13px; cursor:pointer; font-weight:600; }
+  .tabs button.on{ background:var(--accent); border-color:var(--accent); color:#fff; }
+  .tabs button .b{ background:var(--red); color:#fff; border-radius:999px; padding:0 6px; margin-left:5px; font-size:11px; }
+  .tabs button.on .b{ background:rgba(255,255,255,.25); }
+  table{ width:100%; border-collapse:collapse; } th,td{ text-align:left; padding:7px 9px; border-bottom:1px solid var(--line); font-size:13px; vertical-align:top; }
+  th{ color:var(--muted); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.03em; }
+  td.num,th.num{ text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+  tr.click:hover td{ background:rgba(127,140,170,.07); cursor:pointer; }
+  .tbwrap{ overflow-x:auto; }
+  .pill{ display:inline-block; border-radius:999px; padding:2px 9px; font-size:11.5px; font-weight:700; white-space:nowrap; }
+  .p-red{ background:var(--red-bg); color:var(--red); } .p-amber{ background:var(--amber-bg); color:var(--amber); }
+  .p-ok{ background:var(--green-bg); color:var(--green); } .p-none{ background:var(--grid); color:var(--muted); }
+  .btn{ border:1px solid var(--line); background:var(--card); color:var(--fg); border-radius:9px; padding:6px 11px; font-size:13px; cursor:pointer; font-weight:600; }
+  .btn.pri{ background:var(--accent); border-color:var(--accent); color:#fff; }
+  .btn.sm{ padding:3px 8px; font-size:12px; }
+  .row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:9px; }
+  label.f{ display:block; font-size:11.5px; color:var(--muted); margin-bottom:3px; }
+  input,select,textarea{ width:100%; padding:7px 9px; border:1px solid var(--line); border-radius:9px; background:var(--card); color:var(--fg); font-size:13px; font-family:inherit; }
+  .steps{ margin-top:4px; }
+  .step{ display:flex; gap:9px; align-items:flex-start; padding:7px 0; border-bottom:1px dashed var(--line); }
+  .step.done .t{ color:var(--muted); text-decoration:line-through; }
+  .step .n{ width:22px; color:var(--muted); font-variant-numeric:tabular-nums; font-size:12px; padding-top:2px; }
+  .step .t{ flex:1; min-width:120px; } .step .w{ font-size:11.5px; color:var(--muted); }
+  .step .due{ font-size:11.5px; } .step .due.late{ color:var(--red); font-weight:700; }
+  .chk{ width:20px; height:20px; flex:0 0 20px; border:1.5px solid var(--line); border-radius:6px; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:12px; }
+  .step.done .chk{ background:var(--green-bg); border-color:var(--green); color:var(--green); }
+  .back{ cursor:pointer; color:var(--accent); font-weight:600; font-size:13px; }
+  .kv{ display:grid; grid-template-columns:auto 1fr; gap:3px 12px; font-size:13px; }
+  .kv .k{ color:var(--muted); }
+  .empty{ color:var(--muted); font-size:12.5px; padding:8px 0; }
+  a{ color:var(--accent); }
+</style>
+</head>
+<body>
+<div class="hi">🧾 Кадры</div>
+<div class="sub">Сотрудники и подрядчики: договоры, приказы, сроки уведомлений, чек-листы оформления.</div>
+<div id="app"><div class="center">Загрузка…</div></div>
+<script>
+var BASE='https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';
+var APP='tw7prod';
+if(/[?&]embed=1/.test(location.search))document.documentElement.classList.add('emb');
+function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]*)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
+var TGID=qp('tgid')||'';
+try{ if(!TGID && window.Telegram && Telegram.WebApp && Telegram.WebApp.initDataUnsafe && Telegram.WebApp.initDataUnsafe.user) TGID=String(Telegram.WebApp.initDataUnsafe.user.id); }catch(e){}
+function api(p){ p.app=APP; if(TGID&&!p.tgid)p.tgid=TGID;
+  var q=Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]==null?'':p[k]);}).join('&');
+  return fetch(BASE+'?'+q).then(function(r){return r.json();}); }
+function $(id){ return document.getElementById(id); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function money(n){ return (Number(n)||0).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+
+var TAB='dl', DATA=null, CARD=null, EXTRA={};
+var TABS=[{id:'dl',t:'⏱ Сроки'},{id:'emp',t:'👤 Сотрудники'},{id:'ord',t:'📜 Приказы'},
+          {id:'sick',t:'🏥 Больничные'},{id:'doc',t:'🗂 Документы'},{id:'fuel',t:'⛽ Топливо'}];
+
+function load(){
+  api({vapi:'hrlist'}).then(function(r){
+    if(!r||!r.ok){ $('app').innerHTML='<div class="center">Ошибка: '+esc((r&&r.error)||'нет данных')+'</div>'; return; }
+    DATA=r; render();
+  }).catch(function(e){ $('app').innerHTML='<div class="center">Сеть: '+esc(e.message)+'</div>'; });
+}
+function go(tab){ TAB=tab; CARD=null; if(tab==='ord'&&!EXTRA.ord) return api({vapi:'hrorders'}).then(function(r){EXTRA.ord=r;render();});
+  if(tab==='sick'&&!EXTRA.sick) return api({vapi:'hrsick'}).then(function(r){EXTRA.sick=r;render();});
+  if(tab==='doc'&&!EXTRA.doc) return api({vapi:'hrdocs'}).then(function(r){EXTRA.doc=r;render();});
+  if(tab==='fuel'&&!EXTRA.fuel) return api({vapi:'hrfuel'}).then(function(r){EXTRA.fuel=r;render();});
+  render(); }
+function sevPill(s){ var m={red:'🔴',amber:'🟡',ok:'🟢',none:'—'}; return '<span class="pill p-'+(s||'none')+'">'+(m[s]||'—')+'</span>'; }
+
+function render(){
+  var red=(DATA.deadlines||[]).filter(function(x){return x.sev==='red';}).length;
+  var h='<div class="tabs">'+TABS.map(function(t){
+    return '<button class="'+(TAB===t.id?'on':'')+'" onclick="go(\''+t.id+'\')">'+t.t+(t.id==='dl'&&red?'<span class="b">'+red+'</span>':'')+'</button>';
+  }).join('')+'</div>';
+  if(CARD) h+=cardView(); else if(TAB==='dl') h+=dlView();
+  else if(TAB==='emp') h+=empView();
+  else if(TAB==='ord') h+=ordView();
+  else if(TAB==='sick') h+=sickView();
+  else if(TAB==='doc') h+=docView();
+  else if(TAB==='fuel') h+=fuelView();
+  $('app').innerHTML=h;
+}
+
+/* ─── Сроки ─── */
+function dlView(){
+  var d=DATA.deadlines||[];
+  if(!d.length) return '<div class="card"><b>✓ Всё в порядке</b><div class="muted" style="margin-top:4px">Нет истекающих договоров и просроченных шагов оформления.</div></div>';
+  return '<div class="card tbwrap"><table><thead><tr><th></th><th>Кто</th><th>Что</th><th>Ответственный</th><th>Комментарий</th></tr></thead><tbody>'+
+    d.map(function(x){
+      return '<tr class="click" onclick="openCard(\''+x.empId+'\')"><td>'+sevPill(x.sev)+'</td><td><b>'+esc(x.fio)+'</b></td>'+
+        '<td>'+esc(x.title)+'</td><td class="muted">'+esc(x.who||'')+'</td><td>'+esc(x.msg)+'</td></tr>';
+    }).join('')+'</tbody></table></div>';
+}
+
+/* ─── Сотрудники ─── */
+function empView(){
+  var l=DATA.list||[];
+  var h='<div class="row" style="margin-bottom:8px"><button class="btn pri" onclick="newEmp()">+ Сотрудник</button>'+
+        '<span class="muted">всего: '+l.length+'</span></div>';
+  h+='<div class="card tbwrap"><table><thead><tr><th></th><th>ФИО</th><th>Тип</th><th>Должность</th><th>Договор</th><th>Окончание</th><th>Оформление</th><th>Статус</th></tr></thead><tbody>';
+  h+=l.map(function(x){
+    var e=x.emp,c=x.contract||{},p=x.steps||{};
+    return '<tr class="click" onclick="openCard(\''+e.id+'\')"><td>'+sevPill(x.state.sev)+'</td>'+
+      '<td><b>'+esc(e.fio)+'</b></td><td class="muted">'+esc(e.type)+'</td><td>'+esc(e.pos||'—')+'</td>'+
+      '<td class="muted">'+esc(c.num?((c.kind||'')+' №'+c.num):'—')+'</td><td>'+esc(c.end||'—')+'</td>'+
+      '<td class="muted">'+(p.total?(p.done+'/'+p.total):'—')+'</td><td class="muted">'+esc(e.status||'')+'</td></tr>';
+  }).join('');
+  return h+'</tbody></table></div>';
+}
+
+/* ─── Карточка ─── */
+function openCard(id){ api({vapi:'hrcard',emp:id}).then(function(r){ if(!r.ok){alert(r.error);return;} CARD=r; render(); window.scrollTo(0,0); }); }
+function closeCard(){ CARD=null; render(); }
+function cardView(){
+  var e=CARD.emp;
+  var h='<div class="back" onclick="closeCard()">← к списку</div>';
+  h+='<div class="card" style="margin-top:8px"><div class="row" style="justify-content:space-between">'+
+     '<div><div style="font-size:17px;font-weight:800">'+esc(e.fio)+'</div>'+
+     '<div class="muted">'+esc(e.type||'')+' · '+esc(e.pos||'должность не указана')+(e.posCode?' ('+esc(e.posCode)+')':'')+' · '+esc(e.status||'')+'</div></div>'+
+     '<div class="row">'+(e.folder?'<a class="btn sm" href="'+esc(e.folder)+'" target="_blank">📁 папка</a>'
+        :'<button class="btn sm" onclick="mkFolder()">📁 создать папку</button>')+
+     '<button class="btn sm" onclick="editEmp()">✎ править</button></div></div>';
+  h+='<div class="grid" style="margin-top:10px"><div class="kv"><div class="k">Идент. номер</div><div>'+esc(e.idnum||'—')+'</div>'+
+     '<div class="k">Паспорт</div><div>'+esc(e.passport||'—')+'</div><div class="k">Р/с</div><div>'+esc(e.account||'—')+'</div></div>'+
+     '<div class="kv"><div class="k">Принят</div><div>'+esc(e.hired||'—')+'</div><div class="k">Уволен</div><div>'+esc(e.fired||'—')+'</div>'+
+     '<div class="k">Telegram</div><div>'+esc(e.tgId||'—')+'</div></div></div></div>';
+
+  // договоры
+  h+='<div class="sect">Договоры</div><div class="card tbwrap">';
+  if(!CARD.contracts.length) h+='<div class="empty">Нет договоров.</div>';
+  else h+='<table><thead><tr><th></th><th>Вид</th><th>№</th><th>Дата</th><th>Окончание</th><th>Уведомление</th><th>Ответ</th><th>Статус</th><th></th></tr></thead><tbody>'+
+    CARD.contracts.map(function(c){
+      return '<tr><td>'+sevPill((c.state||{}).sev)+'</td><td>'+esc(c.kind)+'</td><td><b>'+esc(c.num)+'</b></td><td>'+esc(c.date)+'</td>'+
+        '<td>'+esc(c.end||'—')+'</td><td>'+esc(c.notify||'—')+'</td><td>'+esc(c.answer||'—')+'</td><td class="muted">'+esc(c.status)+'</td>'+
+        '<td><button class="btn sm" onclick=\'editCon('+JSON.stringify(c).replace(/'/g,"&#39;")+')\'>✎</button></td></tr>'+
+        '<tr><td></td><td colspan="8" class="muted" style="font-size:12px;border-bottom:1px solid var(--line)">'+esc((c.state||{}).msg||'')+'</td></tr>';
+    }).join('')+'</tbody></table>';
+  h+='<div style="margin-top:8px"><button class="btn" onclick="newCon()">+ договор</button></div></div>';
+
+  // доп. соглашения
+  if(CARD.ds.length){
+    h+='<div class="sect">Доп. соглашения</div><div class="card tbwrap"><table><thead><tr><th>№</th><th>Дата</th><th>Основание</th><th>Уведомление</th><th>Ответ</th></tr></thead><tbody>'+
+      CARD.ds.map(function(d){ return '<tr><td>'+esc(d.num||'—')+'</td><td>'+esc(d.date||'—')+'</td><td>'+esc(d.reason||'')+'</td><td>'+esc(d.notify||'—')+'</td><td>'+esc(d.answer||'—')+'</td></tr>'; }).join('')+
+      '</tbody></table></div>';
+  }
+  // приказы
+  if(CARD.orders.length){
+    h+='<div class="sect">Приказы</div><div class="card tbwrap"><table><thead><tr><th>№</th><th>Дата</th><th>Вид</th><th>Основание</th></tr></thead><tbody>'+
+      CARD.orders.map(function(o){ return '<tr><td><b>'+esc(o.num)+'</b></td><td>'+esc(o.date||'—')+'</td><td>'+esc(o.kind||'')+'</td><td class="muted">'+esc(o.basis||'')+'</td></tr>'; }).join('')+
+      '</tbody></table></div>';
+  }
+  // чек-лист
+  h+='<div class="sect">Оформление — чек-лист по регламенту</div>';
+  if(!CARD.steps.length){
+    h+='<div class="card"><div class="empty">Чек-лист не запущен.</div><div class="row">'+
+       CARD.processes.map(function(p){ return '<button class="btn sm" onclick="startProc(\''+p+'\')">▶ '+esc(p)+'</button>'; }).join('')+'</div></div>';
+  } else {
+    var byProc={}; CARD.steps.forEach(function(s){ (byProc[s.proc]=byProc[s.proc]||[]).push(s); });
+    Object.keys(byProc).forEach(function(p){
+      var ss=byProc[p], done=ss.filter(function(s){return s.status==='сделано';}).length;
+      h+='<div class="card"><div class="row" style="justify-content:space-between"><b>'+esc(p)+'</b>'+
+         '<span class="muted">'+done+' / '+ss.length+'</span></div><div class="steps">'+
+        ss.map(function(s){
+          var late=s.due&&s.status!=='сделано'&&isLate(s.due);
+          return '<div class="step '+(s.status==='сделано'?'done':'')+'">'+
+            '<div class="chk" onclick="toggleStep(\''+s.id+'\','+(s.status==='сделано'?1:0)+')">'+(s.status==='сделано'?'✓':'')+'</div>'+
+            '<div class="n">'+s.step+'</div><div class="t">'+esc(s.title)+
+            '<div class="w">'+esc(s.who)+(s.date?' · '+esc(s.date):'')+
+            (s.due?' · <span class="due'+(late?' late':'')+'">срок '+esc(s.due)+'</span>':'')+
+            (s.link?' · <a href="'+esc(s.link)+'" target="_blank">артефакт</a>':'')+'</div></div></div>';
+        }).join('')+'</div></div>';
+    });
+    var have={}; CARD.steps.forEach(function(s){have[s.proc]=1;});
+    var rest=CARD.processes.filter(function(p){return !have[p];});
+    if(rest.length) h+='<div class="card"><div class="row">'+rest.map(function(p){
+      return '<button class="btn sm" onclick="startProc(\''+p+'\')">▶ запустить: '+esc(p)+'</button>'; }).join('')+'</div></div>';
+  }
+  return h;
+}
+function isLate(due){ var p=String(due).split('.'); if(p.length!==3) return false;
+  var d=new Date(+p[2],+p[1]-1,+p[0]); var t=new Date(); t.setHours(0,0,0,0); return d<t; }
+function toggleStep(id,done){ api({vapi:'hrstepdone',step:id,undo:done?1:0}).then(function(r){
+  if(!r.ok){ alert(r.error); return; } CARD=r; render(); }); }
+function startProc(p){ api({vapi:'hrstartproc',emp:CARD.emp.id,proc:p,date:CARD.emp.hired||''}).then(function(r){
+  if(!r.ok){ alert(r.error); return; } CARD=r; render(); }); }
+function mkFolder(){ api({vapi:'hrfolder',emp:CARD.emp.id}).then(function(r){
+  if(!r.ok){ alert(r.error); return; } openCard(CARD.emp.id); }); }
+
+/* ─── формы ─── */
+function fld(k,l,v,type){ return '<div><label class="f">'+l+'</label><input id="f_'+k+'" value="'+esc(v||'')+'"'+(type?' type="'+type+'"':'')+'></div>'; }
+function sel(k,l,v,opts){ return '<div><label class="f">'+l+'</label><select id="f_'+k+'">'+
+  opts.map(function(o){ return '<option'+(o===v?' selected':'')+'>'+esc(o)+'</option>'; }).join('')+'</select></div>'; }
+function val(k){ var el=$('f_'+k); return el?el.value.trim():''; }
+function dlg(title,body,onsave){
+  var h='<div class="card"><b>'+esc(title)+'</b><div class="grid" style="margin-top:9px">'+body+'</div>'+
+    '<div class="row" style="margin-top:10px"><button class="btn pri" id="dlgSave">Сохранить</button>'+
+    '<button class="btn" onclick="'+(CARD?'openCard(\''+CARD.emp.id+'\')':'load()')+'">Отмена</button></div></div>';
+  $('app').innerHTML=h; $('dlgSave').onclick=onsave;
+}
+function newEmp(){ empForm({}); }
+function editEmp(){ empForm(CARD.emp); }
+function empForm(e){
+  dlg(e.id?'Правка сотрудника':'Новый сотрудник',
+    fld('fio','ФИО',e.fio)+sel('type','Тип',e.type||'штат',['штат','подряд'])+fld('pos','Должность',e.pos)+
+    fld('posCode','Код должности (из штатного)',e.posCode)+sel('status','Статус',e.status||'оформляется',['оформляется','работает','уволен','завершён'])+
+    fld('idnum','Идент. номер',e.idnum)+fld('passport','Паспорт',e.passport)+fld('addr','Адрес регистрации',e.addr)+
+    fld('account','Р/с (Беларусбанк)',e.account)+fld('hired','Дата приёма (дд.мм.гггг)',e.hired)+fld('fired','Дата увольнения',e.fired)+
+    fld('phone','Телефон',e.phone)+fld('tgId','Telegram ID',e.tgId)+fld('note','Примечание',e.note),
+    function(){
+      var d={id:e.id||'',fio:val('fio'),type:val('type'),pos:val('pos'),posCode:val('posCode'),status:val('status'),
+             idnum:val('idnum'),passport:val('passport'),addr:val('addr'),account:val('account'),hired:val('hired'),
+             fired:val('fired'),phone:val('phone'),tgId:val('tgId'),note:val('note')};
+      if(!d.fio){ alert('Укажите ФИО'); return; }
+      api({vapi:'hrsaveemp',data:JSON.stringify(d)}).then(function(r){
+        if(!r.ok){ alert(r.error); return; }
+        EXTRA={}; api({vapi:'hrlist'}).then(function(l){ DATA=l; CARD=r; render(); });
+      });
+    });
+}
+function newCon(){ conForm({emp:CARD.emp.id,kind:CARD.emp.type==='подряд'?'подряд':'контракт'}); }
+function editCon(c){ conForm(c); }
+function conForm(c){
+  dlg(c.id?'Правка договора':'Новый договор',
+    sel('kind','Вид',c.kind||'контракт',['контракт','подряд'])+fld('num','№',c.num)+fld('date','Дата',c.date)+
+    fld('end','Дата окончания',c.end)+fld('pos','Должность / работа',c.pos)+fld('rate','Ставка',c.rate)+fld('salary','Оклад',c.salary)+
+    fld('workTime','Время работы',c.workTime)+sel('status','Статус',c.status||'действует',['действует','истёк','расторгнут','продлён'])+
+    fld('termDate','Дата прекращения',c.termDate)+fld('notify','Уведомление (дата)',c.notify)+fld('answer','Ответ на уведомление',c.answer)+
+    fld('link','Ссылка на документ',c.link)+fld('note','Примечание',c.note),
+    function(){
+      var d={id:c.id||'',emp:c.emp||CARD.emp.id,kind:val('kind'),num:val('num'),date:val('date'),end:val('end'),pos:val('pos'),
+             rate:val('rate'),salary:val('salary'),workTime:val('workTime'),status:val('status'),termDate:val('termDate'),
+             notify:val('notify'),answer:val('answer'),link:val('link'),note:val('note')};
+      api({vapi:'hrsavecontract',data:JSON.stringify(d)}).then(function(r){
+        if(!r.ok){ alert(r.error); return; }
+        api({vapi:'hrlist'}).then(function(l){ DATA=l; CARD=r; render(); });
+      });
+    });
+}
+
+/* ─── реестры ─── */
+function empOpts(v){ return '<div><label class="f">Сотрудник</label><select id="f_emp"><option value="">—</option>'+
+  (DATA.list||[]).map(function(x){ return '<option value="'+x.emp.id+'"'+(x.emp.id===v?' selected':'')+'>'+esc(x.emp.fio)+'</option>'; }).join('')+'</select></div>'; }
+function ordView(){
+  var l=(EXTRA.ord&&EXTRA.ord.orders)||[];
+  var h='<div class="row" style="margin-bottom:8px"><button class="btn pri" onclick="ordForm({})">+ Приказ</button><span class="muted">всего: '+l.length+'</span></div>';
+  h+='<div class="card tbwrap"><table><thead><tr><th>№</th><th>Дата</th><th>Серия</th><th>Вид</th><th>ФИО</th><th>Основание</th></tr></thead><tbody>';
+  h+=l.map(function(o){ return '<tr><td><b>'+esc(o.num)+'</b></td><td>'+esc(o.date||'—')+'</td><td class="muted">'+esc(o.series)+'</td><td>'+esc(o.kind||'')+'</td><td>'+esc(o.fio||'—')+'</td><td class="muted">'+esc(o.basis||'')+'</td></tr>'; }).join('');
+  return h+'</tbody></table>'+(l.length?'':'<div class="empty">Пусто.</div>')+'</div>';
+}
+function ordForm(o){
+  dlg('Приказ', sel('series','Серия',o.series||'кадровые',['кадровые','основная деятельность'])+
+    fld('num','№ (пусто = следующий)',o.num)+fld('date','Дата',o.date)+fld('kind','Вид приказа',o.kind)+
+    empOpts(o.emp)+fld('pos','Должность',o.pos)+fld('basis','Основание',o.basis)+fld('link','Ссылка',o.link),
+    function(){
+      var d={id:o.id||'',series:val('series'),num:val('num'),date:val('date'),kind:val('kind'),emp:val('emp'),
+             pos:val('pos'),basis:val('basis'),link:val('link')};
+      api({vapi:'hrsaveorder',data:JSON.stringify(d)}).then(function(){ EXTRA.ord=null; CARD=null; go('ord'); });
+    });
+}
+function sickView(){
+  var l=(EXTRA.sick&&EXTRA.sick.sick)||[];
+  var h='<div class="row" style="margin-bottom:8px"><button class="btn pri" onclick="sickForm({})">+ Больничный</button><span class="muted">всего: '+l.length+'</span></div>';
+  h+='<div class="card tbwrap"><table><thead><tr><th>Серия и номер</th><th>ФИО</th><th>С</th><th>По</th><th class="num">Расчёт</th></tr></thead><tbody>';
+  h+=l.map(function(s){ return '<tr><td>'+esc(s.sernum)+'</td><td>'+esc(s.fio||'—')+'</td><td>'+esc(s.from||'—')+'</td><td>'+esc(s.to||'—')+'</td><td class="num">'+(s.calc?money(s.calc):'—')+'</td></tr>'; }).join('');
+  return h+'</tbody></table>'+(l.length?'':'<div class="empty">Пусто.</div>')+'</div>';
+}
+function sickForm(s){
+  dlg('Больничный', fld('sernum','Серия и номер',s.sernum)+empOpts(s.emp)+fld('from','Дата начала',s.from)+
+    fld('to','Дата окончания',s.to)+fld('calc','Расчёт',s.calc)+fld('note','Примечание',s.note),
+    function(){
+      var d={id:s.id||'',sernum:val('sernum'),emp:val('emp'),from:val('from'),to:val('to'),calc:val('calc'),note:val('note')};
+      api({vapi:'hrsavesick',data:JSON.stringify(d)}).then(function(){ EXTRA.sick=null; CARD=null; go('sick'); });
+    });
+}
+function docView(){
+  var l=(EXTRA.doc&&EXTRA.doc.docs)||[];
+  var h='<div class="row" style="margin-bottom:8px"><button class="btn pri" onclick="docForm({})">+ Документ</button><span class="muted">табели, расчётные ведомости, штатное расписание</span></div>';
+  h+='<div class="card tbwrap"><table><thead><tr><th>Тип</th><th>Номер</th><th>Дата</th><th>Период</th><th>Скан</th></tr></thead><tbody>';
+  h+=l.map(function(d){ return '<tr><td>'+esc(d.type)+'</td><td>'+esc(d.num||'—')+'</td><td>'+esc(d.date||'—')+'</td><td>'+esc(d.period||'—')+'</td><td>'+(d.link?'<a href="'+esc(d.link)+'" target="_blank">открыть</a>':'—')+'</td></tr>'; }).join('');
+  return h+'</tbody></table>'+(l.length?'':'<div class="empty">Пусто.</div>')+'</div>';
+}
+function docForm(d){
+  dlg('Документ', sel('type','Тип',d.type||'табель',['табель','расчётная ведомость','штатное расписание','прочее'])+
+    fld('num','Номер',d.num)+fld('date','Дата',d.date)+fld('period','Период',d.period)+fld('link','Ссылка/скан',d.link),
+    function(){
+      var x={id:d.id||'',type:val('type'),num:val('num'),date:val('date'),period:val('period'),link:val('link')};
+      api({vapi:'hrsavedoc',data:JSON.stringify(x)}).then(function(){ EXTRA.doc=null; CARD=null; go('doc'); });
+    });
+}
+function fuelView(){
+  var r=EXTRA.fuel||{}, l=r.fuel||[], t=r.totals||{};
+  var h='<div class="row" style="margin-bottom:8px"><button class="btn pri" onclick="fuelForm({})">+ Запись</button>'+
+        '<span class="muted">акты: '+money(t.acts)+' · выплаты: '+money(t.pays)+'</span></div>';
+  h+='<div class="card tbwrap"><table><thead><tr><th>Вид</th><th>Дата</th><th>№ акта</th><th>ФИО</th><th class="num">Сумма</th></tr></thead><tbody>';
+  h+=l.map(function(f){ return '<tr><td>'+esc(f.kind)+'</td><td>'+esc(f.date||'—')+'</td><td>'+esc(f.num||'—')+'</td><td>'+esc(f.fio||'—')+'</td><td class="num">'+money(f.sum)+'</td></tr>'; }).join('');
+  return h+'</tbody></table>'+(l.length?'':'<div class="empty">Пусто.</div>')+'</div>';
+}
+function fuelForm(f){
+  dlg('Топливо', sel('kind','Вид',f.kind||'акт',['акт','выплата'])+fld('date','Дата',f.date)+fld('num','№ акта',f.num)+
+    fld('sum','Сумма',f.sum)+empOpts(f.emp)+fld('note','Примечание',f.note),
+    function(){
+      var d={id:f.id||'',kind:val('kind'),date:val('date'),num:val('num'),sum:val('sum'),emp:val('emp'),note:val('note')};
+      api({vapi:'hrsavefuel',data:JSON.stringify(d)}).then(function(){ EXTRA.fuel=null; CARD=null; go('fuel'); });
+    });
+}
+load();
+</script>
+</body>
+</html>
