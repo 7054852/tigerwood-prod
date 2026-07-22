@@ -334,6 +334,40 @@ function renewForm(conId){
         });
     });
 }
+// доп. соглашение: выбираем, что меняем, и вводим НОВЫЕ значения — они попадут и в документ, и в договор
+function dsDocForm(dsId){
+  var d=(DATA.ds||[]).filter(function(x){return x.id===dsId;})[0]; if(!d) return;
+  var c=(DATA.contracts||[]).filter(function(x){return x.id===d.con;})[0]||{};
+  REQKEYS={};
+  var body='<div class="fld"><label class="f">Что меняет соглашение</label><select id="f_kind" onchange="dsDocToggle()">'+
+    '<option value="дс-оплата">оплата труда (оклад и тарифный оклад)</option>'+
+    '<option value="дс-аванс">размер аванса</option>'+
+    '<option value="дс-график">режим рабочего дня</option></select></div>'+
+    '<div id="boxPay" style="display:contents">'+fld('salary','Новый оклад',c.salary)+fld('tariff','Новый тарифный оклад',c.tariff)+'</div>'+
+    '<div id="boxAdv" style="display:none">'+fld('advance','Новый аванс',c.advance)+'</div>'+
+    '<div id="boxWt" style="display:none">'+fld('wStart','Начало рабочего дня',c.wStart)+fld('wBreak','Перерыв',c.wBreak)+fld('wEnd','Конец рабочего дня',c.wEnd)+'</div>';
+  dlg('Доп. соглашение № '+esc(d.num)+' к контракту № '+esc(c.num)+' — документ', body,
+    function(){
+      var w=$('f_kind').value;
+      var o={apply:1};
+      if(w==='дс-оплата'){ o.salary=val('salary'); o.tariff=val('tariff'); }
+      if(w==='дс-аванс'){ o.advance=val('advance'); }
+      if(w==='дс-график'){ o.wStart=val('wStart'); o.wBreak=val('wBreak'); o.wEnd=val('wEnd'); }
+      busy(1);
+      api({vapi:'hrgends',ds:dsId,what:w,opts:JSON.stringify(o)}).then(function(r){ busy(0);
+        if(!r.ok){ alert(r.error); return; }
+        apply(r,CARD?CARD.emp.id:null);
+        window.open(r.url,'_blank');
+        if((r.leftPlaceholders||[]).length) alert('Внимание: в документе остались незаполненные места: '+r.leftPlaceholders.join(', '));
+      });
+    }, '',
+    'Введённые значения будут напечатаны в соглашении и станут действующими условиями договора.');
+  setTimeout(function(){ $('dlgSave').textContent='🖨 Сформировать документ'; },0);
+}
+function dsDocToggle(){ var w=$('f_kind').value;
+  $('boxPay').style.display=(w==='дс-оплата')?'contents':'none';
+  $('boxAdv').style.display=(w==='дс-аванс')?'contents':'none';
+  $('boxWt').style.display=(w==='дс-график')?'contents':'none'; }
 function signNotice(conId){
   if(!confirm('Отметить, что работник подписал уведомление? Подпись означает согласие продолжить работу.')) return;
   busy(1); api({vapi:'hrsignnotice',con:conId}).then(function(r){ busy(0); apply(r,CARD?CARD.emp.id:null); });
@@ -499,12 +533,12 @@ function docMenu(target,id){
   if(!rec) return;
   var title = target==='con' ? (rec.kind+' № '+rec.num) : (target==='ds' ? ('доп. соглашение № '+rec.num) : ('приказ № '+rec.num));
   var canTpl = (target==='con' && (rec.kind==='контракт'||rec.kind==='подряд'||rec.kind==='обучение')) ||
-               (target==='order' && /при[её]м/i.test(rec.kind||''));
+               (target==='order' && /при[её]м/i.test(rec.kind||'')) || target==='ds';
   var h='<div class="card"><b>Документ: '+esc(title)+'</b>'+
     '<div class="muted" style="margin:6px 0 10px;font-size:12.5px">Данные записи уже сохранены в системе. Здесь создаётся или прикладывается сам файл — он ляжет в папку сотрудника.</div>';
   if(rec.link) h+='<div style="margin-bottom:8px">Сейчас приложен: <a href="'+esc(rec.link)+'" target="_blank">открыть документ</a></div>';
   h+='<div class="row">'+
-    (canTpl?'<button class="btn pri" onclick="genDoc(\''+id+'\',\''+(target==='order'?'приказ-приём':'')+'\',\''+target+'\')">🖨 Собрать по шаблону</button>':'')+
+    (canTpl?('<button class="btn pri" onclick="'+(target==='ds'?('dsDocForm(\''+id+'\')'):('genDoc(\''+id+'\',\''+(target==='order'?'приказ-приём':'')+'\',\''+target+'\')'))+'">🖨 Собрать по шаблону</button>'):'')+
     '<button class="btn" onclick="uploadDoc(\''+id+'\',\''+target+'\')">📎 Загрузить готовый (скан, фото, PDF)</button>'+
     '<button class="btn" onclick="'+(CARD?'openCard(\''+CARD.emp.id+'\')':'render()')+'">Отмена</button></div>'+
     (canTpl?'<div class="muted" style="margin-top:8px;font-size:12px">«Собрать по шаблону» создаёт документ Google с вашими данными — его можно доредактировать и распечатать. «Загрузить готовый» — для уже подписанных бумаг: файл сохранится как есть, редактировать его нельзя, только открыть и распечатать.</div>'
