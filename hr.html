@@ -73,28 +73,45 @@ function $(id){ return document.getElementById(id); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function money(n){ return (Number(n)||0).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 
-var TAB='dl', DATA=null, CARD=null, EXTRA={};
+var TAB='dl', DATA=null, CARD=null;
 var TABS=[{id:'dl',t:'⏱ Сроки'},{id:'emp',t:'👤 Сотрудники'},{id:'ord',t:'📜 Приказы'},
           {id:'sick',t:'🏥 Больничные'},{id:'doc',t:'🗂 Документы'},{id:'fuel',t:'⛽ Топливо'}];
 
-function load(){
-  api({vapi:'hrlist'}).then(function(r){
+// ВСЁ грузится одним запросом (вызов GAS стоит секунды) — вкладки и карточки дальше открываются мгновенно, без сети
+function apply(r,keepCardId){
+  if(!r||!r.ok){ alert((r&&r.error)||'ошибка'); return false; }
+  DATA=r; CARD=keepCardId?buildCard(keepCardId):null; render(); return true;
+}
+function load(force){
+  $('app').innerHTML='<div class="center">Загрузка…</div>';
+  api(force?{vapi:'hrall',force:1}:{vapi:'hrall'}).then(function(r){
     if(!r||!r.ok){ $('app').innerHTML='<div class="center">Ошибка: '+esc((r&&r.error)||'нет данных')+'</div>'; return; }
     DATA=r; render();
   }).catch(function(e){ $('app').innerHTML='<div class="center">Сеть: '+esc(e.message)+'</div>'; });
 }
-function go(tab){ TAB=tab; CARD=null; if(tab==='ord'&&!EXTRA.ord) return api({vapi:'hrorders'}).then(function(r){EXTRA.ord=r;render();});
-  if(tab==='sick'&&!EXTRA.sick) return api({vapi:'hrsick'}).then(function(r){EXTRA.sick=r;render();});
-  if(tab==='doc'&&!EXTRA.doc) return api({vapi:'hrdocs'}).then(function(r){EXTRA.doc=r;render();});
-  if(tab==='fuel'&&!EXTRA.fuel) return api({vapi:'hrfuel'}).then(function(r){EXTRA.fuel=r;render();});
-  render(); }
+function go(tab){ TAB=tab; CARD=null; render(); }
+// карточка собирается из уже загруженного пакета — ноль запросов
+function buildCard(empId){
+  var row=(DATA.list||[]).filter(function(x){return x.emp.id===empId;})[0];
+  if(!row) return null;
+  var cons=(DATA.contracts||[]).filter(function(c){return c.emp===empId;});
+  var conIds={}; cons.forEach(function(c){conIds[c.id]=1;});
+  return { ok:true, emp:row.emp, contracts:cons,
+    ds:(DATA.ds||[]).filter(function(d){return conIds[d.con];}),
+    orders:(DATA.orders||[]).filter(function(o){return o.emp===empId;}),
+    sick:(DATA.sick||[]).filter(function(x){return x.emp===empId;}),
+    fuel:(DATA.fuel||[]).filter(function(x){return x.emp===empId;}),
+    steps:(DATA.steps||[]).filter(function(s){return s.emp===empId;}),
+    processes:DATA.processes||[] };
+}
 function sevPill(s){ var m={red:'🔴',amber:'🟡',ok:'🟢',none:'—'}; return '<span class="pill p-'+(s||'none')+'">'+(m[s]||'—')+'</span>'; }
 
 function render(){
   var red=(DATA.deadlines||[]).filter(function(x){return x.sev==='red';}).length;
   var h='<div class="tabs">'+TABS.map(function(t){
     return '<button class="'+(TAB===t.id?'on':'')+'" onclick="go(\''+t.id+'\')">'+t.t+(t.id==='dl'&&red?'<span class="b">'+red+'</span>':'')+'</button>';
-  }).join('')+'</div>';
+  }).join('')+'<button onclick="load(1)" title="перечитать с сервера">⟳</button>'+
+  (DATA.cached?'<span class="muted" style="align-self:center;font-size:11.5px">данные из кеша</span>':'')+'</div>';
   if(CARD) h+=cardView(); else if(TAB==='dl') h+=dlView();
   else if(TAB==='emp') h+=empView();
   else if(TAB==='ord') h+=ordView();
@@ -132,7 +149,7 @@ function empView(){
 }
 
 /* ─── Карточка ─── */
-function openCard(id){ api({vapi:'hrcard',emp:id}).then(function(r){ if(!r.ok){alert(r.error);return;} CARD=r; render(); window.scrollTo(0,0); }); }
+function openCard(id){ CARD=buildCard(id); if(!CARD){ alert('сотрудник не найден'); return; } render(); window.scrollTo(0,0); }
 function closeCard(){ CARD=null; render(); }
 function cardView(){
   var e=CARD.emp;
@@ -202,12 +219,13 @@ function cardView(){
 }
 function isLate(due){ var p=String(due).split('.'); if(p.length!==3) return false;
   var d=new Date(+p[2],+p[1]-1,+p[0]); var t=new Date(); t.setHours(0,0,0,0); return d<t; }
-function toggleStep(id,done){ api({vapi:'hrstepdone',step:id,undo:done?1:0}).then(function(r){
-  if(!r.ok){ alert(r.error); return; } CARD=r; render(); }); }
-function startProc(p){ api({vapi:'hrstartproc',emp:CARD.emp.id,proc:p,date:CARD.emp.hired||''}).then(function(r){
-  if(!r.ok){ alert(r.error); return; } CARD=r; render(); }); }
-function mkFolder(){ api({vapi:'hrfolder',emp:CARD.emp.id}).then(function(r){
-  if(!r.ok){ alert(r.error); return; } openCard(CARD.emp.id); }); }
+function busy(t){ var e=$('app'); if(e) e.style.opacity=t?'.5':''; }
+function toggleStep(id,done){ var eid=CARD.emp.id; busy(1);
+  api({vapi:'hrstepdone',step:id,undo:done?1:0}).then(function(r){ busy(0); apply(r,eid); }); }
+function startProc(p){ var eid=CARD.emp.id; busy(1);
+  api({vapi:'hrstartproc',emp:eid,proc:p,date:CARD.emp.hired||''}).then(function(r){ busy(0); apply(r,eid); }); }
+function mkFolder(){ var eid=CARD.emp.id; busy(1);
+  api({vapi:'hrfolder',emp:eid}).then(function(r){ busy(0); apply(r,eid); }); }
 
 /* ─── формы ─── */
 function fld(k,l,v,type){ return '<div><label class="f">'+l+'</label><input id="f_'+k+'" value="'+esc(v||'')+'"'+(type?' type="'+type+'"':'')+'></div>'; }
@@ -234,10 +252,7 @@ function empForm(e){
              idnum:val('idnum'),passport:val('passport'),addr:val('addr'),account:val('account'),hired:val('hired'),
              fired:val('fired'),phone:val('phone'),tgId:val('tgId'),note:val('note')};
       if(!d.fio){ alert('Укажите ФИО'); return; }
-      api({vapi:'hrsaveemp',data:JSON.stringify(d)}).then(function(r){
-        if(!r.ok){ alert(r.error); return; }
-        EXTRA={}; api({vapi:'hrlist'}).then(function(l){ DATA=l; CARD=r; render(); });
-      });
+      busy(1); api({vapi:'hrsaveemp',data:JSON.stringify(d)}).then(function(r){ busy(0); apply(r,d.id||r.savedId); });
     });
 }
 function newCon(){ conForm({emp:CARD.emp.id,kind:CARD.emp.type==='подряд'?'подряд':'контракт'}); }
@@ -253,10 +268,7 @@ function conForm(c){
       var d={id:c.id||'',emp:c.emp||CARD.emp.id,kind:val('kind'),num:val('num'),date:val('date'),end:val('end'),pos:val('pos'),
              rate:val('rate'),salary:val('salary'),workTime:val('workTime'),status:val('status'),termDate:val('termDate'),
              notify:val('notify'),answer:val('answer'),link:val('link'),note:val('note')};
-      api({vapi:'hrsavecontract',data:JSON.stringify(d)}).then(function(r){
-        if(!r.ok){ alert(r.error); return; }
-        api({vapi:'hrlist'}).then(function(l){ DATA=l; CARD=r; render(); });
-      });
+      busy(1); api({vapi:'hrsavecontract',data:JSON.stringify(d)}).then(function(r){ busy(0); apply(r,d.emp); });
     });
 }
 
@@ -264,7 +276,7 @@ function conForm(c){
 function empOpts(v){ return '<div><label class="f">Сотрудник</label><select id="f_emp"><option value="">—</option>'+
   (DATA.list||[]).map(function(x){ return '<option value="'+x.emp.id+'"'+(x.emp.id===v?' selected':'')+'>'+esc(x.emp.fio)+'</option>'; }).join('')+'</select></div>'; }
 function ordView(){
-  var l=(EXTRA.ord&&EXTRA.ord.orders)||[];
+  var l=DATA.orders||[];
   var h='<div class="row" style="margin-bottom:8px"><button class="btn pri" onclick="ordForm({})">+ Приказ</button><span class="muted">всего: '+l.length+'</span></div>';
   h+='<div class="card tbwrap"><table><thead><tr><th>№</th><th>Дата</th><th>Серия</th><th>Вид</th><th>ФИО</th><th>Основание</th></tr></thead><tbody>';
   h+=l.map(function(o){ return '<tr><td><b>'+esc(o.num)+'</b></td><td>'+esc(o.date||'—')+'</td><td class="muted">'+esc(o.series)+'</td><td>'+esc(o.kind||'')+'</td><td>'+esc(o.fio||'—')+'</td><td class="muted">'+esc(o.basis||'')+'</td></tr>'; }).join('');
@@ -277,11 +289,11 @@ function ordForm(o){
     function(){
       var d={id:o.id||'',series:val('series'),num:val('num'),date:val('date'),kind:val('kind'),emp:val('emp'),
              pos:val('pos'),basis:val('basis'),link:val('link')};
-      api({vapi:'hrsaveorder',data:JSON.stringify(d)}).then(function(){ EXTRA.ord=null; CARD=null; go('ord'); });
+      busy(1); api({vapi:'hrsaveorder',data:JSON.stringify(d)}).then(function(r){ busy(0); TAB='ord'; apply(r); });
     });
 }
 function sickView(){
-  var l=(EXTRA.sick&&EXTRA.sick.sick)||[];
+  var l=DATA.sick||[];
   var h='<div class="row" style="margin-bottom:8px"><button class="btn pri" onclick="sickForm({})">+ Больничный</button><span class="muted">всего: '+l.length+'</span></div>';
   h+='<div class="card tbwrap"><table><thead><tr><th>Серия и номер</th><th>ФИО</th><th>С</th><th>По</th><th class="num">Расчёт</th></tr></thead><tbody>';
   h+=l.map(function(s){ return '<tr><td>'+esc(s.sernum)+'</td><td>'+esc(s.fio||'—')+'</td><td>'+esc(s.from||'—')+'</td><td>'+esc(s.to||'—')+'</td><td class="num">'+(s.calc?money(s.calc):'—')+'</td></tr>'; }).join('');
@@ -292,11 +304,11 @@ function sickForm(s){
     fld('to','Дата окончания',s.to)+fld('calc','Расчёт',s.calc)+fld('note','Примечание',s.note),
     function(){
       var d={id:s.id||'',sernum:val('sernum'),emp:val('emp'),from:val('from'),to:val('to'),calc:val('calc'),note:val('note')};
-      api({vapi:'hrsavesick',data:JSON.stringify(d)}).then(function(){ EXTRA.sick=null; CARD=null; go('sick'); });
+      busy(1); api({vapi:'hrsavesick',data:JSON.stringify(d)}).then(function(r){ busy(0); TAB='sick'; apply(r); });
     });
 }
 function docView(){
-  var l=(EXTRA.doc&&EXTRA.doc.docs)||[];
+  var l=DATA.docs||[];
   var h='<div class="row" style="margin-bottom:8px"><button class="btn pri" onclick="docForm({})">+ Документ</button><span class="muted">табели, расчётные ведомости, штатное расписание</span></div>';
   h+='<div class="card tbwrap"><table><thead><tr><th>Тип</th><th>Номер</th><th>Дата</th><th>Период</th><th>Скан</th></tr></thead><tbody>';
   h+=l.map(function(d){ return '<tr><td>'+esc(d.type)+'</td><td>'+esc(d.num||'—')+'</td><td>'+esc(d.date||'—')+'</td><td>'+esc(d.period||'—')+'</td><td>'+(d.link?'<a href="'+esc(d.link)+'" target="_blank">открыть</a>':'—')+'</td></tr>'; }).join('');
@@ -307,11 +319,11 @@ function docForm(d){
     fld('num','Номер',d.num)+fld('date','Дата',d.date)+fld('period','Период',d.period)+fld('link','Ссылка/скан',d.link),
     function(){
       var x={id:d.id||'',type:val('type'),num:val('num'),date:val('date'),period:val('period'),link:val('link')};
-      api({vapi:'hrsavedoc',data:JSON.stringify(x)}).then(function(){ EXTRA.doc=null; CARD=null; go('doc'); });
+      busy(1); api({vapi:'hrsavedoc',data:JSON.stringify(x)}).then(function(r){ busy(0); TAB='doc'; apply(r); });
     });
 }
 function fuelView(){
-  var r=EXTRA.fuel||{}, l=r.fuel||[], t=r.totals||{};
+  var l=DATA.fuel||[], t=DATA.fuelTotals||{};
   var h='<div class="row" style="margin-bottom:8px"><button class="btn pri" onclick="fuelForm({})">+ Запись</button>'+
         '<span class="muted">акты: '+money(t.acts)+' · выплаты: '+money(t.pays)+'</span></div>';
   h+='<div class="card tbwrap"><table><thead><tr><th>Вид</th><th>Дата</th><th>№ акта</th><th>ФИО</th><th class="num">Сумма</th></tr></thead><tbody>';
@@ -323,7 +335,7 @@ function fuelForm(f){
     fld('sum','Сумма',f.sum)+empOpts(f.emp)+fld('note','Примечание',f.note),
     function(){
       var d={id:f.id||'',kind:val('kind'),date:val('date'),num:val('num'),sum:val('sum'),emp:val('emp'),note:val('note')};
-      api({vapi:'hrsavefuel',data:JSON.stringify(d)}).then(function(){ EXTRA.fuel=null; CARD=null; go('fuel'); });
+      busy(1); api({vapi:'hrsavefuel',data:JSON.stringify(d)}).then(function(r){ busy(0); TAB='fuel'; apply(r); });
     });
 }
 load();
