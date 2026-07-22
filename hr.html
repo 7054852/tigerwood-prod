@@ -198,7 +198,18 @@ function cardView(){
   h+='<div class="grid" style="margin-top:10px"><div class="kv"><div class="k">Идент. номер</div><div>'+esc(e.idnum||'—')+'</div>'+
      '<div class="k">Паспорт</div><div>'+esc(e.passport||'—')+'</div><div class="k">Р/с</div><div>'+esc(e.account||'—')+'</div></div>'+
      '<div class="kv"><div class="k">Принят</div><div>'+esc(e.hired||'—')+'</div><div class="k">Уволен</div><div>'+esc(e.fired||'—')+'</div>'+
-     '<div class="k">Telegram</div><div>'+esc(e.tgId||'—')+'</div></div></div></div>';
+     '<div class="k">Telegram</div><div>'+esc(e.tgId||'—')+'</div></div></div>'+
+     (function(){
+        var cur=(CARD.contracts||[]).filter(function(c){return c.kind==='контракт'&&c.status!=='расторгнут'&&c.status!=='продлён';})[0];
+        if(!cur||!cur.effective) return '';
+        var ef=cur.effective, base=cur, chg=Object.keys(ef).filter(function(k){return String(ef[k]||'')!==String(base[k]||'');});
+        var row=function(l,v,ch){ return v?('<span style="margin-right:14px">'+l+': <b>'+esc(v)+'</b>'+(ch?' <span class="pill p-amber" style="font-size:10px">изменён</span>':'')+'</span>'):''; };
+        return '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--line);font-size:12.5px">'+
+          '<span class="muted">действует сейчас (с учётом доп. соглашений): </span>'+
+          row('оклад',ef.salary,chg.indexOf('salary')>=0)+row('тариф',ef.tariff,chg.indexOf('tariff')>=0)+
+          row('аванс',ef.advance,chg.indexOf('advance')>=0)+
+          row('режим',(ef.wStart&&ef.wEnd)?(ef.wStart+'–'+ef.wEnd):'',chg.indexOf('wStart')>=0||chg.indexOf('wEnd')>=0)+'</div>';
+     })()+'</div>';
 
   // договоры
   h+='<div class="sect">Договоры</div><div class="card tbwrap">';
@@ -235,8 +246,11 @@ function cardView(){
   // доп. соглашения
   h+='<div class="sect">Доп. соглашения</div><div class="card tbwrap">';
   if(!CARD.ds.length) h+='<div class="empty">Доп. соглашений нет.</div>';
-  else h+='<table><thead><tr><th>№</th><th>Дата</th><th>Основание изменений</th><th>Документ</th><th></th></tr></thead><tbody>'+
-      CARD.ds.map(function(d){ return '<tr><td><b>'+esc(d.num||'—')+'</b></td><td>'+esc(d.date||'—')+'</td><td>'+esc(d.reason||'')+'</td>'+
+  else h+='<table><thead><tr><th>№</th><th>Дата</th><th>Что изменилось</th><th>Документ</th><th></th></tr></thead><tbody>'+
+      CARD.ds.slice().sort(function(a,b){return (dt(a.date)||0)-(dt(b.date)||0);}).map(function(d){
+        var lbl={salary:'оклад',tariff:'тариф',advance:'аванс',wStart:'начало',wBreak:'перерыв',wEnd:'конец'};
+        var chTxt=Object.keys(d.changes||{}).map(function(k){return (lbl[k]||k)+' → '+d.changes[k];}).join(', ');
+        return '<tr><td><b>'+esc(d.num||'—')+'</b></td><td>'+esc(d.date||'—')+'</td><td>'+(chTxt?esc(chTxt):esc(d.reason||'—'))+'</td>'+
         '<td>'+(d.link?'<a class="btn sm" href="'+esc(d.link)+'" target="_blank">📄 документ</a>'
                       :'<button class="btn sm" onclick="uploadDoc(\''+d.id+'\',\'ds\')">📎 загрузить</button>')+'</td>'+
         '<td><button class="btn sm" onclick=\'dsForm('+JSON.stringify(d).replace(/'/g,"&#39;")+')\'>✎ данные</button></td></tr>'; }).join('')+'</tbody></table>';
@@ -335,7 +349,15 @@ function renewForm(conId){
     });
 }
 // доп. соглашение: выбираем, что меняем, и вводим НОВЫЕ значения — они попадут и в документ, и в договор
-function dsDocForm(dsId){
+function genDs(dsId){
+  busy(1);
+  api({vapi:'hrgends',ds:dsId}).then(function(r){ busy(0);
+    if(!r.ok){ alert(r.error); return; }
+    apply(r,CARD?CARD.emp.id:null); window.open(r.url,'_blank');
+    if((r.leftPlaceholders||[]).length) alert('В документе остались незаполненные места: '+r.leftPlaceholders.join(', '));
+  });
+}
+function dsDocForm_unused(dsId){
   var d=(DATA.ds||[]).filter(function(x){return x.id===dsId;})[0]; if(!d) return;
   var c=(DATA.contracts||[]).filter(function(x){return x.id===d.con;})[0]||{};
   REQKEYS={};
@@ -538,7 +560,7 @@ function docMenu(target,id){
     '<div class="muted" style="margin:6px 0 10px;font-size:12.5px">Данные записи уже сохранены в системе. Здесь создаётся или прикладывается сам файл — он ляжет в папку сотрудника.</div>';
   if(rec.link) h+='<div style="margin-bottom:8px">Сейчас приложен: <a href="'+esc(rec.link)+'" target="_blank">открыть документ</a></div>';
   h+='<div class="row">'+
-    (canTpl?('<button class="btn pri" onclick="'+(target==='ds'?('dsDocForm(\''+id+'\')'):('genDoc(\''+id+'\',\''+(target==='order'?'приказ-приём':'')+'\',\''+target+'\')'))+'">🖨 Собрать по шаблону</button>'):'')+
+    (canTpl?('<button class="btn pri" onclick="'+(target==='ds'?('genDs(\''+id+'\')'):('genDoc(\''+id+'\',\''+(target==='order'?'приказ-приём':'')+'\',\''+target+'\')'))+'">🖨 Собрать по шаблону</button>'):'')+
     '<button class="btn" onclick="uploadDoc(\''+id+'\',\''+target+'\')">📎 Загрузить готовый (скан, фото, PDF)</button>'+
     '<button class="btn" onclick="'+(CARD?'openCard(\''+CARD.emp.id+'\')':'render()')+'">Отмена</button></div>'+
     (canTpl?'<div class="muted" style="margin-top:8px;font-size:12px">«Собрать по шаблону» создаёт документ Google с вашими данными — его можно доредактировать и распечатать. «Загрузить готовый» — для уже подписанных бумаг: файл сохранится как есть, редактировать его нельзя, только открыть и распечатать.</div>'
@@ -590,27 +612,52 @@ function uploadDoc(recId,target){
 function newDs(){ var c=(CARD.contracts||[])[0]||{}; dsForm({con:c.id}); }
 function dsForm(d){
   REQKEYS={};
-  var cons=(CARD.contracts||[]).map(function(c){ return '<option value="'+c.id+'"'+(c.id===d.con?' selected':'')+'>'+esc(c.kind+' № '+c.num)+'</option>'; }).join('');
-  var saveDs=function(then){
-      var x={id:d.id||'',emp:CARD.emp.id,con:val('con'),num:val('num'),date:val('date'),reason:val('reason'),
-             link:val('link'),note:val('note')};
-      busy(1); api({vapi:'hrsaveds',data:JSON.stringify(x)}).then(function(r){ busy(0);
-        if(!apply(r,CARD.emp.id)) return;
-        if(then){ var mine=(r.ds||[]).filter(function(y){return y.num===x.num&&y.con===x.con;});
-          if(mine.length) uploadDoc(mine[mine.length-1].id,'ds'); }
-      });
-  };
-  dlg(d.id?'Правка доп. соглашения — данные':'Новое доп. соглашение — данные',
-    '<div class="fld"><label class="f">К договору</label><select id="f_con">'+cons+'</select></div>'+
-    fld('num','№ ДС',d.num)+fld('date','Дата вступления в силу',d.date)+fld('reason','Основание изменений',d.reason)+
-    fld('link','Ссылка на документ',d.link)+fld('note','Примечание',d.note),
-    function(){
-      var x={id:d.id||'',emp:CARD.emp.id,con:val('con'),num:val('num'),date:val('date'),reason:val('reason'),
-             link:val('link'),note:val('note')};
-      busy(1); api({vapi:'hrsaveds',data:JSON.stringify(x)}).then(function(r){ busy(0); apply(r,CARD.emp.id); });
-    }, '',
-    'Сохраняем данные соглашения. Готовый подписанный документ прикладывается кнопкой «загрузить» — шаблона для ДС пока нет.',
+  var cons=(CARD.contracts||[]);
+  var conSel='<div class="fld"><label class="f">К договору</label><select id="f_con" onchange="dsCur()">'+
+    cons.map(function(c){ return '<option value="'+c.id+'"'+(c.id===d.con?' selected':'')+'>'+esc(c.kind+' № '+c.num)+'</option>'; }).join('')+'</select></div>';
+  var ch=d.changes||{};
+  var ctype = (ch.salary!=null||ch.tariff!=null)?'оплата':(ch.advance!=null?'аванс':(ch.wStart!=null?'график':'оплата'));
+  var body=conSel+
+    '<div class="fld"><label class="f">Что меняет соглашение</label><select id="f_ctype" onchange="dsTypeToggle()">'+
+      ['оплата','аванс','график','другое'].map(function(o){ return '<option value="'+o+'"'+(o===ctype?' selected':'')+'>'+
+        ({оплата:'оплата труда (оклад и тариф)',аванс:'размер аванса',график:'режим рабочего дня','другое':'другое (только текст)'})[o]+'</option>'; }).join('')+'</select></div>'+
+    fld('num','№ ДС',d.num)+fld('date','Дата вступления в силу',d.date)+
+    '<div id="boxPay" style="display:contents">'+fld('salary','Новый оклад',ch.salary)+fld('tariff','Новый тарифный оклад',ch.tariff)+'</div>'+
+    '<div id="boxAdv" style="display:none">'+fld('advance','Новый аванс',ch.advance)+'</div>'+
+    '<div id="boxWt" style="display:none">'+fld('wStart','Начало рабочего дня',ch.wStart)+fld('wBreak','Перерыв',ch.wBreak)+fld('wEnd','Конец рабочего дня',ch.wEnd)+'</div>'+
+    fld('reason','Основание изменений (текст в шапке)',d.reason)+fld('note','Примечание',d.note);
+  CARD._dsEdit=d.id||'';
+  dlg(d.id?'Правка доп. соглашения — данные':'Новое доп. соглашение — данные', body,
+    function(){ saveDs(false); }, '',
+    'Заполняем НОВЫЕ условия — что и на сколько меняется. После сохранения документ: «собрать по шаблону» или «загрузить готовый подписанный».',
     function(){ saveDs(true); });
+  setTimeout(function(){ dsTypeToggle(); dsCur(); },0);
+}
+function dsTypeToggle(){ var t=$('f_ctype').value;
+  $('boxPay').style.display=(t==='оплата')?'contents':'none';
+  $('boxAdv').style.display=(t==='аванс')?'contents':'none';
+  $('boxWt').style.display=(t==='график')?'contents':'none'; dsCur(); }
+// показать «сейчас действует» рядом с полями нового значения
+function dsCur(){
+  var c=(CARD.contracts||[]).filter(function(x){return x.id===$('f_con').value;})[0]; if(!c) return;
+  var e=c.effective||c;
+  [['salary',e.salary],['tariff',e.tariff],['advance',e.advance],['wStart',e.wStart],['wBreak',e.wBreak],['wEnd',e.wEnd]].forEach(function(p){
+    var el=$('f_'+p[0]); if(!el) return;
+    el.setAttribute('placeholder', p[1]?('сейчас: '+p[1]):'');
+  });
+}
+function saveDs(then){
+  var t=$('f_ctype').value, ch={};
+  if(t==='оплата'){ if(val('salary'))ch.salary=val('salary'); if(val('tariff'))ch.tariff=val('tariff'); }
+  if(t==='аванс'){ if(val('advance'))ch.advance=val('advance'); }
+  if(t==='график'){ if(val('wStart'))ch.wStart=val('wStart'); if(val('wBreak'))ch.wBreak=val('wBreak'); if(val('wEnd'))ch.wEnd=val('wEnd'); }
+  var x={id:CARD._dsEdit||'',emp:CARD.emp.id,con:val('con'),num:val('num'),date:val('date'),reason:val('reason'),
+         note:val('note'),changes:JSON.stringify(ch)};
+  busy(1); api({vapi:'hrsaveds',data:JSON.stringify(x)}).then(function(r){ busy(0);
+    if(!apply(r,CARD.emp.id)) return;
+    if(then){ var mine=(r.ds||[]).filter(function(y){return y.num===x.num&&y.con===x.con;});
+      if(mine.length){ CARD._dsEdit=null; docMenu('ds',mine[mine.length-1].id); } }
+  });
 }
 
 /* ─── реестр договоров ─── */
