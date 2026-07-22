@@ -385,6 +385,11 @@ function genDoc(conId,what){
 }
 /* загрузка готового договора: фото/скан/PDF, несколько файлов; имена приводятся к понятному виду */
 function uploadDoc(conId){
+  var c=(DATA.contracts||[]).filter(function(x){return x.id===conId;})[0]||{};
+  var def=(c.kind==='подряд'?'Договор подряда':(c.kind==='обучение'?'Договор о производственном обучении':'Контракт'))+
+          ' № '+(c.num||'')+' от '+(c.date||'');
+  var label=prompt('Как подписать документ в папке сотрудника?\n(например: «Приказ № 1/1-к от 12.01.2026 о зачислении»)', def);
+  if(label===null) return;
   var inp=document.createElement('input'); inp.type='file'; inp.multiple=true;
   inp.accept='image/*,application/pdf';
   inp.onchange=function(){
@@ -396,7 +401,7 @@ function uploadDoc(conId){
       var f=files[i], fr=new FileReader();
       fr.onload=function(){
         var b64=String(fr.result).split(',')[1];
-        apiPost({vapi:'hrupload',con:conId,name:f.name,mime:f.type,b64:b64,idx:i+1,total:files.length})
+        apiPost({vapi:'hrupload',con:conId,name:f.name,mime:f.type,b64:b64,idx:i+1,total:files.length,label:label})
           .then(function(r){ if(!r.ok){ busy(0); alert(r.error||'ошибка загрузки'); return; } last=r; i++; next(); })
           .catch(function(e){ busy(0); alert('сеть: '+e.message); });
       };
