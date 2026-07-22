@@ -69,12 +69,15 @@ try{ if(!TGID && window.Telegram && Telegram.WebApp && Telegram.WebApp.initDataU
 function api(p){ p.app=APP; if(TGID&&!p.tgid)p.tgid=TGID;
   var q=Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]==null?'':p[k]);}).join('&');
   return fetch(BASE+'?'+q).then(function(r){return r.json();}); }
+function apiPost(p){ p.app=APP; if(TGID&&!p.tgid)p.tgid=TGID;
+  var body=Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]==null?'':p[k]);}).join('&');
+  return fetch(BASE,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body}).then(function(r){return r.json();}); }
 function $(id){ return document.getElementById(id); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function money(n){ return (Number(n)||0).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 
 var TAB='dl', DATA=null, CARD=null;
-var TABS=[{id:'dl',t:'⏱ Сроки'},{id:'emp',t:'👤 Сотрудники'},{id:'ord',t:'📜 Приказы'},
+var TABS=[{id:'dl',t:'⏱ Сроки'},{id:'emp',t:'👤 Сотрудники'},{id:'con',t:'📑 Договоры'},{id:'ord',t:'📜 Приказы'},
           {id:'sick',t:'🏥 Больничные'},{id:'doc',t:'🗂 Документы'},{id:'fuel',t:'⛽ Топливо'}];
 
 // ВСЁ грузится одним запросом (вызов GAS стоит секунды) — вкладки и карточки дальше открываются мгновенно, без сети
@@ -114,6 +117,7 @@ function render(){
   (DATA.cached?'<span class="muted" style="align-self:center;font-size:11.5px">данные из кеша</span>':'')+'</div>';
   if(CARD) h+=cardView(); else if(TAB==='dl') h+=dlView();
   else if(TAB==='emp') h+=empView();
+  else if(TAB==='con') h+=conRegView();
   else if(TAB==='ord') h+=ordView();
   else if(TAB==='sick') h+=sickView();
   else if(TAB==='doc') h+=docView();
@@ -156,7 +160,8 @@ function cardView(){
   var h='<div class="back" onclick="closeCard()">← к списку</div>';
   h+='<div class="card" style="margin-top:8px"><div class="row" style="justify-content:space-between">'+
      '<div><div style="font-size:17px;font-weight:800">'+esc(e.fio)+'</div>'+
-     '<div class="muted">'+esc(e.type||'')+' · '+esc(e.pos||'должность не указана')+(e.posCode?' ('+esc(e.posCode)+')':'')+' · '+esc(e.status||'')+'</div></div>'+
+     '<div class="muted">'+esc(e.type||'тип по договору не определён')+' · '+esc(e.pos||'должность не указана')+(e.posCode?' ('+esc(e.posCode)+')':'')+' · '+esc(e.status||'')+
+     ' <span style="font-size:11px">(из договора)</span></div></div>'+
      '<div class="row">'+(e.folder?'<a class="btn sm" href="'+esc(e.folder)+'" target="_blank">📁 папка</a>'
         :'<button class="btn sm" onclick="mkFolder()">📁 создать папку</button>')+
      '<button class="btn sm" onclick="editEmp()">✎ править</button></div></div>';
@@ -170,12 +175,21 @@ function cardView(){
   if(!CARD.contracts.length) h+='<div class="empty">Нет договоров.</div>';
   else h+='<table><thead><tr><th></th><th>Вид</th><th>№</th><th>Дата</th><th>Окончание</th><th>Уведомление</th><th>Ответ</th><th>Статус</th><th></th></tr></thead><tbody>'+
     CARD.contracts.map(function(c){
-      return '<tr><td>'+sevPill((c.state||{}).sev)+'</td><td>'+esc(c.kind)+'</td><td><b>'+esc(c.num)+'</b></td><td>'+esc(c.date)+'</td>'+
+      var acts='<button class="btn sm" onclick=\'editCon('+JSON.stringify(c).replace(/'/g,"&#39;")+')\'>✎</button>'+
+        ' <button class="btn sm" onclick="genDoc(\''+c.id+'\')" title="сформировать по шаблону">🖨</button>'+
+        ' <button class="btn sm" onclick="uploadDoc(\''+c.id+'\')" title="загрузить готовый: фото/скан/PDF">📎</button>'+
+        (c.kind==='контракт'?' <button class="btn sm" onclick="genDoc(\''+c.id+'\',\'приказ-приём\')" title="приказ о приёме">📜</button>':'');
+      return '<tr><td>'+dot(c.missing)+sevPill((c.state||{}).sev)+'</td><td>'+esc(c.kind)+'</td><td><b>'+esc(c.num)+'</b></td><td>'+esc(c.date)+'</td>'+
         '<td>'+esc(c.end||'—')+'</td><td>'+esc(c.notify||'—')+'</td><td>'+esc(c.answer||'—')+'</td><td class="muted">'+esc(c.status)+'</td>'+
-        '<td><button class="btn sm" onclick=\'editCon('+JSON.stringify(c).replace(/'/g,"&#39;")+')\'>✎</button></td></tr>'+
-        '<tr><td></td><td colspan="8" class="muted" style="font-size:12px;border-bottom:1px solid var(--line)">'+esc((c.state||{}).msg||'')+'</td></tr>';
+        '<td style="white-space:nowrap">'+acts+'</td></tr>'+
+        '<tr><td></td><td colspan="8" class="muted" style="font-size:12px;border-bottom:1px solid var(--line)">'+esc((c.state||{}).msg||'')+
+        ((c.missing&&c.missing.length)?'<div style="color:var(--red);margin-top:2px">● для печати по шаблону не хватает: '+esc(c.missing.join(', '))+'</div>':'')+
+        ((c.files&&c.files.length)?'<div style="margin-top:2px">файлы: '+c.files.map(function(u,i){return '<a href="'+esc(u)+'" target="_blank">стр. '+(i+1)+'</a>';}).join(' · ')+'</div>':'')+
+        '</td></tr>';
     }).join('')+'</tbody></table>';
-  h+='<div style="margin-top:8px"><button class="btn" onclick="newCon()">+ договор</button></div></div>';
+  h+='<div class="row" style="margin-top:8px"><button class="btn" onclick="newCon(\'контракт\')">+ контракт (штат)</button>'+
+     '<button class="btn" onclick="newCon(\'подряд\')">+ договор подряда</button>'+
+     '<span class="muted" style="font-size:12px">папка сотрудника создаётся автоматически при добавлении договора</span></div></div>';
 
   // доп. соглашения
   if(CARD.ds.length){
@@ -241,42 +255,131 @@ function dlg(title,body,onsave){
 function newEmp(){ empForm({}); }
 function editEmp(){ empForm(CARD.emp); }
 function empForm(e){
+  // тип (штат/подряд), должность, код, даты приёма и увольнения задаются В ДОГОВОРЕ и выводятся из него
   dlg(e.id?'Правка сотрудника':'Новый сотрудник',
-    fld('fio','ФИО',e.fio)+sel('type','Тип',e.type||'штат',['штат','подряд'])+fld('pos','Должность',e.pos)+
-    fld('posCode','Код должности (из штатного)',e.posCode)+sel('status','Статус',e.status||'оформляется',['оформляется','работает','уволен','завершён'])+
-    fld('idnum','Идент. номер',e.idnum)+fld('passport','Паспорт',e.passport)+fld('addr','Адрес регистрации',e.addr)+
-    fld('account','Р/с (Беларусбанк)',e.account)+fld('hired','Дата приёма (дд.мм.гггг)',e.hired)+fld('fired','Дата увольнения',e.fired)+
+    fld('fio','ФИО',e.fio)+fld('fioR','ФИО в родительном (кого)',e.fioR)+fld('fioT','ФИО в творительном (с кем)',e.fioT)+
+    fld('birth','Дата рождения',e.birth)+fld('idnum','Идент. номер',e.idnum)+
+    fld('passport','Паспорт (серия и номер)',e.passport)+fld('passDate','Паспорт выдан',e.passDate)+fld('passOrg','Орган выдачи',e.passOrg)+
+    fld('addr','Адрес регистрации',e.addr)+fld('account','Р/с (Беларусбанк)',e.account)+
     fld('phone','Телефон',e.phone)+fld('tgId','Telegram ID',e.tgId)+fld('note','Примечание',e.note),
     function(){
-      var d={id:e.id||'',fio:val('fio'),type:val('type'),pos:val('pos'),posCode:val('posCode'),status:val('status'),
-             idnum:val('idnum'),passport:val('passport'),addr:val('addr'),account:val('account'),hired:val('hired'),
-             fired:val('fired'),phone:val('phone'),tgId:val('tgId'),note:val('note')};
+      var d={id:e.id||'',fio:val('fio'),fioR:val('fioR'),fioT:val('fioT'),birth:val('birth'),idnum:val('idnum'),
+             passport:val('passport'),passDate:val('passDate'),passOrg:val('passOrg'),addr:val('addr'),account:val('account'),
+             phone:val('phone'),tgId:val('tgId'),note:val('note')};
       if(!d.fio){ alert('Укажите ФИО'); return; }
       busy(1); api({vapi:'hrsaveemp',data:JSON.stringify(d)}).then(function(r){ busy(0); apply(r,d.id||r.savedId); });
     });
 }
-function newCon(){ conForm({emp:CARD.emp.id,kind:CARD.emp.type==='подряд'?'подряд':'контракт'}); }
+function newCon(kind){
+  var today=new Date(), d=('0'+today.getDate()).slice(-2)+'.'+('0'+(today.getMonth()+1)).slice(-2)+'.'+today.getFullYear();
+  var c={emp:CARD.emp.id,kind:kind||(CARD.emp.type==='подряд'?'подряд':'контракт'),date:d,
+         wStart:'09:00',wBreak:'13:00 по 14:00',wEnd:'18:00',vacMain:24,vacExtra:1,termText:'1 (один) год'};
+  busy(1);
+  api({vapi:'hrnextnums',date:d}).then(function(r){ busy(0);
+    if(r&&r.ok) c.num = (c.kind==='подряд')? r.podryad : r.contract;
+    conForm(c);
+  });
+}
 function editCon(c){ conForm(c); }
 function conForm(c){
-  dlg(c.id?'Правка договора':'Новый договор',
-    sel('kind','Вид',c.kind||'контракт',['контракт','подряд'])+fld('num','№',c.num)+fld('date','Дата',c.date)+
-    fld('end','Дата окончания',c.end)+fld('pos','Должность / работа',c.pos)+fld('rate','Ставка',c.rate)+fld('salary','Оклад',c.salary)+
-    fld('workTime','Время работы',c.workTime)+sel('status','Статус',c.status||'действует',['действует','истёк','расторгнут','продлён'])+
+  var isP=(c.kind==='подряд');
+  var body=sel('kind','Вид',c.kind||'контракт',['контракт','подряд'])+fld('num','№ (пусто = следующий по счётчику)',c.num)+
+    fld('date','Дата',c.date)+fld('end',isP?'Окончание работ':'Дата окончания',c.end)+
+    fld('pos',isP?'Виды работ':'Должность',c.pos)+fld('posCode','Код должности (из штатного)',c.posCode)+
+    fld('salary','Оклад',c.salary)+fld('tariff','Тарифный оклад',c.tariff)+fld('advance','Аванс',c.advance)+
+    fld('rate','Ставка',c.rate)+fld('termText','Срок (текстом: 1 (один) год)',c.termText)+
+    fld('wStart','Начало рабочего дня',c.wStart)+fld('wBreak','Перерыв',c.wBreak)+fld('wEnd','Конец рабочего дня',c.wEnd)+
+    fld('vacMain','Отпуск основной, дней',c.vacMain)+fld('vacExtra','Отпуск дополнительный, дней',c.vacExtra)+
+    fld('workTime','Режим (текстом)',c.workTime)+
+    sel('status','Статус',c.status||'действует',['действует','истёк','расторгнут','продлён'])+
     fld('termDate','Дата прекращения',c.termDate)+fld('notify','Уведомление (дата)',c.notify)+fld('answer','Ответ на уведомление',c.answer)+
-    fld('link','Ссылка на документ',c.link)+fld('note','Примечание',c.note),
+    fld('link','Ссылка на документ',c.link)+fld('note','Примечание',c.note);
+  dlg(c.id?'Правка договора':'Новый договор', body,
     function(){
       var d={id:c.id||'',emp:c.emp||CARD.emp.id,kind:val('kind'),num:val('num'),date:val('date'),end:val('end'),pos:val('pos'),
-             rate:val('rate'),salary:val('salary'),workTime:val('workTime'),status:val('status'),termDate:val('termDate'),
-             notify:val('notify'),answer:val('answer'),link:val('link'),note:val('note')};
+             posCode:val('posCode'),salary:val('salary'),tariff:val('tariff'),advance:val('advance'),rate:val('rate'),
+             termText:val('termText'),wStart:val('wStart'),wBreak:val('wBreak'),wEnd:val('wEnd'),
+             vacMain:val('vacMain'),vacExtra:val('vacExtra'),workTime:val('workTime'),status:val('status'),
+             termDate:val('termDate'),notify:val('notify'),answer:val('answer'),link:val('link'),note:val('note')};
       busy(1); api({vapi:'hrsavecontract',data:JSON.stringify(d)}).then(function(r){ busy(0); apply(r,d.emp); });
     });
 }
+/* печать по шаблону — только когда заполнено всё; иначе система прямо говорит, чего не хватает */
+function genDoc(conId,what){
+  busy(1);
+  api({vapi:'hrgendoc',con:conId,what:what||''}).then(function(r){ busy(0);
+    if(!r.ok){ alert(r.error); return; }
+    apply(r,CARD&&CARD.emp.id); window.open(r.url,'_blank');
+  });
+}
+/* загрузка готового договора: фото/скан/PDF, несколько файлов; имена приводятся к понятному виду */
+function uploadDoc(conId){
+  var inp=document.createElement('input'); inp.type='file'; inp.multiple=true;
+  inp.accept='image/*,application/pdf';
+  inp.onchange=function(){
+    var files=[].slice.call(inp.files); if(!files.length) return;
+    busy(1);
+    var i=0, last=null;
+    function next(){
+      if(i>=files.length){ busy(0); load(1); if(last) alert('Загружено файлов: '+files.length); return; }
+      var f=files[i], fr=new FileReader();
+      fr.onload=function(){
+        var b64=String(fr.result).split(',')[1];
+        apiPost({vapi:'hrupload',con:conId,name:f.name,mime:f.type,b64:b64,idx:i+1,total:files.length})
+          .then(function(r){ if(!r.ok){ busy(0); alert(r.error||'ошибка загрузки'); return; } last=r; i++; next(); })
+          .catch(function(e){ busy(0); alert('сеть: '+e.message); });
+      };
+      fr.readAsDataURL(f);
+    }
+    next();
+  };
+  inp.click();
+}
+
+/* ─── реестр договоров ─── */
+var CONFILTER='all';
+function conFilter(v){ CONFILTER=v; render(); }
+function numKey(x){ var m=String(x||'').match(/(\d+)/); return m?+m[1]:0; }
+function dot(miss){ return (miss&&miss.length)?'<span title="не заполнено: '+esc(miss.join(', '))+'" style="color:var(--red);font-size:16px;line-height:1">●</span>':''; }
+function conRegView(){
+  var all=(DATA.contracts||[]).slice();
+  var l=all.filter(function(c){ return CONFILTER==='all'||c.kind===CONFILTER; });
+  // контракты идут подряд по номеру внутри года, подряды — по дате заключения
+  l.sort(function(a,b){
+    if(a.kind!==b.kind) return a.kind==='контракт'?-1:1;
+    if(a.kind==='контракт'){ var ya=(a.date||'').slice(-4), yb=(b.date||'').slice(-4);
+      if(ya!==yb) return ya<yb?-1:1; return numKey(a.num)-numKey(b.num); }
+    return (dt(a.date)||0)-(dt(b.date)||0);
+  });
+  var byEmp={}; (DATA.list||[]).forEach(function(x){ byEmp[x.emp.id]=x.emp; });
+  var h='<div class="row" style="margin-bottom:8px">'+
+    ['all','контракт','подряд'].map(function(v){ return '<button class="btn'+(CONFILTER===v?' pri':'')+'" onclick="conFilter(\''+v+'\')">'+
+      (v==='all'?'все':(v==='контракт'?'контракты':'подряд'))+'</button>'; }).join('')+
+    '<span class="muted">всего: '+all.length+'</span></div>';
+  h+='<div class="card tbwrap"><table><thead><tr><th></th><th>№</th><th>Дата</th><th>Вид</th><th>ФИО</th><th>Должность / работа</th><th>Окончание</th><th>Статус</th><th>Документ</th></tr></thead><tbody>';
+  h+=l.map(function(c){
+    var e=byEmp[c.emp]||{};
+    return '<tr class="click" onclick="openCard(\''+c.emp+'\')"><td>'+dot(c.missing)+sevPill((c.state||{}).sev)+'</td>'+
+      '<td><b>'+esc(c.num)+'</b></td><td>'+esc(c.date||'—')+'</td><td class="muted">'+esc(c.kind)+'</td>'+
+      '<td>'+esc(e.fio||'—')+'</td><td>'+esc(c.pos||'—')+'</td><td>'+esc(c.end||'—')+'</td>'+
+      '<td class="muted">'+esc(c.status)+'</td>'+
+      '<td>'+(c.link?'<a href="'+esc(c.link)+'" target="_blank" onclick="event.stopPropagation()">открыть</a>':'<span class="muted">—</span>')+
+      (c.source?' <span class="muted" style="font-size:11px">('+esc(c.source)+')</span>':'')+'</td></tr>';
+  }).join('');
+  return h+'</tbody></table>'+(l.length?'':'<div class="empty">Пусто.</div>')+'</div>';
+}
+function dt(ru){ var p=String(ru||'').split('.'); return p.length===3?new Date(+p[2],+p[1]-1,+p[0]).getTime():0; }
 
 /* ─── реестры ─── */
 function empOpts(v){ return '<div><label class="f">Сотрудник</label><select id="f_emp"><option value="">—</option>'+
   (DATA.list||[]).map(function(x){ return '<option value="'+x.emp.id+'"'+(x.emp.id===v?' selected':'')+'>'+esc(x.emp.fio)+'</option>'; }).join('')+'</select></div>'; }
 function ordView(){
-  var l=DATA.orders||[];
+  var l=(DATA.orders||[]).slice().sort(function(a,b){
+    if(a.series!==b.series) return a.series==='кадровые'?-1:1;
+    var ya=(a.date||'').slice(-4), yb=(b.date||'').slice(-4);
+    if(ya!==yb) return ya<yb?-1:1;
+    return numKey(a.num)-numKey(b.num);
+  });
   var h='<div class="row" style="margin-bottom:8px"><button class="btn pri" onclick="ordForm({})">+ Приказ</button><span class="muted">всего: '+l.length+'</span></div>';
   h+='<div class="card tbwrap"><table><thead><tr><th>№</th><th>Дата</th><th>Серия</th><th>Вид</th><th>ФИО</th><th>Основание</th></tr></thead><tbody>';
   h+=l.map(function(o){ return '<tr><td><b>'+esc(o.num)+'</b></td><td>'+esc(o.date||'—')+'</td><td class="muted">'+esc(o.series)+'</td><td>'+esc(o.kind||'')+'</td><td>'+esc(o.fio||'—')+'</td><td class="muted">'+esc(o.basis||'')+'</td></tr>'; }).join('');
