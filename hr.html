@@ -52,6 +52,12 @@
   .kv{ display:grid; grid-template-columns:auto 1fr; gap:3px 12px; font-size:13px; }
   .kv .k{ color:var(--muted); }
   .empty{ color:var(--muted); font-size:12.5px; padding:8px 0; }
+  /* обязательные для печати поля: помечены звёздочкой, красные пока пустые */
+  .fld.req label.f:after{ content:' *'; color:var(--red); font-weight:700; }
+  .fld.req.bad input,.fld.req.bad select{ border-color:var(--red); background:var(--red-bg); }
+  .fld.req.bad label.f{ color:var(--red); }
+  .reqhint{ font-size:12px; color:var(--red); margin-top:8px; }
+  .misline{ color:var(--red); margin-top:2px; } .misline b{ font-weight:700; }
   a{ color:var(--accent); }
 </style>
 </head>
@@ -183,7 +189,12 @@ function cardView(){
         '<td>'+esc(c.end||'—')+'</td><td>'+esc(c.notify||'—')+'</td><td>'+esc(c.answer||'—')+'</td><td class="muted">'+esc(c.status)+'</td>'+
         '<td style="white-space:nowrap">'+acts+'</td></tr>'+
         '<tr><td></td><td colspan="8" class="muted" style="font-size:12px;border-bottom:1px solid var(--line)">'+esc((c.state||{}).msg||'')+
-        ((c.missing&&c.missing.length)?'<div style="color:var(--red);margin-top:2px">● для печати по шаблону не хватает: '+esc(c.missing.join(', '))+'</div>':'')+
+        (function(){ var mk=c.missingKeys||[]; if(!mk.length) return '';
+          var inCon=mk.filter(function(x){return x.src==='con';}).map(function(x){return x.t;});
+          var inEmp=mk.filter(function(x){return x.src==='emp';}).map(function(x){return x.t;});
+          return '<div class="misline">'+
+            (inCon.length?'● в договоре: <b>'+esc(inCon.join(', '))+'</b> ':'')+
+            (inEmp.length?'● в карточке сотрудника: <b>'+esc(inEmp.join(', '))+'</b>':'')+'</div>'; })()+
         ((c.files&&c.files.length)?'<div style="margin-top:2px">файлы: '+c.files.map(function(u,i){return '<a href="'+esc(u)+'" target="_blank">стр. '+(i+1)+'</a>';}).join(' · ')+'</div>':'')+
         '</td></tr>';
     }).join('')+'</tbody></table>';
@@ -242,20 +253,36 @@ function mkFolder(){ var eid=CARD.emp.id; busy(1);
   api({vapi:'hrfolder',emp:eid}).then(function(r){ busy(0); apply(r,eid); }); }
 
 /* ─── формы ─── */
-function fld(k,l,v,type){ return '<div><label class="f">'+l+'</label><input id="f_'+k+'" value="'+esc(v||'')+'"'+(type?' type="'+type+'"':'')+'></div>'; }
-function sel(k,l,v,opts){ return '<div><label class="f">'+l+'</label><select id="f_'+k+'">'+
+var REQKEYS={};   // какие поля обязательны в текущей форме (заполняется перед показом)
+function fld(k,l,v,type){
+  var rq=REQKEYS[k]?' req'+(String(v||'').trim()?'':' bad'):'';
+  return '<div class="fld'+rq+'" id="w_'+k+'"><label class="f">'+l+'</label><input id="f_'+k+'" value="'+esc(v||'')+'"'+(type?' type="'+type+'"':'')+' oninput="markReq(\''+k+'\')"></div>';
+}
+function sel(k,l,v,opts,onch){ return '<div class="fld" id="w_'+k+'"><label class="f">'+l+'</label><select id="f_'+k+'"'+(onch?' onchange="'+onch+'"':'')+'>'+
   opts.map(function(o){ return '<option'+(o===v?' selected':'')+'>'+esc(o)+'</option>'; }).join('')+'</select></div>'; }
+function markReq(k){ var w=$('w_'+k);
+  if(w&&REQKEYS[k]){ if(($('f_'+k).value||'').trim()) w.classList.remove('bad'); else w.classList.add('bad'); }
+  updHint(); }
+function reqSet(kind,src){ var o={}; ((DATA.req&&DATA.req[src]&&DATA.req[src][kind])||[]).forEach(function(f){ o[f[0]]=f[1]; }); return o; }
+function reqLeft(){ return Object.keys(REQKEYS).filter(function(k){ var e=$('f_'+k); return e&&!(e.value||'').trim(); })
+  .map(function(k){ return REQKEYS[k]; }); }
+function reqHint(){ var l=reqLeft(); return l.length?('<div class="reqhint">● отмеченные поля нужны, чтобы сформировать документ по шаблону. Осталось: '+esc(l.join(', '))+'</div>'):''; }
 function val(k){ var el=$('f_'+k); return el?el.value.trim():''; }
-function dlg(title,body,onsave){
+function dlg(title,body,onsave,note){
   var h='<div class="card"><b>'+esc(title)+'</b><div class="grid" style="margin-top:9px">'+body+'</div>'+
+    '<div id="reqHint"></div>'+(note||'')+
     '<div class="row" style="margin-top:10px"><button class="btn pri" id="dlgSave">Сохранить</button>'+
     '<button class="btn" onclick="'+(CARD?'openCard(\''+CARD.emp.id+'\')':'load()')+'">Отмена</button></div></div>';
-  $('app').innerHTML=h; $('dlgSave').onclick=onsave;
+  $('app').innerHTML=h; $('dlgSave').onclick=onsave; updHint();
 }
+function updHint(){ var e=$('reqHint'); if(e) e.innerHTML=reqHint(); }
 function newEmp(){ empForm({}); }
 function editEmp(){ empForm(CARD.emp); }
 function empForm(e){
   // тип (штат/подряд), должность, код, даты приёма и увольнения задаются В ДОГОВОРЕ и выводятся из него
+  var t=(e.type==='подряд')?'подряд':(e.type==='штат'?'контракт':null);
+  REQKEYS = t? reqSet(t,'emp') : (function(){ var a=reqSet('контракт','emp'), b=reqSet('подряд','emp');
+    Object.keys(b).forEach(function(k){ a[k]=b[k]; }); return a; })();
   dlg(e.id?'Правка сотрудника':'Новый сотрудник',
     fld('fio','ФИО',e.fio)+fld('fioR','ФИО в родительном (кого)',e.fioR)+fld('fioT','ФИО в творительном (с кем)',e.fioT)+
     fld('birth','Дата рождения',e.birth)+fld('idnum','Идент. номер',e.idnum)+
@@ -281,9 +308,18 @@ function newCon(kind){
   });
 }
 function editCon(c){ conForm(c); }
+var CONDRAFT=null;
+function conKindChange(){
+  var d=CONDRAFT||{}; Object.keys(REQKEYS).concat(['kind','num','date','end','pos','posCode','salary','tariff','advance','rate',
+    'termText','wStart','wBreak','wEnd','vacMain','vacExtra','workTime','status','termDate','notify','answer','link','note'])
+    .forEach(function(k){ var e=$('f_'+k); if(e) d[k]=e.value; });
+  d.kind=$('f_kind').value; conForm(d);
+}
 function conForm(c){
+  CONDRAFT=c;
   var isP=(c.kind==='подряд');
-  var body=sel('kind','Вид',c.kind||'контракт',['контракт','подряд'])+fld('num','№ (пусто = следующий по счётчику)',c.num)+
+  REQKEYS = reqSet(isP?'подряд':'контракт','con');
+  var body=sel('kind','Вид',c.kind||'контракт',['контракт','подряд'],'conKindChange()')+fld('num','№ (пусто = следующий по счётчику)',c.num)+
     fld('date','Дата',c.date)+fld('end',isP?'Окончание работ':'Дата окончания',c.end)+
     fld('pos',isP?'Виды работ':'Должность',c.pos)+fld('posCode','Код должности (из штатного)',c.posCode)+
     fld('salary','Оклад',c.salary)+fld('tariff','Тарифный оклад',c.tariff)+fld('advance','Аванс',c.advance)+
@@ -294,6 +330,11 @@ function conForm(c){
     sel('status','Статус',c.status||'действует',['действует','истёк','расторгнут','продлён'])+
     fld('termDate','Дата прекращения',c.termDate)+fld('notify','Уведомление (дата)',c.notify)+fld('answer','Ответ на уведомление',c.answer)+
     fld('link','Ссылка на документ',c.link)+fld('note','Примечание',c.note);
+  var empMiss=(function(){ var e=CARD&&CARD.emp; if(!e) return [];
+    return Object.keys(reqSet(isP?'подряд':'контракт','emp')).filter(function(k){ return !String(e[k]||'').trim(); })
+      .map(function(k){ return reqSet(isP?'подряд':'контракт','emp')[k]; }); })();
+  var note = empMiss.length ? ('<div class="misline">● в карточке сотрудника не заполнено: <b>'+esc(empMiss.join(', '))+
+    '</b> — <span class="back" onclick="empForm(CARD.emp)">открыть карточку</span></div>') : '';
   dlg(c.id?'Правка договора':'Новый договор', body,
     function(){
       var d={id:c.id||'',emp:c.emp||CARD.emp.id,kind:val('kind'),num:val('num'),date:val('date'),end:val('end'),pos:val('pos'),
@@ -302,7 +343,7 @@ function conForm(c){
              vacMain:val('vacMain'),vacExtra:val('vacExtra'),workTime:val('workTime'),status:val('status'),
              termDate:val('termDate'),notify:val('notify'),answer:val('answer'),link:val('link'),note:val('note')};
       busy(1); api({vapi:'hrsavecontract',data:JSON.stringify(d)}).then(function(r){ busy(0); apply(r,d.emp); });
-    });
+    }, note);
 }
 /* печать по шаблону — только когда заполнено всё; иначе система прямо говорит, чего не хватает */
 function genDoc(conId,what){
