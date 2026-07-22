@@ -319,14 +319,17 @@ function conForm(c){
   CONDRAFT=c;
   var isP=(c.kind==='подряд');
   REQKEYS = reqSet(isP?'подряд':'контракт','con');
+  // для подряда поля трудового контракта (оклад, отпуск, режим дня) не применяются и не показываются
   var body=sel('kind','Вид',c.kind||'контракт',['контракт','подряд'],'conKindChange()')+fld('num','№ (пусто = следующий по счётчику)',c.num)+
     fld('date','Дата',c.date)+fld('end',isP?'Окончание работ':'Дата окончания',c.end)+
-    fld('pos',isP?'Виды работ':'Должность',c.pos)+fld('posCode','Код должности (из штатного)',c.posCode)+
-    fld('salary','Оклад',c.salary)+fld('tariff','Тарифный оклад',c.tariff)+fld('advance','Аванс',c.advance)+
-    fld('rate','Ставка',c.rate)+fld('termText','Срок (текстом: 1 (один) год)',c.termText)+
-    fld('wStart','Начало рабочего дня',c.wStart)+fld('wBreak','Перерыв',c.wBreak)+fld('wEnd','Конец рабочего дня',c.wEnd)+
-    fld('vacMain','Отпуск основной, дней',c.vacMain)+fld('vacExtra','Отпуск дополнительный, дней',c.vacExtra)+
-    fld('workTime','Режим (текстом)',c.workTime)+
+    fld('pos',isP?'Виды работ':'Должность',c.pos)+
+    (isP?'':fld('posCode','Код должности (из штатного)',c.posCode)+
+      fld('salary','Оклад',c.salary)+fld('tariff','Тарифный оклад',c.tariff)+fld('advance','Аванс',c.advance)+
+      fld('termText','Срок (текстом: 1 (один) год)',c.termText)+
+      fld('wStart','Начало рабочего дня',c.wStart)+fld('wBreak','Перерыв',c.wBreak)+fld('wEnd','Конец рабочего дня',c.wEnd)+
+      fld('vacMain','Отпуск основной, дней',c.vacMain)+fld('vacExtra','Отпуск дополнительный, дней',c.vacExtra)+
+      fld('workTime','Режим (текстом)',c.workTime))+
+    fld('rate','Ставка',c.rate)+
     sel('status','Статус',c.status||'действует',['действует','истёк','расторгнут','продлён'])+
     fld('termDate','Дата прекращения',c.termDate)+fld('notify','Уведомление (дата)',c.notify)+fld('answer','Ответ на уведомление',c.answer)+
     fld('link','Ссылка на документ',c.link)+fld('note','Примечание',c.note);
@@ -337,11 +340,11 @@ function conForm(c){
     '</b> — <span class="back" onclick="empForm(CARD.emp)">открыть карточку</span></div>') : '';
   dlg(c.id?'Правка договора':'Новый договор', body,
     function(){
-      var d={id:c.id||'',emp:c.emp||CARD.emp.id,kind:val('kind'),num:val('num'),date:val('date'),end:val('end'),pos:val('pos'),
-             posCode:val('posCode'),salary:val('salary'),tariff:val('tariff'),advance:val('advance'),rate:val('rate'),
-             termText:val('termText'),wStart:val('wStart'),wBreak:val('wBreak'),wEnd:val('wEnd'),
-             vacMain:val('vacMain'),vacExtra:val('vacExtra'),workTime:val('workTime'),status:val('status'),
-             termDate:val('termDate'),notify:val('notify'),answer:val('answer'),link:val('link'),note:val('note')};
+      var d={id:c.id||'',emp:c.emp||CARD.emp.id};
+      ['kind','num','date','end','pos','posCode','salary','tariff','advance','rate','termText','wStart','wBreak','wEnd',
+       'vacMain','vacExtra','workTime','status','termDate','notify','answer','link','note'].forEach(function(k){
+        if($('f_'+k)) d[k]=val(k);   // скрытые поля не отправляем — они не должны затираться
+      });
       busy(1); api({vapi:'hrsavecontract',data:JSON.stringify(d)}).then(function(r){ busy(0); apply(r,d.emp); });
     }, note);
 }
