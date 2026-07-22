@@ -27,6 +27,7 @@
   .tabs button.on .b{ background:rgba(255,255,255,.25); }
   table{ width:100%; border-collapse:collapse; } th,td{ text-align:left; padding:7px 9px; border-bottom:1px solid var(--line); font-size:13px; vertical-align:top; }
   th{ color:var(--muted); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.03em; }
+  select.stsel{ padding:3px 6px; font-size:12.5px; border-radius:7px; width:auto; }
   td.num,th.num{ text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
   tr.click:hover td{ background:rgba(127,140,170,.07); cursor:pointer; }
   .tbwrap{ overflow-x:auto; }
@@ -227,17 +228,24 @@ function cardView(){
      '<span class="muted" style="font-size:12px">папка сотрудника создаётся автоматически при добавлении договора</span></div></div>';
 
   // доп. соглашения
-  if(CARD.ds.length){
-    h+='<div class="sect">Доп. соглашения</div><div class="card tbwrap"><table><thead><tr><th>№</th><th>Дата</th><th>Основание</th><th>Уведомление</th><th>Ответ</th></tr></thead><tbody>'+
-      CARD.ds.map(function(d){ return '<tr><td>'+esc(d.num||'—')+'</td><td>'+esc(d.date||'—')+'</td><td>'+esc(d.reason||'')+'</td><td>'+esc(d.notify||'—')+'</td><td>'+esc(d.answer||'—')+'</td></tr>'; }).join('')+
-      '</tbody></table></div>';
-  }
+  h+='<div class="sect">Доп. соглашения</div><div class="card tbwrap">';
+  if(!CARD.ds.length) h+='<div class="empty">Доп. соглашений нет.</div>';
+  else h+='<table><thead><tr><th>№</th><th>Дата</th><th>Основание изменений</th><th>Уведомление</th><th>Ответ</th><th>Документ</th><th></th></tr></thead><tbody>'+
+      CARD.ds.map(function(d){ return '<tr><td><b>'+esc(d.num||'—')+'</b></td><td>'+esc(d.date||'—')+'</td><td>'+esc(d.reason||'')+'</td>'+
+        '<td>'+esc(d.notify||'—')+'</td><td>'+esc(d.answer||'—')+'</td>'+
+        '<td>'+(d.link?'<a href="'+esc(d.link)+'" target="_blank">открыть</a>':'—')+'</td>'+
+        '<td><button class="btn sm" onclick=\'dsForm('+JSON.stringify(d).replace(/'/g,"&#39;")+')\'>✎</button></td></tr>'; }).join('')+'</tbody></table>';
+  h+='<div class="row" style="margin-top:8px"><button class="btn" onclick="newDs()">+ доп. соглашение</button>'+
+     '<span class="muted" style="font-size:12px">меняет условия контракта (оплата, график, аванс). «Уведомление» — дата, когда работника письменно предупредили об изменении; «Ответ» — его согласие. По ТК предупреждать нужно заранее.</span></div></div>';
   // приказы
-  if(CARD.orders.length){
-    h+='<div class="sect">Приказы</div><div class="card tbwrap"><table><thead><tr><th>№</th><th>Дата</th><th>Вид</th><th>Основание</th></tr></thead><tbody>'+
-      CARD.orders.map(function(o){ return '<tr><td><b>'+esc(o.num)+'</b></td><td>'+esc(o.date||'—')+'</td><td>'+esc(o.kind||'')+'</td><td class="muted">'+esc(o.basis||'')+'</td></tr>'; }).join('')+
-      '</tbody></table></div>';
-  }
+  h+='<div class="sect">Приказы</div><div class="card tbwrap">';
+  if(!CARD.orders.length) h+='<div class="empty">Приказов нет.</div>';
+  else h+='<table><thead><tr><th>№</th><th>Дата</th><th>Вид</th><th>Основание</th><th>Документ</th><th></th></tr></thead><tbody>'+
+      CARD.orders.map(function(o){ return '<tr><td><b>'+esc(o.num)+'</b></td><td>'+esc(o.date||'—')+'</td><td>'+esc(o.kind||'')+'</td>'+
+        '<td class="muted">'+esc(o.basis||'')+'</td>'+
+        '<td>'+(o.link?'<a href="'+esc(o.link)+'" target="_blank">открыть</a>':'—')+'</td>'+
+        '<td><button class="btn sm" onclick=\'ordForm('+JSON.stringify(o).replace(/'/g,"&#39;")+')\'>✎</button></td></tr>'; }).join('')+'</tbody></table>';
+  h+='<div class="row" style="margin-top:8px"><button class="btn" onclick="ordForm({emp:CARD.emp.id})">+ приказ</button></div></div>';
   // чек-лист
   h+='<div class="sect">Оформление — чек-лист по регламенту</div>';
   if(!CARD.steps.length){
@@ -265,6 +273,11 @@ function cardView(){
       return '<button class="btn sm" onclick="startProc(\''+p+'\')">▶ запустить: '+esc(p)+'</button>'; }).join('')+'</div></div>';
   }
   return h;
+}
+function setConStatus(id,st){
+  var c=(DATA.contracts||[]).filter(function(x){return x.id===id;})[0]; if(!c) return;
+  var eid=CARD?CARD.emp.id:c.emp; busy(1);
+  api({vapi:'hrsavecontract',data:JSON.stringify({id:id,emp:c.emp,status:st})}).then(function(r){ busy(0); apply(r,eid); });
 }
 function isLate(due){ var p=String(due).split('.'); if(p.length!==3) return false;
   var d=new Date(+p[2],+p[1]-1,+p[0]); var t=new Date(); t.setHours(0,0,0,0); return d<t; }
@@ -427,6 +440,22 @@ function uploadDoc(conId){
     next();
   };
   inp.click();
+}
+
+function newDs(){ var c=(CARD.contracts||[])[0]||{}; dsForm({con:c.id}); }
+function dsForm(d){
+  REQKEYS={};
+  var cons=(CARD.contracts||[]).map(function(c){ return '<option value="'+c.id+'"'+(c.id===d.con?' selected':'')+'>'+esc(c.kind+' № '+c.num)+'</option>'; }).join('');
+  dlg(d.id?'Правка доп. соглашения':'Новое доп. соглашение',
+    '<div class="fld"><label class="f">К договору</label><select id="f_con">'+cons+'</select></div>'+
+    fld('num','№ ДС',d.num)+fld('date','Дата вступления в силу',d.date)+fld('reason','Основание изменений',d.reason)+
+    fld('notify','Уведомление работника (дата)',d.notify)+fld('answer','Ответ работника',d.answer)+fld('link','Ссылка на документ',d.link)+
+    fld('note','Примечание',d.note),
+    function(){
+      var x={id:d.id||'',emp:CARD.emp.id,con:val('con'),num:val('num'),date:val('date'),reason:val('reason'),
+             notify:val('notify'),answer:val('answer'),link:val('link'),note:val('note')};
+      busy(1); api({vapi:'hrsaveds',data:JSON.stringify(x)}).then(function(r){ busy(0); apply(r,CARD.emp.id); });
+    });
 }
 
 /* ─── реестр договоров ─── */
