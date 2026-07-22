@@ -58,6 +58,12 @@
   .fld.req.bad label.f{ color:var(--red); }
   .reqhint{ font-size:12px; color:var(--red); margin-top:8px; }
   .misline{ color:var(--red); margin-top:2px; } .misline b{ font-weight:700; }
+  tr.dim td{ opacity:.45; }                      /* скрытые (уволен / завершённый подряд) — видно, но приглушённо */
+  .sw{ display:inline-flex; align-items:center; gap:7px; cursor:pointer; font-size:13px; color:var(--muted); user-select:none; }
+  .sw i{ width:34px; height:19px; border-radius:999px; background:var(--grid); border:1px solid var(--line); position:relative; transition:background .15s; }
+  .sw i:after{ content:''; position:absolute; top:2px; left:2px; width:13px; height:13px; border-radius:50%; background:var(--muted); transition:left .15s,background .15s; }
+  .sw.on i{ background:var(--accent); border-color:var(--accent); } .sw.on i:after{ left:18px; background:#fff; }
+  .sw.on{ color:var(--fg); }
   a{ color:var(--accent); }
 </style>
 </head>
@@ -143,18 +149,34 @@ function dlView(){
 }
 
 /* ─── Сотрудники ─── */
+var SHOWHIDDEN=false;
+function toggleHidden(){ SHOWHIDDEN=!SHOWHIDDEN; render(); }
+// порядок: работающие по контракту → работающие по подряду → оформляются → (скрытые) завершённый подряд → уволенные
+function empRank(e){
+  if(e.status==='работает') return e.type==='подряд'?2:1;
+  if(e.status==='оформляется') return 3;
+  return e.status==='завершён'?4:5;
+}
+function isHidden(e){ return e.status==='уволен'||e.status==='завершён'; }
 function empView(){
-  var l=DATA.list||[];
+  var all=(DATA.list||[]).slice().sort(function(a,b){
+    var r=empRank(a.emp)-empRank(b.emp); if(r) return r;
+    return String(a.emp.fio).localeCompare(String(b.emp.fio),'ru');
+  });
+  var hid=all.filter(function(x){ return isHidden(x.emp); });
+  var l=SHOWHIDDEN?all:all.filter(function(x){ return !isHidden(x.emp); });
   var h='<div class="row" style="margin-bottom:8px"><button class="btn pri" onclick="newEmp()">+ Сотрудник</button>'+
-        '<span class="muted">всего: '+l.length+'</span></div>';
+        '<span class="muted">активных: '+(all.length-hid.length)+'</span>'+
+        (hid.length?'<span class="sw'+(SHOWHIDDEN?' on':'')+'" onclick="toggleHidden()"><i></i>показать скрытых ('+hid.length+')</span>':'')+'</div>';
   h+='<div class="card tbwrap"><table><thead><tr><th></th><th>ФИО</th><th>Тип</th><th>Должность</th><th>Договор</th><th>Окончание</th><th>Оформление</th><th>Статус</th></tr></thead><tbody>';
   h+=l.map(function(x){
     var e=x.emp,c=x.contract||{},p=x.steps||{};
-    return '<tr class="click" onclick="openCard(\''+e.id+'\')"><td>'+sevPill(x.state.sev)+'</td>'+
+    return '<tr class="click'+(isHidden(e)?' dim':'')+'" onclick="openCard(\''+e.id+'\')"><td>'+sevPill(x.state.sev)+'</td>'+
       '<td><b>'+esc(e.fio)+'</b></td><td class="muted">'+esc(e.type)+'</td><td>'+esc(e.pos||'—')+'</td>'+
       '<td class="muted">'+esc(c.num?((c.kind||'')+' №'+c.num):'—')+'</td><td>'+esc(c.end||'—')+'</td>'+
       '<td class="muted">'+(p.total?(p.done+'/'+p.total):'—')+'</td><td class="muted">'+esc(e.status||'')+'</td></tr>';
   }).join('');
+  if(!l.length) h+='<tr><td colspan="8" class="empty">Нет активных сотрудников.</td></tr>';
   return h+'</tbody></table></div>';
 }
 
@@ -284,7 +306,7 @@ function empForm(e){
   REQKEYS = t? reqSet(t,'emp') : (function(){ var a=reqSet('контракт','emp'), b=reqSet('подряд','emp');
     Object.keys(b).forEach(function(k){ a[k]=b[k]; }); return a; })();
   dlg(e.id?'Правка сотрудника':'Новый сотрудник',
-    fld('fio','ФИО',e.fio)+fld('fioR','ФИО в родительном (кого)',e.fioR)+fld('fioT','ФИО в творительном (с кем)',e.fioT)+
+    fld('fio','ФИО',e.fio)+fld('fioR','ФИО в родительном — заполнится само',e.fioR)+fld('fioT','ФИО в творительном — заполнится само',e.fioT)+
     fld('birth','Дата рождения',e.birth)+fld('idnum','Идент. номер',e.idnum)+
     fld('passport','Паспорт (серия и номер)',e.passport)+fld('passDate','Паспорт выдан',e.passDate)+fld('passOrg','Орган выдачи',e.passOrg)+
     fld('addr','Адрес регистрации',e.addr)+fld('account','Р/с (Беларусбанк)',e.account)+
