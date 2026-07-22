@@ -192,6 +192,7 @@ function cardView(){
      ' <span style="font-size:11px">(из договора)</span></div></div>'+
      '<div class="row">'+(e.folder?'<a class="btn sm" href="'+esc(e.folder)+'" target="_blank">📁 папка</a>'
         :'<button class="btn sm" onclick="mkFolder()">📁 создать папку</button>')+
+     '<button class="btn sm" onclick="recogPassport()" title="распознать паспортные данные из скана в папке">🪪 распознать паспорт</button>'+
      '<button class="btn sm" onclick="editEmp()">✎ править</button></div></div>';
   h+='<div class="grid" style="margin-top:10px"><div class="kv"><div class="k">Идент. номер</div><div>'+esc(e.idnum||'—')+'</div>'+
      '<div class="k">Паспорт</div><div>'+esc(e.passport||'—')+'</div><div class="k">Р/с</div><div>'+esc(e.account||'—')+'</div></div>'+
@@ -272,6 +273,22 @@ function toggleStep(id,done){ var eid=CARD.emp.id; busy(1);
   api({vapi:'hrstepdone',step:id,undo:done?1:0}).then(function(r){ busy(0); apply(r,eid); }); }
 function startProc(p){ var eid=CARD.emp.id; busy(1);
   api({vapi:'hrstartproc',emp:eid,proc:p,date:CARD.emp.hired||''}).then(function(r){ busy(0); apply(r,eid); }); }
+// распознавание паспорта: сначала показываем, что нашлось, и только потом записываем
+function recogPassport(){
+  var eid=CARD.emp.id; busy(1);
+  api({vapi:'hrpassport',emp:eid}).then(function(r){ busy(0);
+    if(!r.ok){ alert(r.error); return; }
+    var f=r.fields||{}, lines=Object.keys(f).filter(function(k){return f[k];}).map(function(k){return k+': '+f[k];});
+    if(!lines.length){ alert('В файле «'+r.file+'» ничего распознать не удалось.'); return; }
+    if(!confirm('Из файла «'+r.file+'» распознано:\n\n'+lines.join('\n')+'\n\nЗаписать в карточку? (уже заполненные поля не тронутся)')) return;
+    busy(1);
+    api({vapi:'hrpassport',emp:eid,apply:1}).then(function(r2){ busy(0);
+      if(!r2.ok){ alert(r2.error); return; }
+      apply(r2,eid);
+      alert('Заполнено полей: '+((r2.filled||[]).length));
+    });
+  });
+}
 function mkFolder(){ var eid=CARD.emp.id; busy(1);
   api({vapi:'hrfolder',emp:eid}).then(function(r){ busy(0); apply(r,eid); }); }
 
