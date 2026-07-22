@@ -208,7 +208,8 @@ function cardView(){
       var acts='<button class="btn sm" onclick=\'editCon('+JSON.stringify(c).replace(/'/g,"&#39;")+')\'>✎</button>'+
         ' <button class="btn sm" onclick="genDoc(\''+c.id+'\')" title="сформировать по шаблону">🖨</button>'+
         ' <button class="btn sm" onclick="uploadDoc(\''+c.id+'\')" title="загрузить готовый: фото/скан/PDF">📎</button>'+
-        (c.kind==='контракт'?' <button class="btn sm" onclick="genDoc(\''+c.id+'\',\'приказ-приём\')" title="приказ о приёме">📜</button>':'');
+        (c.kind==='контракт'?' <button class="btn sm" onclick="genDoc(\''+c.id+'\',\'приказ-приём\')" title="приказ о приёме">📜</button>':'')+
+        (((c.state||{}).needRenew)?' <button class="btn sm pri" onclick="renewForm(\''+c.id+'\')" title="заключить новый контракт">⏭ новый контракт</button>':'');
       return '<tr><td>'+dot(c.missing)+sevPill((c.state||{}).sev)+'</td><td>'+esc(c.kind)+'</td><td><b>'+esc(c.num)+'</b></td><td>'+esc(c.date)+'</td>'+
         '<td>'+esc(c.end||'—')+'</td>'+
         '<td>'+(c.notify?esc(c.notify):(c.kind==='контракт'?'<button class="btn sm" onclick="noticeForm(\''+c.id+'\')">✉ создать</button>':'—'))+'</td>'+
@@ -308,6 +309,28 @@ function noticeForm(conId){
     });
 }
 function noticeToggle(){ var b=$('extBox'); if(b) b.style.display=($('f_kind').value==='увед-продление')?'contents':'none'; }
+// продление = новый контракт: условия переносятся, номер берётся следующий по году
+function renewForm(conId){
+  var c=(DATA.contracts||[]).filter(function(x){return x.id===conId;})[0]; if(!c) return;
+  REQKEYS={};
+  var p=(c.end||'').split('.'), from='', to='';
+  if(p.length===3){ var d=new Date(+p[2],+p[1]-1,+p[0]); d.setDate(d.getDate()+1);
+    from=('0'+d.getDate()).slice(-2)+'.'+('0'+(d.getMonth()+1)).slice(-2)+'.'+d.getFullYear();
+    var e=new Date(d.getFullYear()+1,d.getMonth(),d.getDate()-1);
+    to=('0'+e.getDate()).slice(-2)+'.'+('0'+(e.getMonth()+1)).slice(-2)+'.'+e.getFullYear(); }
+  dlg('Новый контракт взамен № '+c.num+' (истекает '+esc(c.end)+')',
+    fld('from','Действует с',from)+fld('to','по',to)+fld('term','Срок (текстом)',c.termText||'1 (один) год')+
+    fld('num','№ (пусто = следующий по счётчику)',''),
+    function(){
+      busy(1);
+      api({vapi:'hrrenew',con:conId,opts:JSON.stringify({from:val('from'),to:val('to'),term:val('term'),num:val('num')})})
+        .then(function(r){ busy(0);
+          if(!r.ok){ alert(r.error); return; }
+          apply(r,CARD?CARD.emp.id:c.emp);
+          alert('Заключён новый контракт № '+r.newNum+' с '+r.from+' по '+r.to+'.\nУсловия перенесены — проверьте оклад и режим, затем можно печатать по шаблону.');
+        });
+    });
+}
 function signNotice(conId){
   if(!confirm('Отметить, что работник подписал уведомление? Подпись означает согласие продолжить работу.')) return;
   busy(1); api({vapi:'hrsignnotice',con:conId}).then(function(r){ busy(0); apply(r,CARD?CARD.emp.id:null); });
