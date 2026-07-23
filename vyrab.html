@@ -45,6 +45,11 @@
   <label>Количество</label><input id="qty" type="number" min="0" inputmode="numeric" oninput="calc()" placeholder="сколько сделано">
   <div class="sum" id="sum">—</div>
   <button class="gray" onclick="addToCart()">＋ Добавить в наряд</button>
+  <label style="margin-top:14px">Смена</label>
+  <div class="tabs" style="margin-bottom:0">
+    <button id="shift-day" class="active" onclick="setShift('день')">☀️ День</button>
+    <button id="shift-night" onclick="setShift('ночь')">🌙 Ночь (+15%)</button>
+  </div>
   <div id="cart" style="margin-top:12px"></div>
   <button onclick="sendReport()" id="sendbtn" style="display:none">📨 Отправить наряд мастеру</button>
   <div class="msg" id="wmsg"></div>
@@ -111,7 +116,17 @@ function fillDetails(){ var p=curProd(); document.getElementById('detail').inner
 function fillOps(){ var p=curProd(), name=document.getElementById('detail').value; var ops=(p.details||{})[name]||[]; document.getElementById('op').innerHTML=ops.map(function(o){return opt(o.op,o.op+' — '+o.rate);}).join(''); calc(); }
 function curRate(){ var p=curProd(), name=document.getElementById('detail').value, op=document.getElementById('op').value; var o=((p.details||{})[name]||[]).filter(function(y){return y.op===op;})[0]; return o?o.rate:0; }
 function calc(){ var q=Number(document.getElementById('qty').value)||0, r=curRate(); document.getElementById('sum').textContent = q>0 ? ('ЗП: '+(Math.round(q*r*100)/100)+' руб. ('+q+' × '+r+')') : '—'; }
-var CART=[];
+var CART=[], SHIFT='день';
+var BONUS={premPct:10,premThr:100,nightPct:15};   // как в Config
+function setShift(sh){ SHIFT=sh;
+  document.getElementById('shift-day').className=(sh==='день')?'active':'';
+  document.getElementById('shift-night').className=(sh==='ночь')?'active':'';
+  renderCart(); }
+function bonusCalc(base){
+  var night=(SHIFT==='ночь'), ni=night?Math.round(base*BONUS.nightPct)/100:0;
+  var prem=base>BONUS.premThr?Math.round(base*BONUS.premPct)/100:0;
+  return {base:Math.round(base*100)/100, night:ni, prem:prem, total:Math.round((base+ni+prem)*100)/100, nightOn:night, premOn:base>BONUS.premThr};
+}
 function wmsg(h){ var m=document.getElementById('wmsg'); if(m) m.innerHTML=h||''; }
 function addToCart(){
   var worker=DATA.worker||(document.getElementById('worker')&&document.getElementById('worker').value)||'';
@@ -126,9 +141,14 @@ function rmCart(i){ CART.splice(i,1); renderCart(); }
 function renderCart(){
   var c=document.getElementById('cart'), sb=document.getElementById('sendbtn');
   if(!CART.length){ c.innerHTML=''; sb.style.display='none'; return; }
-  var tot=CART.reduce(function(s,x){return s+x.sum;},0);
-  c.innerHTML='<div class="card"><div class="row"><b>В наряде: '+CART.length+' оп.</b><b class="ok">'+(Math.round(tot*100)/100)+' руб.</b></div>'
+  var tot=CART.reduce(function(s,x){return s+x.sum;},0), bd=bonusCalc(tot);
+  c.innerHTML='<div class="card"><div class="row"><b>В наряде: '+CART.length+' оп.</b><span class="muted">'+esc(SHIFT==='ночь'?'🌙 ночь':'☀️ день')+'</span></div>'
     +CART.map(function(x,i){ return '<div class="row" style="border-top:1px solid #eee;padding-top:5px"><span>'+esc(x.detail)+' · '+esc(x.op)+' · '+x.qty+' шт → '+x.sum+' р.</span><button class="sm gray" onclick="rmCart('+i+')">✕</button></div>'; }).join('')
+    +'<div style="border-top:1px solid #eee;margin-top:8px;padding-top:8px">'
+    +'<div class="row"><span class="muted">Заработок</span><span>'+bd.base+' р.</span></div>'
+    +(bd.premOn?'<div class="row"><span class="muted">Премия за наряд ('+BONUS.premPct+'%, наряд &gt; '+BONUS.premThr+' р.)</span><span class="ok">+'+bd.prem+' р.</span></div>':'')
+    +(bd.nightOn?'<div class="row"><span class="muted">Ночная смена ('+BONUS.nightPct+'%)</span><span class="ok">+'+bd.night+' р.</span></div>':'')
+    +'<div class="row" style="margin-top:4px"><b>Итого к оплате</b><b class="ok" style="font-size:17px">'+bd.total+' р.</b></div></div>'
     +'</div>';
   sb.style.display='';
 }
@@ -139,8 +159,9 @@ function sendReport(){
   var batch=document.getElementById('batch').value, wd=document.getElementById('wdate').value, dateRu=wd?wd.split('-').reverse().join('.'):'';
   var items=CART.map(function(x){ return {equip:x.equip,detail:x.detail,op:x.op,qty:x.qty}; });
   wmsg('Отправляю наряд…');
-  api({vapi:'submitreport',worker:worker,tgid:TGID,batch:batch,date:dateRu,items:JSON.stringify(items)}).then(function(r){
-    if(r&&r.ok){ wmsg('<span class="ok">✅ Наряд отправлен: '+r.count+' оп. на '+r.sum+' руб. (на проверке)</span>'); CART=[]; renderCart(); loadMySummary(); }
+  api({vapi:'submitreport',worker:worker,tgid:TGID,batch:batch,date:dateRu,shift:SHIFT,items:JSON.stringify(items)}).then(function(r){
+    if(r&&r.ok){ var b=r.breakdown||{}; var extra=(b.premApplied||b.nightApplied)?(' (заработок '+b.base+' + надбавки '+(Math.round(((b.premium||0)+(b.night||0))*100)/100)+')'):'';
+      wmsg('<span class="ok">✅ Наряд отправлен: '+r.count+' оп. на <b>'+r.sum+' руб.</b>'+extra+' (на проверке)</span>'); CART=[]; renderCart(); loadMySummary(); }
     else wmsg('<span class="err">⚠️ '+esc((r&&r.error)||'ошибка')+'</span>');
   }).catch(function(){ wmsg('<span class="err">Ошибка отправки</span>'); });
 }
@@ -177,13 +198,21 @@ function loadPending(){
           +'<button class="sm gray" onclick="appr(\''+esc(l.id)+'\',0)" title="убрать эту строку из наряда">✖</button></span></div>'
           +vsel+'</div>';
       }).join('');
+      var bd=rp.breakdown||{}, night=(rp.shift==='ночь');
+      var bonusLine=(bd.premApplied||bd.nightApplied)
+        ? '<div class="muted" style="font-size:12px">заработок '+bd.base+' р.'+(bd.premApplied?' + премия '+bd.premium+' р.':'')+(bd.nightApplied?' + ночная '+bd.night+' р.':'')+'</div>' : '';
       return '<div class="card"><div class="row"><b>'+esc(rp.worker)+'</b><span class="muted">'+esc(rp.date)+' · '+esc(rp.batch)+'</span></div>'
         +'<div class="muted">'+(rp.single?'одиночная запись':'наряд')+': '+rp.lines.length+' оп. · <b>'+rp.sum+' руб.</b></div>'
+        +bonusLine
+        +(rp.single?'':'<div class="tabs" style="margin:6px 0 0"><button class="sm '+(night?'':'active')+'" onclick="setRepShift(\''+esc(rid)+'\',\'день\')">☀️ День</button><button class="sm '+(night?'active':'')+'" onclick="setRepShift(\''+esc(rid)+'\',\'ночь\')">🌙 Ночь</button></div>')
         +lines
         +'<div class="row" style="margin-top:10px"><button class="sm" onclick="apprRep(\''+esc(rid)+'\',1)">✅ Одобрить'+(rp.single?'':' наряд')+'</button>'
         +'<button class="sm gray" onclick="apprRep(\''+esc(rid)+'\',0)">✖ Отклонить</button><span id="rm-'+esc(rid)+'" class="msg"></span></div></div>';
     }).join('');
   });
+}
+function setRepShift(rid,sh){
+  api({vapi:'setreportshift',report:rid,shift:sh,master:DATA.worker||'мастер'}).then(function(r){ if(r&&r.ok) loadPending(); });
 }
 function apprRep(rid,ok){
   var m=document.getElementById('rm-'+rid); if(m) m.textContent='…';
