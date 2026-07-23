@@ -259,9 +259,11 @@ function cardView(){
   // приказы
   h+='<div class="sect">Приказы</div><div class="card tbwrap">';
   if(!CARD.orders.length) h+='<div class="empty">Приказов нет.</div>';
-  else h+='<table><thead><tr><th>№</th><th>Дата</th><th>Вид</th><th>Основание</th><th>Документ</th><th></th></tr></thead><tbody>'+
+  else h+='<table><thead><tr><th>№</th><th>Дата</th><th>Вид</th><th>Основание / заявление</th><th>Документ</th><th></th></tr></thead><tbody>'+
       CARD.orders.map(function(o){ return '<tr><td><b>'+esc(o.num)+'</b></td><td>'+esc(o.date||'—')+'</td><td>'+esc(o.kind||'')+'</td>'+
-        '<td class="muted">'+esc(o.basis||'')+'</td>'+
+        '<td>'+(o.basis?'<span class="muted">'+esc(o.basis)+'</span> ':'')+
+              (o.basisLink?'<a class="btn sm" href="'+esc(o.basisLink)+'" target="_blank">📄 заявление</a>'
+                          :'<button class="btn sm" onclick="uploadDoc(\''+o.id+'\',\'orderbasis\')" title="прикрепить заявление">📎 заявление</button>')+'</td>'+
         '<td>'+(o.link?'<a class="btn sm" href="'+esc(o.link)+'" target="_blank">📄 документ</a>'
                       :'<button class="btn sm" onclick="docMenu(\'order\',\''+o.id+'\')">📄 документ…</button>')+'</td>'+
         '<td><button class="btn sm" onclick=\'ordForm('+JSON.stringify(o).replace(/'/g,"&#39;")+')\'>✎ данные</button></td></tr>'; }).join('')+'</tbody></table>';
@@ -584,6 +586,7 @@ function uploadDoc(recId,target){
         : ((DATA.orders||[]).filter(function(x){return x.id===recId;})[0]||{});
   var def = target==='con' ? ((c.kind==='подряд'?'Договор подряда':(c.kind==='обучение'?'Договор о производственном обучении':'Контракт'))+' № '+(c.num||'')+' от '+(c.date||''))
           : target==='ds' ? ('Доп. соглашение № '+(c.num||'')+' от '+(c.date||''))
+          : target==='orderbasis' ? ('Заявление к приказу № '+(c.num||'')+' от '+(c.date||''))
           : ('Приказ № '+(c.num||'')+' от '+(c.date||''));
   var label=prompt('Как подписать документ в папке сотрудника?\n(например: «Приказ № 1/1-к от 12.01.2026 о зачислении»)', def);
   if(label===null) return;
@@ -714,10 +717,13 @@ function ordView(){
     ['all','кадровые','основная деятельность'].map(function(v){ return '<button class="btn'+(ORDFILTER===v?' pri':'')+'" onclick="ordFilter(\''+v+'\')">'+
       (v==='all'?'все':(v==='кадровые'?'кадровые':'осн. деятельности'))+'</button>'; }).join('')+
     '<span class="muted">всего: '+all.length+'</span></div>';
-  h+='<div class="card tbwrap"><table><thead><tr><th>№</th><th>Дата</th><th>Серия</th><th>Вид</th><th>ФИО</th><th>Основание</th><th>Документ</th><th></th></tr></thead><tbody>';
+  h+='<div class="card tbwrap"><table><thead><tr><th>№</th><th>Дата</th><th>Серия</th><th>Вид</th><th>ФИО</th><th>Основание / заявление</th><th>Документ</th><th></th></tr></thead><tbody>';
   h+=l.map(function(o){
     return '<tr><td><b>'+esc(o.num)+'</b></td><td>'+esc(o.date||'—')+'</td><td class="muted">'+esc(o.series==='кадровые'?'кадр.':'осн.')+'</td>'+
-      '<td>'+esc(o.kind||'')+'</td><td>'+esc(o.fio||'—')+'</td><td class="muted">'+esc(o.basis||'')+'</td>'+
+      '<td>'+esc(o.kind||'')+'</td><td>'+esc(o.fio||'—')+'</td>'+
+      '<td>'+(o.basis?'<span class="muted">'+esc(o.basis)+'</span> ':'')+
+            (o.basisLink?'<a class="btn sm" href="'+esc(o.basisLink)+'" target="_blank">📄 заявление</a>'
+                        :'<button class="btn sm" onclick="uploadDoc(\''+o.id+'\',\'orderbasis\')" title="прикрепить заявление (скан/фото/PDF)">📎 заявление</button>')+'</td>'+
       '<td>'+(o.link?'<a class="btn sm" href="'+esc(o.link)+'" target="_blank">📄 открыть</a> ':'')+
             '<button class="btn sm" onclick=\'ordDoc('+JSON.stringify(o).replace(/\x27/g,"&#39;")+')\'>'+(o.link?'⋯':'📄 документ…')+'</button></td>'+
       '<td><button class="btn sm" onclick=\'ordForm('+JSON.stringify(o).replace(/\x27/g,"&#39;")+')\'>✎ данные</button></td></tr>';
