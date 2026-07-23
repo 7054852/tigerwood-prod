@@ -270,6 +270,7 @@ function renderUsers(box,r){
     var roleCell=canEdit?'<select id="ro'+i+'">'+roles.map(function(x){return '<option value="'+x+'"'+(x===u.role?' selected':'')+'>'+esc(r.roleTitles[x]||x)+'</option>';}).join('')+'</select>':'<span class="pill">'+esc(r.roleTitles[u.role]||u.role)+'</span>';
     var masterCell=canEdit?'<select id="ma'+i+'" style="max-width:150px">'+masterOpts(u.master)+'</select>':esc(u.master||'—');
     var acts='';
+    if(canManage) acts+='<button class="sm" title="переименовать (Фамилия Имя)" onclick="renameWorker(\''+tg+'\',\''+nm+'\')">✎</button> ';
     if(canEdit&&!self) acts+='<button class="sm" title="сохранить роль/участок" onclick="saveUser('+i+',\''+esc(tg)+'\')">💾</button> ';
     if(canManage&&!self){ acts+= archived
       ? '<button class="sm" title="вернуть из архива" onclick="restoreWorker(\''+tg+'\',\''+nm+'\')">↩</button> '
@@ -330,6 +331,14 @@ function saveUser(i,tgid){
 }
 function isActiveJs(v){ var s=String(v==null?'':v).trim().toLowerCase(); return !(s==='нет'||s==='архив'||s==='no'||s==='false'||s==='0'||s==='off'); }
 function reloadUsers(){ var box=document.getElementById('view'); if(box) usersView(box); }
+function renameWorker(tgId,curName){
+  var nn=prompt('Имя сотрудника — как записать (Фамилия Имя):', curName||'');
+  if(nn===null) return; nn=nn.trim(); if(nn.length<3){ alert('Введите Фамилию и Имя'); return; }
+  if(nn===curName) return;
+  api({vapi:'renameworker',tgid:TGID,target:tgId,name:curName,newname:nn}).then(function(r){
+    if(r&&r.ok) reloadUsers(); else alert((r&&r.error)||'ошибка');
+  }).catch(function(){ alert('сеть недоступна'); });
+}
 function archiveWorker(tgId,name){
   if(!confirm('Убрать «'+name+'» в архив?\nДоступ пропадёт, но выработка и ЗП сохранятся.')) return;
   api({vapi:'archiveworker',tgid:TGID,target:tgId,name:name}).then(function(r){ if(r&&r.ok) reloadUsers(); else alert((r&&r.error)||'ошибка'); }).catch(function(){ alert('сеть недоступна'); });
