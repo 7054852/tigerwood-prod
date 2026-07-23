@@ -698,28 +698,53 @@ function dt(ru){ var p=String(ru||'').split('.'); return p.length===3?new Date(+
 /* ─── реестры ─── */
 function empOpts(v){ return '<div><label class="f">Сотрудник</label><select id="f_emp"><option value="">—</option>'+
   (DATA.list||[]).map(function(x){ return '<option value="'+x.emp.id+'"'+(x.emp.id===v?' selected':'')+'>'+esc(x.emp.fio)+'</option>'; }).join('')+'</select></div>'; }
+var ORDFILTER='all';
+function ordFilter(v){ ORDFILTER=v; render(); }
 function ordView(){
-  var l=(DATA.orders||[]).slice().sort(function(a,b){
+  var all=(DATA.orders||[]).slice();
+  var l=all.filter(function(o){ return ORDFILTER==='all'||o.series===ORDFILTER; });
+  // сортировка по ДАТЕ (возр.) внутри серии — загруженный задним числом встаёт в нужное место
+  l.sort(function(a,b){
     if(a.series!==b.series) return a.series==='кадровые'?-1:1;
-    var ya=(a.date||'').slice(-4), yb=(b.date||'').slice(-4);
-    if(ya!==yb) return ya<yb?-1:1;
+    var da=dt(a.date)||0, db=dt(b.date)||0;
+    if(da!==db) return da-db;
     return numKey(a.num)-numKey(b.num);
   });
-  var h='<div class="row" style="margin-bottom:8px"><button class="btn pri" onclick="ordForm({})">+ Приказ</button><span class="muted">всего: '+l.length+'</span></div>';
-  h+='<div class="card tbwrap"><table><thead><tr><th>№</th><th>Дата</th><th>Серия</th><th>Вид</th><th>ФИО</th><th>Основание</th></tr></thead><tbody>';
-  h+=l.map(function(o){ return '<tr><td><b>'+esc(o.num)+'</b></td><td>'+esc(o.date||'—')+'</td><td class="muted">'+esc(o.series)+'</td><td>'+esc(o.kind||'')+'</td><td>'+esc(o.fio||'—')+'</td><td class="muted">'+esc(o.basis||'')+'</td></tr>'; }).join('');
+  var h='<div class="row" style="margin-bottom:8px"><button class="btn pri" onclick="ordForm({})">+ Приказ</button>'+
+    ['all','кадровые','основная деятельность'].map(function(v){ return '<button class="btn'+(ORDFILTER===v?' pri':'')+'" onclick="ordFilter(\''+v+'\')">'+
+      (v==='all'?'все':(v==='кадровые'?'кадровые':'осн. деятельности'))+'</button>'; }).join('')+
+    '<span class="muted">всего: '+all.length+'</span></div>';
+  h+='<div class="card tbwrap"><table><thead><tr><th>№</th><th>Дата</th><th>Серия</th><th>Вид</th><th>ФИО</th><th>Основание</th><th>Документ</th><th></th></tr></thead><tbody>';
+  h+=l.map(function(o){
+    return '<tr><td><b>'+esc(o.num)+'</b></td><td>'+esc(o.date||'—')+'</td><td class="muted">'+esc(o.series==='кадровые'?'кадр.':'осн.')+'</td>'+
+      '<td>'+esc(o.kind||'')+'</td><td>'+esc(o.fio||'—')+'</td><td class="muted">'+esc(o.basis||'')+'</td>'+
+      '<td>'+(o.link?'<a class="btn sm" href="'+esc(o.link)+'" target="_blank">📄 открыть</a> ':'')+
+            '<button class="btn sm" onclick=\'ordDoc('+JSON.stringify(o).replace(/\x27/g,"&#39;")+')\'>'+(o.link?'⋯':'📄 документ…')+'</button></td>'+
+      '<td><button class="btn sm" onclick=\'ordForm('+JSON.stringify(o).replace(/\x27/g,"&#39;")+')\'>✎ данные</button></td></tr>';
+  }).join('');
   return h+'</tbody></table>'+(l.length?'':'<div class="empty">Пусто.</div>')+'</div>';
 }
+function ordDoc(o){ docMenu('order',o.id); }
 function ordForm(o){
+  o=o||{};
+  var saveOrd=function(then){
+    var d={id:o.id||'',series:val('series'),num:val('num'),date:val('date'),kind:val('kind'),emp:val('emp'),
+           pos:val('pos'),basis:val('basis'),link:val('link'),note:val('note')};
+    busy(1); api({vapi:'hrsaveorder',data:JSON.stringify(d)}).then(function(r){ busy(0);
+      if(!apply(r,CARD?CARD.emp.id:null)) return;
+      if(!CARD){ TAB='ord'; render(); }
+      if(then){ var mine=(r.orders||[]).filter(function(x){return (d.num&&x.num===d.num)||(!d.num&&x.emp===d.emp&&x.date===d.date);});
+        if(mine.length) docMenu('order',mine[mine.length-1].id); }
+    });
+  };
   dlg(o.id?'Правка приказа — данные':'Новый приказ — данные',
     sel('series','Серия',o.series||'кадровые',['кадровые','основная деятельность'])+
-    fld('num','№ (пусто = следующий)',o.num)+fld('date','Дата',o.date)+fld('kind','Вид приказа',o.kind)+
-    empOpts(o.emp)+fld('pos','Должность',o.pos)+fld('basis','Основание',o.basis)+fld('link','Ссылка',o.link),
-    function(){
-      var d={id:o.id||'',series:val('series'),num:val('num'),date:val('date'),kind:val('kind'),emp:val('emp'),
-             pos:val('pos'),basis:val('basis'),link:val('link')};
-      busy(1); api({vapi:'hrsaveorder',data:JSON.stringify(d)}).then(function(r){ busy(0); TAB='ord'; apply(r); });
-    });
+    fld('num','№ (пусто = следующий по счётчику)',o.num)+fld('date','Дата',o.date)+
+    fld('kind','Вид приказа (напр.: о приёме на работу)',o.kind)+
+    empOpts(o.emp)+fld('pos','Должность',o.pos)+fld('basis','Основание',o.basis)+fld('note','Примечание',o.note),
+    function(){ saveOrd(false); }, '',
+    'Сохраняем данные приказа. Документ — кнопкой «Сохранить и перейти к документу»: собрать по шаблону (для приёма) или загрузить готовый.',
+    function(){ saveOrd(true); });
 }
 function sickView(){
   var l=DATA.sick||[];
