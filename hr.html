@@ -222,7 +222,8 @@ function cardView(){
         (c.kind==='контракт'?(c.appLink?' <a class="btn sm" href="'+esc(c.appLink)+'" target="_blank">📄 заявление</a>'
                                         :' <button class="btn sm" onclick="uploadDoc(\''+c.id+'\',\'conapp\')" title="прикрепить заявление о приёме">📎 заявление</button>'):'')+
         (((c.state||{}).needRenew)?' <button class="btn sm pri" onclick="renewForm(\''+c.id+'\')">⏭ новый контракт</button>':'')+
-        (c.kind==='подряд'&&String(c.status).toLowerCase()!=='расторгнут'?' <button class="btn sm pri" onclick="termForm(\''+c.id+'\')">⏹ прекращение</button>':'');
+        (c.kind==='подряд'&&String(c.status).toLowerCase()!=='расторгнут'?' <button class="btn sm pri" onclick="termForm(\''+c.id+'\')">⏹ прекращение</button>':'')+
+        ' <button class="btn sm" onclick="delRec(\'contract\',\''+c.id+'\',\''+esc(c.kind)+' № '+esc(c.num)+'\')" title="удалить договор">🗑</button>';
       return '<tr><td>'+dot(c.missing)+sevPill((c.state||{}).sev)+'</td><td>'+esc(c.kind)+'</td><td><b>'+esc(c.num)+'</b></td><td>'+esc(c.date)+'</td>'+
         '<td>'+esc(c.end||'—')+'</td>'+
         '<td>'+(c.notify
@@ -255,7 +256,8 @@ function cardView(){
         return '<tr><td><b>'+esc(d.num||'—')+'</b></td><td>'+esc(d.date||'—')+'</td><td>'+(chTxt?esc(chTxt):esc(d.reason||'—'))+'</td>'+
         '<td>'+(d.link?'<a class="btn sm" href="'+esc(d.link)+'" target="_blank">📄 открыть</a> ':'')+
               '<button class="btn sm" onclick="docMenu(\'ds\',\''+d.id+'\')">'+(d.link?'⋯':'📄 документ…')+'</button></td>'+
-        '<td><button class="btn sm" onclick=\'dsForm('+JSON.stringify(d).replace(/'/g,"&#39;")+')\'>✎ данные</button></td></tr>'; }).join('')+'</tbody></table>';
+        '<td style="white-space:nowrap"><button class="btn sm" onclick=\'dsForm('+JSON.stringify(d).replace(/'/g,"&#39;")+')\'>✎ данные</button>'+
+        ' <button class="btn sm" onclick="delRec(\'ds\',\''+d.id+'\',\'доп. соглашение № '+esc(d.num)+'\')" title="удалить">🗑</button></td></tr>'; }).join('')+'</tbody></table>';
   h+='<div class="row" style="margin-top:8px"><button class="btn" onclick="newDs()">+ доп. соглашение</button>'+
      '<span class="muted" style="font-size:12px">меняет условия контракта (оплата, график, аванс). Чтобы приложить УЖЕ подписанное соглашение — нажмите «+ доп. соглашение», заполните новые условия и выберите «Загрузить готовый».</span></div></div>';
   // приказы
@@ -268,7 +270,8 @@ function cardView(){
                           :'<button class="btn sm" onclick="uploadDoc(\''+o.id+'\',\'orderbasis\')" title="прикрепить заявление">📎 заявление</button>')+'</td>'+
         '<td>'+(o.link?'<a class="btn sm" href="'+esc(o.link)+'" target="_blank">📄 документ</a>'
                       :'<button class="btn sm" onclick="docMenu(\'order\',\''+o.id+'\')">📄 документ…</button>')+'</td>'+
-        '<td><button class="btn sm" onclick=\'ordForm('+JSON.stringify(o).replace(/'/g,"&#39;")+')\'>✎ данные</button></td></tr>'; }).join('')+'</tbody></table>';
+        '<td style="white-space:nowrap"><button class="btn sm" onclick=\'ordForm('+JSON.stringify(o).replace(/'/g,"&#39;")+')\'>✎ данные</button>'+
+        ' <button class="btn sm" onclick="delRec(\'order\',\''+o.id+'\',\'приказ № '+esc(o.num)+'\')" title="удалить">🗑</button></td></tr>'; }).join('')+'</tbody></table>';
   h+='<div class="row" style="margin-top:8px"><button class="btn" onclick="ordForm({emp:CARD.emp.id})">+ приказ</button></div></div>';
   return h;
 }
@@ -407,6 +410,15 @@ function setConStatus(id,st){
   var c=(DATA.contracts||[]).filter(function(x){return x.id===id;})[0]; if(!c) return;
   var eid=CARD?CARD.emp.id:c.emp; busy(1);
   api({vapi:'hrsavecontract',data:JSON.stringify({id:id,emp:c.emp,status:st})}).then(function(r){ busy(0); apply(r,eid); });
+}
+// удаление записи (ДС / приказ / договор / больничный / документ / топливо) с подтверждением;
+// приложенные файлы уходят в корзину Drive (восстановимо)
+function delRec(what,id,label){
+  if(!confirm('Удалить '+(label||'запись')+'?\n\nЗапись удалится из системы, приложенные файлы уйдут в корзину Google Drive (можно восстановить).')) return;
+  busy(1); api({vapi:'hrdelete',what:what,id:id}).then(function(r){ busy(0);
+    if(!r.ok){ alert(r.error); return; }
+    apply(r,CARD?CARD.emp.id:null);
+  });
 }
 function isLate(due){ var p=String(due).split('.'); if(p.length!==3) return false;
   var d=new Date(+p[2],+p[1]-1,+p[0]); var t=new Date(); t.setHours(0,0,0,0); return d<t; }
@@ -735,7 +747,8 @@ function ordView(){
                         :'<button class="btn sm" onclick="uploadDoc(\''+o.id+'\',\'orderbasis\')" title="прикрепить заявление (скан/фото/PDF)">📎 заявление</button>')+'</td>'+
       '<td>'+(o.link?'<a class="btn sm" href="'+esc(o.link)+'" target="_blank">📄 открыть</a> ':'')+
             '<button class="btn sm" onclick=\'ordDoc('+JSON.stringify(o).replace(/\x27/g,"&#39;")+')\'>'+(o.link?'⋯':'📄 документ…')+'</button></td>'+
-      '<td><button class="btn sm" onclick=\'ordForm('+JSON.stringify(o).replace(/\x27/g,"&#39;")+')\'>✎ данные</button></td></tr>';
+      '<td style="white-space:nowrap"><button class="btn sm" onclick=\'ordForm('+JSON.stringify(o).replace(/\x27/g,"&#39;")+')\'>✎ данные</button>'+
+      ' <button class="btn sm" onclick="delRec(\'order\',\''+o.id+'\',\'приказ № '+esc(o.num)+'\')" title="удалить">🗑</button></td></tr>';
   }).join('');
   return h+'</tbody></table>'+(l.length?'':'<div class="empty">Пусто.</div>')+'</div>';
 }
@@ -764,8 +777,9 @@ function ordForm(o){
 function sickView(){
   var l=DATA.sick||[];
   var h='<div class="row" style="margin-bottom:8px"><button class="btn pri" onclick="sickForm({})">+ Больничный</button><span class="muted">всего: '+l.length+'</span></div>';
-  h+='<div class="card tbwrap"><table><thead><tr><th>Серия и номер</th><th>ФИО</th><th>С</th><th>По</th><th class="num">Расчёт</th></tr></thead><tbody>';
-  h+=l.map(function(s){ return '<tr><td>'+esc(s.sernum)+'</td><td>'+esc(s.fio||'—')+'</td><td>'+esc(s.from||'—')+'</td><td>'+esc(s.to||'—')+'</td><td class="num">'+(s.calc?money(s.calc):'—')+'</td></tr>'; }).join('');
+  h+='<div class="card tbwrap"><table><thead><tr><th>Серия и номер</th><th>ФИО</th><th>С</th><th>По</th><th class="num">Расчёт</th><th></th></tr></thead><tbody>';
+  h+=l.map(function(s){ return '<tr><td>'+esc(s.sernum)+'</td><td>'+esc(s.fio||'—')+'</td><td>'+esc(s.from||'—')+'</td><td>'+esc(s.to||'—')+'</td><td class="num">'+(s.calc?money(s.calc):'—')+'</td>'+
+    '<td><button class="btn sm" onclick=\'sickForm('+JSON.stringify(s).replace(/'/g,"&#39;")+')\'>✎</button> <button class="btn sm" onclick="delRec(\'sick\',\''+s.id+'\',\'больничный\')">🗑</button></td></tr>'; }).join('');
   return h+'</tbody></table>'+(l.length?'':'<div class="empty">Пусто.</div>')+'</div>';
 }
 function sickForm(s){
@@ -779,8 +793,9 @@ function sickForm(s){
 function docView(){
   var l=DATA.docs||[];
   var h='<div class="row" style="margin-bottom:8px"><button class="btn pri" onclick="docForm({})">+ Документ</button><span class="muted">табели, расчётные ведомости, штатное расписание</span></div>';
-  h+='<div class="card tbwrap"><table><thead><tr><th>Тип</th><th>Номер</th><th>Дата</th><th>Период</th><th>Скан</th></tr></thead><tbody>';
-  h+=l.map(function(d){ return '<tr><td>'+esc(d.type)+'</td><td>'+esc(d.num||'—')+'</td><td>'+esc(d.date||'—')+'</td><td>'+esc(d.period||'—')+'</td><td>'+(d.link?'<a href="'+esc(d.link)+'" target="_blank">открыть</a>':'—')+'</td></tr>'; }).join('');
+  h+='<div class="card tbwrap"><table><thead><tr><th>Тип</th><th>Номер</th><th>Дата</th><th>Период</th><th>Скан</th><th></th></tr></thead><tbody>';
+  h+=l.map(function(d){ return '<tr><td>'+esc(d.type)+'</td><td>'+esc(d.num||'—')+'</td><td>'+esc(d.date||'—')+'</td><td>'+esc(d.period||'—')+'</td><td>'+(d.link?'<a href="'+esc(d.link)+'" target="_blank">открыть</a>':'—')+'</td>'+
+    '<td><button class="btn sm" onclick=\'docForm('+JSON.stringify(d).replace(/'/g,"&#39;")+')\'>✎</button> <button class="btn sm" onclick="delRec(\'doc\',\''+d.id+'\',\'документ\')">🗑</button></td></tr>'; }).join('');
   return h+'</tbody></table>'+(l.length?'':'<div class="empty">Пусто.</div>')+'</div>';
 }
 function docForm(d){
@@ -795,8 +810,9 @@ function fuelView(){
   var l=DATA.fuel||[], t=DATA.fuelTotals||{};
   var h='<div class="row" style="margin-bottom:8px"><button class="btn pri" onclick="fuelForm({})">+ Запись</button>'+
         '<span class="muted">акты: '+money(t.acts)+' · выплаты: '+money(t.pays)+'</span></div>';
-  h+='<div class="card tbwrap"><table><thead><tr><th>Вид</th><th>Дата</th><th>№ акта</th><th>ФИО</th><th class="num">Сумма</th></tr></thead><tbody>';
-  h+=l.map(function(f){ return '<tr><td>'+esc(f.kind)+'</td><td>'+esc(f.date||'—')+'</td><td>'+esc(f.num||'—')+'</td><td>'+esc(f.fio||'—')+'</td><td class="num">'+money(f.sum)+'</td></tr>'; }).join('');
+  h+='<div class="card tbwrap"><table><thead><tr><th>Вид</th><th>Дата</th><th>№ акта</th><th>ФИО</th><th class="num">Сумма</th><th></th></tr></thead><tbody>';
+  h+=l.map(function(f){ return '<tr><td>'+esc(f.kind)+'</td><td>'+esc(f.date||'—')+'</td><td>'+esc(f.num||'—')+'</td><td>'+esc(f.fio||'—')+'</td><td class="num">'+money(f.sum)+'</td>'+
+    '<td><button class="btn sm" onclick=\'fuelForm('+JSON.stringify(f).replace(/'/g,"&#39;")+')\'>✎</button> <button class="btn sm" onclick="delRec(\'fuel\',\''+f.id+'\',\'запись топлива\')">🗑</button></td></tr>'; }).join('');
   return h+'</tbody></table>'+(l.length?'':'<div class="empty">Пусто.</div>')+'</div>';
 }
 function fuelForm(f){
