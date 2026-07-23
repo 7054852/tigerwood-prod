@@ -79,6 +79,21 @@ function api(p){ p.app=APP; var q=Object.keys(p).map(function(k){return k+'='+en
 function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
 try{ if(window.Telegram&&Telegram.WebApp){ Telegram.WebApp.ready(); Telegram.WebApp.expand(); var u=Telegram.WebApp.initDataUnsafe&&Telegram.WebApp.initDataUnsafe.user; if(u) TGID=String(u.id); } }catch(e){}
 if(!TGID){ TGID=qp('tgid')||localStorage.getItem('tw_tgid')||''; } if(TGID){ try{localStorage.setItem('tw_tgid',TGID);}catch(e){} }
+// РЕЖИМ: 'master' — панель проверки (?tab=check): все наряды + правки + коэффициент + ввод за любого сотрудника;
+//        'my' — личный кабинет: только свои наряды, свои на проверке, свой журнал.
+var MODE = (qp('tab')==='check'||qp('tab')==='m') ? 'master' : 'my';
+function isMaster(){ return MODE==='master'; }
+// текущий работник для формы: в личном режиме — я; в режиме мастера — выбранный в списке (или я)
+function curWorker(){
+  if(!isMaster() && DATA.worker) return DATA.worker;
+  var sel=document.getElementById('worker'); if(sel&&sel.value) return sel.value;
+  return DATA.worker||'';
+}
+function applyMode(){
+  var lw=document.getElementById('tab-w'), lm=document.getElementById('tab-m'), lj=document.getElementById('tab-j');
+  if(isMaster()){ lw.textContent='✍️ Ввести за сотрудника'; lm.textContent='👏 Проверка'; lj.textContent='📋 Журнал (все)'; }
+  else { lw.textContent='✍️ Моя выработка'; lm.textContent='⏳ Мои на проверке'; lj.textContent='📋 Мой журнал'; }
+}
 function showTab(t){
   ['w','m','j'].forEach(function(x){
     document.getElementById('pane-'+x).style.display = x===t?'':'none';
@@ -93,7 +108,13 @@ function load(){
     document.getElementById('batch').innerHTML=(DATA.batches||[]).map(function(b){return opt(b.id,b.num+' · '+b.name);}).join('')||opt('','нет активных партий');
     onBatchChange();
     loadMySummary();
-    if(DATA.worker){ document.getElementById('who').textContent='Рабочий: '+DATA.worker; document.getElementById('wsel').innerHTML=''; }
+    if(isMaster()){
+      // мастер вводит наряд за себя ИЛИ за любого сотрудника
+      document.getElementById('who').textContent='';
+      var opts=(DATA.workers||[]).map(function(w){return '<option value="'+esc(w.name)+'"'+(w.name===DATA.worker?' selected':'')+'>'+esc(w.name)+'</option>';}).join('');
+      document.getElementById('wsel').innerHTML='<label>Сотрудник (за кого наряд)</label><select id="worker">'+(opts||opt('','нет сотрудников'))+'</select>';
+    }
+    else if(DATA.worker){ document.getElementById('who').textContent='Рабочий: '+DATA.worker; document.getElementById('wsel').innerHTML=''; }
     else if(TGID){ document.getElementById('wsel').innerHTML='<label>Вы впервые. Представьтесь — <b>Фамилия Имя</b>:</label><input id="reg-fio" placeholder="Иванов Иван"><button onclick="doRegister()">Зарегистрироваться</button><div class="msg" id="reg-msg"></div>'; }
     else { document.getElementById('wsel').innerHTML='<label>Кто вы</label><select id="worker">'+(DATA.workers||[]).map(function(w){return opt(w.name);}).join('')+'</select>'; }
   }).catch(function(e){ document.getElementById('wmsg').innerHTML='<span class="err">Ошибка загрузки</span>'; });
@@ -129,7 +150,7 @@ function bonusCalc(base){
 }
 function wmsg(h){ var m=document.getElementById('wmsg'); if(m) m.innerHTML=h||''; }
 function addToCart(){
-  var worker=DATA.worker||(document.getElementById('worker')&&document.getElementById('worker').value)||'';
+  var worker=curWorker();
   if(!worker){ wmsg('<span class="err">Не выбран рабочий</span>'); return; }
   var equip=document.getElementById('equip').value, detail=document.getElementById('detail').value, op=document.getElementById('op').value, qty=Number(document.getElementById('qty').value)||0, rate=curRate();
   if(!op){ wmsg('<span class="err">Выберите операцию</span>'); return; }
@@ -153,7 +174,7 @@ function renderCart(){
   sb.style.display='';
 }
 function sendReport(){
-  var worker=DATA.worker||(document.getElementById('worker')&&document.getElementById('worker').value)||'';
+  var worker=curWorker();
   if(!worker){ wmsg('<span class="err">Не выбран рабочий</span>'); return; }
   if(!CART.length){ wmsg('<span class="err">Наряд пуст</span>'); return; }
   var batch=document.getElementById('batch').value, wd=document.getElementById('wdate').value, dateRu=wd?wd.split('-').reverse().join('.'):'';
@@ -179,36 +200,56 @@ function loadMySummary(){
 }
 function loadPending(){
   var el=document.getElementById('mlist'); el.textContent='Загрузка…';
-  api({vapi:'pending'}).then(function(r){
+  var master=isMaster();
+  var p={vapi:'pending'}; if(!master) p.worker=DATA.worker||'';   // личный режим — только свои
+  api(p).then(function(r){
     var reps=(r&&r.reports)||[];
-    if(!reps.length){ el.innerHTML='<div class="muted">Нет нарядов на проверке.</div>'; return; }
+    if(!reps.length){ el.innerHTML='<div class="muted">'+(master?'Нет нарядов на проверке.':'У вас нет нарядов на проверке — всё обработано.')+'</div>'; return; }
     el.innerHTML=reps.map(function(rp){
       var rid=rp.report;
       var lines=rp.lines.map(function(l){
+        var koef=l.koef||1, kbadge=(koef!==1)?' <span class="muted" style="font-size:12px">×'+koef+'</span>':'';
+        var acts='';
+        if(master){
+          acts=' <button class="sm gray" onclick="editOut(\''+esc(l.id)+'\','+l.qty+')" title="изменить кол-во">✏️</button>'
+            +'<button class="sm gray" onclick="setKoef(\''+esc(l.id)+'\','+koef+')" title="коэффициент к сумме">×k</button>'
+            +'<button class="sm gray" onclick="appr(\''+esc(l.id)+'\',0)" title="убрать эту строку из наряда">✖</button>';
+        }
         var vsel='';
-        if(l.variants && l.variants.length>1){   // деталь есть в нескольких изделиях (напр. цвет на покраске) — мастер уточняет
+        if(master && l.variants && l.variants.length>1){   // деталь есть в нескольких изделиях (напр. цвет на покраске) — мастер уточняет
           var opts='<option value="">↔ распределить по заказу</option>'+l.variants.map(function(m){ return '<option value="'+esc(m)+'"'+(m===l.model?' selected':'')+'>'+esc(m)+'</option>'; }).join('');
           var need=!l.model;
           vsel='<div class="row" style="margin-top:3px"><span class="muted" style="font-size:12px">изделие/цвет:</span>'
             +'<select class="vsel'+(need?' need':'')+'" onchange="setOutModel(\''+esc(l.id)+'\',this.value,this)">'+opts+'</select></div>';
         }
         return '<div style="border-top:1px solid #eee;padding-top:5px">'
-          +'<div class="row"><span>'+esc(l.detail)+' · '+esc(l.op)+' · '+l.qty+' шт</span>'
-          +'<span>'+l.sum+' р. <button class="sm gray" onclick="editOut(\''+esc(l.id)+'\','+l.qty+')">✏️</button>'
-          +'<button class="sm gray" onclick="appr(\''+esc(l.id)+'\',0)" title="убрать эту строку из наряда">✖</button></span></div>'
+          +'<div class="row"><span>'+esc(l.detail)+' · '+esc(l.op)+' · '+l.qty+' шт'+kbadge+'</span>'
+          +'<span>'+l.sum+' р.'+acts+'</span></div>'
           +vsel+'</div>';
       }).join('');
       var bd=rp.breakdown||{}, night=(rp.shift==='ночь');
       var bonusLine=(bd.premApplied||bd.nightApplied)
         ? '<div class="muted" style="font-size:12px">заработок '+bd.base+' р.'+(bd.premApplied?' + премия '+bd.premium+' р.':'')+(bd.nightApplied?' + ночная '+bd.night+' р.':'')+'</div>' : '';
+      var shiftCtl = (master && !rp.single)
+        ? '<div class="tabs" style="margin:6px 0 0"><button class="sm '+(night?'':'active')+'" onclick="setRepShift(\''+esc(rid)+'\',\'день\')">☀️ День</button><button class="sm '+(night?'active':'')+'" onclick="setRepShift(\''+esc(rid)+'\',\'ночь\')">🌙 Ночь</button></div>'
+        : (night?'<div class="muted" style="font-size:12px">🌙 ночная смена</div>':'');
+      var footer = master
+        ? '<div class="row" style="margin-top:10px"><button class="sm" onclick="apprRep(\''+esc(rid)+'\',1)">✅ Одобрить'+(rp.single?'':' наряд')+'</button>'
+          +'<button class="sm gray" onclick="apprRep(\''+esc(rid)+'\',0)">✖ Отклонить</button><span id="rm-'+esc(rid)+'" class="msg"></span></div>'
+        : '<div class="muted" style="margin-top:8px;font-size:12px">⏳ ждёт подтверждения мастера</div>';
       return '<div class="card"><div class="row"><b>'+esc(rp.worker)+'</b><span class="muted">'+esc(rp.date)+' · '+esc(rp.batch)+'</span></div>'
         +'<div class="muted">'+(rp.single?'одиночная запись':'наряд')+': '+rp.lines.length+' оп. · <b>'+rp.sum+' руб.</b></div>'
-        +bonusLine
-        +(rp.single?'':'<div class="tabs" style="margin:6px 0 0"><button class="sm '+(night?'':'active')+'" onclick="setRepShift(\''+esc(rid)+'\',\'день\')">☀️ День</button><button class="sm '+(night?'active':'')+'" onclick="setRepShift(\''+esc(rid)+'\',\'ночь\')">🌙 Ночь</button></div>')
-        +lines
-        +'<div class="row" style="margin-top:10px"><button class="sm" onclick="apprRep(\''+esc(rid)+'\',1)">✅ Одобрить'+(rp.single?'':' наряд')+'</button>'
-        +'<button class="sm gray" onclick="apprRep(\''+esc(rid)+'\',0)">✖ Отклонить</button><span id="rm-'+esc(rid)+'" class="msg"></span></div></div>';
+        +bonusLine+shiftCtl+lines+footer+'</div>';
     }).join('');
+  });
+}
+// мастер ставит коэффициент на строку → сумма пересчитывается вверх/вниз
+function setKoef(id,cur){
+  var k=prompt('Коэффициент к сумме этой операции:\n1 = без изменений, 1.2 = +20%, 0.8 = −20%', cur||1);
+  if(k===null) return; k=Number(String(k).replace(',','.')); if(isNaN(k)||k<0){ alert('Введите число ≥ 0'); return; }
+  api({vapi:'setoutputkoef',id:id,koef:k,master:DATA.worker||'мастер'}).then(function(r){
+    if(r&&r.ok){ loadPending(); loadJournal&&(document.getElementById('pane-j').style.display!=='none')&&loadJournal(); }
+    else alert((r&&r.error)||'ошибка');
   });
 }
 function setRepShift(rid,sh){
@@ -253,12 +294,23 @@ function delJournal(id){
     else if(m){ m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; }
   });
 }
+// коэффициент/смена из журнала (мастер) — перезагружают журнал
+function setKoefJ(id,cur){
+  var k=prompt('Коэффициент к сумме этой операции:\n1 = без изменений, 1.2 = +20%, 0.8 = −20%', cur||1);
+  if(k===null) return; k=Number(String(k).replace(',','.')); if(isNaN(k)||k<0){ alert('Введите число ≥ 0'); return; }
+  api({vapi:'setoutputkoef',id:id,koef:k,master:DATA.worker||'мастер'}).then(function(r){ if(r&&r.ok){ loadJournal(); } else alert((r&&r.error)||'ошибка'); });
+}
+function setRepShiftJ(rid,sh){
+  api({vapi:'setreportshift',report:rid,shift:sh,master:DATA.worker||'мастер'}).then(function(r){ if(r&&r.ok) loadJournal(); });
+}
 function loadJournal(){
   var lst=document.getElementById('jlist'), pay=document.getElementById('jpay');
   lst.textContent='Загрузка…'; pay.innerHTML='';
   var from=document.getElementById('jfrom').value, to=document.getElementById('jto').value;
   var fromRu=from?from.split('-').reverse().join('.'):'', toRu=to?to.split('-').reverse().join('.'):'';
-  api({vapi:'journal',from:fromRu,to:toRu}).then(function(r){
+  var master=isMaster();
+  var jp={vapi:'journal',from:fromRu,to:toRu}; if(!master) jp.worker=DATA.worker||'';   // личный режим — только свой журнал
+  api(jp).then(function(r){
     var items=(r&&r.items)||[], pr=(r&&r.payroll)||[];
     if(pr.length){
       var tot=pr.reduce(function(s,p){return s+p.sum;},0);
@@ -275,14 +327,22 @@ function loadJournal(){
       var g=groups[gidx[key]]; g.sum+=it.sum; g.lines.push(it);
     });
     lst.innerHTML=groups.map(function(g){
+      var rep=g.lines[0]&&g.lines[0].report||'', night=(g.lines[0]&&g.lines[0].shift==='ночь');
       var lines=g.lines.map(function(it){
-        return '<div class="row" id="j-'+esc(it.id)+'" style="border-top:1px solid #eee;padding-top:5px"><span>'+esc(it.detail)+' · '+esc(it.op)+' · '+it.qty+' шт</span>'
-          +'<span class="'+(stz[it.status]||'muted')+'">'+it.sum+'р · '+esc(it.status)+' '
-          +'<button class="sm gray" onclick="editJournal(\''+esc(it.id)+'\','+it.qty+',\''+esc(it.date)+'\')">✏️</button>'
-          +'<button class="sm gray" onclick="delJournal(\''+esc(it.id)+'\')">🗑</button><span id="jm-'+esc(it.id)+'" class="msg"></span></span></div>';
+        var koef=it.koef||1, kbadge=(koef!==1)?' <span class="muted" style="font-size:12px">×'+koef+'</span>':'';
+        var acts = master
+          ? ' <button class="sm gray" onclick="editJournal(\''+esc(it.id)+'\','+it.qty+',\''+esc(it.date)+'\')">✏️</button>'
+            +'<button class="sm gray" onclick="setKoefJ(\''+esc(it.id)+'\','+koef+')" title="коэффициент к сумме">×k</button>'
+            +'<button class="sm gray" onclick="delJournal(\''+esc(it.id)+'\')">🗑</button><span id="jm-'+esc(it.id)+'" class="msg"></span>'
+          : '';
+        return '<div class="row" id="j-'+esc(it.id)+'" style="border-top:1px solid #eee;padding-top:5px"><span>'+esc(it.detail)+' · '+esc(it.op)+' · '+it.qty+' шт'+kbadge+'</span>'
+          +'<span class="'+(stz[it.status]||'muted')+'">'+it.sum+'р · '+esc(it.status)+' '+acts+'</span></div>';
       }).join('');
+      var shiftCtl = (master && !g.single && rep)
+        ? '<div class="tabs" style="margin:6px 0 0"><button class="sm '+(night?'':'active')+'" onclick="setRepShiftJ(\''+esc(rep)+'\',\'день\')">☀️ День</button><button class="sm '+(night?'active':'')+'" onclick="setRepShiftJ(\''+esc(rep)+'\',\'ночь\')">🌙 Ночь</button></div>'
+        : (night?'<div class="muted" style="font-size:12px">🌙 ночная</div>':'');
       return '<div class="card"><div class="row"><b>'+esc(g.worker)+'</b><span class="muted">'+esc(g.date)+' · '+esc(g.batch)+(g.single?'':' · наряд')+'</span></div>'
-        +'<div class="muted">'+g.lines.length+' оп. · <b>'+(Math.round(g.sum*100)/100)+' руб.</b></div>'+lines+'</div>';
+        +'<div class="muted">'+g.lines.length+' оп. · <b>'+(Math.round(g.sum*100)/100)+' руб.</b></div>'+shiftCtl+lines+'</div>';
     }).join('');
   }).catch(function(){ lst.innerHTML='<span class="err">Ошибка загрузки</span>'; });
 }
@@ -297,8 +357,9 @@ function doRegister(){
   document.getElementById('jfrom').value=n.getFullYear()+'-'+m+'-01';
   document.getElementById('jto').value=today;
   document.getElementById('wdate').value=today; })();
+applyMode();
 load();
-if(qp('tab')==='m'||qp('tab')==='check') showTab('m');
+if(isMaster()) showTab('m');   // панель проверки открывается на вкладке «Проверка»
 if(qp('tab')==='j') showTab('j');
 </script>
 </body>
