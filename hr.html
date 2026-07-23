@@ -221,7 +221,8 @@ function cardView(){
               :' <button class="btn sm" onclick="docMenu(\'con\',\''+c.id+'\')">📄 договор…</button>')+
         (c.kind==='контракт'?(c.appLink?' <a class="btn sm" href="'+esc(c.appLink)+'" target="_blank">📄 заявление</a>'
                                         :' <button class="btn sm" onclick="uploadDoc(\''+c.id+'\',\'conapp\')" title="прикрепить заявление о приёме">📎 заявление</button>'):'')+
-        (((c.state||{}).needRenew)?' <button class="btn sm pri" onclick="renewForm(\''+c.id+'\')">⏭ новый контракт</button>':'');
+        (((c.state||{}).needRenew)?' <button class="btn sm pri" onclick="renewForm(\''+c.id+'\')">⏭ новый контракт</button>':'')+
+        (c.kind==='подряд'&&String(c.status).toLowerCase()!=='расторгнут'?' <button class="btn sm pri" onclick="termForm(\''+c.id+'\')">⏹ прекращение</button>':'');
       return '<tr><td>'+dot(c.missing)+sevPill((c.state||{}).sev)+'</td><td>'+esc(c.kind)+'</td><td><b>'+esc(c.num)+'</b></td><td>'+esc(c.date)+'</td>'+
         '<td>'+esc(c.end||'—')+'</td>'+
         '<td>'+(c.notify
@@ -367,6 +368,37 @@ function dsDocToggle(){ var w=$('f_kind').value;
   $('boxPay').style.display=(w==='дс-оплата')?'contents':'none';
   $('boxAdv').style.display=(w==='дс-аванс')?'contents':'none';
   $('boxWt').style.display=(w==='дс-график')?'contents':'none'; }
+// прекращение подряда: соглашение (подрядчик на месте) или уведомление (не выходит на связь) — по регламенту
+function termForm(conId){
+  var c=(DATA.contracts||[]).filter(function(x){return x.id===conId;})[0]; if(!c) return;
+  REQKEYS={};
+  var today=new Date(), td=('0'+today.getDate()).slice(-2)+'.'+('0'+(today.getMonth()+1)).slice(-2)+'.'+today.getFullYear();
+  var body='<div class="fld"><label class="f">Как прекращаем</label><select id="f_what" onchange="termToggle()">'+
+      '<option value="растор-соглашение">Соглашение о расторжении — подрядчик на месте (по регламенту сразу с Актом)</option>'+
+      '<option value="растор-уведомление">Уведомление о расторжении — подрядчик не выходит на связь</option>'+
+      '</select></div>'+
+    fld('date','Дата документа',td)+fld('termDate','Дата расторжения',c.end||td)+fld('num','Исх./№ документа','')+
+    '<div id="boxSogl" style="display:contents">'+fld('actNum','№ Акта сдачи-приёмки','')+fld('actDate','Дата Акта',c.end||td)+'</div>'+
+    '<div id="boxUved" style="display:none">'+fld('actDeadline','Срок для подписания Акта (до какой даты)','')+'</div>';
+  dlg('Прекращение договора подряда № '+esc(c.num)+' — '+esc((CARD?CARD.emp.fio:'')), body,
+    function(){
+      var w=$('f_what').value;
+      var o={date:val('date'),termDate:val('termDate'),num:val('num')};
+      if(w==='растор-соглашение'){ o.actNum=val('actNum'); o.actDate=val('actDate'); }
+      else { o.actDeadline=val('actDeadline'); }
+      busy(1);
+      api({vapi:'hrgenterm',con:conId,what:w,opts:JSON.stringify(o)}).then(function(r){ busy(0);
+        if(!r.ok){ alert(r.error); return; }
+        apply(r,CARD?CARD.emp.id:null); window.open(r.url,'_blank');
+        if((r.leftPlaceholders||[]).length) alert('В документе остались пустые места: '+r.leftPlaceholders.join(', '));
+      });
+    }, '',
+    'Формируется документ прекращения; договор получит статус «расторгнут» и дату прекращения. По регламенту Акт обязателен всегда — для соглашения укажите его № и дату.');
+  setTimeout(function(){ termToggle(); $('dlgSave').textContent='🖨 Сформировать документ'; },0);
+}
+function termToggle(){ var w=$('f_what').value;
+  $('boxSogl').style.display=(w==='растор-соглашение')?'contents':'none';
+  $('boxUved').style.display=(w==='растор-уведомление')?'contents':'none'; }
 function signNotice(conId){
   if(!confirm('Отметить, что работник подписал уведомление? Подпись означает согласие продолжить работу.')) return;
   busy(1); api({vapi:'hrsignnotice',con:conId}).then(function(r){ busy(0); apply(r,CARD?CARD.emp.id:null); });
@@ -668,7 +700,8 @@ function conRegView(){
           ['действует','истёк','расторгнут','продлён'].map(function(o){ return '<option'+(o===(c.statusEff||c.status)?' selected':'')+'>'+o+'</option>'; }).join('')+'</select></td>'+
       '<td onclick="event.stopPropagation()">'+
         (c.link?'<a class="btn sm" href="'+esc(c.link)+'" target="_blank">📄 открыть</a> <button class="btn sm" onclick="docMenu(\'con\',\''+c.id+'\')">⋯</button>'
-              :'<button class="btn sm" onclick="docMenu(\'con\',\''+c.id+'\')">📄 документ…</button>')+'</td></tr>';
+              :'<button class="btn sm" onclick="docMenu(\'con\',\''+c.id+'\')">📄 документ…</button>')+
+        (c.kind==='подряд'&&String(c.status).toLowerCase()!=='расторгнут'?' <button class="btn sm pri" onclick="event.stopPropagation();openCard(\''+c.emp+'\')" title="прекращение подряда — в карточке">⏹</button>':'')+'</td></tr>';
   }).join('');
   return h+'</tbody></table>'+(l.length?'':'<div class="empty">Пусто.</div>')+'</div>';
 }
