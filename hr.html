@@ -91,7 +91,7 @@ function money(n){ return (Number(n)||0).toLocaleString('ru-RU',{minimumFraction
 
 var TAB='dl', DATA=null, CARD=null;
 var TABS=[{id:'dl',t:'⏱ Сроки'},{id:'emp',t:'👤 Сотрудники'},{id:'con',t:'📑 Договоры'},{id:'ord',t:'📜 Приказы'},
-          {id:'sick',t:'🏥 Больничные'},{id:'doc',t:'🗂 Документы'},{id:'fuel',t:'⛽ Топливо'}];
+          {id:'sick',t:'🏥 Больничные'},{id:'doc',t:'🗂 Документы'},{id:'fuel',t:'⛽ Топливо'},{id:'tpl',t:'📋 Шаблоны'}];
 
 // ВСЁ грузится одним запросом (вызов GAS стоит секунды) — вкладки и карточки дальше открываются мгновенно, без сети
 function apply(r,keepCardId){
@@ -135,6 +135,7 @@ function render(){
   else if(TAB==='sick') h+=sickView();
   else if(TAB==='doc') h+=docView();
   else if(TAB==='fuel') h+=fuelView();
+  else if(TAB==='tpl') h+=tplView();
   $('app').innerHTML=h;
 }
 
@@ -822,6 +823,29 @@ function fuelForm(f){
       var d={id:f.id||'',kind:val('kind'),date:val('date'),num:val('num'),sum:val('sum'),emp:val('emp'),note:val('note')};
       busy(1); api({vapi:'hrsavefuel',data:JSON.stringify(d)}).then(function(r){ busy(0); TAB='fuel'; apply(r); });
     });
+}
+var TPLDATA=null;
+function tplView(){
+  if(!TPLDATA){ api({vapi:'hrtemplates'}).then(function(r){ TPLDATA=r; render(); });
+    return '<div class="center">Загрузка шаблонов…</div>'; }
+  if(!TPLDATA.ok) return '<div class="center">Ошибка: '+esc(TPLDATA.error||'')+'</div>';
+  var hint={gen:'Эти шаблоны система заполняет сама при нажатии «собрать по шаблону» в карточке. Здесь — только для просмотра и правки самого шаблона.',
+            hand:'Чистые бланки: откройте, распечатайте или заполните вручную. Например договор подряда чаще заполняется работником от руки.',
+            lna:'Локальные нормативные акты и порядки — для ознакомления сотрудников.'};
+  var h='';
+  (TPLDATA.sections||[]).forEach(function(sec){
+    h+='<div class="sect" style="display:flex;justify-content:space-between;align-items:baseline">'+esc(sec.title)+
+       '<a class="back" href="'+esc(sec.folderUrl)+'" target="_blank" style="text-transform:none;font-weight:400">открыть папку ↗</a></div>';
+    h+='<div class="muted" style="font-size:12px;margin:0 4px 6px">'+esc(hint[sec.key]||'')+'</div>';
+    if(!sec.groups.length){ h+='<div class="card"><div class="empty">Пусто.</div></div>'; return; }
+    sec.groups.forEach(function(g){
+      h+='<div class="card">'+(g.sub?'<div style="font-weight:700;margin-bottom:6px">'+esc(g.sub)+'</div>':'')+
+        '<div style="display:flex;flex-direction:column;gap:2px">'+
+        g.items.map(function(it){ return '<a href="'+esc(it.url)+'" target="_blank" style="padding:4px 0">📄 '+esc(it.name)+'</a>'; }).join('')+
+        '</div></div>';
+    });
+  });
+  return h;
 }
 load();
 </script>
