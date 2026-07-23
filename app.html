@@ -267,8 +267,9 @@ function renderUsers(box,r){
     var self=!!u.tgId && String(u.tgId)===myTg;
     var canManage=canEdit||(isMaster&&u.master===me.name);
     var nm=String(u.name).replace(/[\\']/g,''), tg=String(u.tgId||'');
-    var roleCell=canEdit?'<select id="ro'+i+'">'+roles.map(function(x){return '<option value="'+x+'"'+(x===u.role?' selected':'')+'>'+esc(r.roleTitles[x]||x)+'</option>';}).join('')+'</select>':'<span class="pill">'+esc(r.roleTitles[u.role]||u.role)+'</span>';
-    var masterCell=canEdit?'<select id="ma'+i+'" style="max-width:150px">'+masterOpts(u.master)+'</select>':esc(u.master||'—');
+    var chg=(canEdit&&!self)?' onchange="saveUser('+i+',\''+esc(tg)+'\')"':'';   // авто-сохранение при выборе — не нужно отдельно жать 💾
+    var roleCell=canEdit?'<select id="ro'+i+'"'+chg+'>'+roles.map(function(x){return '<option value="'+x+'"'+(x===u.role?' selected':'')+'>'+esc(r.roleTitles[x]||x)+'</option>';}).join('')+'</select>':'<span class="pill">'+esc(r.roleTitles[u.role]||u.role)+'</span>';
+    var masterCell=canEdit?'<select id="ma'+i+'" style="max-width:150px"'+chg+'>'+masterOpts(u.master)+'</select>':esc(u.master||'—');
     var acts='';
     if(canManage) acts+='<button class="sm" title="переименовать (Фамилия Имя)" onclick="renameWorker(\''+tg+'\',\''+nm+'\')">✎</button> ';
     if(canEdit&&!self) acts+='<button class="sm" title="сохранить роль/участок" onclick="saveUser('+i+',\''+esc(tg)+'\')">💾</button> ';
