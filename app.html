@@ -86,11 +86,11 @@ var VER='20260724a';   // бамп при изменении встраивае�
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
 function api(p){ p.app=APP; var q=Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]);}).join('&'); return fetch(BASE+'?'+q).then(function(r){return r.json();}); }
-var INITDATA='', DEVKEY=qp('dev')||'';   // INITDATA — подпись Telegram (настоящая авторизация); DEVKEY — секретный вход с ПК
+var INITDATA='', DEVKEY=qp('dev')||'', CODE=qp('code')||localStorage.getItem('tw_code')||'';   // подпись Telegram / dev-ключ / личный код
 try{ if(window.Telegram&&Telegram.WebApp){ Telegram.WebApp.ready(); Telegram.WebApp.expand(); INITDATA=Telegram.WebApp.initData||''; var u=Telegram.WebApp.initDataUnsafe&&Telegram.WebApp.initDataUnsafe.user; if(u) TGID=String(u.id); } }catch(e){}
 if(!TGID){ TGID=qp('tgid')||localStorage.getItem('tw_tgid')||''; } if(TGID){ try{localStorage.setItem('tw_tgid',TGID);}catch(e){} }
-// вход в сервис: strict — сервер пускает ТОЛЬКО по подписи Telegram или dev-ключу (чужой ?tgid= доступа не даёт)
-function meParams(){ var p={vapi:'me',tgid:TGID,strict:1}; if(INITDATA) p.initdata=INITDATA; if(DEVKEY) p.dev=DEVKEY; return p; }
+// вход в сервис: strict — сервер пускает ТОЛЬКО по подписи Telegram, личному коду или dev-ключу (чужой ?tgid= доступа не даёт)
+function meParams(){ var p={vapi:'me',tgid:TGID,strict:1}; if(INITDATA) p.initdata=INITDATA; if(DEVKEY) p.dev=DEVKEY; if(CODE) p.code=CODE; return p; }
 
 // same-origin (github) и относительные ссылки получают tgid; GAS-панели — как есть (их поведение не меняем)
 function withTid(url){ if(!url) return url; if(url.indexOf('7054852.github.io')>=0 || url.charAt(0)!=='h'){ return url+(url.indexOf('?')>=0?'&':'?')+'tgid='+encodeURIComponent(TGID); } return url; }
@@ -130,8 +130,11 @@ function load(){
   api(meParams()).then(function(m){
     ME=m;
     if(!m||!m.ok){ app.innerHTML='<div class="center err">Ошибка доступа</div>'; return; }
-    if(m.needTg||m.badAuth) return identify(m);   // нет подтверждённой личности → вход только через бота
+    if(m.badCode){ try{localStorage.removeItem('tw_code');}catch(e){} CODE=''; return identify(m); }
+    if(m.needTg||m.badAuth) return identify(m);   // нет подтверждённой личности → вход по коду или через бота
     if(!m.registered) return register();
+    if(m.tgId){ TGID=String(m.tgId); try{localStorage.setItem('tw_tgid',TGID);}catch(e){} }   // код опознал сотрудника → его tgId для встроенных панелей
+    if(CODE){ try{localStorage.setItem('tw_code',CODE);}catch(e){} }
     if(m.blocked){ app.innerHTML='<div class="plain"><div class="box"><div class="hi">⛔ Доступ приостановлен</div><p class="muted">Ваша учётная запись в архиве. Обратитесь к администратору или мастеру.</p></div></div>'; return; }
     ROLE=m.role||'';
     shell();
@@ -140,13 +143,18 @@ function load(){
 
 // ─── вход / регистрация (перенос из портала) ───
 function identify(m){
-  var msg=(m&&m.error)||'Откройте сервис из бота @TWOtchbot (кнопка меню ☰).';
+  var err=(m&&m.badCode)?'<div class="err" style="margin:2px 0 10px">Неверный код — попробуйте ещё раз.</div>':'';
   app.innerHTML='<div class="plain"><div class="box"><div class="hi">🔒 Вход в Тигервуд</div>'
-    +'<p class="muted">'+esc(msg)+'</p>'
-    +'<p class="muted">В Telegram откройте бота <b>@TWOtchbot</b> → нажмите кнопку меню <b>☰</b> внизу (или «🌲 Открыть Тигервуд»). Вы войдёте под <b>своей</b> учётной записью — каждый видит только свои разделы.</p>'
-    +'<p class="muted" style="font-size:12px">Ссылку с чужим доступом переслать нельзя: вход подтверждается подписью Telegram.</p>'
+    +err
+    +'<p class="muted">Введите свой <b>код доступа</b> (его выдаёт руководитель):</p>'
+    +'<input id="acode" inputmode="numeric" autocomplete="off" placeholder="напр. 4821" style="font-size:20px;letter-spacing:3px;text-align:center">'
+    +'<div style="height:10px"></div><button onclick="loginCode()">Войти по коду</button>'
+    +'<p class="muted" style="margin-top:16px">Или откройте сервис из бота <b>@TWOtchbot</b> (кнопка меню <b>☰</b>) — вход по вашей учётной записи Telegram.</p>'
+    +'<p class="muted" style="font-size:12px">Ссылку с чужим доступом переслать нельзя — нужен свой код или свой Telegram.</p>'
     +'</div></div>';
+  setTimeout(function(){ var i=document.getElementById('acode'); if(i){ try{i.focus();}catch(e){} i.onkeydown=function(e){ if(e.key==='Enter') loginCode(); }; } },60);
 }
+function loginCode(){ var el=document.getElementById('acode'); var v=(el&&el.value||'').trim(); if(!v) return; CODE=v; try{localStorage.setItem('tw_code',v);}catch(e){} load(); }
 function register(){
   app.innerHTML='<div class="plain"><div class="box"><div class="hi">👋 Добро пожаловать в Тигервуд</div><p class="muted">Вы ещё не в системе. Введите <b>Фамилию и Имя</b> — администратор назначит вам роль.</p><input id="fio" placeholder="Иванов Иван"><div style="height:10px"></div><button onclick="doReg()">Зарегистрироваться</button> <span class="msg" id="rmsg"></span></div></div>';
 }
@@ -279,6 +287,7 @@ function renderUsers(box,r){
     var masterCell=canEdit?'<select id="ma'+i+'" style="max-width:150px"'+chg+'>'+masterOpts(u.master)+'</select>':esc(u.master||'—');
     var acts='';
     if(canManage) acts+='<button class="sm" title="переименовать (Фамилия Имя)" onclick="renameWorker(\''+tg+'\',\''+nm+'\')">✎</button> ';
+    if(canManage&&u.tgId) acts+='<button class="sm" title="сменить код входа" onclick="setCode(\''+tg+'\',\''+esc(u.code||'')+'\')">🔑</button> ';
     if(canEdit&&!self) acts+='<button class="sm" title="сохранить роль/участок" onclick="saveUser('+i+',\''+esc(tg)+'\')">💾</button> ';
     if(canManage&&!self){ acts+= archived
       ? '<button class="sm" title="вернуть из архива" onclick="restoreWorker(\''+tg+'\',\''+nm+'\')">↩</button> '
@@ -286,7 +295,8 @@ function renderUsers(box,r){
     if(canEdit&&!self) acts+='<button class="sm" style="color:#c0392b" title="удалить (только без выработки)" onclick="deleteWorker(\''+tg+'\',\''+nm+'\')">🗑</button>';
     var reg=archived?'<span class="pill" style="background:#eceff4;color:#77808f">в архиве</span>'
       :(u.tgId?'<span class="pill" style="background:#e7f5ea;color:#137333">в системе</span>':'<span class="pill" style="background:#fdeee7;color:#b9770e">без Telegram</span>');
-    return '<tr'+(archived?' style="opacity:.6"':'')+'><td><b>'+esc(u.name)+'</b><br><span class="muted" style="font-size:11px">'+esc(u.tgId||'')+'</span></td><td>'+roleCell+'</td><td>'+masterCell+'</td><td>'+reg+'</td><td><span class="msg" id="um'+i+'"></span> '+acts+'</td></tr>';
+    var codeCell=u.tgId?'<br><span class="muted" style="font-size:12px">🔑 код: <b>'+esc(u.code||'—')+'</b></span>':'';
+    return '<tr'+(archived?' style="opacity:.6"':'')+'><td><b>'+esc(u.name)+'</b><br><span class="muted" style="font-size:11px">'+esc(u.tgId||'')+'</span>'+codeCell+'</td><td>'+roleCell+'</td><td>'+masterCell+'</td><td>'+reg+'</td><td><span class="msg" id="um'+i+'"></span> '+acts+'</td></tr>';
   }).join('');
   var invite='';
   if(canEdit){
@@ -345,6 +355,13 @@ function renameWorker(tgId,curName){
   if(nn===curName) return;
   api({vapi:'renameworker',tgid:TGID,target:tgId,name:curName,newname:nn}).then(function(r){
     if(r&&r.ok) reloadUsers(); else alert((r&&r.error)||'ошибка');
+  }).catch(function(){ alert('сеть недоступна'); });
+}
+function setCode(tgId,cur){
+  var v=prompt('Код входа сотрудника (4 цифры или свой, 3–12 знаков).\nОставьте пусто — сгенерируется новый код:', cur||'');
+  if(v===null) return;
+  api({vapi:'setworkercode',tgid:TGID,target:tgId,code:v.trim()}).then(function(r){
+    if(r&&r.ok){ reloadUsers(); } else alert((r&&r.error)||'ошибка');
   }).catch(function(){ alert('сеть недоступна'); });
 }
 function archiveWorker(tgId,name){
