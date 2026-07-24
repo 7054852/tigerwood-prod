@@ -48,7 +48,7 @@
   <label style="margin-top:14px">Смена</label>
   <div class="tabs" style="margin-bottom:0">
     <button id="shift-day" class="active" onclick="setShift('день')">☀️ День</button>
-    <button id="shift-night" onclick="setShift('ночь')">🌙 Ночь (+15%)</button>
+    <button id="shift-night" onclick="setShift('ночь')">🌙 Ночь</button>
   </div>
   <div id="cart" style="margin-top:12px"></div>
   <button onclick="sendReport()" id="sendbtn" style="display:none">📨 Отправить наряд мастеру</button>
@@ -148,6 +148,22 @@ function bonusCalc(base){
   var prem=base>BONUS.premThr?Math.round(base*BONUS.premPct)/100:0;
   return {base:Math.round(base*100)/100, night:ni, prem:prem, total:Math.round((base+ni+prem)*100)/100, nightOn:night, premOn:base>BONUS.premThr};
 }
+// разбивка по базе/премии/ночной (та же формула, что на сервере). base — сдельная база (с учётом коэффициентов)
+function computeBreakdown(base, night){
+  base=Math.round(base*100)/100;
+  var prem=base>BONUS.premThr?Math.round(base*BONUS.premPct)/100:0;
+  var ni=night?Math.round(base*BONUS.nightPct)/100:0;
+  return {base:base, premium:prem, night:ni, total:Math.round((base+prem+ni)*100)/100};
+}
+// единый блок «База / Премия / Ночная / Итого» — БЕЗ процентов, только рубли. Виден рабочему, мастеру, директору.
+function bonusBlockHtml(bd){
+  var base=bd.base||0, prem=bd.premium||0, ni=bd.night||0, total=(bd.total!=null)?bd.total:(base+prem+ni);
+  var rows='<div class="row"><span class="muted">База (сдельно)</span><span>'+base+' р.</span></div>';
+  if(prem>0) rows+='<div class="row"><span class="muted">Премия за наряд</span><span class="ok">+'+prem+' р.</span></div>';
+  if(ni>0) rows+='<div class="row"><span class="muted">Ночная смена</span><span class="ok">+'+ni+' р.</span></div>';
+  rows+='<div class="row" style="margin-top:5px;border-top:1px solid #dbe8de;padding-top:6px"><b>Итого к оплате</b><b class="ok" style="font-size:16px">'+(Math.round(total*100)/100)+' р.</b></div>';
+  return '<div style="background:#f4faf6;border:1px solid #dbe8de;border-radius:10px;padding:9px 11px;margin:8px 0">'+rows+'</div>';
+}
 function wmsg(h){ var m=document.getElementById('wmsg'); if(m) m.innerHTML=h||''; }
 function addToCart(){
   var worker=curWorker();
@@ -162,14 +178,10 @@ function rmCart(i){ CART.splice(i,1); renderCart(); }
 function renderCart(){
   var c=document.getElementById('cart'), sb=document.getElementById('sendbtn');
   if(!CART.length){ c.innerHTML=''; sb.style.display='none'; return; }
-  var tot=CART.reduce(function(s,x){return s+x.sum;},0), bd=bonusCalc(tot);
+  var tot=CART.reduce(function(s,x){return s+x.sum;},0), bd=computeBreakdown(tot, SHIFT==='ночь');
   c.innerHTML='<div class="card"><div class="row"><b>В наряде: '+CART.length+' оп.</b><span class="muted">'+esc(SHIFT==='ночь'?'🌙 ночь':'☀️ день')+'</span></div>'
     +CART.map(function(x,i){ return '<div class="row" style="border-top:1px solid #eee;padding-top:5px"><span>'+esc(x.detail)+' · '+esc(x.op)+' · '+x.qty+' шт → '+x.sum+' р.</span><button class="sm gray" onclick="rmCart('+i+')">✕</button></div>'; }).join('')
-    +'<div style="border-top:1px solid #eee;margin-top:8px;padding-top:8px">'
-    +'<div class="row"><span class="muted">Заработок</span><span>'+bd.base+' р.</span></div>'
-    +(bd.premOn?'<div class="row"><span class="muted">Премия за наряд ('+BONUS.premPct+'%, наряд &gt; '+BONUS.premThr+' р.)</span><span class="ok">+'+bd.prem+' р.</span></div>':'')
-    +(bd.nightOn?'<div class="row"><span class="muted">Ночная смена ('+BONUS.nightPct+'%)</span><span class="ok">+'+bd.night+' р.</span></div>':'')
-    +'<div class="row" style="margin-top:4px"><b>Итого к оплате</b><b class="ok" style="font-size:17px">'+bd.total+' р.</b></div></div>'
+    +bonusBlockHtml(bd)
     +'</div>';
   sb.style.display='';
 }
@@ -227,19 +239,22 @@ function loadPending(){
           +'<span>'+l.sum+' р.'+acts+'</span></div>'
           +vsel+'</div>';
       }).join('');
-      var bd=rp.breakdown||{}, night=(rp.shift==='ночь');
-      var bonusLine=(bd.premApplied||bd.nightApplied)
-        ? '<div class="muted" style="font-size:12px">заработок '+bd.base+' р.'+(bd.premApplied?' + премия '+bd.premium+' р.':'')+(bd.nightApplied?' + ночная '+bd.night+' р.':'')+'</div>' : '';
-      var shiftCtl = (master && !rp.single)
-        ? '<div class="tabs" style="margin:6px 0 0"><button class="sm '+(night?'':'active')+'" onclick="setRepShift(\''+esc(rid)+'\',\'день\')">☀️ День</button><button class="sm '+(night?'active':'')+'" onclick="setRepShift(\''+esc(rid)+'\',\'ночь\')">🌙 Ночь</button></div>'
+      var night=(rp.shift==='ночь');
+      var koefs=rp.lines.map(function(l){return l.koef||1;});
+      var uniK=(koefs.length&&koefs.every(function(k){return k===koefs[0];}))?koefs[0]:null;
+      var koefLbl='коэффициент'+(uniK!=null?(uniK!==1?' ×'+uniK:''):' (разный)');
+      var ctrls = master
+        ? '<div class="tabs" style="margin:6px 0 0;flex-wrap:wrap">'
+          +(rp.single?'':'<button class="sm '+(night?'':'active')+'" onclick="setRepShift(\''+esc(rid)+'\',\'день\')">☀️ День</button><button class="sm '+(night?'active':'')+'" onclick="setRepShift(\''+esc(rid)+'\',\'ночь\')">🌙 Ночь</button>')
+          +'<button class="sm gray" onclick="setRepKoef(\''+esc(rid)+'\','+(uniK!=null?uniK:1)+')">'+koefLbl+'</button></div>'
         : (night?'<div class="muted" style="font-size:12px">🌙 ночная смена</div>':'');
       var footer = master
         ? '<div class="row" style="margin-top:10px"><button class="sm" onclick="apprRep(\''+esc(rid)+'\',1)">✅ Одобрить'+(rp.single?'':' наряд')+'</button>'
           +'<button class="sm gray" onclick="apprRep(\''+esc(rid)+'\',0)">✖ Отклонить</button><span id="rm-'+esc(rid)+'" class="msg"></span></div>'
         : '<div class="muted" style="margin-top:8px;font-size:12px">⏳ ждёт подтверждения мастера</div>';
       return '<div class="card"><div class="row"><b>'+esc(rp.worker)+'</b><span class="muted">'+esc(rp.date)+' · '+esc(rp.batch)+'</span></div>'
-        +'<div class="muted">'+(rp.single?'одиночная запись':'наряд')+': '+rp.lines.length+' оп. · <b>'+rp.sum+' руб.</b></div>'
-        +bonusLine+shiftCtl+lines+footer+'</div>';
+        +'<div class="muted">'+(rp.single?'одиночная запись':'наряд')+': '+rp.lines.length+' оп.</div>'
+        +ctrls+lines+bonusBlockHtml(rp.breakdown||{})+footer+'</div>';
     }).join('');
   });
 }
@@ -254,6 +269,12 @@ function setKoef(id,cur){
 }
 function setRepShift(rid,sh){
   api({vapi:'setreportshift',report:rid,shift:sh,master:DATA.worker||'мастер'}).then(function(r){ if(r&&r.ok) loadPending(); });
+}
+// коэффициент на весь наряд (при проверке/одобрении)
+function setRepKoef(rid,cur){
+  var k=prompt('Коэффициент на весь наряд:\n1 = без изменений, 1.2 = +20%, 0.8 = −20%', cur||1);
+  if(k===null) return; k=Number(String(k).replace(',','.')); if(isNaN(k)||k<0){ alert('Введите число ≥ 0'); return; }
+  api({vapi:'setreportkoef',report:rid,koef:k,master:DATA.worker||'мастер'}).then(function(r){ if(r&&r.ok) loadPending(); else alert((r&&r.error)||'ошибка'); });
 }
 function apprRep(rid,ok){
   var m=document.getElementById('rm-'+rid); if(m) m.textContent='…';
@@ -341,8 +362,10 @@ function loadJournal(){
       var shiftCtl = (master && !g.single && rep)
         ? '<div class="tabs" style="margin:6px 0 0"><button class="sm '+(night?'':'active')+'" onclick="setRepShiftJ(\''+esc(rep)+'\',\'день\')">☀️ День</button><button class="sm '+(night?'active':'')+'" onclick="setRepShiftJ(\''+esc(rep)+'\',\'ночь\')">🌙 Ночь</button></div>'
         : (night?'<div class="muted" style="font-size:12px">🌙 ночная</div>':'');
+      var effBase=g.lines.reduce(function(s,it){return s+(it.base||0)*(it.koef||1);},0);
+      var gbd=computeBreakdown(effBase, night);
       return '<div class="card"><div class="row"><b>'+esc(g.worker)+'</b><span class="muted">'+esc(g.date)+' · '+esc(g.batch)+(g.single?'':' · наряд')+'</span></div>'
-        +'<div class="muted">'+g.lines.length+' оп. · <b>'+(Math.round(g.sum*100)/100)+' руб.</b></div>'+shiftCtl+lines+'</div>';
+        +'<div class="muted">'+g.lines.length+' оп.</div>'+shiftCtl+lines+bonusBlockHtml(gbd)+'</div>';
     }).join('');
   }).catch(function(){ lst.innerHTML='<span class="err">Ошибка загрузки</span>'; });
 }
