@@ -86,8 +86,11 @@ var VER='20260724a';   // бамп при изменении встраивае�
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
 function api(p){ p.app=APP; var q=Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]);}).join('&'); return fetch(BASE+'?'+q).then(function(r){return r.json();}); }
-try{ if(window.Telegram&&Telegram.WebApp){ Telegram.WebApp.ready(); Telegram.WebApp.expand(); var u=Telegram.WebApp.initDataUnsafe&&Telegram.WebApp.initDataUnsafe.user; if(u) TGID=String(u.id); } }catch(e){}
+var INITDATA='', DEVKEY=qp('dev')||'';   // INITDATA — подпись Telegram (настоящая авторизация); DEVKEY — секретный вход с ПК
+try{ if(window.Telegram&&Telegram.WebApp){ Telegram.WebApp.ready(); Telegram.WebApp.expand(); INITDATA=Telegram.WebApp.initData||''; var u=Telegram.WebApp.initDataUnsafe&&Telegram.WebApp.initDataUnsafe.user; if(u) TGID=String(u.id); } }catch(e){}
 if(!TGID){ TGID=qp('tgid')||localStorage.getItem('tw_tgid')||''; } if(TGID){ try{localStorage.setItem('tw_tgid',TGID);}catch(e){} }
+// вход в сервис: strict — сервер пускает ТОЛЬКО по подписи Telegram или dev-ключу (чужой ?tgid= доступа не даёт)
+function meParams(){ var p={vapi:'me',tgid:TGID,strict:1}; if(INITDATA) p.initdata=INITDATA; if(DEVKEY) p.dev=DEVKEY; return p; }
 
 // same-origin (github) и относительные ссылки получают tgid; GAS-панели — как есть (их поведение не меняем)
 function withTid(url){ if(!url) return url; if(url.indexOf('7054852.github.io')>=0 || url.charAt(0)!=='h'){ return url+(url.indexOf('?')>=0?'&':'?')+'tgid='+encodeURIComponent(TGID); } return url; }
@@ -123,11 +126,11 @@ function buildItems(){
 }
 
 function load(){
-  if(!TGID){ return identify(); }
   app.innerHTML='<div class="center">Загрузка…</div>';
-  api({vapi:'me',tgid:TGID}).then(function(m){
+  api(meParams()).then(function(m){
     ME=m;
     if(!m||!m.ok){ app.innerHTML='<div class="center err">Ошибка доступа</div>'; return; }
+    if(m.needTg||m.badAuth) return identify(m);   // нет подтверждённой личности → вход только через бота
     if(!m.registered) return register();
     if(m.blocked){ app.innerHTML='<div class="plain"><div class="box"><div class="hi">⛔ Доступ приостановлен</div><p class="muted">Ваша учётная запись в архиве. Обратитесь к администратору или мастеру.</p></div></div>'; return; }
     ROLE=m.role||'';
@@ -136,10 +139,14 @@ function load(){
 }
 
 // ─── вход / регистрация (перенос из портала) ───
-function identify(){
-  app.innerHTML='<div class="plain"><div class="box"><div class="hi">Вход</div><p class="muted">Откройте сервис из бота <b>@TWOtchbot</b> (кнопка ☰). Для теста введите Telegram ID:</p><input id="tid" placeholder="напр. 7054852"><div style="height:10px"></div><button onclick="setTid()">Войти</button></div></div>';
+function identify(m){
+  var msg=(m&&m.error)||'Откройте сервис из бота @TWOtchbot (кнопка меню ☰).';
+  app.innerHTML='<div class="plain"><div class="box"><div class="hi">🔒 Вход в Тигервуд</div>'
+    +'<p class="muted">'+esc(msg)+'</p>'
+    +'<p class="muted">В Telegram откройте бота <b>@TWOtchbot</b> → нажмите кнопку меню <b>☰</b> внизу (или «🌲 Открыть Тигервуд»). Вы войдёте под <b>своей</b> учётной записью — каждый видит только свои разделы.</p>'
+    +'<p class="muted" style="font-size:12px">Ссылку с чужим доступом переслать нельзя: вход подтверждается подписью Telegram.</p>'
+    +'</div></div>';
 }
-function setTid(){ var v=document.getElementById('tid').value.trim(); if(v){ TGID=v; try{localStorage.setItem('tw_tgid',v);}catch(e){} load(); } }
 function register(){
   app.innerHTML='<div class="plain"><div class="box"><div class="hi">👋 Добро пожаловать в Тигервуд</div><p class="muted">Вы ещё не в системе. Введите <b>Фамилию и Имя</b> — администратор назначит вам роль.</p><input id="fio" placeholder="Иванов Иван"><div style="height:10px"></div><button onclick="doReg()">Зарегистрироваться</button> <span class="msg" id="rmsg"></span></div></div>';
 }
@@ -173,7 +180,7 @@ function renderNav(){
 }
 // перечитать себя (роль/разделы) и живо обновить меню — после смены доступа
 function refreshMe(){
-  return api({vapi:'me',tgid:TGID}).then(function(m){
+  return api(meParams()).then(function(m){
     if(m&&m.ok&&m.registered){ ME=m; ROLE=m.role||ROLE; renderNav(); }
   }).catch(function(){});
 }
