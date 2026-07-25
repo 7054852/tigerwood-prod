@@ -239,11 +239,11 @@ function loadPending(){
             +'<button class="sm gray" onclick="appr(\''+esc(l.id)+'\',0)" title="убрать эту строку из наряда">✖</button>';
         }
         var vsel='';
-        if(master && l.variants && l.variants.length>1){   // деталь есть в нескольких изделиях (напр. цвет на покраске) — мастер уточняет
-          var opts='<option value="">↔ распределить по заказу</option>'+l.variants.map(function(m){ return '<option value="'+esc(m)+'"'+(m===l.model?' selected':'')+'>'+esc(m)+'</option>'; }).join('');
-          var need=!l.model;
-          vsel='<div class="row" style="margin-top:3px"><span class="muted" style="font-size:12px">изделие/цвет:</span>'
-            +'<select class="vsel'+(need?' need':'')+'" onchange="setOutModel(\''+esc(l.id)+'\',this.value,this)">'+opts+'</select></div>';
+        if(master && l.targets && l.targets.length>1){   // деталь есть в нескольких изделиях/цветах — мастер может закрепить вручную
+          var cur=l.curTarget||'';
+          var opts='<option value="">↔ распределить по заказу (авто)</option>'+l.targets.map(function(t){ var lbl=t.eq+(t.model?' · '+t.model:''); return '<option value="'+esc(t.id)+'"'+(t.id===cur?' selected':'')+'>'+esc(lbl)+'</option>'; }).join('');
+          vsel='<div class="row" style="margin-top:3px"><span class="muted" style="font-size:12px">изделие:</span>'
+            +'<select class="vsel" onchange="setOutTarget(\''+esc(l.id)+'\',this.value,this)">'+opts+'</select></div>';
         }
         return '<div style="border-top:1px solid #eee;padding-top:5px">'
           +'<div class="row"><span>'+esc(l.detail)+' · '+esc(l.op)+' · '+l.qty+' шт'+kbadge+'</span>'
@@ -297,6 +297,10 @@ function apprRep(rid,ok){
 function setOutModel(id,model,sel){
   if(sel) sel.classList.remove('need');
   api({vapi:'setoutputmodel',id:id,model:model}).then(function(r){ if(!(r&&r.ok)&&sel){ sel.classList.add('need'); } });
+}
+// мастер вручную закрепляет выработку за изделием (+вариантом), напр. перенести перевыполнение на другое изделие; пусто = авто
+function setOutTarget(id,target,sel){
+  api({vapi:'setoutputtarget',id:id,target:target,master:DATA.worker||'мастер'}).then(function(r){ if(r&&r.ok){ loadPending(); } else alert((r&&r.error)||'ошибка'); });
 }
 // правка строки внутри наряда (кол-во сохраняется, статус не меняется)
 function editOut(id,cur){
