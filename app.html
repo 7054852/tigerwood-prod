@@ -103,7 +103,7 @@ var GROUPS=[
   { key:'prod',    title:'Производство',           items:['boss','plan','vyrab','vcheck','stats','myteam'] },
   { key:'supply',  title:'Снабжение и материалы',  items:['materials','snab'] },
   { key:'hr',      title:'Кадры',                 items:['hr'] },
-  { key:'admin',   title:'Администрирование',      items:['dash','access','users'] }
+  { key:'admin',   title:'Администрирование',      items:['dash','company','access','users'] }
 ];
 // внешние (открываются новой вкладкой, не встраиваются): прайс — Google-таблица; снаб — отдельное приложение со своим входом
 var EXTERNAL={ price:1, snab:1 };
@@ -240,9 +240,9 @@ function hideAllViews(){
 }
 function showView(id){
   hideAllViews();
-  if(id==='users'||id==='myteam'||id==='access'){
+  if(id==='users'||id==='myteam'||id==='access'||id==='company'){
     var n=nativeBox(); n.style.display='';
-    if(id==='access') accessView(n); else usersView(n);
+    if(id==='access') accessView(n); else if(id==='company') companyView(n); else usersView(n);
     return;
   }
   var url=withTid(ITEMS[id].url);
@@ -349,6 +349,60 @@ function saveUser(i,tgid){
 }
 function isActiveJs(v){ var s=String(v==null?'':v).trim().toLowerCase(); return !(s==='нет'||s==='архив'||s==='no'||s==='false'||s==='0'||s==='off'); }
 function reloadUsers(){ var box=document.getElementById('view'); if(box) usersView(box); }
+
+// ─── «Компания и настройки» (админ/директор): реквизиты юрлиц = единый источник для всех документов ───
+function companyView(box){
+  box.innerHTML='<div class="pad"><div class="hi">🏢 Компания и настройки</div><div class="center">Загрузка…</div></div>';
+  api({vapi:'companyget',tgid:TGID}).then(function(r){ renderCompany(box,r); }).catch(function(){ box.innerHTML='<div class="pad err">Ошибка</div>'; });
+}
+function reloadCompany(){ companyView(nativeBox()); }
+function cSetInput(id,label,val){ return '<div><div class="muted" style="font-size:11px;margin-bottom:3px">'+esc(label)+'</div><input id="'+id+'" value="'+esc(val==null?'':val)+'" inputmode="decimal" style="width:100%"></div>'; }
+function renderCompany(box,r){
+  if(!r||!r.ok){ box.innerHTML='<div class="pad err">'+esc((r&&r.error)||'нет прав')+'</div>'; return; }
+  var head=r.head||[], sellers=r.sellers||[], st=r.settings||{}; window.COMP_HEAD=head;
+  var nanKey='Наниматель', codeKey='Код';
+  function fld(ci,j,h,val){
+    if(h===nanKey) return '<label style="display:flex;align-items:center;gap:8px;font-size:14px;grid-column:1/-1"><input type="checkbox" id="c'+ci+'_'+j+'"'+(/да|1|yes/i.test(val)?' checked':'')+' style="width:18px;height:18px;flex:0 0 auto"> Это юрлицо — <b>наниматель</b> (используется в кадровых документах)</label>';
+    var ta=(h==='Юридический адрес'||h==='Почтовый адрес'||h==='Банк'), lock=(h===codeKey)?' readonly style="width:100%;background:#f2f4f8"':' style="width:100%"';
+    return '<div'+(ta?' style="grid-column:1/-1"':'')+'><div class="muted" style="font-size:11px;margin-bottom:3px">'+esc(h)+'</div>'
+      +(ta?'<textarea id="c'+ci+'_'+j+'" rows="2" style="width:100%">'+esc(val)+'</textarea>':'<input id="c'+ci+'_'+j+'" value="'+esc(val)+'"'+lock+'>')+'</div>';
+  }
+  var cards=sellers.map(function(s,ci){
+    var isEmp=/да|1|yes/i.test(String(s[nanKey]||''));
+    var fields=head.map(function(h,j){ return fld(ci,j,h,s[h]||''); }).join('');
+    return '<div class="box" style="margin-bottom:14px">'
+      +'<div class="row"><b style="font-size:16px">'+esc(s['Название']||s[codeKey])+'</b>'+(isEmp?'<span class="pill" style="background:#e7f5ea;color:#137333">наниматель</span>':'')+'</div>'
+      +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:10px">'+fields+'</div>'
+      +'<div style="margin-top:10px"><button onclick="saveSeller('+ci+',\''+esc(s[codeKey])+'\')">💾 Сохранить реквизиты</button> <span class="msg" id="cm'+ci+'"></span></div></div>';
+  }).join('');
+  var setBlock='<div class="box" style="margin-bottom:14px;background:#f6faf7;border-color:#dbe8de">'
+    +'<div class="hi" style="font-size:16px">⚙️ Параметры выработки и начальника</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-top:10px">'
+    +cSetInput('s_premPct','Премия за наряд, %',st.premPct)+cSetInput('s_premThr','Порог премии, руб',st.premThr)
+    +cSetInput('s_nightPct','Ночная доплата, %',st.nightPct)+cSetInput('s_bossOklad','Начальник: оклад, BYN/мес',st.bossOklad)
+    +cSetInput('s_bossPct','Начальник: % за упаковку',st.bossPct)+'</div>'
+    +'<div style="margin-top:10px"><button onclick="saveSettings()">💾 Сохранить настройки</button> <span class="msg" id="cset"></span></div>'
+    +'<div class="muted" style="font-size:12px;margin-top:6px">Проценты используются в расчётах; сотрудникам сами цифры % не показываются.</div></div>';
+  box.innerHTML='<div class="pad"><div class="hi">🏢 Компания и настройки</div>'
+    +'<p class="muted">Реквизиты юрлиц — <b>единый источник</b>: поменяли здесь → меняется во всех документах (договоры продаж и кадровые). Отметьте «наниматель» у того юрлица, от которого оформляете сотрудников.</p>'
+    +setBlock+'<div class="sect">Юридические лица</div>'+(cards||'<div class="box muted">нет юрлиц</div>')+'</div>';
+}
+function saveSeller(ci,code){
+  var head=window.COMP_HEAD||[], f={};
+  head.forEach(function(h,j){ var el=document.getElementById('c'+ci+'_'+j); if(!el) return; f[h]=(el.type==='checkbox')?(el.checked?'да':''):el.value; });
+  var m=document.getElementById('cm'+ci); if(m) m.textContent='…';
+  api({vapi:'companysaveseller',tgid:TGID,code:code,fields:JSON.stringify(f)}).then(function(r){
+    if(r&&r.ok){ reloadCompany(); } else if(m) m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>';
+  }).catch(function(){ if(m) m.innerHTML='<span class="err">сеть недоступна</span>'; });
+}
+function saveSettings(){
+  var g=function(id){ return (document.getElementById(id)||{}).value; };
+  var s={ premPct:g('s_premPct'), premThr:g('s_premThr'), nightPct:g('s_nightPct'), bossOklad:g('s_bossOklad'), bossPct:g('s_bossPct') };
+  var m=document.getElementById('cset'); if(m) m.textContent='…';
+  api({vapi:'companysavesettings',tgid:TGID,settings:JSON.stringify(s)}).then(function(r){
+    if(m) m.innerHTML=(r&&r.ok)?'<span class="ok">✅ сохранено</span>':'<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>';
+  }).catch(function(){ if(m) m.innerHTML='<span class="err">сеть недоступна</span>'; });
+}
 function renameWorker(tgId,curName){
   var nn=prompt('Имя сотрудника — как записать (Фамилия Имя):', curName||'');
   if(nn===null) return; nn=nn.trim(); if(nn.length<3){ alert('Введите Фамилию и Имя'); return; }
