@@ -360,16 +360,26 @@ function cSetInput(id,label,val){ return '<div><div class="muted" style="font-si
 function renderCompany(box,r){
   if(!r||!r.ok){ box.innerHTML='<div class="pad err">'+esc((r&&r.error)||'нет прав')+'</div>'; return; }
   var head=r.head||[], sellers=r.sellers||[], st=r.settings||{}; window.COMP_HEAD=head;
+  window.COMP_JUR=sellers.map(function(s){ return s['Юридический адрес']||''; });
   var nanKey='Наниматель', codeKey='Код';
-  function fld(ci,j,h,val){
+  var FLAG_FIELDS={'Почтовый = юр':1,'Производство = юр':1};   // рендерятся как галочка рядом с адресом, не отдельно
+  var ADDR_FLAG={'Почтовый адрес':'Почтовый = юр','Адрес производства':'Производство = юр'};
+  function fld(ci,j,h,val,s){
+    if(FLAG_FIELDS[h]) return '';   // спрятать сырые колонки-флаги
     if(h===nanKey) return '<label style="display:flex;align-items:center;gap:8px;font-size:14px;grid-column:1/-1"><input type="checkbox" id="c'+ci+'_'+j+'"'+(/да|1|yes/i.test(val)?' checked':'')+' style="width:18px;height:18px;flex:0 0 auto"> Это юрлицо — <b>наниматель</b> (используется в кадровых документах)</label>';
-    var ta=(h==='Юридический адрес'||h==='Почтовый адрес'||h==='Банк'), lock=(h===codeKey)?' readonly style="width:100%;background:#f2f4f8"':' style="width:100%"';
+    if(ADDR_FLAG[h]){   // адрес + галочка «совпадает с юридическим»
+      var flagJ=head.indexOf(ADDR_FLAG[h]), same=/да|1|yes/i.test(String(s[ADDR_FLAG[h]]||'')), jur=s['Юридический адрес']||'';
+      return '<div style="grid-column:1/-1"><div class="row"><span class="muted" style="font-size:11px">'+esc(h)+'</span>'
+        +'<label style="font-size:12px;display:flex;align-items:center;gap:5px;color:#556"><input type="checkbox" id="c'+ci+'_'+flagJ+'"'+(same?' checked':'')+' onchange="toggleSame('+ci+','+j+')" style="width:16px;height:16px"> совпадает с юридическим</label></div>'
+        +'<textarea id="c'+ci+'_'+j+'" rows="2" style="width:100%"'+(same?' disabled':'')+'>'+esc(same?jur:val)+'</textarea></div>';
+    }
+    var ta=(h==='Юридический адрес'||h==='Банк'), lock=(h===codeKey)?' readonly style="width:100%;background:#f2f4f8"':' style="width:100%"';
     return '<div'+(ta?' style="grid-column:1/-1"':'')+'><div class="muted" style="font-size:11px;margin-bottom:3px">'+esc(h)+'</div>'
       +(ta?'<textarea id="c'+ci+'_'+j+'" rows="2" style="width:100%">'+esc(val)+'</textarea>':'<input id="c'+ci+'_'+j+'" value="'+esc(val)+'"'+lock+'>')+'</div>';
   }
   var cards=sellers.map(function(s,ci){
     var isEmp=/да|1|yes/i.test(String(s[nanKey]||''));
-    var fields=head.map(function(h,j){ return fld(ci,j,h,s[h]||''); }).join('');
+    var fields=head.map(function(h,j){ return fld(ci,j,h,s[h]||'',s); }).join('');
     return '<div class="box" style="margin-bottom:14px">'
       +'<div class="row"><b style="font-size:16px">'+esc(s['Название']||s[codeKey])+'</b>'+(isEmp?'<span class="pill" style="background:#e7f5ea;color:#137333">наниматель</span>':'')+'</div>'
       +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:10px">'+fields+'</div>'
@@ -389,6 +399,16 @@ function renderCompany(box,r){
   box.innerHTML='<div class="pad"><div class="hi">🏢 Компания и настройки</div>'
     +'<p class="muted">Реквизиты юрлиц — <b>единый источник</b>: поменяли здесь → меняется во всех документах (договоры продаж и кадровые). Отметьте «наниматель» у того юрлица, от которого оформляете сотрудников.</p>'
     +setBlock+blanksBox+'<div class="sect">Юридические лица</div>'+(cards||'<div class="box muted">нет юрлиц</div>')+'</div>';
+}
+// галочка «совпадает с юридическим»: включить/выключить поле адреса, подставить юр.адрес
+function toggleSame(ci,addrJ){
+  var flagField=(window.COMP_HEAD||[]).map(function(h){return h;});
+  var ta=document.getElementById('c'+ci+'_'+addrJ);
+  // найти чекбокс рядом (в том же .row) — по флагу
+  var box=ta&&ta.parentNode?ta.parentNode.querySelector('input[type=checkbox]'):null;
+  if(!ta||!box) return;
+  if(box.checked){ ta.value=(window.COMP_JUR||[])[ci]||''; ta.disabled=true; }
+  else { ta.disabled=false; }
 }
 function saveSeller(ci,code){
   var head=window.COMP_HEAD||[], f={};
