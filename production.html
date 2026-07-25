@@ -93,6 +93,17 @@
   .cx:hover{ color:var(--red); }
   .chk{ font-size:11px; cursor:pointer; } .chk.red{ color:#c0392b; } .chk.amber{ color:#b7791f; } .chk.info{ color:#2b5fd9; }
   tr.hl{ background:#fff6d8; transition:background .3s ease; }
+  /* ── перенос перевыполнения на другое изделие ── */
+  .mvbtn{ font-size:11px; font-weight:600; color:var(--accent); cursor:pointer; white-space:nowrap; margin-left:6px; }
+  .mvbtn:hover{ text-decoration:underline; }
+  .mvov{ position:fixed; inset:0; background:rgba(20,28,50,.42); display:flex; align-items:center; justify-content:center; z-index:50; padding:16px; }
+  .mvbox{ background:var(--card,#fff); border:1px solid var(--line); border-radius:14px; max-width:520px; width:100%; max-height:86vh; overflow:auto; padding:16px; box-shadow:0 10px 40px rgba(20,30,60,.28); }
+  .mvbox h3{ margin:0 0 4px; font-size:15px; }
+  .mvtgt{ font-size:12px; background:#f6f8fd; border:1px solid var(--line); border-radius:9px; padding:7px 9px; margin:8px 0; }
+  .mvtgt b{ color:#137333; } .mvtgt .o{ color:#c0392b; }
+  .mvn{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; border-top:1px solid var(--line); padding:9px 0; font-size:12.5px; }
+  .mvn select{ font-size:12.5px; padding:4px 6px; border:1px solid var(--line); border-radius:8px; max-width:100%; }
+  .mvclose{ float:right; color:var(--muted); cursor:pointer; font-weight:700; font-size:16px; line-height:1; }
   /* значок «⚠ N» в списке заказов */
   .abadge{ font-size:11px; font-weight:700; border-radius:20px; padding:1px 8px; background:#fdecea; color:#c0392b; }
   .abadge.amberonly{ background:#f7efdb; color:#b7791f; }
@@ -323,15 +334,18 @@ function renderOps(id,r){
   var warn = (r.notAssembled&&r.notAssembled.length) ? '<div class="pill" style="background:#fbf1de;color:#b7791f;display:inline-block;margin-bottom:8px">⚠ не подтверждены директором как «собрано»: '+r.notAssembled.map(esc).join(', ')+'</div>' : '';
   var kpi=opsKpiHtml(k);
   var flags=(r.checks&&r.checks.opFlags)||{};
+  var MV=MOVEMAP[id]={};
   var prods=(r.products||[]).map(function(p,pi){
     var rows=p.ops.map(function(o){
+      MV[o.id]={detail:o.detail,op:o.op};
       var fl=flags[o.id]?' <span class="chk '+flags[o.id]+'" onclick="showOpIssues(\''+id+'\',\''+esc(o.id)+'\')" title="нажми — показать замечание">⚠</span>':'';
+      var mv=o.over>0?' <span class="mvbtn" onclick="openMove(\''+id+'\',\''+esc(o.id)+'\')" title="перенести перевыполнение на другое изделие">↔ перенести</span>':'';
       return '<tr data-op="'+esc(o.id)+'"><td>'+esc(o.detail)+fl+'</td><td>'+esc(o.op)+'</td>'
         +'<td class="num">'+o.need+'</td>'
         +'<td class="num"><input class="q c-stock" value="'+(o.stock||0)+'" inputmode="numeric" title="начальные остатки — работа уже выполнена (не важно кем)"'
         +' onchange="setStock(\''+id+'\',\''+esc(o.id)+'\',this.value,this)" onkeydown="stockKey(event,this)"></td>'
         +'<td class="num c-done">'+o.done+'</td>'
-        +'<td class="num c-left" style="'+opLeftCss(o)+'">'+opLeftHtml(o)+'</td></tr>';
+        +'<td class="num c-left" style="'+opLeftCss(o)+'">'+opLeftHtml(o)+mv+'</td></tr>';
     }).join('');
     var pct=Math.min(100,p.pct||0);
     // изделие свёрнуто по умолчанию: видно список изделий с % — сразу открываешь нужное, не листая всё
@@ -467,6 +481,40 @@ function opsDashHtml(id,dash){
 }
 function opLeftCss(o){ return o.left>0?'color:#c0392b':'color:#137333'; }
 function opLeftHtml(o){ return o.left+(o.over>0?' <span class="pill" style="background:#fdecea;color:#c0392b">+'+o.over+'</span>':''); }
+// ── перенос перевыполненных деталей на другое изделие (наряды детали+операции + цели) ──
+var MOVEMAP={};   // id заказа → { opId: {detail,op} }
+function openMove(orderId,opId){
+  var m=(MOVEMAP[orderId]||{})[opId]; if(!m) return;
+  var ov=document.createElement('div'); ov.className='mvov'; ov.id='mvov';
+  ov.onclick=function(e){ if(e.target===ov) closeMove(); };
+  ov.innerHTML='<div class="mvbox"><span class="mvclose" onclick="closeMove()">✕</span>'
+    +'<h3>Перенести перевыполнение</h3>'
+    +'<div class="muted" style="font-size:12px">Деталь «'+esc(m.detail)+'» · «'+esc(m.op)+'»</div>'
+    +'<div id="mvbody" style="margin-top:10px" class="muted">загрузка…</div></div>';
+  document.body.appendChild(ov);
+  api({vapi:'orderdetailout',batch:orderId,detail:m.detail,op:m.op}).then(function(r){
+    var b=$('mvbody'); if(!b) return;
+    if(!r||!r.ok){ b.innerHTML='<div class="err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
+    var tg=r.targets||[], nar=r.naryads||[];
+    var opts='<option value="">↔ распределить по заказу (авто)</option>'
+      +tg.map(function(t){ return '<option value="'+esc(t.id)+'">'+esc(t.eq)+' · '+esc(t.model)+(t.left>0?(' — нужно ещё '+t.left):(t.over>0?(' — перевып +'+t.over):' — закрыто'))+'</option>'; }).join('');
+    var tinfo=tg.length?('<div class="mvtgt">Изделия с этой деталью: '+tg.map(function(t){ return esc(t.model)+' ('+(t.left>0?('<b>нужно '+t.left+'</b>'):(t.over>0?('<span class="o">+'+t.over+'</span>'):'✓'))+')'; }).join(' · ')+'</div>'):'';
+    var nhtml=nar.length? nar.map(function(n){
+      var sel='<select onchange="doMove(\''+orderId+'\',\''+esc(n.id)+'\',this.value)">'+opts.replace('value="'+esc(n.curTarget)+'"','value="'+esc(n.curTarget)+'" selected')+'</select>';
+      return '<div class="mvn"><span style="flex:1">'+esc(n.worker)+' · <b>'+n.qty+' шт</b> · '+esc(n.date)+(n.curLabel?(' <span class="muted">→ '+esc(n.curLabel)+'</span>'):' <span class="muted">→ авто</span>')+'</span>'+sel+'</div>';
+    }).join('') : '<div class="muted">нет подтверждённых нарядов по этой детали</div>';
+    b.innerHTML=tinfo+'<div style="margin-top:6px;font-weight:600;font-size:12.5px">Наряды (выберите изделие):</div>'+nhtml;
+  });
+}
+function closeMove(){ var o=$('mvov'); if(o) o.remove(); }
+var mvOrder=null;
+function doMove(orderId,outId,target){
+  mvOrder=orderId;
+  api({vapi:'setoutputtarget',id:outId,target:target,master:(window.ME&&ME.name)||'директор'}).then(function(r){
+    if(!r||!r.ok){ alert((r&&r.error)||'не удалось перенести'); return; }
+    closeMove(); loadOps(orderId);   // пересчитать заказ
+  });
+}
 function opProdStat(p){ return (p.pct||0)+'% · осталось '+money(p.leftRub)+' р'; }
 function opsKpiHtml(k){
   return '<div class="row" style="gap:14px;margin-bottom:8px;font-weight:700">'
