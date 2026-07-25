@@ -37,7 +37,9 @@
   <h2>Новый наряд</h2>
   <div class="muted" id="who"></div>
   <div id="wsel"></div>
-  <label>Дата</label><input id="wdate" type="date">
+  <label>За какую смену — дата начала</label>
+  <div class="row" style="gap:6px"><input id="wdate" type="date" style="flex:1" onchange="updateWhen()"><button class="sm gray" type="button" onclick="setDate(0)">Сегодня</button><button class="sm gray" type="button" onclick="setDate(-1)">Вчера</button></div>
+  <div class="muted" style="font-size:12px;margin-top:3px">🌙 Ночная смена с 23 на 24 — ставьте <b>23</b> (день, когда смена началась).</div>
   <label>Партия</label><select id="batch" onchange="onBatchChange()"></select>
   <label>Оборудование</label><select id="equip" onchange="fillDetails()"></select>
   <label>Деталь</label><select id="detail" onchange="fillOps()"></select>
@@ -50,6 +52,7 @@
     <button id="shift-day" class="active" onclick="setShift('день')">☀️ День</button>
     <button id="shift-night" onclick="setShift('ночь')">🌙 Ночь</button>
   </div>
+  <div id="whenline" style="margin-top:8px;font-weight:600"></div>
   <div id="cart" style="margin-top:12px"></div>
   <button onclick="sendReport()" id="sendbtn" style="display:none">📨 Отправить наряд мастеру</button>
   <div class="msg" id="wmsg"></div>
@@ -142,7 +145,15 @@ var BONUS={premPct:10,premThr:100,nightPct:15};   // как в Config
 function setShift(sh){ SHIFT=sh;
   document.getElementById('shift-day').className=(sh==='день')?'active':'';
   document.getElementById('shift-night').className=(sh==='ночь')?'active':'';
-  renderCart(); }
+  updateWhen(); renderCart(); }
+function setDate(off){ var d=new Date(); d.setDate(d.getDate()+off);
+  var s=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  var el=document.getElementById('wdate'); if(el) el.value=s; updateWhen(); }
+// наглядно: за какую дату и смену будет отчёт
+function updateWhen(){ var el=document.getElementById('whenline'); if(!el) return;
+  var wd=(document.getElementById('wdate')||{}).value||'';
+  var human=wd?wd.split('-').reverse().slice(0,2).join('.'):'—';
+  el.innerHTML='📅 Отчёт за <b>'+human+'</b> · '+(SHIFT==='ночь'?'🌙 ночь':'☀️ день'); }
 function bonusCalc(base){
   var night=(SHIFT==='ночь'), ni=night?Math.round(base*BONUS.nightPct)/100:0;
   var prem=base>BONUS.premThr?Math.round(base*BONUS.premPct)/100:0;
@@ -338,13 +349,13 @@ function loadJournal(){
       pay.innerHTML='<div class="card"><div class="row"><b>💰 ЗП за период (подтв.)</b><b class="ok">'+(Math.round(tot*100)/100)+' руб.</b></div>'
         +pr.map(function(p){return '<div class="row"><span>'+esc(p.worker)+'</span><span>'+p.sum+' руб.</span></div>';}).join('')+'</div>';
     }
-    if(!items.length){ lst.innerHTML='<div class="muted">Нет записей за период.</div>'; return; }
-    var stz={'подтверждено':'ok','отклонено':'err','на проверке':'muted'};
+    items=items.filter(function(it){ return it.status==='подтверждено'; });   // журнал сданной работы — ТОЛЬКО принятые
+    if(!items.length){ lst.innerHTML='<div class="muted">Нет принятых нарядов за период.</div>'; return; }
     // группировка по нарядам
     var groups=[], gidx={};
     items.forEach(function(it){
       var key=it.report||('_'+it.id);
-      if(gidx[key]==null){ gidx[key]=groups.length; groups.push({single:!it.report,worker:it.worker,date:it.date,batch:it.batch,sum:0,lines:[]}); }
+      if(gidx[key]==null){ gidx[key]=groups.length; groups.push({single:!it.report,worker:it.worker,date:it.date,submitted:it.submitted||'',shift:it.shift||'день',batch:it.batch,sum:0,lines:[]}); }
       var g=groups[gidx[key]]; g.sum+=it.sum; g.lines.push(it);
     });
     lst.innerHTML=groups.map(function(g){
@@ -357,15 +368,16 @@ function loadJournal(){
             +'<button class="sm gray" onclick="delJournal(\''+esc(it.id)+'\')">🗑</button><span id="jm-'+esc(it.id)+'" class="msg"></span>'
           : '';
         return '<div class="row" id="j-'+esc(it.id)+'" style="border-top:1px solid #eee;padding-top:5px"><span>'+esc(it.detail)+' · '+esc(it.op)+' · '+it.qty+' шт'+kbadge+'</span>'
-          +'<span class="'+(stz[it.status]||'muted')+'">'+it.sum+'р · '+esc(it.status)+' '+acts+'</span></div>';
+          +'<span class="ok">'+it.sum+' р '+acts+'</span></div>';
       }).join('');
       var shiftCtl = (master && !g.single && rep)
         ? '<div class="tabs" style="margin:6px 0 0"><button class="sm '+(night?'':'active')+'" onclick="setRepShiftJ(\''+esc(rep)+'\',\'день\')">☀️ День</button><button class="sm '+(night?'active':'')+'" onclick="setRepShiftJ(\''+esc(rep)+'\',\'ночь\')">🌙 Ночь</button></div>'
         : (night?'<div class="muted" style="font-size:12px">🌙 ночная</div>':'');
       var effBase=g.lines.reduce(function(s,it){return s+(it.base||0)*(it.koef||1);},0);
       var gbd=computeBreakdown(effBase, night);
-      return '<div class="card"><div class="row"><b>'+esc(g.worker)+'</b><span class="muted">'+esc(g.date)+' · '+esc(g.batch)+(g.single?'':' · наряд')+'</span></div>'
-        +'<div class="muted">'+g.lines.length+' оп.</div>'+shiftCtl+lines+bonusBlockHtml(gbd)+'</div>';
+      return '<div class="card"><div class="row"><b>'+esc(g.worker)+'</b><span class="muted">за '+esc(g.date)+' · '+(night?'🌙 ночь':'☀️ день')+'</span></div>'
+        +'<div class="muted" style="font-size:12px">'+(g.submitted?'подан '+esc(g.submitted)+' · ':'')+esc(g.batch)+(g.single?'':' · наряд')+' · '+g.lines.length+' оп.</div>'
+        +shiftCtl+lines+bonusBlockHtml(gbd)+'</div>';
     }).join('');
   }).catch(function(){ lst.innerHTML='<span class="err">Ошибка загрузки</span>'; });
 }
@@ -379,7 +391,7 @@ function doRegister(){
 (function(){ var n=new Date(), m=String(n.getMonth()+1).padStart(2,'0'), today=n.getFullYear()+'-'+m+'-'+String(n.getDate()).padStart(2,'0');
   document.getElementById('jfrom').value=n.getFullYear()+'-'+m+'-01';
   document.getElementById('jto').value=today;
-  document.getElementById('wdate').value=today; })();
+  document.getElementById('wdate').value=today; updateWhen(); })();
 applyMode();
 load();
 if(isMaster()) showTab('m');   // панель проверки открывается на вкладке «Проверка»
