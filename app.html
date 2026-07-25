@@ -383,9 +383,12 @@ function renderCompany(box,r){
     +cSetInput('s_bossPct','Начальник: % за упаковку',st.bossPct)+'</div>'
     +'<div style="margin-top:10px"><button onclick="saveSettings()">💾 Сохранить настройки</button> <span class="msg" id="cset"></span></div>'
     +'<div class="muted" style="font-size:12px;margin-top:6px">Проценты используются в расчётах; сотрудникам сами цифры % не показываются.</div></div>';
+  var blanksBox='<div class="box" style="margin-bottom:14px;background:#fff8ef;border-color:#f0e0c8">'
+    +'<div class="row"><div><b>🖨️ Ручные бланки (для печати)</b><div class="muted" style="font-size:12px;margin-top:2px">Бланки, которые печатают и заполняют от руки, хранят реквизиты текстом. После смены реквизитов нажмите — реквизиты обновятся во всех бланках.</div></div>'
+    +'<button onclick="refreshBlanks()" style="flex:0 0 auto">🔄 Обновить бланки</button></div><div class="msg" id="blankmsg" style="margin-top:8px"></div></div>';
   box.innerHTML='<div class="pad"><div class="hi">🏢 Компания и настройки</div>'
     +'<p class="muted">Реквизиты юрлиц — <b>единый источник</b>: поменяли здесь → меняется во всех документах (договоры продаж и кадровые). Отметьте «наниматель» у того юрлица, от которого оформляете сотрудников.</p>'
-    +setBlock+'<div class="sect">Юридические лица</div>'+(cards||'<div class="box muted">нет юрлиц</div>')+'</div>';
+    +setBlock+blanksBox+'<div class="sect">Юридические лица</div>'+(cards||'<div class="box muted">нет юрлиц</div>')+'</div>';
 }
 function saveSeller(ci,code){
   var head=window.COMP_HEAD||[], f={};
@@ -393,6 +396,17 @@ function saveSeller(ci,code){
   var m=document.getElementById('cm'+ci); if(m) m.textContent='…';
   api({vapi:'companysaveseller',tgid:TGID,code:code,fields:JSON.stringify(f)}).then(function(r){
     if(r&&r.ok){ reloadCompany(); } else if(m) m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>';
+  }).catch(function(){ if(m) m.innerHTML='<span class="err">сеть недоступна</span>'; });
+}
+function refreshBlanks(){
+  var m=document.getElementById('blankmsg'); if(m) m.innerHTML='Обновляю бланки…';
+  api({vapi:'hrrefreshblanks',tgid:TGID}).then(function(r){
+    if(!m) return;
+    if(r&&r.ok){
+      if(r.note){ m.innerHTML='<span class="ok">✓ '+esc(r.note)+'</span>'; return; }
+      var chg=(r.changed||[]).map(function(c){ return esc(c.field)+': «'+esc(c.from)+'» → «'+esc(c.to)+'»'; }).join('<br>');
+      m.innerHTML='<span class="ok">✅ Обновлено бланков: '+r.updated+' из '+r.docs+'</span>'+(chg?'<div class="muted" style="font-size:12px;margin-top:4px">'+chg+'</div>':'');
+    } else m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>';
   }).catch(function(){ if(m) m.innerHTML='<span class="err">сеть недоступна</span>'; });
 }
 function saveSettings(){
