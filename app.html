@@ -395,7 +395,7 @@ function renderCompany(box,r){
     +'<div class="muted" style="font-size:12px;margin-top:6px">Проценты используются в расчётах; сотрудникам сами цифры % не показываются.</div></div>';
   var blanksBox='<div class="box" style="margin-bottom:14px;background:#fff8ef;border-color:#f0e0c8">'
     +'<div class="row"><div><b>🖨️ Ручные бланки (для печати)</b><div class="muted" style="font-size:12px;margin-top:2px">Бланки, которые печатают и заполняют от руки, хранят реквизиты текстом. После смены реквизитов нажмите — реквизиты обновятся во всех бланках.</div></div>'
-    +'<button onclick="refreshBlanks()" style="flex:0 0 auto">🔄 Обновить бланки</button></div><div class="msg" id="blankmsg" style="margin-top:8px"></div></div>';
+    +'<div style="display:flex;gap:6px;flex:0 0 auto"><button onclick="refreshBlanks()">🔄 Обновить бланки</button><button class="sm" onclick="checkTemplates()" style="background:#eef1f8;color:#334">🔍 Проверить шаблоны</button></div></div><div class="msg" id="blankmsg" style="margin-top:8px"></div></div>';
   box.innerHTML='<div class="pad"><div class="hi">🏢 Компания и настройки</div>'
     +'<p class="muted">Реквизиты юрлиц — <b>единый источник</b>: поменяли здесь → меняется во всех документах (договоры продаж и кадровые). Отметьте «наниматель» у того юрлица, от которого оформляете сотрудников.</p>'
     +setBlock+blanksBox+'<div class="sect">Юридические лица</div>'+(cards||'<div class="box muted">нет юрлиц</div>')+'</div>';
@@ -419,14 +419,29 @@ function saveSeller(ci,code){
     if(r&&r.ok){ reloadCompany(); } else if(m) m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>';
   }).catch(function(){ if(m) m.innerHTML='<span class="err">сеть недоступна</span>'; });
 }
-function refreshBlanks(){
-  var m=document.getElementById('blankmsg'); if(m) m.innerHTML='Обновляю бланки…';
-  api({vapi:'hrrefreshblanks',tgid:TGID}).then(function(r){
+function checkTemplates(){
+  var m=document.getElementById('blankmsg'); if(m) m.innerHTML='Проверяю все шаблоны…';
+  api({vapi:'hrscanreqs',tgid:TGID}).then(function(r){
     if(!m) return;
     if(r&&r.ok){
-      if(r.note){ m.innerHTML='<span class="ok">✓ '+esc(r.note)+'</span>'; return; }
-      var chg=(r.changed||[]).map(function(c){ return esc(c.field)+': «'+esc(c.from)+'» → «'+esc(c.to)+'»'; }).join('<br>');
-      m.innerHTML='<span class="ok">✅ Обновлено бланков: '+r.updated+' из '+r.docs+'</span>'+(chg?'<div class="muted" style="font-size:12px;margin-top:4px">'+chg+'</div>':'');
+      var h=r.hits||[];
+      if(!h.length){ m.innerHTML='<span class="ok">✅ Проверено шаблонов: '+r.total+' — старого адреса нигде нет.</span>'; return; }
+      m.innerHTML='<span class="err">⚠️ Со старым адресом: '+h.length+' из '+r.total+'</span><div class="muted" style="font-size:12px;margin-top:4px">'
+        +h.map(function(x){ return esc(x.name)+' ('+esc(x.markers.join(', '))+')'; }).join('<br>')
+        +'</div><div style="margin-top:6px"><button class="sm" onclick="refreshBlanks()">🔄 Исправить</button></div>';
+    } else m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>';
+  }).catch(function(){ if(m) m.innerHTML='<span class="err">сеть недоступна</span>'; });
+}
+function refreshBlanks(){
+  var m=document.getElementById('blankmsg'); if(m) m.innerHTML='Обновляю бланки и проверяю все шаблоны…';
+  api({vapi:'hrrefreshblanks',tgid:TGID}).then(function(r){
+    // + комплексное исправление остатков старого адреса во ВСЕХ шаблонах (генерация + бланки)
+    return api({vapi:'hrfixreqs',tgid:TGID}).then(function(){ return r; });
+  }).then(function(r){
+    if(!m) return;
+    if(r&&r.ok){
+      var upd=r.updated||0, chg=(r.changed||[]).map(function(c){ return esc(c.field)+': «'+esc(c.from)+'» → «'+esc(c.to)+'»'; }).join('<br>');
+      m.innerHTML='<span class="ok">✅ Готово. Бланки обновлены'+(upd?' ('+upd+')':'')+', все шаблоны проверены.</span>'+(chg?'<div class="muted" style="font-size:12px;margin-top:4px">'+chg+'</div>':'');
     } else m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>';
   }).catch(function(){ if(m) m.innerHTML='<span class="err">сеть недоступна</span>'; });
 }
