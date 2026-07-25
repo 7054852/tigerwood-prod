@@ -411,8 +411,9 @@ function toggleSame(ci,addrJ){
   else { ta.disabled=false; }
 }
 function saveSeller(ci,code){
-  var head=window.COMP_HEAD||[], f={};
-  head.forEach(function(h,j){ var el=document.getElementById('c'+ci+'_'+j); if(!el) return; f[h]=(el.type==='checkbox')?(el.checked?'да':''):el.value; });
+  var head=window.COMP_HEAD||[], f={}, ADDRFLAG={'Почтовый = юр':1,'Производство = юр':1};
+  head.forEach(function(h,j){ var el=document.getElementById('c'+ci+'_'+j); if(!el) return;
+    f[h]=(el.type==='checkbox')?(el.checked?'да':(ADDRFLAG[h]?'нет':'')):el.value; });   // снятая галочка адреса = «нет» (чтобы не вернулась в «да»)
   var m=document.getElementById('cm'+ci); if(m) m.textContent='…';
   api({vapi:'companysaveseller',tgid:TGID,code:code,fields:JSON.stringify(f)}).then(function(r){
     if(r&&r.ok){ reloadCompany(); } else if(m) m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>';
