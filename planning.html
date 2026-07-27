@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Тигервуд — план производства</title>
+<style>
+  :root{ --bg:#f4f6fb; --card:#fff; --fg:#1b2333; --muted:#8a93a6; --line:#e6e9f2; --accent:#2b7de9; --green:#137333; --amber:#b7791f; --red:#c0392b; }
+  *{box-sizing:border-box;} html,body{margin:0;background:var(--bg);}
+  body{ font-family:-apple-system,Roboto,Segoe UI,Arial,sans-serif; color:var(--fg); padding:14px; max-width:960px; margin:0 auto; font-size:14px; }
+  .hi{ font-size:19px; font-weight:800; margin-bottom:10px; }
+  .muted{ color:var(--muted); font-size:13px; }
+  .center{ text-align:center; padding:24px; }
+  .err{ color:var(--red); }
+  .box{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; margin-bottom:12px; overflow-x:auto; }
+  .row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  select,input{ font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--fg); }
+  input.q{ width:72px; text-align:right; }
+  button{ font:inherit; font-weight:600; border:0; border-radius:9px; padding:7px 12px; cursor:pointer; background:var(--accent); color:#fff; }
+  button.sec{ background:#eef2fb; color:var(--accent); }
+  button.gho{ background:transparent; color:var(--muted); padding:4px 7px; }
+  button:disabled{ opacity:.5; cursor:default; }
+  .sect{ font-size:12.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin:16px 2px 8px; }
+  .pill{ font-size:11.5px; font-weight:700; border-radius:20px; padding:2px 9px; display:inline-block; }
+  .num{ font-variant-numeric:tabular-nums; }
+  table{ border-collapse:collapse; width:100%; font-size:13px; }
+  th,td{ padding:5px 8px; border-bottom:1px solid var(--line); text-align:left; }
+  th.num,td.num{ text-align:right; }
+  /* KPI */
+  .kpi{ display:flex; gap:18px; flex-wrap:wrap; font-weight:700; }
+  .kpi b{ font-size:17px; } .kpi .k{ color:var(--muted); font-weight:600; font-size:12px; display:block; }
+  /* редактор волн */
+  .wave{ border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin-bottom:10px; }
+  .wave .wh{ display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+  .wave .wh input.t{ font-weight:700; flex:1; min-width:120px; }
+  .item{ display:flex; gap:6px; align-items:center; margin:4px 0; }
+  .item select{ flex:1; min-width:140px; }
+  /* поток по участкам */
+  .flow{ display:flex; align-items:stretch; gap:0; flex-wrap:wrap; margin:6px 0 10px; }
+  .fbox{ flex:1 1 130px; min-width:120px; border:1px solid var(--line); border-radius:12px; overflow:hidden; background:var(--card); }
+  .fbox.bn{ border:2px solid var(--red); }
+  .fbox .fh{ padding:6px 9px; font-weight:700; font-size:13px; }
+  .fbox .fb{ padding:8px 9px; }
+  .fbox .big{ font-size:16px; font-weight:800; }
+  .fbox .lbar{ height:6px; background:#eef1f8; border-radius:6px; overflow:hidden; margin:6px 0 4px; }
+  .fbox .lbar > i{ display:block; height:100%; background:var(--accent); }
+  .fbox.bn .lbar > i{ background:var(--red); }
+  .fbox .bntag{ color:var(--red); font-weight:700; font-size:10.5px; text-transform:uppercase; letter-spacing:.03em; }
+  .arrow{ align-self:center; color:var(--muted); font-size:18px; padding:0 3px; }
+  .vhead{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:2px; }
+  .vhead .t{ font-weight:800; font-size:15px; }
+  .grp td{ font-weight:700; background:#f7f9fd; }
+  .late{ color:var(--red); font-weight:700; }
+  .ontime{ color:var(--green); font-weight:700; }
+  details.led > summary{ cursor:pointer; color:var(--accent); font-weight:600; font-size:12.5px; margin:4px 0; }
+</style>
+</head>
+<body>
+<style>html.emb>body>.hi{display:none}</style><script>if(/[?&]embed=1/.test(location.search))document.documentElement.classList.add('emb');</script>
+<div class="hi">🗂️ План производства</div>
+<div id="app"><div class="center muted">Загрузка…</div></div>
+<script>
+var BASE='https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';
+var APP='tw7prod';
+function api(p){ p.app=APP; var q=Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]==null?'':p[k]);}).join('&'); return fetch(BASE+'?'+q).then(function(r){return r.json();}); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function $(id){ return document.getElementById(id); }
+function money(n){ n=Number(n)||0; return n.toFixed(2).replace('.',','); }
+function h1(n){ n=Number(n)||0; return n.toFixed(1).replace('.',','); }
+function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
+var TGID=qp('tgid')||(function(){try{return localStorage.getItem('tw_tgid')||'';}catch(e){return '';}})();
+if(TGID){ try{localStorage.setItem('tw_tgid',TGID);}catch(e){} }
+var GC={'Механика':'#DBEAFE','Шлифовка':'#BAE6FD','Покрытие':'#A7F3D0','Сборка':'#FEF3C7','Прочее':'#eef0f3'};
+var GORDER=['Механика','Шлифовка','Покрытие','Сборка','Прочее'];
+
+var app=$('app'), BATCHES=[], OID='', R=null, PLAN=[];
+
+function load(){
+  app.innerHTML='<div class="center muted">Загрузка заказов…</div>';
+  api({vapi:'batches'}).then(function(r){
+    BATCHES=((r&&r.batches)||[]).filter(function(b){ return b.status==='новая'||b.status==='в работе'; });
+    if(!BATCHES.length){ app.innerHTML='<div class="box muted">Нет активных заказов для планирования.</div>'; return; }
+    OID=OID||BATCHES[0].id; renderShell(); loadPlan();
+  }).catch(function(e){ app.innerHTML='<div class="center err">Ошибка: '+esc(e.message||e)+'</div>'; });
+}
+function renderShell(){
+  var opts=BATCHES.map(function(b){ return '<option value="'+esc(b.id)+'"'+(b.id===OID?' selected':'')+'>'+esc(b.num)+' · '+esc(b.name||'')+'</option>'; }).join('');
+  app.innerHTML='<div class="box"><div class="row"><b>Заказ:</b> <select id="ord" onchange="OID=this.value;loadPlan();">'+opts+'</select>'
+    +'<span class="muted" id="ordmeta"></span></div></div>'
+    +'<div id="plan"><div class="center muted">Загрузка плана…</div></div>';
+}
+function loadPlan(){
+  var box=$('plan'); if(box) box.innerHTML='<div class="center muted">Считаю план…</div>';
+  api({vapi:'orderplan',batch:OID}).then(function(r){
+    if(!r||!r.ok){ $('plan').innerHTML='<div class="box err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
+    R=r; PLAN=(r.waves||[]).map(function(w){ return { title:w.title, items:(w.items||[]).map(function(it){ return {eq:it.eq,model:it.model,sku:it.sku||'',qty:Number(it.qty)||0}; }) }; });
+    if(!PLAN.length) PLAN=[{title:'Волна 1',items:[]}];
+    var m=$('ordmeta'); if(m) m.textContent='темп '+money(r.order.velocity)+' ₽/дн · дедлайн '+(r.order.plan||'—');
+    render();
+  }).catch(function(e){ $('plan').innerHTML='<div class="box err">Ошибка: '+esc(e.message||e)+'</div>'; });
+}
+function render(){
+  $('plan').innerHTML =
+     kpiHtml()
+   + '<div class="sect">Волны запуска — что делаем в первую очередь</div>'
+   + '<div class="box">'+editorHtml()+'</div>'
+   + '<div class="sect">Поток по участкам и стоимость</div>'
+   + wavesVizHtml()
+   + unplannedHtml();
+}
+function kpiHtml(){
+  return '<div class="box kpi">'
+    +'<span><span class="k">Всего осталось труда</span><b>'+money(R.grandRub)+' ₽</b></span>'
+    +'<span><span class="k">Нормо-часов</span><b>'+h1(R.grandHours)+' ч</b></span>'
+    +'<span><span class="k">Волн</span><b>'+PLAN.length+'</b></span>'
+    +(R.unplanned&&R.unplanned.totalRub>0?'<span><span class="k">Вне волн</span><b>'+money(R.unplanned.totalRub)+' ₽</b></span>':'')
+    +'</div>';
+}
+/* ── редактор волн ── */
+function prodOpts(cur){
+  return (R.products||[]).map(function(p){ var v=p.eq+'||'+p.model;
+    return '<option value="'+esc(v)+'"'+(v===cur?' selected':'')+'>'+esc(p.eq)+' · '+esc(p.model)+' (ост. '+money(p.leftRub)+' ₽)</option>'; }).join('');
+}
+function editorHtml(){
+  var waves=PLAN.map(function(w,wi){
+    var items=(w.items||[]).map(function(it,ii){
+      return '<div class="item"><select onchange="setItemProd('+wi+','+ii+',this.value)"><option value="">— изделие —</option>'+prodOpts(it.eq+'||'+it.model)+'</select>'
+        +'<input class="q" inputmode="numeric" value="'+(it.qty||0)+'" onchange="setItemQty('+wi+','+ii+',this.value)" title="сколько изделий в этой волне">'
+        +'<button class="gho" onclick="delItem('+wi+','+ii+')" title="убрать">✕</button></div>';
+    }).join('');
+    return '<div class="wave"><div class="wh">'
+      +'<input class="t" value="'+esc(w.title)+'" onchange="setWaveTitle('+wi+',this.value)">'
+      +'<button class="gho" onclick="moveWave('+wi+',-1)" title="выше"'+(wi===0?' disabled':'')+'>↑</button>'
+      +'<button class="gho" onclick="moveWave('+wi+',1)" title="ниже"'+(wi===PLAN.length-1?' disabled':'')+'>↓</button>'
+      +'<button class="gho" onclick="delWave('+wi+')" title="удалить волну">🗑</button></div>'
+      +items
+      +'<button class="sec" style="margin-top:6px" onclick="addItem('+wi+')">+ изделие</button></div>';
+  }).join('');
+  return waves
+    +'<div class="row" style="margin-top:8px">'
+    +'<button onclick="addWave()">+ волна</button>'
+    +'<button class="sec" onclick="savePlan()">💾 Сохранить и пересчитать</button>'
+    +'<button class="gho" onclick="resetPlan()" title="одна волна = вся оставшаяся работа">сбросить (вся работа)</button>'
+    +'<span class="muted">Кол-во — сколько изделий сделать в волне; остальное уйдёт в следующие волны или «вне волн».</span></div>';
+}
+function setWaveTitle(wi,v){ PLAN[wi].title=v; }
+function setItemQty(wi,ii,v){ PLAN[wi].items[ii].qty=Number(v)||0; }
+function setItemProd(wi,ii,v){ var p=(R.products||[]).filter(function(x){return x.eq+'||'+x.model===v;})[0]; if(p){ PLAN[wi].items[ii].eq=p.eq; PLAN[wi].items[ii].model=p.model; PLAN[wi].items[ii].sku=p.sku||''; } }
+function addItem(wi){ var p=(R.products||[])[0]||{eq:'',model:'',sku:''}; PLAN[wi].items.push({eq:p.eq,model:p.model,sku:p.sku||'',qty:0}); render(); }
+function delItem(wi,ii){ PLAN[wi].items.splice(ii,1); render(); }
+function addWave(){ PLAN.push({title:'Волна '+(PLAN.length+1),items:[]}); render(); }
+function delWave(wi){ PLAN.splice(wi,1); if(!PLAN.length) PLAN=[{title:'Волна 1',items:[]}]; render(); }
+function moveWave(wi,d){ var j=wi+d; if(j<0||j>=PLAN.length) return; var t=PLAN[wi]; PLAN[wi]=PLAN[j]; PLAN[j]=t; render(); }
+function savePlan(){
+  if(!TGID){ alert('Не удалось определить вас — откройте сервис из бота.'); return; }
+  api({vapi:'saveorderplan',batch:OID,tgid:TGID,plan:JSON.stringify(PLAN)}).then(function(r){
+    if(!r||!r.ok){ alert((r&&r.error)||'не удалось сохранить'); return; }
+    loadPlan();
+  });
+}
+function resetPlan(){
+  if(!TGID){ alert('Откройте сервис из бота.'); return; }
+  api({vapi:'saveorderplan',batch:OID,tgid:TGID,plan:'[]'}).then(function(){ loadPlan(); });
+}
+/* ── визуализация: поток по участкам + ведомость ── */
+function wavesVizHtml(){
+  if(!R.waves.length) return '<div class="box muted">Нет волн.</div>';
+  return R.waves.map(function(w){ return waveCard(w,false); }).join('');
+}
+function unplannedHtml(){
+  var u=R.unplanned; if(!u||!(u.totalRub>0)) return '';
+  return '<div class="sect">Остаток вне волн (не распределено)</div>'+waveCard({title:'Вне волн',groups:u.groups,totalRub:u.totalRub,totalHours:u.totalHours,bottleneckGroup:'',shared:[],etaDays:null},true);
+}
+function waveCard(w,isUn){
+  if(!w.groups||!w.groups.length) return '<div class="box"><div class="vhead"><span class="t">'+esc(w.title)+'</span><span class="muted">пусто</span></div></div>';
+  var maxH=0; w.groups.forEach(function(g){ if(g.hours>maxH) maxH=g.hours; });
+  // поток: участки в техпорядке со стрелками
+  var byG={}; w.groups.forEach(function(g){ byG[g.group]=g; });
+  var seq=GORDER.filter(function(n){ return byG[n]; });
+  var flow=seq.map(function(n,i){ var g=byG[n]; var col=(g.ops&&g.ops[0]&&g.ops[0].color)||GC[n]||'#eef0f3';
+    var w2=maxH>0?Math.round(g.hours/maxH*100):0;
+    var box='<div class="fbox'+(g.bottleneck?' bn':'')+'">'
+      +'<div class="fh" style="background:'+col+'">'+esc(n)+(g.bottleneck?' <span class="bntag">узкое место</span>':'')+'</div>'
+      +'<div class="fb"><div class="big">'+h1(g.hours)+' ч</div>'
+      +'<div class="lbar"><i style="width:'+w2+'%"></i></div>'
+      +'<div class="muted num">'+money(g.rub)+' ₽ · '+(g.ops?g.ops.length:0)+' оп.</div></div></div>';
+    return box+(i<seq.length-1?'<span class="arrow">→</span>':'');
+  }).join('');
+  // KPI строки волны
+  var eta=''; if(!isUn){ if(w.etaDays!=null){ var late=(R.order.dlDays!=null && w.etaDays>R.order.dlDays);
+      eta='<span class="'+(late?'late':'ontime')+'">срок ~'+w.etaDays+' дн'+(late?' ⚠ позже дедлайна':'')+'</span>'; }
+    else eta='<span class="muted">срок — нет темпа</span>'; }
+  var head='<div class="vhead"><span class="t">'+esc(w.title)+'</span>'
+    +'<span class="pill" style="background:#eef4ff;color:#2b6cb0">'+money(w.totalRub)+' ₽</span>'
+    +'<span class="pill" style="background:#f0f7ee;color:#2f7a34">'+h1(w.totalHours)+' ч</span>'
+    +(w.bottleneckGroup?'<span class="pill" style="background:#fdecea;color:#c0392b">узкое место: '+esc(w.bottleneckGroup)+'</span>':'')
+    +eta+'</div>';
+  var shared=(w.shared&&w.shared.length)?'<div class="muted" style="margin:2px 0 6px">🧩 общие детали (сделать на всю волну сразу): '+w.shared.map(esc).join(', ')+'</div>':'';
+  // ведомость
+  var rows=seq.map(function(n){ var g=byG[n];
+    var gr='<tr class="grp"><td>'+esc(n)+'</td><td></td><td class="num">'+money(g.rub)+' ₽</td><td class="num">'+h1(g.hours)+' ч</td></tr>';
+    var ops=(g.ops||[]).slice().sort(function(a,b){return b.rub-a.rub;}).map(function(t){
+      return '<tr><td></td><td>'+esc(t.op)+'</td><td class="num">'+money(t.rub)+' ₽</td><td class="num">'+(t.hours?h1(t.hours)+' ч':'—')+'</td><td class="num muted">'+h1(t.qty)+' шт</td></tr>';
+    }).join('');
+    return gr+ops;
+  }).join('');
+  var table='<details class="led"><summary>Ведомость: операции · стоимость · нормо-часы</summary>'
+    +'<table><thead><tr><th>Участок</th><th>Операция</th><th class="num">Стоимость</th><th class="num">Нормо-ч</th><th class="num">Кол-во</th></tr></thead><tbody>'+rows+'</tbody></table></details>';
+  return '<div class="box">'+head+shared+'<div class="flow">'+flow+'</div>'+table+'</div>';
+}
+load();
+</script>
+</body>
+</html>
