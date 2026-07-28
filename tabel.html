@@ -241,42 +241,70 @@ function opsPanelHtml(p,g){
   }).join('');
   return '<div class="opspanel" onclick="event.stopPropagation()"><b>'+esc(p.name)+' — какие операции:</b>'+(items||'<div class="muted">в волне нет операций этого участка</div>')+'</div>';
 }
+var SHIFTF='';   // фильтр показа: '' = обе смены, 'день' / 'ночь'
+function setShiftF(v){ SHIFTF=(SHIFTF===v)?'':v; renderBoard(); }
+function isNight(p){ return p.shift==='ночь'; }
+function sumExp(list){ var s=0; list.forEach(function(p){ s+=p.expect||0; }); return Math.round(s*100)/100; }
 function renderBoard(){
   var r=BOARD;
   var opts=BATCHES.map(function(b){ return '<option value="'+esc(b.id)+'"'+(b.id===OID?' selected':'')+'>'+esc(b.num)+' · '+esc(b.name||'')+'</option>'; }).join('');
-  var total=0; r.people.forEach(function(p){ total+=p.expect||0; }); total=Math.round(total*100)/100;
+  var allD=r.people.filter(function(p){ return !isNight(p); }), allN=r.people.filter(isNight);
+  var totD=sumExp(allD), totN=sumExp(allN), total=Math.round((totD+totN)*100)/100;
   var bench=r.people.filter(function(p){ return !p.group; });
+  var benchD=bench.filter(function(p){ return !isNight(p); }), benchN=bench.filter(isNight);
+  var fbtn=function(v,lbl){ return '<button class="sec" style="padding:4px 10px;font-size:12px'+(SHIFTF===v?';outline:2px solid var(--accent)':'')+'" onclick="setShiftF(\''+v+'\')">'+lbl+'</button>'; };
   var head='<div class="box"><div class="row">'
     +'<input type="date" value="'+PLANDATE+'" onchange="PLANDATE=this.value;SELCHIP=\'\';OPSOPEN=\'\';loadPlan();"><b>'+ruDate(PLANDATE)+' ('+dayName(PLANDATE)+')</b>'
-    +'<span class="muted">заказ:</span><select onchange="OID=this.value;SELCHIP=\'\';OPSOPEN=\'\';loadPlan();">'+opts+'</select></div></div>';
+    +'<span class="muted">заказ:</span><select onchange="OID=this.value;SELCHIP=\'\';OPSOPEN=\'\';loadPlan();">'+opts+'</select>'
+    +'<span style="flex:1"></span>'+fbtn('день','☀️ день')+fbtn('ночь','🌙 ночь')+'</div></div>';
   var kpi='<div class="box kpi">'
-    +'<span><span class="k">Бойцов в смене</span><b>'+r.people.length+'</b>'+(bench.length?' <span class="muted" style="font-size:12px">('+bench.length+' на скамейке)</span>':'')+'</span>'
-    +'<span><span class="k">Ожидаем за день (по бойцам)</span><b style="color:#137333">'+money(total)+' ₽</b></span>'
+    +'<span><span class="k">Бойцов в смене</span><b>'+r.people.length+'</b> <span class="muted" style="font-size:12px">☀️'+allD.length+' · 🌙'+allN.length+(bench.length?' · скамейка '+bench.length:'')+'</span></span>'
+    +'<span><span class="k">☀️ День</span><b style="color:#8a6d00">'+money(totD)+' ₽</b></span>'
+    +'<span><span class="k">🌙 Ночь</span><b style="color:#3446a0">'+money(totN)+' ₽</b></span>'
+    +'<span><span class="k">Всего за сутки</span><b style="color:#137333">'+money(total)+' ₽</b></span>'
     +'<span><span class="k">План на день'+(r.overridden?' (скорректирован)':'')+'</span>'
       +'<b><input id="tgt" value="'+money(r.targetRub).replace(',','.')+'" style="width:100px;font-weight:800;font-size:16px" inputmode="decimal"> ₽</b> '
       +'<button class="sec" onclick="saveTarget()">💾</button>'
       +(r.overridden?' <button class="gho" onclick="resetTarget()" title="вернуть авторасчёт">↺ авто</button>':'')+'</span>'
     +'</div>';
+  var benchRow=function(list,icon,lbl){
+    if(!list.length) return '';
+    return '<div style="margin-top:8px"><span class="muted" style="font-size:12px;font-weight:700">'+icon+' '+lbl+' ('+list.length+')</span>'
+      +'<div class="bench" style="margin-top:5px">'+list.map(function(p){ return chipHtml(p,false); }).join('')+'</div></div>';
+  };
+  var showD=(SHIFTF!=='ночь'), showN=(SHIFTF!=='день');
+  var benchInner=(showD?benchRow(benchD,'☀️','день'):'')+(showN?benchRow(benchN,'🌙','ночь'):'');
   var benchBox='<div class="box"><b>🪑 Скамейка</b> <span class="drophint">— нажмите бойца, потом участок (или перетащите)</span>'
-    +'<div class="bench" style="margin-top:8px">'+(bench.map(function(p){ return chipHtml(p,false); }).join('')||'<span class="muted">все расставлены 👍</span>')+'</div></div>';
+    +(benchInner||'<div class="muted" style="margin-top:8px">'+(bench.length?'скрыто фильтром смены':'все расставлены 👍')+'</div>')+'</div>';
   var zones=r.groups.map(function(g){
     var ppl=r.people.filter(function(p){ return p.group===g.group; });
-    var contrib=0; ppl.forEach(function(p){ contrib+=p.expect||0; }); contrib=Math.round(contrib*100)/100;
+    var pd=ppl.filter(function(p){ return !isNight(p); }), pn=ppl.filter(isNight);
+    var cD=sumExp(pd), cN=sumExp(pn), contrib=Math.round((cD+cN)*100)/100;
     var pct=g.needRub>0?Math.min(100,Math.round(contrib/g.needRub*100)):0;
     var days=(contrib>0&&g.needRub>0)?Math.ceil(g.needRub/contrib):0;
     var foot;
     if(!g.needRub) foot='<span class="muted">в этой волне нет работ участка</span>';
     else if(!contrib) foot='осталось <b>'+money(g.needRub)+' ₽</b> ('+g.needH+' ч) — никто не назначен';
-    else foot='завтра <b>~'+money(contrib)+' ₽</b> · закроем <b>'+pct+'%</b> остатка ('+money(g.needRub)+' ₽) · таким составом ~<b>'+days+'</b> дн';
+    else foot='завтра <b>~'+money(contrib)+' ₽</b>'+((cD>0&&cN>0)?' <span class="muted">(☀️ '+money(cD)+' + 🌙 '+money(cN)+')</span>':'')
+      +' · закроем <b>'+pct+'%</b> остатка ('+money(g.needRub)+' ₽) · таким составом ~<b>'+days+'</b> дн';
+    var zoneRow=function(list,icon){
+      if(!list.length) return '';
+      return '<span class="muted" style="font-size:12px;align-self:center">'+icon+'</span>'+list.map(function(p){ return chipHtml(p,true); }).join('');
+    };
+    var body=(showD?zoneRow(pd,'☀️'):'')+(showN?zoneRow(pn,'🌙'):'');
+    var hiddenCnt=(showD?0:pd.length)+(showN?0:pn.length);
+    if(!body) body='<span class="drophint">'+(SELCHIP?'👇 нажмите сюда':(hiddenCnt?'+'+hiddenCnt+' скрыто фильтром':'пусто'))+'</span>';
+    else if(hiddenCnt) body+='<span class="muted" style="font-size:11px;align-self:center">+'+hiddenCnt+' скрыто</span>';
     var op=ppl.filter(function(p){ return p.name===OPSOPEN; })[0];
     return '<div class="zone'+(g.bottleneck?' bn':'')+(SELCHIP?' target':'')+'"'
       +' ondragover="event.preventDefault();this.classList.add(\'target\')" ondragleave="this.classList.remove(\'target\')"'
       +' ondrop="dropChip(event,\''+esc(g.group)+'\')" onclick="zoneTap(\''+esc(g.group)+'\')">'
       +'<div class="zh"><span>'+(ZICON[g.group]||'')+'</span><span class="zn">'+esc(g.group)+'</span>'
       +(g.bottleneck?'<span class="pill" style="background:#fdecea;color:#c0392b">узкое место — сюда в первую очередь</span>':'')
-      +'<span style="flex:1"></span><span class="muted" style="font-weight:600;font-size:12px">'+ppl.length+' чел</span></div>'
+      +'<span style="flex:1"></span><span class="muted" style="font-weight:600;font-size:12px">'
+        +(pd.length?'☀️'+pd.length:'')+(pd.length&&pn.length?' · ':'')+(pn.length?'🌙'+pn.length:'')+(!ppl.length?'0 чел':'')+'</span></div>'
       +(g.needRub?'<div class="zbar"><span class="ghost" style="width:'+pct+'%"></span></div>':'')
-      +'<div class="zbody">'+(ppl.map(function(p){ return chipHtml(p,true); }).join('')||'<span class="drophint">'+(SELCHIP?'👇 нажмите сюда':'пусто')+'</span>')+'</div>'
+      +'<div class="zbody">'+body+'</div>'
       +(op?opsPanelHtml(op,g):'')
       +'<div class="zfoot">'+foot+'</div></div>';
   }).join('');
