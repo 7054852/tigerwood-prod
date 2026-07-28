@@ -62,8 +62,16 @@
   @keyframes zpulse{ 0%,100%{ box-shadow:0 0 0 0 rgba(192,57,43,.28);} 50%{ box-shadow:0 0 0 7px rgba(192,57,43,.05);} }
   .zh{ display:flex; align-items:center; gap:8px; padding:9px 12px 6px; font-weight:800; flex-wrap:wrap; }
   .zh .zn{ font-size:15px; }
-  .zbar{ height:14px; background:#eef1f8; border-radius:8px; overflow:hidden; display:flex; margin:2px 12px 0; }
-  .zbar .ghost{ background:repeating-linear-gradient(45deg,#5f9be6,#5f9be6 6px,#9cc4f2 6px,#9cc4f2 12px); transition:width .35s ease; height:100%; }
+  /* полоса участка: [сделано][можно сейчас][ждёт предыдущих]; внутри «можно» — вклад завтра */
+  .zbar{ height:16px; background:#eef1f8; border-radius:8px; overflow:hidden; display:flex; margin:2px 12px 0; }
+  .zbar .seg{ height:100%; transition:width .35s ease; }
+  .zbar .s-done{ background:#137333; }
+  .zbar .s-av{ background:#8fc2f5; position:relative; }
+  .zbar .s-av > i{ display:block; height:100%; background:repeating-linear-gradient(45deg,#1f6fd0,#1f6fd0 5px,#4a90e2 5px,#4a90e2 10px); transition:width .35s ease; }
+  .zbar .s-bl{ background:#dfe4ee; }
+  .zlegend{ display:flex; gap:12px; flex-wrap:wrap; padding:4px 12px 0; font-size:11.5px; color:var(--muted); }
+  .zlegend i{ display:inline-block; width:9px; height:9px; border-radius:3px; margin-right:4px; vertical-align:-1px; }
+  .warnbar{ margin:6px 12px 0; padding:6px 9px; border-radius:9px; background:#fdf3ec; color:#a35b12; font-size:12.5px; font-weight:600; }
   .zbody{ padding:8px 12px; min-height:42px; }
   .zrow{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:3px 0; }
   .zrow + .zrow{ border-top:1px dashed var(--line); margin-top:3px; }
@@ -235,14 +243,31 @@ function chipHtml(p,inZone){
   return '<span class="chip'+sel+'" draggable="true" ondragstart="dragChip(event,'+i+')" ondragend="this.classList.remove(\'drag\')" onclick="event.stopPropagation();tapChip('+i+')">'
     +(p.shift==='ночь'?'🌙':'☀️')+' <b>'+esc(p.name)+'</b>'+exp+star+opsb+x+'</span>';
 }
+var DETOPEN='';   // какая операция раскрыта до деталей (в панели пикера)
+function toggleDet(op){ DETOPEN=(DETOPEN===op)?'':op; renderBoard(); }
 function opsPanelHtml(p,g){
   var cur=opsList(p), i=BOARD.people.indexOf(p);
   var items=(g.ops||[]).map(function(t){
     var ch=cur.indexOf(t.op)>=0;
-    return '<label><input type="checkbox" '+(ch?'checked':'')+' onchange="opToggle('+i+',\''+esc(t.op)+'\',this.checked)"> '+esc(t.op)
-      +' <span class="muted">· осталось '+Math.round(t.qty)+' шт · '+money(t.rub)+' ₽</span></label>';
+    var av=t.availQty||0, blocked=(av<=0);
+    var head='<label'+(blocked?' style="opacity:.5"':'')+'><input type="checkbox" '+(ch?'checked':'')+' onchange="opToggle('+i+',\''+esc(t.op)+'\',this.checked)"> '
+      +'<b>'+esc(t.op)+'</b> <span class="muted">· '+(blocked?'нет фронта работ':('можно '+Math.round(av)+' шт из '+Math.round(t.needQty-t.doneQty)))+'</span>'
+      +'<span style="flex:1"></span>'
+      +((t.details&&t.details.length)?'<span class="opsb" onclick="event.preventDefault();event.stopPropagation();toggleDet(\''+esc(t.op)+'\')">детали '+(DETOPEN===t.op?'▴':'▾')+'</span>':'')
+      +'</label>';
+    var dets='';
+    if(DETOPEN===t.op&&t.details&&t.details.length){
+      dets='<div style="margin:2px 0 6px 18px;border-left:2px solid var(--line);padding-left:9px">'
+        +t.details.map(function(d){
+          var key=t.op+' › '+d.detail, chd=cur.indexOf(key)>=0, dav=d.availQty||0;
+          return '<label'+(dav<=0?' style="opacity:.5"':'')+'><input type="checkbox" '+(chd?'checked':'')+' onchange="opToggle('+i+',\''+esc(key).replace(/'/g,"\\'")+'\',this.checked)"> '
+            +esc(d.detail)+' <span class="muted">· '+(dav>0?('можно '+Math.round(dav)):'ждёт')+' · сделано '+Math.round(d.doneQty)+'/'+Math.round(d.needQty)+'</span></label>';
+        }).join('')+'</div>';
+    }
+    return head+dets;
   }).join('');
-  return '<div class="opspanel" onclick="event.stopPropagation()"><b>'+esc(p.name)+' — какие операции:</b>'+(items||'<div class="muted">в волне нет операций этого участка</div>')+'</div>';
+  return '<div class="opspanel" onclick="event.stopPropagation()"><b>'+esc(p.name)+' — что делает:</b>'
+    +(items||'<div class="muted">на этом участке нет открытых работ</div>')+'</div>';
 }
 var SHIFTF='';   // фильтр показа: '' = обе смены, 'день' / 'ночь'
 function setShiftF(v){ SHIFTF=(SHIFTF===v)?'':v; renderBoard(); }
@@ -284,13 +309,22 @@ function renderBoard(){
     var ppl=r.people.filter(function(p){ return p.group===g.group; });
     var pd=ppl.filter(function(p){ return !isNight(p); }), pn=ppl.filter(isNight);
     var cD=sumExp(pd), cN=sumExp(pn), contrib=Math.round((cD+cN)*100)/100;
-    var pct=g.needRub>0?Math.min(100,Math.round(contrib/g.needRub*100)):0;
-    var days=(contrib>0&&g.needRub>0)?Math.ceil(g.needRub/contrib):0;
+    // поток участка: вся работа = сделано + можно сейчас (обеспечено заделом) + ждёт предыдущих
+    var tot=g.totalRub||0, dn=g.doneRub||0, av=g.availRub||0, bl=g.blockedRub||0;
+    var pD=tot>0?Math.round(dn/tot*100):0, pA=tot>0?Math.round(av/tot*100):0, pB=Math.max(0,100-pD-pA);
+    var fill=av>0?Math.min(100,Math.round(contrib/av*100)):(contrib>0?100:0);   // сколько доступного закроем завтра
+    var left=Math.round((tot-dn)*100)/100;
+    var days=(contrib>0&&left>0)?Math.ceil(left/contrib):0;
     var foot;
-    if(!g.needRub) foot='<span class="muted">в этой волне нет работ участка</span>';
-    else if(!contrib) foot='осталось <b>'+money(g.needRub)+' ₽</b> ('+g.needH+' ч) — никто не назначен';
+    if(!tot) foot='<span class="muted">в заказе нет работ этого участка</span>';
+    else if(!contrib) foot='осталось <b>'+money(left)+' ₽</b>'+(av>0?(' · можно делать сейчас <b>'+money(av)+' ₽</b>'):' · <b>фронт работ пуст</b> — ждёт предыдущий участок')+' — никто не назначен';
     else foot='завтра <b>~'+money(contrib)+' ₽</b>'+((cD>0&&cN>0)?' <span class="muted">(☀️ '+money(cD)+' + 🌙 '+money(cN)+')</span>':'')
-      +' · закроем <b>'+pct+'%</b> остатка ('+money(g.needRub)+' ₽) · таким составом ~<b>'+days+'</b> дн';
+      +' · закроем <b>'+fill+'%</b> доступного фронта · весь остаток (<b>'+money(left)+' ₽</b>) ~<b>'+days+'</b> дн';
+    var warn='';
+    if(contrib>0&&tot>0){
+      if(av<=0) warn='<div class="warnbar">⚠ на участке нет фронта работ — детали ещё не прошли предыдущий этап. Люди простоят.</div>';
+      else if(contrib>av*1.05) warn='<div class="warnbar">⚠ назначено ~'+money(contrib)+' ₽, а доступно только <b>'+money(av)+' ₽</b> — остальное ждёт предыдущего участка.</div>';
+    }
     var zoneRow=function(list,icon,sum){
       if(!list.length) return '';
       return '<div class="zrow"><span class="sh">'+icon+'</span>'+list.map(function(p){ return chipHtml(p,true); }).join('')
@@ -308,7 +342,14 @@ function renderBoard(){
       +(g.bottleneck?'<span class="pill" style="background:#fdecea;color:#c0392b">узкое место — сюда в первую очередь</span>':'')
       +'<span style="flex:1"></span><span class="muted" style="font-weight:600;font-size:12px">'
         +(pd.length?'☀️'+pd.length:'')+(pd.length&&pn.length?' · ':'')+(pn.length?'🌙'+pn.length:'')+(!ppl.length?'0 чел':'')+'</span></div>'
-      +(g.needRub?'<div class="zbar"><span class="ghost" style="width:'+pct+'%"></span></div>':'')
+      +(tot?'<div class="zbar">'
+          +'<span class="seg s-done" style="width:'+pD+'%" title="сделано '+money(dn)+' ₽"></span>'
+          +'<span class="seg s-av" style="width:'+pA+'%" title="можно делать сейчас '+money(av)+' ₽"><i style="width:'+fill+'%"></i></span>'
+          +'<span class="seg s-bl" style="width:'+pB+'%" title="ждёт предыдущих участков '+money(bl)+' ₽"></span></div>'
+        +'<div class="zlegend"><span><i style="background:#137333"></i>сделано '+money(dn)+'</span>'
+          +'<span><i style="background:#8fc2f5"></i>можно сейчас <b>'+money(av)+'</b></span>'
+          +'<span><i style="background:#dfe4ee"></i>ждёт '+money(bl)+'</span></div>':'')
+      +warn
       +'<div class="zbody">'+body+'</div>'
       +(op?opsPanelHtml(op,g):'')
       +'<div class="zfoot">'+foot+'</div></div>';
@@ -345,7 +386,7 @@ function editExpect(i){
   renderBoard();
   bgSaveP({vapi:'tabelassign',date:PLANDATE,worker:p.name,expect:(n>0?n:''),tgid:TGID});
 }
-function toggleOps(name){ OPSOPEN=(OPSOPEN===name)?'':name; SELCHIP=''; renderBoard(); }
+function toggleOps(name){ OPSOPEN=(OPSOPEN===name)?'':name; SELCHIP=''; DETOPEN=''; renderBoard(); }
 function opToggle(i,op,on){
   var p=BOARD.people[i], l=opsList(p), ix=l.indexOf(op);
   if(on&&ix<0) l.push(op); if(!on&&ix>=0) l.splice(ix,1);
