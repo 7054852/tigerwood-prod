@@ -85,10 +85,11 @@ function loadDay(force){
   if(c&&!force){ D=c; renderDayView(); }              // из кэша — мгновенно; свежее подтянется следом
   else if(!silent) $('pane').innerHTML='<div class="center muted">Загрузка…</div>';
   api({vapi:'tabelday',date:DATE,tgid:TGID}).then(function(r){
-    if(!r||!r.ok){ if(!c) $('pane').innerHTML='<div class="box err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
-    if(r.date!==DATE) return;                          // пользователь уже ушёл на другую дату
+    if(!r||!r.ok){ if(!c&&TAB==='t') $('pane').innerHTML='<div class="box err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
     if(SAVING>0) return;                               // идёт фоновая запись — не затирать оптимистичное состояние
-    D=r; DAYCACHE[DATE]=r; renderDayView();
+    DAYCACHE[r.date]=r;                                // данные в кэш в любом случае
+    if(TAB!=='t'||r.date!==DATE) return;               // пользователь уже на другой вкладке/дате — экран не трогаем
+    D=r; renderDayView();
   });
 }
 function recalcSum(){
@@ -180,8 +181,10 @@ function loadPlan(){
   var next=BATCHES.length?Promise.resolve():api({vapi:'batches'}).then(function(r){ BATCHES=((r&&r.batches)||[]).filter(function(b){ return b.status==='новая'||b.status==='в работе'; }); if(!OID&&BATCHES.length) OID=BATCHES[0].id; });
   next.then(function(){ var d=PLANDATE,o=OID; return api({vapi:'dayplan',date:d,batch:o,tgid:TGID}).then(function(r){ if(d!==PLANDATE||o!==OID) return null; return r; }); }).then(function(r){
     if(r===null) return;                               // уже переключили дату/заказ
-    if(!r||!r.ok){ if(!c) $('pane').innerHTML='<div class="box err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
-    PLANCACHE[PLANDATE+'|'+OID]=r; renderPlanView(r);
+    if(!r||!r.ok){ if(!c&&TAB==='p') $('pane').innerHTML='<div class="box err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
+    PLANCACHE[PLANDATE+'|'+OID]=r;                     // в кэш в любом случае
+    if(TAB!=='p') return;                              // пользователь уже на другой вкладке — экран не трогаем
+    renderPlanView(r);
   });
 }
 function renderPlanView(r){
@@ -227,7 +230,9 @@ var YM=isoToday().slice(0,7);
 function shiftMonth(d){ var p=YM.split('-'); var dt=new Date(Number(p[0]),Number(p[1])-1+d,1); YM=dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0'); loadMonth(); }
 function loadMonth(){
   $('pane').innerHTML='<div class="center muted">Загрузка…</div>';
+  var ym0=YM;
   api({vapi:'tabelmonth',ym:YM,tgid:TGID}).then(function(r){
+    if(TAB!=='m'||ym0!==YM) return;                    // пользователь уже на другой вкладке/месяце — экран не трогаем
     if(!r||!r.ok){ $('pane').innerHTML='<div class="box err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
     var p=YM.split('-'), days=new Date(Number(p[0]),Number(p[1]),0).getDate();
     var map={}; r.entries.forEach(function(e){ map[e.worker+'|'+Number(e.date.slice(8))]=e; });
