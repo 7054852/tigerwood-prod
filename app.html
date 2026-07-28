@@ -82,7 +82,7 @@
 <script>
 var BASE='https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';
 var APP='tw7prod', TGID='', ME=null, ROLE='', app=document.getElementById('app');
-var VER='20260728c';   // бамп при изменении встраиваемых stat-страниц — сбивает кеш GitHub Pages в iframe
+var VER='20260728d';   // бамп при изменении встраиваемых stat-страниц — сбивает кеш GitHub Pages в iframe
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
 function api(p){ p.app=APP; var q=Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]);}).join('&'); return fetch(BASE+'?'+q).then(function(r){return r.json();}); }
@@ -248,6 +248,7 @@ function showView(id){
   var url=withTid(ITEMS[id].url);
   url += (url.indexOf('?')>=0?'&':'?')+'embed=1';
   if(url.indexOf('7054852.github.io')>=0) url += '&v='+VER;   // версия только для наших stat-страниц (не для GAS)
+  url += '&twsec='+encodeURIComponent(id);   // раздел знает своё имя → рукопожатие для авто-обновления
   var focus=null;
   if(FOCUS && FOCUS.id===id){ focus=FOCUS.params; Object.keys(focus).forEach(function(k){ url += '&'+k+'='+encodeURIComponent(focus[k]); }); FOCUS=null; }
   var f=FRAMES[id];
@@ -256,9 +257,20 @@ function showView(id){
     document.getElementById('view').appendChild(f); FRAMES[id]=f;
   } else if(focus){
     f.src=url;   // переход с фокусом (например, из статистики к расценкам) — грузим заново с параметрами
+  } else {
+    pingRefresh(id);   // раздел уже жил скрытым → показываем сразу, а данные он перечитает сам (свежесть без белого экрана)
   }
   f.style.display='block';
 }
+// ── авто-обновление разделов: страницы шлют {tw:'hello',sec} при загрузке (даже из вложенных GAS-iframe),
+// шелл запоминает их окна и шлёт {tw:'refresh'} при каждом возврате на раздел / возврате на вкладку браузера ──
+var SECSRC={};
+window.addEventListener('message',function(e){ var d=e&&e.data; if(d&&d.tw==='hello'&&d.sec) SECSRC[d.sec]=e.source; });
+function pingRefresh(id){
+  var w=SECSRC[id]||(FRAMES[id]&&FRAMES[id].contentWindow);
+  if(w){ try{ w.postMessage({tw:'refresh'},'*'); }catch(e){} }
+}
+document.addEventListener('visibilitychange',function(){ if(!document.hidden&&NAVID) pingRefresh(NAVID); });
 // переход в другой раздел с фокусом (вызывается из встроенных страниц: parent.goFocus)
 var FOCUS=null;
 function goFocus(id, params){ if(!ITEMS[id]){ return false; } FOCUS={ id:id, params:params||{} }; drawer(false); go(id); return true; }

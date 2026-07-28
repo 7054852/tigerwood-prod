@@ -648,6 +648,12 @@ function rmItem(itemId){
 function ship(id){ var m=$('bm_'+id); m.textContent='…'; api({vapi:'shipbatch', batch:id}).then(function(r){ m.innerHTML=(r&&r.ok)?'<span class="ok">отгружено '+(r.shipped||0)+'</span>':'<span class="err">ошибка</span>'; setTimeout(reloadDetail,700); }); }
 
 load();
+
+// авто-обновление: оболочка шлёт «refresh» при возврате на раздел — перечитываем данные без перезагрузки страницы
+(function(){
+  try{ var m=/[?&]twsec=([^&]+)/.exec(location.search); window.top.postMessage({tw:'hello',sec:m?decodeURIComponent(m[1]):''},'*'); }catch(e){}
+  window.addEventListener('message',function(e){ var d=e&&e.data; if(d&&d.tw==='refresh'){ try{ if(typeof VIEW!=="undefined"&&VIEW==="detail"&&CUR){loadDetail(CUR);}else{load();} }catch(err){} } });
+})();
 </script>
 </body>
 </html>

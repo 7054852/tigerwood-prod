@@ -81,9 +81,9 @@ function showTab(t){ TAB=t; ['t','p','m'].forEach(function(x){ var b=$('tb-'+x);
 var DAYCACHE={}, SAVING=0;
 function shiftDate(dd){ var d=new Date(DATE+'T12:00:00'); d.setDate(d.getDate()+dd); DATE=isoToday(d); loadDay(); }
 function loadDay(force){
-  var c=DAYCACHE[DATE];
+  var c=DAYCACHE[DATE], silent=(force==='silent');
   if(c&&!force){ D=c; renderDayView(); }              // из кэша — мгновенно; свежее подтянется следом
-  else $('pane').innerHTML='<div class="center muted">Загрузка…</div>';
+  else if(!silent) $('pane').innerHTML='<div class="center muted">Загрузка…</div>';
   api({vapi:'tabelday',date:DATE,tgid:TGID}).then(function(r){
     if(!r||!r.ok){ if(!c) $('pane').innerHTML='<div class="box err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
     if(r.date!==DATE) return;                          // пользователь уже ушёл на другую дату
@@ -129,13 +129,19 @@ function renderDayView(){
 }
 function svShow(){ var e=$('sv'); if(e) e.textContent='💾 сохраняю…'; }
 function svDone(){ var e=$('sv'); if(e) e.textContent=''; }
+var CONVERGE=null;
 function bgSave(p){
   PLANCACHE={};                                        // состав смены изменился → план дня пересчитается
   SAVING++; svShow();
   api(p).then(function(r){
-    SAVING--; if(SAVING<=0){ SAVING=0; svDone(); }
+    SAVING--; if(SAVING<=0){ SAVING=0; svDone(); scheduleConverge(); }
     if(!r||!r.ok){ alert((r&&r.error)||'не сохранилось — обновляю'); loadDay(true); }
   }).catch(function(){ SAVING--; if(SAVING<0)SAVING=0; alert('Нет связи — обновляю'); loadDay(true); });
+}
+// после того как все записи ушли — один тихий сверочный запрос (экран сходится с сервером)
+function scheduleConverge(){
+  if(CONVERGE) clearTimeout(CONVERGE);
+  CONVERGE=setTimeout(function(){ CONVERGE=null; if(SAVING===0&&TAB==='t') loadDay('silent'); },1200);
 }
 function setShift(i,sh){
   var w=D.workers[i]; var next=(w.shift===sh)?'':sh;   // повторный клик — снять смену
@@ -234,6 +240,12 @@ function loadMonth(){
   });
 }
 shell();
+
+// авто-обновление: оболочка шлёт «refresh» при возврате на раздел — перечитываем данные без перезагрузки страницы
+(function(){
+  try{ var m=/[?&]twsec=([^&]+)/.exec(location.search); window.top.postMessage({tw:'hello',sec:m?decodeURIComponent(m[1]):''},'*'); }catch(e){}
+  window.addEventListener('message',function(e){ var d=e&&e.data; if(d&&d.tw==='refresh'){ try{ DAYCACHE={};PLANCACHE={};if(TAB==="t")loadDay(true);else if(TAB==="p")loadPlan();else loadMonth(); }catch(err){} } });
+})();
 </script>
 </body>
 </html>
