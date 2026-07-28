@@ -123,17 +123,19 @@ function renderDayView(){
     return '<div class="wrow"><span class="wname">'+esc(w.name)+(w.role!=='рабочий'?' <span class="muted" style="font-size:11px">'+esc(w.role)+'</span>':'')+'</span>'
       +'<button class="sbtn'+(w.shift==='день'?' on-day':'')+'" onclick="setShift('+i+',\'день\')">☀️ день</button>'
       +'<button class="sbtn'+(w.shift==='ночь'?' on-night':'')+'" onclick="setShift('+i+',\'ночь\')">🌙 ночь</button>'
+      +(w.shift?'<button class="gho" style="color:var(--red);font-weight:700" onclick="clearShift('+i+')" title="снять смену">✕ снять</button>':'')
       +fact+assign+'</div>';
   }).join('');
   $('pane').innerHTML=head+'<div class="box">'+ (rows||'<div class="muted">нет активных сотрудников</div>') +'</div>';
 }
 function svShow(){ var e=$('sv'); if(e) e.textContent='💾 сохраняю…'; }
 function svDone(){ var e=$('sv'); if(e) e.textContent=''; }
-var CONVERGE=null;
+var CONVERGE=null, SAVEQ=Promise.resolve();
 function bgSave(p){
   PLANCACHE={};                                        // состав смены изменился → план дня пересчитается
   SAVING++; svShow();
-  api(p).then(function(r){
+  // записи уходят СТРОГО ПО ОЧЕРЕДИ кликов (иначе параллельные запросы могут обогнать друг друга)
+  SAVEQ=SAVEQ.then(function(){ return api(p); }).then(function(r){
     SAVING--; if(SAVING<=0){ SAVING=0; svDone(); scheduleConverge(); }
     if(!r||!r.ok){ alert((r&&r.error)||'не сохранилось — обновляю'); loadDay(true); }
   }).catch(function(){ SAVING--; if(SAVING<0)SAVING=0; alert('Нет связи — обновляю'); loadDay(true); });
@@ -148,6 +150,13 @@ function setShift(i,sh){
   w.shift=next; if(!next){ w.status=''; w.group=''; w.ops=''; } else if(!w.status||w.status==='') w.status='план';
   recalcSum(); renderDayView();                         // мгновенно на экране
   bgSave({vapi:'tabelset',date:DATE,worker:w.name,shift:next,tgid:TGID});
+}
+// явное снятие смены (кнопка ✕ — то же, что повторный клик по активной смене)
+function clearShift(i){
+  var w=D.workers[i];
+  w.shift=''; w.status=''; w.group=''; w.ops='';
+  recalcSum(); renderDayView();
+  bgSave({vapi:'tabelset',date:DATE,worker:w.name,shift:'',tgid:TGID});
 }
 function setFact(i,st){
   var w=D.workers[i]; var next=(w.status===st)?'план':st;   // повторный клик — сброс к «план»
