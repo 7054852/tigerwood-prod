@@ -64,7 +64,10 @@
   .zh .zn{ font-size:15px; }
   .zbar{ height:14px; background:#eef1f8; border-radius:8px; overflow:hidden; display:flex; margin:2px 12px 0; }
   .zbar .ghost{ background:repeating-linear-gradient(45deg,#5f9be6,#5f9be6 6px,#9cc4f2 6px,#9cc4f2 12px); transition:width .35s ease; height:100%; }
-  .zbody{ padding:8px 12px; display:flex; flex-wrap:wrap; gap:8px; min-height:42px; align-items:center; }
+  .zbody{ padding:8px 12px; min-height:42px; }
+  .zrow{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:3px 0; }
+  .zrow + .zrow{ border-top:1px dashed var(--line); margin-top:3px; }
+  .zrow .sh{ font-size:12px; color:var(--muted); font-weight:700; min-width:30px; }
   .zfoot{ padding:0 12px 10px; font-size:12.5px; color:var(--muted); }
   .zfoot b{ color:var(--fg); }
   .opspanel{ margin:0 12px 10px; border:1px dashed var(--line); border-radius:10px; padding:8px 10px; font-size:12.5px; }
@@ -269,8 +272,9 @@ function renderBoard(){
     +'</div>';
   var benchRow=function(list,icon,lbl){
     if(!list.length) return '';
-    return '<div style="margin-top:8px"><span class="muted" style="font-size:12px;font-weight:700">'+icon+' '+lbl+' ('+list.length+')</span>'
-      +'<div class="bench" style="margin-top:5px">'+list.map(function(p){ return chipHtml(p,false); }).join('')+'</div></div>';
+    return '<div class="zrow" style="margin-top:6px"><span class="sh">'+icon+'</span>'
+      +list.map(function(p){ return chipHtml(p,false); }).join('')
+      +'<span class="muted" style="font-size:11.5px;margin-left:auto">'+lbl+': '+list.length+' · ~'+money(sumExp(list))+' ₽</span></div>';
   };
   var showD=(SHIFTF!=='ночь'), showN=(SHIFTF!=='день');
   var benchInner=(showD?benchRow(benchD,'☀️','день'):'')+(showN?benchRow(benchN,'🌙','ночь'):'');
@@ -287,14 +291,15 @@ function renderBoard(){
     else if(!contrib) foot='осталось <b>'+money(g.needRub)+' ₽</b> ('+g.needH+' ч) — никто не назначен';
     else foot='завтра <b>~'+money(contrib)+' ₽</b>'+((cD>0&&cN>0)?' <span class="muted">(☀️ '+money(cD)+' + 🌙 '+money(cN)+')</span>':'')
       +' · закроем <b>'+pct+'%</b> остатка ('+money(g.needRub)+' ₽) · таким составом ~<b>'+days+'</b> дн';
-    var zoneRow=function(list,icon){
+    var zoneRow=function(list,icon,sum){
       if(!list.length) return '';
-      return '<span class="muted" style="font-size:12px;align-self:center">'+icon+'</span>'+list.map(function(p){ return chipHtml(p,true); }).join('');
+      return '<div class="zrow"><span class="sh">'+icon+'</span>'+list.map(function(p){ return chipHtml(p,true); }).join('')
+        +'<span class="muted" style="font-size:11.5px;margin-left:auto">~'+money(sum)+' ₽</span></div>';
     };
-    var body=(showD?zoneRow(pd,'☀️'):'')+(showN?zoneRow(pn,'🌙'):'');
+    var body=(showD?zoneRow(pd,'☀️',cD):'')+(showN?zoneRow(pn,'🌙',cN):'');
     var hiddenCnt=(showD?0:pd.length)+(showN?0:pn.length);
-    if(!body) body='<span class="drophint">'+(SELCHIP?'👇 нажмите сюда':(hiddenCnt?'+'+hiddenCnt+' скрыто фильтром':'пусто'))+'</span>';
-    else if(hiddenCnt) body+='<span class="muted" style="font-size:11px;align-self:center">+'+hiddenCnt+' скрыто</span>';
+    if(!body) body='<div class="zrow"><span class="drophint">'+(SELCHIP?'👇 нажмите сюда':(hiddenCnt?'+'+hiddenCnt+' скрыто фильтром':'пусто'))+'</span></div>';
+    else if(hiddenCnt) body+='<div class="zrow"><span class="muted" style="font-size:11px">+'+hiddenCnt+' скрыто фильтром</span></div>';
     var op=ppl.filter(function(p){ return p.name===OPSOPEN; })[0];
     return '<div class="zone'+(g.bottleneck?' bn':'')+(SELCHIP?' target':'')+'"'
       +' ondragover="event.preventDefault();this.classList.add(\'target\')" ondragleave="this.classList.remove(\'target\')"'
