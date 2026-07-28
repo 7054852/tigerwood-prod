@@ -75,67 +75,101 @@ function shell(){
 function showTab(t){ TAB=t; ['t','p','m'].forEach(function(x){ var b=$('tb-'+x); if(b) b.className=(x===t?'active':''); });
   if(t==='t') loadDay(); else if(t==='p') loadPlan(); else loadMonth(); }
 
-/* ── ТАБЕЛЬ НА ДАТУ ── */
+/* ── ТАБЕЛЬ НА ДАТУ ──
+   Отклик мгновенный: кнопка меняется СРАЗУ (оптимистично), запись уходит в фоне;
+   при ошибке — предупреждение и перезагрузка с сервера. Даты кэшируются (навигация без ожидания). */
+var DAYCACHE={}, SAVING=0;
 function shiftDate(dd){ var d=new Date(DATE+'T12:00:00'); d.setDate(d.getDate()+dd); DATE=isoToday(d); loadDay(); }
-function loadDay(){
-  $('pane').innerHTML='<div class="center muted">Загрузка…</div>';
+function loadDay(force){
+  var c=DAYCACHE[DATE];
+  if(c&&!force){ D=c; renderDayView(); }              // из кэша — мгновенно; свежее подтянется следом
+  else $('pane').innerHTML='<div class="center muted">Загрузка…</div>';
   api({vapi:'tabelday',date:DATE,tgid:TGID}).then(function(r){
-    if(!r||!r.ok){ $('pane').innerHTML='<div class="box err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
-    D=r;
-    var isPast = DATE<=isoToday();
-    var head='<div class="box"><div class="row">'
-      +'<button class="gho" onclick="shiftDate(-1)">←</button>'
-      +'<input type="date" value="'+DATE+'" onchange="DATE=this.value;loadDay();">'
-      +'<button class="gho" onclick="shiftDate(1)">→</button>'
-      +'<b>'+ruDate(DATE)+' ('+dayName(DATE)+')</b>'
-      +'<span class="pill" style="background:#fff3d6;color:#8a6d00">☀️ '+r.summary.day+'</span>'
-      +'<span class="pill" style="background:#e3e8ff;color:#3446a0">🌙 '+r.summary.night+'</span>'
-      +(r.summary.out?'<span class="pill" style="background:#e6f4ea;color:#137333">вышло '+r.summary.out+'</span>':'')
-      +(r.summary.no?'<span class="pill" style="background:#fdecea;color:#c0392b">не вышло '+r.summary.no+'</span>':'')
-      +'</div><div class="muted" style="margin-top:4px">Нажмите ☀️/🌙 чтобы отметить смену; ещё раз — снять. '+(isPast?'Отметьте факт: ✓ вышел / ✗ не вышел.':'')+'</div></div>';
-    var gopts=function(cur){ return '<option value="">— участок —</option>'+D.groups.map(function(g){ return '<option'+(g===cur?' selected':'')+'>'+esc(g)+'</option>'; }).join(''); };
-    var rows=r.workers.map(function(w,i){
-      var fact = (w.shift && isPast)
-        ? ' <button class="fbtn'+(w.status==='вышел'?' on-out':'')+'" onclick="setFact('+i+',\'вышел\')">✓ вышел</button>'
-          +'<button class="fbtn'+(w.status==='не вышел'?' on-no':'')+'" onclick="setFact('+i+',\'не вышел\')">✗ не вышел</button>'
-        : '';
-      var assign = w.shift
-        ? ' <select class="gsel" onchange="setAssign('+i+',this.value,null)">'+gopts(w.group)+'</select>'
-          +'<input class="opsin" placeholder="операции (не обяз.)" value="'+esc(w.ops)+'" onchange="setAssign('+i+',null,this.value)">'
-        : '';
-      return '<div class="wrow"><span class="wname">'+esc(w.name)+(w.role!=='рабочий'?' <span class="muted" style="font-size:11px">'+esc(w.role)+'</span>':'')+'</span>'
-        +'<button class="sbtn'+(w.shift==='день'?' on-day':'')+'" onclick="setShift('+i+',\'день\')">☀️ день</button>'
-        +'<button class="sbtn'+(w.shift==='ночь'?' on-night':'')+'" onclick="setShift('+i+',\'ночь\')">🌙 ночь</button>'
-        +fact+assign+'</div>';
-    }).join('');
-    $('pane').innerHTML=head+'<div class="box">'+ (rows||'<div class="muted">нет активных сотрудников</div>') +'</div>';
+    if(!r||!r.ok){ if(!c) $('pane').innerHTML='<div class="box err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
+    if(r.date!==DATE) return;                          // пользователь уже ушёл на другую дату
+    if(SAVING>0) return;                               // идёт фоновая запись — не затирать оптимистичное состояние
+    D=r; DAYCACHE[DATE]=r; renderDayView();
   });
+}
+function recalcSum(){
+  var s={day:0,night:0,out:0,no:0};
+  D.workers.forEach(function(w){ if(w.shift==='день')s.day++; if(w.shift==='ночь')s.night++;
+    if(w.status==='вышел')s.out++; if(w.status==='не вышел')s.no++; });
+  D.summary=s;
+}
+function renderDayView(){
+  var r=D, isPast=DATE<=isoToday();
+  var head='<div class="box"><div class="row">'
+    +'<button class="gho" onclick="shiftDate(-1)">←</button>'
+    +'<input type="date" value="'+DATE+'" onchange="DATE=this.value;loadDay();">'
+    +'<button class="gho" onclick="shiftDate(1)">→</button>'
+    +'<b>'+ruDate(DATE)+' ('+dayName(DATE)+')</b>'
+    +'<span class="pill" style="background:#fff3d6;color:#8a6d00">☀️ '+r.summary.day+'</span>'
+    +'<span class="pill" style="background:#e3e8ff;color:#3446a0">🌙 '+r.summary.night+'</span>'
+    +(r.summary.out?'<span class="pill" style="background:#e6f4ea;color:#137333">вышло '+r.summary.out+'</span>':'')
+    +(r.summary.no?'<span class="pill" style="background:#fdecea;color:#c0392b">не вышло '+r.summary.no+'</span>':'')
+    +'<span class="muted" id="sv" style="font-size:12px"></span>'
+    +'</div><div class="muted" style="margin-top:4px">Нажмите ☀️/🌙 чтобы отметить смену; ещё раз — снять. '+(isPast?'Отметьте факт: ✓ вышел / ✗ не вышел.':'')+'</div></div>';
+  var gopts=function(cur){ return '<option value="">— участок —</option>'+D.groups.map(function(g){ return '<option'+(g===cur?' selected':'')+'>'+esc(g)+'</option>'; }).join(''); };
+  var rows=r.workers.map(function(w,i){
+    var fact = (w.shift && isPast)
+      ? ' <button class="fbtn'+(w.status==='вышел'?' on-out':'')+'" onclick="setFact('+i+',\'вышел\')">✓ вышел</button>'
+        +'<button class="fbtn'+(w.status==='не вышел'?' on-no':'')+'" onclick="setFact('+i+',\'не вышел\')">✗ не вышел</button>'
+      : '';
+    var assign = w.shift
+      ? ' <select class="gsel" onchange="setAssign('+i+',this.value,null)">'+gopts(w.group)+'</select>'
+        +'<input class="opsin" placeholder="операции (не обяз.)" value="'+esc(w.ops)+'" onchange="setAssign('+i+',null,this.value)">'
+      : '';
+    return '<div class="wrow"><span class="wname">'+esc(w.name)+(w.role!=='рабочий'?' <span class="muted" style="font-size:11px">'+esc(w.role)+'</span>':'')+'</span>'
+      +'<button class="sbtn'+(w.shift==='день'?' on-day':'')+'" onclick="setShift('+i+',\'день\')">☀️ день</button>'
+      +'<button class="sbtn'+(w.shift==='ночь'?' on-night':'')+'" onclick="setShift('+i+',\'ночь\')">🌙 ночь</button>'
+      +fact+assign+'</div>';
+  }).join('');
+  $('pane').innerHTML=head+'<div class="box">'+ (rows||'<div class="muted">нет активных сотрудников</div>') +'</div>';
+}
+function svShow(){ var e=$('sv'); if(e) e.textContent='💾 сохраняю…'; }
+function svDone(){ var e=$('sv'); if(e) e.textContent=''; }
+function bgSave(p){
+  PLANCACHE={};                                        // состав смены изменился → план дня пересчитается
+  SAVING++; svShow();
+  api(p).then(function(r){
+    SAVING--; if(SAVING<=0){ SAVING=0; svDone(); }
+    if(!r||!r.ok){ alert((r&&r.error)||'не сохранилось — обновляю'); loadDay(true); }
+  }).catch(function(){ SAVING--; if(SAVING<0)SAVING=0; alert('Нет связи — обновляю'); loadDay(true); });
 }
 function setShift(i,sh){
   var w=D.workers[i]; var next=(w.shift===sh)?'':sh;   // повторный клик — снять смену
-  api({vapi:'tabelset',date:DATE,worker:w.name,shift:next,tgid:TGID}).then(function(r){
-    if(!r||!r.ok){ alert((r&&r.error)||'ошибка'); return; } loadDay();
-  });
+  w.shift=next; if(!next){ w.status=''; w.group=''; w.ops=''; } else if(!w.status||w.status==='') w.status='план';
+  recalcSum(); renderDayView();                         // мгновенно на экране
+  bgSave({vapi:'tabelset',date:DATE,worker:w.name,shift:next,tgid:TGID});
 }
 function setFact(i,st){
   var w=D.workers[i]; var next=(w.status===st)?'план':st;   // повторный клик — сброс к «план»
-  api({vapi:'tabelfact',date:DATE,worker:w.name,status:next,tgid:TGID}).then(function(r){
-    if(!r||!r.ok){ alert((r&&r.error)||'ошибка'); return; } loadDay();
-  });
+  w.status=next; recalcSum(); renderDayView();
+  bgSave({vapi:'tabelfact',date:DATE,worker:w.name,status:next,tgid:TGID});
 }
 function setAssign(i,group,ops){
   var w=D.workers[i];
+  if(group!=null) w.group=group; if(ops!=null) w.ops=ops;   // локально сразу; без перерисовки — фокус не теряем
   var p={vapi:'tabelassign',date:DATE,worker:w.name,tgid:TGID};
   if(group!=null) p.group=group; if(ops!=null) p.ops=ops;
-  api(p).then(function(r){ if(!r||!r.ok) alert((r&&r.error)||'ошибка'); });
+  bgSave(p);
 }
 
 /* ── ПЛАН НА ДЕНЬ ── */
+var PLANCACHE={};
 function loadPlan(){
-  $('pane').innerHTML='<div class="center muted">Загрузка…</div>';
+  var ck=PLANDATE+'|'+OID, c=PLANCACHE[ck];
+  if(c){ renderPlanView(c); }                          // из кэша мгновенно; свежее подтянется
+  else $('pane').innerHTML='<div class="center muted">Загрузка…</div>';
   var next=BATCHES.length?Promise.resolve():api({vapi:'batches'}).then(function(r){ BATCHES=((r&&r.batches)||[]).filter(function(b){ return b.status==='новая'||b.status==='в работе'; }); if(!OID&&BATCHES.length) OID=BATCHES[0].id; });
-  next.then(function(){ return api({vapi:'dayplan',date:PLANDATE,batch:OID,tgid:TGID}); }).then(function(r){
-    if(!r||!r.ok){ $('pane').innerHTML='<div class="box err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
+  next.then(function(){ var d=PLANDATE,o=OID; return api({vapi:'dayplan',date:d,batch:o,tgid:TGID}).then(function(r){ if(d!==PLANDATE||o!==OID) return null; return r; }); }).then(function(r){
+    if(r===null) return;                               // уже переключили дату/заказ
+    if(!r||!r.ok){ if(!c) $('pane').innerHTML='<div class="box err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
+    PLANCACHE[PLANDATE+'|'+OID]=r; renderPlanView(r);
+  });
+}
+function renderPlanView(r){
     var opts=BATCHES.map(function(b){ return '<option value="'+esc(b.id)+'"'+(b.id===OID?' selected':'')+'>'+esc(b.num)+' · '+esc(b.name||'')+'</option>'; }).join('');
     var head='<div class="box"><div class="row">'
       +'<input type="date" value="'+PLANDATE+'" onchange="PLANDATE=this.value;loadPlan();"><b>'+ruDate(PLANDATE)+' ('+dayName(PLANDATE)+')</b>'
@@ -165,13 +199,13 @@ function loadPlan(){
     $('pane').innerHTML=head+kpi
       +'<div class="box">'+wave+'<table><thead><tr><th>Участок</th><th class="num">Люди</th><th class="num">Часы</th><th class="num">Нужно ч (волна)</th><th>Покрытие</th></tr></thead><tbody>'+grows+'</tbody></table>'+unass+'</div>'
       +ppl;
-  });
 }
 function saveTarget(){
-  var v=($('tgt').value||'').trim();
+  var v=($('tgt').value||'').trim(), b=event&&event.target; if(b) b.textContent='…';
+  delete PLANCACHE[PLANDATE+'|'+OID];                    // план изменился — кэш вида устарел
   api({vapi:'daytarget',date:PLANDATE,rub:v,tgid:TGID}).then(function(r){ if(!r||!r.ok){ alert((r&&r.error)||'ошибка'); return; } loadPlan(); });
 }
-function resetTarget(){ api({vapi:'daytarget',date:PLANDATE,rub:'',tgid:TGID}).then(function(){ loadPlan(); }); }
+function resetTarget(){ delete PLANCACHE[PLANDATE+'|'+OID]; api({vapi:'daytarget',date:PLANDATE,rub:'',tgid:TGID}).then(function(){ loadPlan(); }); }
 
 /* ── МЕСЯЦ ── */
 var YM=isoToday().slice(0,7);
