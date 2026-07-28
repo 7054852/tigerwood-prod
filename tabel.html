@@ -42,6 +42,34 @@
   .kpi b{ font-size:17px; } .kpi .k{ color:var(--muted); font-weight:600; font-size:12px; display:block; }
   .gbar{ height:6px; background:#eef1f8; border-radius:6px; overflow:hidden; }
   .gbar>i{ display:block; height:100%; background:var(--accent); }
+  /* ── доска расстановки ── */
+  .bench{ display:flex; flex-wrap:wrap; gap:8px; min-height:44px; align-items:center; }
+  .chip{ display:inline-flex; align-items:center; gap:7px; background:var(--card); border:1.5px solid var(--line); border-radius:22px;
+         padding:6px 12px; cursor:grab; user-select:none; font-size:13px;
+         transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease; }
+  .chip b{ font-weight:700; white-space:nowrap; }
+  .chip .st{ color:var(--muted); font-size:11.5px; white-space:nowrap; }
+  .chip .exp{ font-weight:800; color:#2f7a34; cursor:pointer; white-space:nowrap; }
+  .chip .exp.own{ color:#b7791f; }
+  .chip.sel{ transform:translateY(-3px) scale(1.04); box-shadow:0 6px 18px rgba(43,125,233,.28); border-color:var(--accent); }
+  .chip.drag{ opacity:.45; }
+  .chip .x{ color:var(--muted); cursor:pointer; font-weight:800; padding:0 2px; } .chip .x:hover{ color:var(--red); }
+  .chip .opsb{ font-size:11px; color:var(--accent); cursor:pointer; white-space:nowrap; }
+  .zone{ border:2px solid var(--line); border-radius:14px; background:var(--card); margin-bottom:12px; overflow:hidden;
+         transition:border-color .15s ease, box-shadow .15s ease; }
+  .zone.target{ border-color:var(--accent); box-shadow:0 0 0 3px rgba(43,125,233,.16); cursor:pointer; }
+  .zone.bn{ border-color:var(--red); animation:zpulse 1.8s infinite; }
+  @keyframes zpulse{ 0%,100%{ box-shadow:0 0 0 0 rgba(192,57,43,.28);} 50%{ box-shadow:0 0 0 7px rgba(192,57,43,.05);} }
+  .zh{ display:flex; align-items:center; gap:8px; padding:9px 12px 6px; font-weight:800; flex-wrap:wrap; }
+  .zh .zn{ font-size:15px; }
+  .zbar{ height:14px; background:#eef1f8; border-radius:8px; overflow:hidden; display:flex; margin:2px 12px 0; }
+  .zbar .ghost{ background:repeating-linear-gradient(45deg,#5f9be6,#5f9be6 6px,#9cc4f2 6px,#9cc4f2 12px); transition:width .35s ease; height:100%; }
+  .zbody{ padding:8px 12px; display:flex; flex-wrap:wrap; gap:8px; min-height:42px; align-items:center; }
+  .zfoot{ padding:0 12px 10px; font-size:12.5px; color:var(--muted); }
+  .zfoot b{ color:var(--fg); }
+  .opspanel{ margin:0 12px 10px; border:1px dashed var(--line); border-radius:10px; padding:8px 10px; font-size:12.5px; }
+  .opspanel label{ display:flex; gap:6px; align-items:center; padding:3px 0; cursor:pointer; }
+  .drophint{ color:var(--muted); font-size:12px; }
 </style>
 </head>
 <body>
@@ -187,36 +215,130 @@ function loadPlan(){
     renderPlanView(r);
   });
 }
-function renderPlanView(r){
-    var opts=BATCHES.map(function(b){ return '<option value="'+esc(b.id)+'"'+(b.id===OID?' selected':'')+'>'+esc(b.num)+' · '+esc(b.name||'')+'</option>'; }).join('');
-    var head='<div class="box"><div class="row">'
-      +'<input type="date" value="'+PLANDATE+'" onchange="PLANDATE=this.value;loadPlan();"><b>'+ruDate(PLANDATE)+' ('+dayName(PLANDATE)+')</b>'
-      +'<span class="muted">заказ:</span><select onchange="OID=this.value;loadPlan();">'+opts+'</select></div></div>';
-    var kpi='<div class="box kpi">'
-      +'<span><span class="k">Людей в смене</span><b>'+r.people.length+'</b></span>'
-      +'<span><span class="k">Часов</span><b>'+r.totalHours+'</b></span>'
-      +'<span><span class="k">Авторасчёт (часы × '+r.hourRate+' ₽)</span><b>'+money(r.autoRub)+' ₽</b></span>'
-      +'<span><span class="k">План выработки на день'+(r.overridden?' (скорректирован)':'')+'</span>'
-        +'<b><input id="tgt" value="'+money(r.targetRub).replace(',','.')+'" style="width:100px;font-weight:800;font-size:16px" inputmode="decimal"> ₽</b> '
-        +'<button class="sec" onclick="saveTarget()">💾</button>'
-        +(r.overridden?' <button class="gho" onclick="resetTarget()" title="вернуть авторасчёт">↺ авто</button>':'')+'</span>'
-      +'</div>';
-    var grows=r.groups.map(function(g){
-      var pct=g.needH>0?Math.min(100,Math.round(g.hours/g.needH*100)):0;
-      return '<tr'+(g.bottleneck?' style="background:#fff5f4"':'')+'><td>'+esc(g.group)+(g.bottleneck?' <span class="pill" style="background:#fdecea;color:#c0392b">узкое место</span>':'')+'</td>'
-        +'<td class="num">'+g.people+'</td><td class="num">'+g.hours+'</td><td class="num">'+(g.needH||'—')+'</td>'
-        +'<td style="min-width:110px">'+(g.needH>0?('<div class="gbar"><i style="width:'+pct+'%'+(g.bottleneck?';background:var(--red)':'')+'"></i></div><span class="muted" style="font-size:11px">'+pct+'% потребности'+(g.needH>0&&g.hours>0?(' · ~'+Math.ceil(g.needH/g.hours)+' дн таким составом'):'')+'</span>'):'<span class="muted">—</span>')+'</td></tr>';
-    }).join('');
-    var unass=r.unassigned.people?('<div class="muted" style="margin-top:6px">⚠ без участка: '+r.unassigned.people+' чел ('+r.unassigned.hours+' ч) — расставьте во вкладке «Табель»</div>'):'';
-    var wave=r.waveTitle?('<div class="muted" style="margin-bottom:6px">Потребность из волны «'+esc(r.waveTitle)+'»'+(r.bottleneck?' · узкое место: <b>'+esc(r.bottleneck)+'</b> — ставьте людей туда в первую очередь':'')+'</div>'):'<div class="muted" style="margin-bottom:6px">Выберите заказ с планом волн — появится потребность участков.</div>';
-    var ppl=r.people.length?('<div class="box"><b>Кто в смене</b>'+r.people.map(function(p){
-      return '<div class="wrow"><span class="wname">'+esc(p.name)+'</span><span>'+(p.shift==='ночь'?'🌙':'☀️')+' '+p.hours+' ч</span>'
-        +'<span class="muted">'+esc(p.group||'без участка')+(p.ops?(' · '+esc(p.ops)):'')+'</span>'
-        +(p.status==='вышел'?'<span class="pill" style="background:#e6f4ea;color:#137333">вышел</span>':'')+'</div>';
-    }).join('')+'</div>'):'<div class="box muted">На эту дату никто не отмечен в табеле — начните с вкладки «Табель».</div>';
-    $('pane').innerHTML=head+kpi
-      +'<div class="box">'+wave+'<table><thead><tr><th>Участок</th><th class="num">Люди</th><th class="num">Часы</th><th class="num">Нужно ч (волна)</th><th>Покрытие</th></tr></thead><tbody>'+grows+'</tbody></table>'+unass+'</div>'
-      +ppl;
+/* ── ДОСКА РАССТАНОВКИ: бойцы-чипы → зоны-участки; сдвиг результата считается мгновенно ── */
+var BOARD=null, SELCHIP='', OPSOPEN='';
+var ZICON={'Механика':'🛠','Шлифовка':'🪵','Покрытие':'🎨','Сборка':'📦'};
+function renderPlanView(r){ BOARD=r; renderBoard(); }
+function idxByName(n){ if(!BOARD) return -1; for(var i=0;i<BOARD.people.length;i++) if(BOARD.people[i].name===n) return i; return -1; }
+function opsList(p){ return (p.ops||'').split(',').map(function(s){return s.trim();}).filter(Boolean); }
+function opsLabel(p){ var l=opsList(p); if(!l.length) return 'операции ▾'; return esc(l[0])+(l.length>1?' +'+(l.length-1):'')+' ▾'; }
+function chipHtml(p,inZone){
+  var i=BOARD.people.indexOf(p);
+  var sel=(SELCHIP===p.name)?' sel':'';
+  var star=p.topGroup?'<span class="st">⭐'+esc(p.topGroup)+'</span>':'';
+  var exp='<span class="exp'+(p.expectSrc==='своё'?' own':'')+'" onclick="event.stopPropagation();editExpect('+i+')" title="ожидаемая выработка ₽/день ('+esc(p.expectSrc)+'). Нажмите — поменять">⚡'+Math.round(p.expect)+'</span>';
+  var opsb=inZone?'<span class="opsb" onclick="event.stopPropagation();toggleOps(\''+esc(p.name)+'\')">'+opsLabel(p)+'</span>':'';
+  var x=inZone?'<span class="x" onclick="event.stopPropagation();unassign('+i+')" title="вернуть на скамейку">✕</span>':'';
+  return '<span class="chip'+sel+'" draggable="true" ondragstart="dragChip(event,'+i+')" ondragend="this.classList.remove(\'drag\')" onclick="event.stopPropagation();tapChip('+i+')">'
+    +(p.shift==='ночь'?'🌙':'☀️')+' <b>'+esc(p.name)+'</b>'+exp+star+opsb+x+'</span>';
+}
+function opsPanelHtml(p,g){
+  var cur=opsList(p), i=BOARD.people.indexOf(p);
+  var items=(g.ops||[]).map(function(t){
+    var ch=cur.indexOf(t.op)>=0;
+    return '<label><input type="checkbox" '+(ch?'checked':'')+' onchange="opToggle('+i+',\''+esc(t.op)+'\',this.checked)"> '+esc(t.op)
+      +' <span class="muted">· осталось '+Math.round(t.qty)+' шт · '+money(t.rub)+' ₽</span></label>';
+  }).join('');
+  return '<div class="opspanel" onclick="event.stopPropagation()"><b>'+esc(p.name)+' — какие операции:</b>'+(items||'<div class="muted">в волне нет операций этого участка</div>')+'</div>';
+}
+function renderBoard(){
+  var r=BOARD;
+  var opts=BATCHES.map(function(b){ return '<option value="'+esc(b.id)+'"'+(b.id===OID?' selected':'')+'>'+esc(b.num)+' · '+esc(b.name||'')+'</option>'; }).join('');
+  var total=0; r.people.forEach(function(p){ total+=p.expect||0; }); total=Math.round(total*100)/100;
+  var bench=r.people.filter(function(p){ return !p.group; });
+  var head='<div class="box"><div class="row">'
+    +'<input type="date" value="'+PLANDATE+'" onchange="PLANDATE=this.value;SELCHIP=\'\';OPSOPEN=\'\';loadPlan();"><b>'+ruDate(PLANDATE)+' ('+dayName(PLANDATE)+')</b>'
+    +'<span class="muted">заказ:</span><select onchange="OID=this.value;SELCHIP=\'\';OPSOPEN=\'\';loadPlan();">'+opts+'</select></div></div>';
+  var kpi='<div class="box kpi">'
+    +'<span><span class="k">Бойцов в смене</span><b>'+r.people.length+'</b>'+(bench.length?' <span class="muted" style="font-size:12px">('+bench.length+' на скамейке)</span>':'')+'</span>'
+    +'<span><span class="k">Ожидаем за день (по бойцам)</span><b style="color:#137333">'+money(total)+' ₽</b></span>'
+    +'<span><span class="k">План на день'+(r.overridden?' (скорректирован)':'')+'</span>'
+      +'<b><input id="tgt" value="'+money(r.targetRub).replace(',','.')+'" style="width:100px;font-weight:800;font-size:16px" inputmode="decimal"> ₽</b> '
+      +'<button class="sec" onclick="saveTarget()">💾</button>'
+      +(r.overridden?' <button class="gho" onclick="resetTarget()" title="вернуть авторасчёт">↺ авто</button>':'')+'</span>'
+    +'</div>';
+  var benchBox='<div class="box"><b>🪑 Скамейка</b> <span class="drophint">— нажмите бойца, потом участок (или перетащите)</span>'
+    +'<div class="bench" style="margin-top:8px">'+(bench.map(function(p){ return chipHtml(p,false); }).join('')||'<span class="muted">все расставлены 👍</span>')+'</div></div>';
+  var zones=r.groups.map(function(g){
+    var ppl=r.people.filter(function(p){ return p.group===g.group; });
+    var contrib=0; ppl.forEach(function(p){ contrib+=p.expect||0; }); contrib=Math.round(contrib*100)/100;
+    var pct=g.needRub>0?Math.min(100,Math.round(contrib/g.needRub*100)):0;
+    var days=(contrib>0&&g.needRub>0)?Math.ceil(g.needRub/contrib):0;
+    var foot;
+    if(!g.needRub) foot='<span class="muted">в этой волне нет работ участка</span>';
+    else if(!contrib) foot='осталось <b>'+money(g.needRub)+' ₽</b> ('+g.needH+' ч) — никто не назначен';
+    else foot='завтра <b>~'+money(contrib)+' ₽</b> · закроем <b>'+pct+'%</b> остатка ('+money(g.needRub)+' ₽) · таким составом ~<b>'+days+'</b> дн';
+    var op=ppl.filter(function(p){ return p.name===OPSOPEN; })[0];
+    return '<div class="zone'+(g.bottleneck?' bn':'')+(SELCHIP?' target':'')+'"'
+      +' ondragover="event.preventDefault();this.classList.add(\'target\')" ondragleave="this.classList.remove(\'target\')"'
+      +' ondrop="dropChip(event,\''+esc(g.group)+'\')" onclick="zoneTap(\''+esc(g.group)+'\')">'
+      +'<div class="zh"><span>'+(ZICON[g.group]||'')+'</span><span class="zn">'+esc(g.group)+'</span>'
+      +(g.bottleneck?'<span class="pill" style="background:#fdecea;color:#c0392b">узкое место — сюда в первую очередь</span>':'')
+      +'<span style="flex:1"></span><span class="muted" style="font-weight:600;font-size:12px">'+ppl.length+' чел</span></div>'
+      +(g.needRub?'<div class="zbar"><span class="ghost" style="width:'+pct+'%"></span></div>':'')
+      +'<div class="zbody">'+(ppl.map(function(p){ return chipHtml(p,true); }).join('')||'<span class="drophint">'+(SELCHIP?'👇 нажмите сюда':'пусто')+'</span>')+'</div>'
+      +(op?opsPanelHtml(op,g):'')
+      +'<div class="zfoot">'+foot+'</div></div>';
+  }).join('');
+  var wave=r.waveTitle?'<div class="muted" style="margin:0 2px 8px">Работа из волны «'+esc(r.waveTitle)+'»; ⚡ — ожидаемый вклад бойца в ₽/день</div>'
+    :'<div class="muted" style="margin:0 2px 8px">Выберите заказ с планом волн — появится остаток по участкам.</div>';
+  var empty=r.people.length?'':'<div class="box muted">На эту дату никто не отмечен в табеле — начните с вкладки «Табель».</div>';
+  $('pane').innerHTML=head+kpi+benchBox+wave+zones+empty;
+}
+/* взаимодействия доски */
+function tapChip(i){ var p=BOARD.people[i]; SELCHIP=(SELCHIP===p.name)?'':p.name; OPSOPEN=''; renderBoard(); }
+function dragChip(ev,i){ SELCHIP=BOARD.people[i].name; ev.target.classList.add('drag'); try{ ev.dataTransfer.setData('text/plain',String(i)); }catch(e){} }
+function dropChip(ev,g){ ev.preventDefault(); var i=-1; try{ i=parseInt(ev.dataTransfer.getData('text/plain'),10); }catch(e){}
+  if(isNaN(i)||i<0) i=idxByName(SELCHIP); SELCHIP=''; if(i>=0) assignTo(i,g); }
+function zoneTap(g){ if(!SELCHIP) return; var i=idxByName(SELCHIP); SELCHIP=''; if(i>=0) assignTo(i,g); }
+function assignTo(i,g){
+  var p=BOARD.people[i]; if(p.group===g){ renderBoard(); return; }
+  p.group=g; p.ops=''; OPSOPEN='';
+  renderBoard();   // мгновенно: ghost-полоса, %, дни, итог
+  bgSaveP({vapi:'tabelassign',date:PLANDATE,worker:p.name,group:g,ops:'',tgid:TGID});
+}
+function unassign(i){
+  var p=BOARD.people[i]; p.group=''; p.ops=''; if(OPSOPEN===p.name) OPSOPEN='';
+  renderBoard();
+  bgSaveP({vapi:'tabelassign',date:PLANDATE,worker:p.name,group:'',ops:'',tgid:TGID});
+}
+function editExpect(i){
+  var p=BOARD.people[i];
+  var v=prompt('Ожидаемая выработка: '+p.name+', ₽ на этот день.\nПусто = вернуть к его средней ('+(p.avgDay>0?p.avgDay:'нет истории')+' ₽/д):', Math.round(p.expect));
+  if(v===null) return;
+  var n=Number(String(v).replace(',','.').trim())||0;
+  if(n>0){ p.expect=n; p.expectSrc='своё'; }
+  else { p.expect=p.avgDay>0?p.avgDay:Math.round(p.hours*BOARD.hourRate*100)/100; p.expectSrc=p.avgDay>0?'история':'база'; }
+  renderBoard();
+  bgSaveP({vapi:'tabelassign',date:PLANDATE,worker:p.name,expect:(n>0?n:''),tgid:TGID});
+}
+function toggleOps(name){ OPSOPEN=(OPSOPEN===name)?'':name; SELCHIP=''; renderBoard(); }
+function opToggle(i,op,on){
+  var p=BOARD.people[i], l=opsList(p), ix=l.indexOf(op);
+  if(on&&ix<0) l.push(op); if(!on&&ix>=0) l.splice(ix,1);
+  p.ops=l.join(', ');
+  renderBoard();
+  bgSaveP({vapi:'tabelassign',date:PLANDATE,worker:p.name,ops:p.ops,tgid:TGID});
+}
+/* фоновая запись доски (очередь) + тихая сверка с сервером */
+var PCONV=null;
+function bgSaveP(p){
+  SAVING++;
+  SAVEQ=SAVEQ.then(function(){ return api(p); }).then(function(r){
+    SAVING--; if(SAVING<0) SAVING=0;
+    if(!r||!r.ok){ alert((r&&r.error)||'не сохранилось — обновляю'); PLANCACHE={}; loadPlan(); return; }
+    if(SAVING===0) schedulePConv();
+  }).catch(function(){ SAVING--; if(SAVING<0) SAVING=0; alert('Нет связи — обновляю'); PLANCACHE={}; loadPlan(); });
+}
+function schedulePConv(){ if(PCONV) clearTimeout(PCONV); PCONV=setTimeout(function(){ PCONV=null; if(SAVING===0&&TAB==='p') refreshPlanSilent(); },1500); }
+function refreshPlanSilent(){
+  var d=PLANDATE,o=OID;
+  api({vapi:'dayplan',date:d,batch:o,tgid:TGID}).then(function(r){
+    if(!r||!r.ok) return; if(d!==PLANDATE||o!==OID) return;
+    PLANCACHE[d+'|'+o]=r;
+    if(TAB!=='p'||SAVING>0) return;
+    BOARD=r; renderBoard();
+  });
 }
 function saveTarget(){
   var v=($('tgt').value||'').trim(), b=event&&event.target; if(b) b.textContent='…';
