@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Тигервуд — табель и смены</title>
+<style>
+  :root{ --bg:#f4f6fb; --card:#fff; --fg:#1b2333; --muted:#8a93a6; --line:#e6e9f2; --accent:#2b7de9; --green:#137333; --amber:#b7791f; --red:#c0392b; }
+  *{box-sizing:border-box;} html,body{margin:0;background:var(--bg);}
+  body{ font-family:-apple-system,Roboto,Segoe UI,Arial,sans-serif; color:var(--fg); padding:14px; max-width:960px; margin:0 auto; font-size:14px; }
+  .hi{ font-size:19px; font-weight:800; margin-bottom:10px; }
+  .muted{ color:var(--muted); font-size:13px; }
+  .center{ text-align:center; padding:24px; } .err{ color:var(--red); } .ok{ color:var(--green); }
+  .box{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; margin-bottom:12px; overflow-x:auto; }
+  .row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  select,input{ font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--fg); }
+  button{ font:inherit; font-weight:600; border:0; border-radius:9px; padding:7px 12px; cursor:pointer; background:var(--accent); color:#fff; }
+  button.sec{ background:#eef2fb; color:var(--accent); } button.gho{ background:transparent; color:var(--muted); padding:4px 7px; }
+  .tabs{ display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap; }
+  .tabs button{ background:#eef2fb; color:var(--accent); } .tabs button.active{ background:var(--accent); color:#fff; }
+  .pill{ font-size:11.5px; font-weight:700; border-radius:20px; padding:2px 9px; display:inline-block; }
+  .num{ font-variant-numeric:tabular-nums; }
+  table{ border-collapse:collapse; width:100%; font-size:13px; }
+  th,td{ padding:5px 8px; border-bottom:1px solid var(--line); text-align:left; vertical-align:middle; }
+  th.num,td.num{ text-align:right; }
+  /* строка сотрудника в табеле */
+  .wrow{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; border-bottom:1px solid var(--line); padding:7px 0; }
+  .wname{ font-weight:700; flex:1; min-width:150px; }
+  .sbtn{ border-radius:20px; padding:4px 11px; font-size:12.5px; background:#eef1f8; color:#556; }
+  .sbtn.on-day{ background:#fff3d6; color:#8a6d00; } .sbtn.on-night{ background:#e3e8ff; color:#3446a0; }
+  .fbtn{ border-radius:20px; padding:4px 10px; font-size:12px; background:#eef1f8; color:#556; }
+  .fbtn.on-out{ background:#e6f4ea; color:var(--green); } .fbtn.on-no{ background:#fdecea; color:var(--red); }
+  .gsel{ font-size:12.5px; padding:4px 6px; max-width:130px; }
+  .opsin{ font-size:12.5px; padding:4px 6px; width:150px; }
+  /* месяц */
+  .mgrid td,.mgrid th{ padding:3px 4px; font-size:11.5px; text-align:center; white-space:nowrap; }
+  .mgrid td.nm{ text-align:left; font-weight:600; white-space:nowrap; }
+  .cell-d{ background:#fff3d6; } .cell-n{ background:#e3e8ff; }
+  .cell-out{ outline:2px solid #7fc78f; outline-offset:-2px; } .cell-no{ outline:2px solid #e88; outline-offset:-2px; text-decoration:line-through; }
+  /* план на день */
+  .kpi{ display:flex; gap:18px; flex-wrap:wrap; font-weight:700; }
+  .kpi b{ font-size:17px; } .kpi .k{ color:var(--muted); font-weight:600; font-size:12px; display:block; }
+  .gbar{ height:6px; background:#eef1f8; border-radius:6px; overflow:hidden; }
+  .gbar>i{ display:block; height:100%; background:var(--accent); }
+</style>
+</head>
+<body>
+<style>html.emb>body>.hi{display:none}</style><script>if(/[?&]embed=1/.test(location.search))document.documentElement.classList.add('emb');</script>
+<div class="hi">📅 Табель и смены</div>
+<div id="app"><div class="center muted">Загрузка…</div></div>
+<script>
+var BASE='https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';
+var APP='tw7prod';
+function api(p){ p.app=APP; var q=Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]==null?'':p[k]);}).join('&'); return fetch(BASE+'?'+q).then(function(r){return r.json();}); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function $(id){ return document.getElementById(id); }
+function money(n){ n=Number(n)||0; return n.toFixed(2).replace('.',','); }
+function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
+var TGID=qp('tgid')||(function(){try{return localStorage.getItem('tw_tgid')||'';}catch(e){return '';}})();
+if(TGID){ try{localStorage.setItem('tw_tgid',TGID);}catch(e){} }
+function isoToday(d){ d=d||new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function ruDate(iso){ var p=String(iso||'').split('-'); return p.length===3?(p[2]+'.'+p[1]+'.'+p[0]):iso; }
+function dayName(iso){ try{ return ['вс','пн','вт','ср','чт','пт','сб'][new Date(iso+'T12:00:00').getDay()]; }catch(e){ return ''; } }
+
+var app=$('app'), TAB='t', DATE=isoToday(), D=null, BATCHES=[], OID='', PLANDATE=(function(){var t=new Date(); t.setDate(t.getDate()+1); return isoToday(t);})();
+
+function shell(){
+  app.innerHTML='<div class="tabs">'
+    +'<button id="tb-t" onclick="showTab(\'t\')">📅 Табель</button>'
+    +'<button id="tb-p" onclick="showTab(\'p\')">🎯 План на день</button>'
+    +'<button id="tb-m" onclick="showTab(\'m\')">🗓 Месяц</button></div>'
+    +'<div id="pane"></div>';
+  showTab(TAB);
+}
+function showTab(t){ TAB=t; ['t','p','m'].forEach(function(x){ var b=$('tb-'+x); if(b) b.className=(x===t?'active':''); });
+  if(t==='t') loadDay(); else if(t==='p') loadPlan(); else loadMonth(); }
+
+/* ── ТАБЕЛЬ НА ДАТУ ── */
+function shiftDate(dd){ var d=new Date(DATE+'T12:00:00'); d.setDate(d.getDate()+dd); DATE=isoToday(d); loadDay(); }
+function loadDay(){
+  $('pane').innerHTML='<div class="center muted">Загрузка…</div>';
+  api({vapi:'tabelday',date:DATE,tgid:TGID}).then(function(r){
+    if(!r||!r.ok){ $('pane').innerHTML='<div class="box err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
+    D=r;
+    var isPast = DATE<=isoToday();
+    var head='<div class="box"><div class="row">'
+      +'<button class="gho" onclick="shiftDate(-1)">←</button>'
+      +'<input type="date" value="'+DATE+'" onchange="DATE=this.value;loadDay();">'
+      +'<button class="gho" onclick="shiftDate(1)">→</button>'
+      +'<b>'+ruDate(DATE)+' ('+dayName(DATE)+')</b>'
+      +'<span class="pill" style="background:#fff3d6;color:#8a6d00">☀️ '+r.summary.day+'</span>'
+      +'<span class="pill" style="background:#e3e8ff;color:#3446a0">🌙 '+r.summary.night+'</span>'
+      +(r.summary.out?'<span class="pill" style="background:#e6f4ea;color:#137333">вышло '+r.summary.out+'</span>':'')
+      +(r.summary.no?'<span class="pill" style="background:#fdecea;color:#c0392b">не вышло '+r.summary.no+'</span>':'')
+      +'</div><div class="muted" style="margin-top:4px">Нажмите ☀️/🌙 чтобы отметить смену; ещё раз — снять. '+(isPast?'Отметьте факт: ✓ вышел / ✗ не вышел.':'')+'</div></div>';
+    var gopts=function(cur){ return '<option value="">— участок —</option>'+D.groups.map(function(g){ return '<option'+(g===cur?' selected':'')+'>'+esc(g)+'</option>'; }).join(''); };
+    var rows=r.workers.map(function(w,i){
+      var fact = (w.shift && isPast)
+        ? ' <button class="fbtn'+(w.status==='вышел'?' on-out':'')+'" onclick="setFact('+i+',\'вышел\')">✓ вышел</button>'
+          +'<button class="fbtn'+(w.status==='не вышел'?' on-no':'')+'" onclick="setFact('+i+',\'не вышел\')">✗ не вышел</button>'
+        : '';
+      var assign = w.shift
+        ? ' <select class="gsel" onchange="setAssign('+i+',this.value,null)">'+gopts(w.group)+'</select>'
+          +'<input class="opsin" placeholder="операции (не обяз.)" value="'+esc(w.ops)+'" onchange="setAssign('+i+',null,this.value)">'
+        : '';
+      return '<div class="wrow"><span class="wname">'+esc(w.name)+(w.role!=='рабочий'?' <span class="muted" style="font-size:11px">'+esc(w.role)+'</span>':'')+'</span>'
+        +'<button class="sbtn'+(w.shift==='день'?' on-day':'')+'" onclick="setShift('+i+',\'день\')">☀️ день</button>'
+        +'<button class="sbtn'+(w.shift==='ночь'?' on-night':'')+'" onclick="setShift('+i+',\'ночь\')">🌙 ночь</button>'
+        +fact+assign+'</div>';
+    }).join('');
+    $('pane').innerHTML=head+'<div class="box">'+ (rows||'<div class="muted">нет активных сотрудников</div>') +'</div>';
+  });
+}
+function setShift(i,sh){
+  var w=D.workers[i]; var next=(w.shift===sh)?'':sh;   // повторный клик — снять смену
+  api({vapi:'tabelset',date:DATE,worker:w.name,shift:next,tgid:TGID}).then(function(r){
+    if(!r||!r.ok){ alert((r&&r.error)||'ошибка'); return; } loadDay();
+  });
+}
+function setFact(i,st){
+  var w=D.workers[i]; var next=(w.status===st)?'план':st;   // повторный клик — сброс к «план»
+  api({vapi:'tabelfact',date:DATE,worker:w.name,status:next,tgid:TGID}).then(function(r){
+    if(!r||!r.ok){ alert((r&&r.error)||'ошибка'); return; } loadDay();
+  });
+}
+function setAssign(i,group,ops){
+  var w=D.workers[i];
+  var p={vapi:'tabelassign',date:DATE,worker:w.name,tgid:TGID};
+  if(group!=null) p.group=group; if(ops!=null) p.ops=ops;
+  api(p).then(function(r){ if(!r||!r.ok) alert((r&&r.error)||'ошибка'); });
+}
+
+/* ── ПЛАН НА ДЕНЬ ── */
+function loadPlan(){
+  $('pane').innerHTML='<div class="center muted">Загрузка…</div>';
+  var next=BATCHES.length?Promise.resolve():api({vapi:'batches'}).then(function(r){ BATCHES=((r&&r.batches)||[]).filter(function(b){ return b.status==='новая'||b.status==='в работе'; }); if(!OID&&BATCHES.length) OID=BATCHES[0].id; });
+  next.then(function(){ return api({vapi:'dayplan',date:PLANDATE,batch:OID,tgid:TGID}); }).then(function(r){
+    if(!r||!r.ok){ $('pane').innerHTML='<div class="box err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
+    var opts=BATCHES.map(function(b){ return '<option value="'+esc(b.id)+'"'+(b.id===OID?' selected':'')+'>'+esc(b.num)+' · '+esc(b.name||'')+'</option>'; }).join('');
+    var head='<div class="box"><div class="row">'
+      +'<input type="date" value="'+PLANDATE+'" onchange="PLANDATE=this.value;loadPlan();"><b>'+ruDate(PLANDATE)+' ('+dayName(PLANDATE)+')</b>'
+      +'<span class="muted">заказ:</span><select onchange="OID=this.value;loadPlan();">'+opts+'</select></div></div>';
+    var kpi='<div class="box kpi">'
+      +'<span><span class="k">Людей в смене</span><b>'+r.people.length+'</b></span>'
+      +'<span><span class="k">Часов</span><b>'+r.totalHours+'</b></span>'
+      +'<span><span class="k">Авторасчёт (часы × '+r.hourRate+' ₽)</span><b>'+money(r.autoRub)+' ₽</b></span>'
+      +'<span><span class="k">План выработки на день'+(r.overridden?' (скорректирован)':'')+'</span>'
+        +'<b><input id="tgt" value="'+money(r.targetRub).replace(',','.')+'" style="width:100px;font-weight:800;font-size:16px" inputmode="decimal"> ₽</b> '
+        +'<button class="sec" onclick="saveTarget()">💾</button>'
+        +(r.overridden?' <button class="gho" onclick="resetTarget()" title="вернуть авторасчёт">↺ авто</button>':'')+'</span>'
+      +'</div>';
+    var grows=r.groups.map(function(g){
+      var pct=g.needH>0?Math.min(100,Math.round(g.hours/g.needH*100)):0;
+      return '<tr'+(g.bottleneck?' style="background:#fff5f4"':'')+'><td>'+esc(g.group)+(g.bottleneck?' <span class="pill" style="background:#fdecea;color:#c0392b">узкое место</span>':'')+'</td>'
+        +'<td class="num">'+g.people+'</td><td class="num">'+g.hours+'</td><td class="num">'+(g.needH||'—')+'</td>'
+        +'<td style="min-width:110px">'+(g.needH>0?('<div class="gbar"><i style="width:'+pct+'%'+(g.bottleneck?';background:var(--red)':'')+'"></i></div><span class="muted" style="font-size:11px">'+pct+'% потребности'+(g.needH>0&&g.hours>0?(' · ~'+Math.ceil(g.needH/g.hours)+' дн таким составом'):'')+'</span>'):'<span class="muted">—</span>')+'</td></tr>';
+    }).join('');
+    var unass=r.unassigned.people?('<div class="muted" style="margin-top:6px">⚠ без участка: '+r.unassigned.people+' чел ('+r.unassigned.hours+' ч) — расставьте во вкладке «Табель»</div>'):'';
+    var wave=r.waveTitle?('<div class="muted" style="margin-bottom:6px">Потребность из волны «'+esc(r.waveTitle)+'»'+(r.bottleneck?' · узкое место: <b>'+esc(r.bottleneck)+'</b> — ставьте людей туда в первую очередь':'')+'</div>'):'<div class="muted" style="margin-bottom:6px">Выберите заказ с планом волн — появится потребность участков.</div>';
+    var ppl=r.people.length?('<div class="box"><b>Кто в смене</b>'+r.people.map(function(p){
+      return '<div class="wrow"><span class="wname">'+esc(p.name)+'</span><span>'+(p.shift==='ночь'?'🌙':'☀️')+' '+p.hours+' ч</span>'
+        +'<span class="muted">'+esc(p.group||'без участка')+(p.ops?(' · '+esc(p.ops)):'')+'</span>'
+        +(p.status==='вышел'?'<span class="pill" style="background:#e6f4ea;color:#137333">вышел</span>':'')+'</div>';
+    }).join('')+'</div>'):'<div class="box muted">На эту дату никто не отмечен в табеле — начните с вкладки «Табель».</div>';
+    $('pane').innerHTML=head+kpi
+      +'<div class="box">'+wave+'<table><thead><tr><th>Участок</th><th class="num">Люди</th><th class="num">Часы</th><th class="num">Нужно ч (волна)</th><th>Покрытие</th></tr></thead><tbody>'+grows+'</tbody></table>'+unass+'</div>'
+      +ppl;
+  });
+}
+function saveTarget(){
+  var v=($('tgt').value||'').trim();
+  api({vapi:'daytarget',date:PLANDATE,rub:v,tgid:TGID}).then(function(r){ if(!r||!r.ok){ alert((r&&r.error)||'ошибка'); return; } loadPlan(); });
+}
+function resetTarget(){ api({vapi:'daytarget',date:PLANDATE,rub:'',tgid:TGID}).then(function(){ loadPlan(); }); }
+
+/* ── МЕСЯЦ ── */
+var YM=isoToday().slice(0,7);
+function shiftMonth(d){ var p=YM.split('-'); var dt=new Date(Number(p[0]),Number(p[1])-1+d,1); YM=dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0'); loadMonth(); }
+function loadMonth(){
+  $('pane').innerHTML='<div class="center muted">Загрузка…</div>';
+  api({vapi:'tabelmonth',ym:YM,tgid:TGID}).then(function(r){
+    if(!r||!r.ok){ $('pane').innerHTML='<div class="box err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
+    var p=YM.split('-'), days=new Date(Number(p[0]),Number(p[1]),0).getDate();
+    var map={}; r.entries.forEach(function(e){ map[e.worker+'|'+Number(e.date.slice(8))]=e; });
+    var wk=r.workers.filter(function(w){ return r.entries.some(function(e){return e.worker===w;}) || true; });
+    var thead='<tr><th></th>'; for(var d=1;d<=days;d++) thead+='<th>'+d+'</th>'; thead+='</tr>';
+    var body=r.workers.map(function(w){
+      var tds=''; var cnt=0;
+      for(var d=1;d<=days;d++){ var e=map[w+'|'+d];
+        if(!e||!e.shift){ tds+='<td></td>'; continue; }
+        cnt++;
+        var cls=(e.shift==='ночь'?'cell-n':'cell-d')+(e.status==='вышел'?' cell-out':(e.status==='не вышел'?' cell-no':''));
+        tds+='<td class="'+cls+'" title="'+esc(w)+' '+d+'.'+p[1]+' '+esc(e.shift)+(e.status&&e.status!=='план'?' · '+esc(e.status):'')+'">'+(e.shift==='ночь'?'н':'д')+'</td>';
+      }
+      return '<tr><td class="nm">'+esc(w)+' <span class="muted">('+cnt+')</span></td>'+tds+'</tr>';
+    }).join('');
+    $('pane').innerHTML='<div class="box"><div class="row"><button class="gho" onclick="shiftMonth(-1)">←</button><b>'+YM+'</b><button class="gho" onclick="shiftMonth(1)">→</button>'
+      +'<span class="muted">д=день, н=ночь; зелёная рамка — вышел, красная — не вышел</span></div></div>'
+      +'<div class="box mgrid" style="overflow-x:auto"><table>'+thead+body+'</table></div>';
+  });
+}
+shell();
+</script>
+</body>
+</html>

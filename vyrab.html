@@ -34,6 +34,7 @@
 </div>
 <div id="pane-w">
   <div id="mysum"></div>
+  <div id="myshifts"></div>
   <h2>Новый наряд</h2>
   <div class="muted" id="who"></div>
   <div id="wsel"></div>
@@ -396,8 +397,24 @@ function doRegister(){
   document.getElementById('jfrom').value=n.getFullYear()+'-'+m+'-01';
   document.getElementById('jto').value=today;
   document.getElementById('wdate').value=today; updateWhen(); })();
+// «Мои смены» из табеля: работник видит, когда ему выходить (день/ночь) и отметку выхода
+function loadMyShifts(){
+  var el=document.getElementById('myshifts'); if(!el||!TGID) return;
+  api({vapi:'myshifts',tgid:TGID}).then(function(r){
+    var sh=(r&&r.shifts)||[]; if(!sh.length){ el.innerHTML=''; return; }
+    var today=r.today||'';
+    var chips=sh.map(function(s){
+      var p=s.date.split('-'), lbl=(s.date===today)?'сегодня':(p[2]+'.'+p[1]);
+      var st=(s.status==='вышел')?' ✅':(s.status==='не вышел'?' ✖':'');
+      return '<span style="display:inline-block;background:'+(s.shift==='ночь'?'#e3e8ff':'#fff3d6')+';border-radius:14px;padding:3px 10px;margin:2px 4px 2px 0;font-size:12.5px;font-weight:600">'
+        +(s.shift==='ночь'?'🌙':'☀️')+' '+lbl+st+(s.group?(' · '+esc(s.group)):'')+'</span>';
+    }).join('');
+    el.innerHTML='<div class="card" style="margin-bottom:10px"><b>📅 Мои смены</b><div style="margin-top:5px">'+chips+'</div></div>';
+  }).catch(function(){});
+}
 applyMode();
 load();
+loadMyShifts();
 if(isMaster()) showTab('m');   // панель проверки открывается на вкладке «Проверка»
 if(qp('tab')==='j') showTab('j');
 </script>
