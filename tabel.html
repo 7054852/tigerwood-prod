@@ -77,10 +77,16 @@
   table.pay{ border-collapse:collapse; font-size:12px; white-space:nowrap; }
   table.pay th,table.pay td{ border:1px solid var(--line); padding:3px 6px; text-align:right; }
   table.pay th{ background:#f7f9fd; font-weight:700; color:var(--muted); font-size:11px; }
-  table.pay td.nmc,table.pay th.nmc{ text-align:left; position:sticky; left:0; background:var(--card); z-index:2;
-    font-weight:700; min-width:150px; box-shadow:2px 0 4px rgba(20,30,60,.06); }
+  table.pay td.nmc,table.pay th.nmc{ text-align:left; position:sticky; left:0; background:var(--card); z-index:3;
+    font-weight:700; min-width:112px; max-width:132px; overflow:hidden; text-overflow:ellipsis; }
   table.pay th.nmc{ background:#f7f9fd; }
-  table.pay .tot{ background:#f4f8ff; font-variant-numeric:tabular-nums; }
+  table.pay .tot{ background:#f4f8ff; font-variant-numeric:tabular-nums; position:sticky; z-index:2; }
+  table.pay th.tot{ background:#eaf1fb; }
+  table.pay td.nmc + .tot,table.pay th.nmc + .tot{ left:112px; }
+  table.pay .tot + .tot{ left:174px; } table.pay .tot + .tot + .tot{ left:206px;
+    box-shadow:2px 0 5px rgba(20,30,60,.10); }
+  table.pay .pnd{ display:inline-block; margin-left:4px; font-size:9.5px; font-weight:700; color:#8a6d00;
+    background:#fff3d6; border-radius:10px; padding:0 5px; vertical-align:1px; }
   table.pay .tdy{ background:#fff8e1; }
   table.pay tr.ftr td{ background:#eef2f9; font-weight:700; }
   table.pay tr.ftr td.nmc{ background:#eef2f9; }
@@ -620,22 +626,33 @@ function renderPay(){
     +(r.pendingTotal>0?'<span class="pill" style="background:#fff3d6;color:#8a6d00">на проверке '+money(r.pendingTotal)+' ₽</span>':'')
     +'</div><div class="muted" style="margin-top:4px">Сумма — подтверждённая мастером выработка за день. 🌙 — в этот день была ночная смена.</div></div>';
   if(!r.workers.length){ $('pane').innerHTML=head+'<div class="box muted">За этот месяц подтверждённой выработки нет.</div>'; return; }
-  var th='<tr><th class="nmc">Рабочий</th>';
+  // короткое имя: «Борисевич Д.» — чтобы закреплённая колонка не съедала экран
+  var shortName=function(n){ var p=String(n).trim().split(/\s+/); return p.length>1?(p[0]+' '+p[1].charAt(0)+'.'):p[0]; };
+  var th='<tr><th class="nmc">Рабочий</th><th class="tot">Итого</th><th class="tot">дн</th><th class="tot">ср/дн</th>';
   for(var d=1;d<=days;d++) th+='<th'+(d===todayD?' class="tdy"':'')+'>'+d+'</th>';
-  th+='<th class="tot">Итого</th><th class="tot">дней</th><th class="tot">ср/день</th></tr>';
+  th+='</tr>';
   var body=r.workers.map(function(w){
     var tds='';
     for(var d=1;d<=days;d++){
       var v=w.byDay[d];
       tds+='<td'+(d===todayD?' class="tdy"':'')+'>'+(v?('<b>'+money(v).replace(',00','')+'</b>'+(w.night[d]?'<span class="nn">🌙</span>':'')):'')+'</td>';
     }
-    return '<tr><td class="nmc">'+esc(w.name)+(w.pending>0?' <span class="pill" style="background:#fff3d6;color:#8a6d00;font-size:10px">+'+money(w.pending)+' на проверке</span>':'')+'</td>'
-      +tds+'<td class="tot"><b>'+money(w.total)+'</b></td><td class="tot">'+w.days+'</td><td class="tot">'+money(w.avgDay)+'</td></tr>';
+    return '<tr><td class="nmc" title="'+esc(w.name)+'">'+esc(shortName(w.name))
+      +(w.pending>0?'<span class="pnd" title="ещё не подтверждено мастером">+'+money(w.pending)+'</span>':'')+'</td>'
+      +'<td class="tot"><b>'+money(w.total)+'</b></td><td class="tot">'+w.days+'</td><td class="tot">'+money(w.avgDay)+'</td>'
+      +tds+'</tr>';
   }).join('');
-  var ft='<tr class="ftr"><td class="nmc">Всего за день</td>';
+  var ft='<tr class="ftr"><td class="nmc">Всего за день</td><td class="tot"><b>'+money(r.grand)+'</b></td><td class="tot"></td><td class="tot"></td>';
   for(var d2=1;d2<=days;d2++){ var t=r.dayTotals[d2]; ft+='<td'+(d2===todayD?' class="tdy"':'')+'>'+(t?money(t).replace(',00',''):'')+'</td>'; }
-  ft+='<td class="tot"><b>'+money(r.grand)+'</b></td><td class="tot"></td><td class="tot"></td></tr>';
-  $('pane').innerHTML=head+'<div class="box paywrap"><table class="pay">'+th+body+ft+'</table></div>';
+  ft+='</tr>';
+  $('pane').innerHTML=head+'<div class="box paywrap" id="paywrap"><table class="pay">'+th+body+ft+'</table></div>';
+  // прокрутить к сегодняшнему дню (или в конец месяца), чтобы сразу видеть свежие дни
+  setTimeout(function(){
+    var wrap=$('paywrap'); if(!wrap) return;
+    var cell=wrap.querySelector('th.tdy');
+    if(cell) wrap.scrollLeft=Math.max(0,cell.offsetLeft-wrap.clientWidth+120);
+    else wrap.scrollLeft=wrap.scrollWidth;
+  },60);
 }
 
 /* ── МЕСЯЦ ── */
