@@ -24,6 +24,7 @@
   .tabs{ display:flex; gap:8px; margin-bottom:10px; }
   .tabs button{ width:auto; margin:0; padding:8px 14px; background:#eef; color:#334; }
   .tabs button.active{ background:var(--accent); color:#fff; }
+  .freeb{ display:inline-block; background:#eef4ff; color:#2b5fd9; border-radius:20px; padding:1px 9px; font-size:11.5px; font-weight:700; }
 </style>
 </head>
 <body>
@@ -81,7 +82,8 @@ window.onerror=function(msg,src,line){
   <label>За какую смену — дата начала</label>
   <div class="row" style="gap:6px"><input id="wdate" type="date" style="flex:1" onchange="updateWhen()"><button class="sm gray" type="button" onclick="setDate(0)">Сегодня</button><button class="sm gray" type="button" onclick="setDate(-1)">Вчера</button></div>
   <div class="muted" style="font-size:12px;margin-top:3px">🌙 Ночная смена с 23 на 24 — ставьте <b>23</b> (день, когда смена началась).</div>
-  <label>Партия</label><select id="batch" onchange="onBatchChange()"></select>
+  <label>Партия / вне заказа</label><select id="batch" onchange="onBatchChange()"></select>
+  <div id="freenote" style="margin-top:6px"></div>
   <label>Оборудование</label><select id="equip" onchange="fillDetails()"></select>
   <label>Деталь</label><select id="detail" onchange="fillOps()"></select>
   <label>Операция</label><select id="op" onchange="calc()"></select>
@@ -118,7 +120,9 @@ window.onerror=function(msg,src,line){
 function pad2(v){ v=String(v); return v.length<2?('0'+v):v; }
 var BASE='https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';
 var APP='tw7prod', DATA={equipments:[],batches:[],workers:[],comp:{},worker:''}, TGID='';
-var COMP={}, EQUIPS=[];   // состав операций ВЫБРАННОЙ партии
+var COMP={}, EQUIPS=[];   // состав операций ВЫБРАННОЙ партии (или весь каталог — для работ вне заказа)
+var FREE='__free__';      // «вне заказа»: работа без привязки к партии (в ЗП идёт, на заказ не влияет)
+function isFree(){ var b=document.getElementById('batch'); return b && b.value===FREE; }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function opt(v,t){ return '<option value="'+esc(v)+'">'+esc(t||v)+'</option>'; }
 function api(p){ p.app=APP; var q=Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]);}).join('&'); return fetch(BASE+'?'+q).then(function(r){return r.json();}); }
@@ -151,7 +155,9 @@ function showTab(t){
 function load(){
   api({vapi:'data',tgid:TGID}).then(function(d){
     DATA=d||DATA;
-    document.getElementById('batch').innerHTML=(DATA.batches||[]).map(function(b){return opt(b.id,b.num+' · '+b.name);}).join('')||opt('','нет активных партий');
+    // ПАРТИЯ или «вне заказа» (работа без привязки к заказу: задел, переделка, помощь другому участку)
+    document.getElementById('batch').innerHTML=(DATA.batches||[]).map(function(b){return opt(b.id,b.num+' · '+b.name);}).join('')
+      +'<option value="'+FREE+'">🧰 Вне заказа (задел, переделка, помощь)</option>';
     onBatchChange();
     loadMySummary();
     if(isMaster()){
@@ -167,6 +173,15 @@ function load(){
 }
 function onBatchChange(){
   var bid=document.getElementById('batch').value;
+  var note=document.getElementById('freenote');
+  if(bid===FREE){                       // вне заказа — весь каталог деталей/операций (расценки те же)
+    COMP=DATA.comp||{}; EQUIPS=DATA.equipments||[];
+    if(note) note.innerHTML='<div class="card" style="background:#f2f7ff;border-color:#cddffa;padding:8px 10px">'
+      +'🧰 <b>Работа вне заказа</b><div class="muted" style="margin-top:2px">Задел на будущее, переделка, помощь другому участку. '
+      +'Оплата — по обычным расценкам, войдёт в вашу зарплату. На выполнение заказов такая работа не влияет.</div></div>';
+    refillEquip(); return;
+  }
+  if(note) note.innerHTML='';
   if(!bid){ COMP={}; EQUIPS=[]; refillEquip(); return; }
   document.getElementById('equip').innerHTML=opt('','загрузка…');
   api({vapi:'ordercomp',batch:bid}).then(function(r){
@@ -175,7 +190,8 @@ function onBatchChange(){
   }).catch(function(){ COMP={}; EQUIPS=[]; refillEquip(); });
 }
 function refillEquip(){
-  document.getElementById('equip').innerHTML=EQUIPS.map(function(e){return opt(e);}).join('')||opt('','в этой партии нет операций');
+  document.getElementById('equip').innerHTML=EQUIPS.map(function(e){return opt(e);}).join('')
+    ||opt('',isFree()?'нет операций в каталоге':'в этой партии нет операций');
   fillDetails();
 }
 function curProd(){ return (COMP||{})[document.getElementById('equip').value]||{details:{},order:[]}; }
@@ -261,6 +277,7 @@ function sendReport(){
   if(!worker){ wmsg('<span class="err">Не выбран рабочий</span>'); return; }
   if(!CART.length){ wmsg('<span class="err">Наряд пуст</span>'); return; }
   var batch=document.getElementById('batch').value, wd=document.getElementById('wdate').value, dateRu=wd?wd.split('-').reverse().join('.'):'';
+  if(batch===FREE) batch='';   // вне заказа — партию не записываем (на выполнение заказов не влияет)
   var items=CART.map(function(x){ return {equip:x.equip,detail:x.detail,op:x.op,qty:x.qty}; });
   wmsg(ADDTO?'Добавляю в наряд…':'Отправляю наряд…');
   var p={vapi:'submitreport',worker:worker,tgid:TGID,batch:batch,date:dateRu,shift:SHIFT,items:JSON.stringify(items)};
@@ -346,7 +363,8 @@ function loadPending(){
         : '<div class="row" style="margin-top:8px">'
           +(rp.single?'':'<button class="sm" onclick="startAdd(\''+esc(rid)+'\',\''+esc(rp.date+' · '+rp.batch)+'\')">➕ Дополнить наряд</button>')
           +'<span class="muted" style="font-size:12px">⏳ ждёт подтверждения мастера</span></div>';
-      return '<div class="card"><div class="row"><b>'+esc(rp.worker)+'</b><span class="muted">'+esc(rp.date)+' · '+esc(rp.batch)+'</span></div>'
+      var bTag=rp.free?'<span class="freeb" title="работа не по заказу — в ЗП входит, на выполнение заказов не влияет">🧰 вне заказа</span>':esc(rp.batch);
+      return '<div class="card"><div class="row"><b>'+esc(rp.worker)+'</b><span class="muted">'+esc(rp.date)+' · </span>'+bTag+'</div>'
         +'<div class="muted">'+(rp.single?'одиночная запись':'наряд')+': '+rp.lines.length+' оп.'+(rp.submitted?' · подан '+esc(rp.submitted):'')+'</div>'
         +ctrls+lines+bonusBlockHtml(rp.breakdown||{})+footer+'</div>';
     }).join('');
@@ -463,7 +481,9 @@ function loadJournal(){
       var effBase=g.lines.reduce(function(s,it){return s+(it.base||0)*(it.koef||1);},0);
       var gbd=computeBreakdown(effBase, night);
       return '<div class="card"><div class="row"><b>'+esc(g.worker)+'</b><span class="muted">за '+esc(g.date)+' · '+(night?'🌙 ночь':'☀️ день')+'</span></div>'
-        +'<div class="muted" style="font-size:12px">'+(g.submitted?'подан '+esc(g.submitted)+' · ':'')+esc(g.batch)+(g.single?'':' · наряд')+' · '+g.lines.length+' оп.</div>'
+        +'<div class="muted" style="font-size:12px">'+(g.submitted?'подан '+esc(g.submitted)+' · ':'')
+          +((g.lines[0]&&g.lines[0].free)?'<span class="freeb">🧰 вне заказа</span>':esc(g.batch))
+          +(g.single?'':' · наряд')+' · '+g.lines.length+' оп.</div>'
         +shiftCtl+lines+bonusBlockHtml(gbd)+'</div>';
     }).join('');
   }).catch(function(){ lst.innerHTML='<span class="err">Ошибка загрузки</span>'; });
