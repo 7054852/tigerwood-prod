@@ -35,6 +35,7 @@
 <div id="pane-w">
   <div id="mysum"></div>
   <div id="myshifts"></div>
+  <div id="addbanner"></div>
   <h2>Новый наряд</h2>
   <div class="muted" id="who"></div>
   <div id="wsel"></div>
@@ -197,18 +198,53 @@ function renderCart(){
     +'</div>';
   sb.style.display='';
 }
+// ── ДОПОЛНЕНИЕ НАРЯДА: рабочий вспомнил операции, пока мастер не проверил ──
+var ADDTO='', ADDINFO='';
+function startAdd(rid,info){
+  ADDTO=rid; ADDINFO=info||''; CART=[];
+  showTab('w'); renderAddBanner(); renderCart();
+  try{ window.scrollTo(0,0); }catch(e){}
+}
+function cancelAdd(){ ADDTO=''; ADDINFO=''; renderAddBanner(); renderCart(); }
+function renderAddBanner(){
+  var el=document.getElementById('addbanner'); if(!el) return;
+  el.innerHTML = ADDTO
+    ? '<div class="card" style="background:#fff8e6;border-color:#f0d9a0"><div class="row"><span>➕ <b>Дополняете наряд</b> '+esc(ADDINFO)+'</span>'
+      +'<button class="sm gray" onclick="cancelAdd()">отмена</button></div>'
+      +'<div class="muted" style="margin-top:4px">Партия, дата и смена берутся из наряда — просто добавьте операции.</div></div>'
+    : '';
+  var sb=document.getElementById('sendbtn'); if(sb&&CART.length) sb.textContent=ADDTO?'➕ Добавить в наряд':'📨 Отправить наряд мастеру';
+}
 function sendReport(){
   var worker=curWorker();
   if(!worker){ wmsg('<span class="err">Не выбран рабочий</span>'); return; }
   if(!CART.length){ wmsg('<span class="err">Наряд пуст</span>'); return; }
   var batch=document.getElementById('batch').value, wd=document.getElementById('wdate').value, dateRu=wd?wd.split('-').reverse().join('.'):'';
   var items=CART.map(function(x){ return {equip:x.equip,detail:x.detail,op:x.op,qty:x.qty}; });
-  wmsg('Отправляю наряд…');
-  api({vapi:'submitreport',worker:worker,tgid:TGID,batch:batch,date:dateRu,shift:SHIFT,items:JSON.stringify(items)}).then(function(r){
+  wmsg(ADDTO?'Добавляю в наряд…':'Отправляю наряд…');
+  var p={vapi:'submitreport',worker:worker,tgid:TGID,batch:batch,date:dateRu,shift:SHIFT,items:JSON.stringify(items)};
+  if(ADDTO) p.addto=ADDTO;
+  api(p).then(function(r){
     if(r&&r.ok){ var b=r.breakdown||{}; var extra=(b.premApplied||b.nightApplied)?(' (заработок '+b.base+' + надбавки '+(Math.round(((b.premium||0)+(b.night||0))*100)/100)+')'):'';
-      wmsg('<span class="ok">✅ Наряд отправлен: '+r.count+' оп. на <b>'+r.sum+' руб.</b>'+extra+' (на проверке)</span>'); CART=[]; renderCart(); loadMySummary(); }
+      wmsg('<span class="ok">✅ '+(r.added?('Добавлено в наряд: '+r.count+' оп. Наряд теперь на <b>'+r.sum+' руб.</b>'):('Наряд отправлен: '+r.count+' оп. на <b>'+r.sum+' руб.</b>'))+extra+' (на проверке)</span>');
+      CART=[]; ADDTO=''; ADDINFO=''; renderAddBanner(); renderCart(); loadMySummary();
+      try{ loadPending(); }catch(e){} }
     else wmsg('<span class="err">⚠️ '+esc((r&&r.error)||'ошибка')+'</span>');
   }).catch(function(){ wmsg('<span class="err">Ошибка отправки</span>'); });
+}
+// правка/удаление СВОЕЙ строки, пока наряд на проверке
+function myEdit(id,cur){
+  var v=prompt('Новое количество:', cur); if(v===null) return;
+  var q=Number(String(v).replace(',','.')); if(!(q>0)){ alert('Введите число больше 0'); return; }
+  api({vapi:'workeredit',id:id,qty:q,worker:DATA.worker||''}).then(function(r){
+    if(r&&r.ok) loadPending(); else alert((r&&r.error)||'не удалось изменить');
+  });
+}
+function myDel(id){
+  if(!confirm('Убрать эту операцию из наряда?')) return;
+  api({vapi:'workerdel',id:id,worker:DATA.worker||''}).then(function(r){
+    if(r&&r.ok) loadPending(); else alert((r&&r.error)||'не удалось убрать');
+  });
 }
 function loadMySummary(){
   var worker=DATA.worker||'', box=document.getElementById('mysum'); if(!box) return;
@@ -238,6 +274,9 @@ function loadPending(){
           acts=' <button class="sm gray" onclick="editOut(\''+esc(l.id)+'\','+l.qty+')" title="изменить кол-во">✏️</button>'
             +'<button class="sm gray" onclick="setKoef(\''+esc(l.id)+'\','+koef+')" title="коэффициент к сумме">×k</button>'
             +'<button class="sm gray" onclick="appr(\''+esc(l.id)+'\',0)" title="убрать эту строку из наряда">✖</button>';
+        } else {   // свой наряд на проверке — можно поправить, пока мастер не подтвердил
+          acts=' <button class="sm gray" onclick="myEdit(\''+esc(l.id)+'\','+l.qty+')" title="изменить количество">✏️</button>'
+            +'<button class="sm gray" onclick="myDel(\''+esc(l.id)+'\')" title="убрать операцию">🗑</button>';
         }
         var vsel='';
         if(master && l.targets && l.targets.length>1){   // деталь есть в нескольких изделиях/цветах — мастер может закрепить вручную
@@ -263,7 +302,9 @@ function loadPending(){
       var footer = master
         ? '<div class="row" style="margin-top:10px"><button class="sm" onclick="apprRep(\''+esc(rid)+'\',1)">✅ Одобрить'+(rp.single?'':' наряд')+'</button>'
           +'<button class="sm gray" onclick="apprRep(\''+esc(rid)+'\',0)">✖ Отклонить</button><span id="rm-'+esc(rid)+'" class="msg"></span></div>'
-        : '<div class="muted" style="margin-top:8px;font-size:12px">⏳ ждёт подтверждения мастера</div>';
+        : '<div class="row" style="margin-top:8px">'
+          +(rp.single?'':'<button class="sm" onclick="startAdd(\''+esc(rid)+'\',\''+esc(rp.date+' · '+rp.batch)+'\')">➕ Дополнить наряд</button>')
+          +'<span class="muted" style="font-size:12px">⏳ ждёт подтверждения мастера</span></div>';
       return '<div class="card"><div class="row"><b>'+esc(rp.worker)+'</b><span class="muted">'+esc(rp.date)+' · '+esc(rp.batch)+'</span></div>'
         +'<div class="muted">'+(rp.single?'одиночная запись':'наряд')+': '+rp.lines.length+' оп.'+(rp.submitted?' · подан '+esc(rp.submitted):'')+'</div>'
         +ctrls+lines+bonusBlockHtml(rp.breakdown||{})+footer+'</div>';
