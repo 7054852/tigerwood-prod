@@ -72,6 +72,31 @@
   .zlegend{ display:flex; gap:12px; flex-wrap:wrap; padding:4px 12px 0; font-size:11.5px; color:var(--muted); }
   .zlegend i{ display:inline-block; width:9px; height:9px; border-radius:3px; margin-right:4px; vertical-align:-1px; }
   .warnbar{ margin:6px 12px 0; padding:6px 9px; border-radius:9px; background:#fdf3ec; color:#a35b12; font-size:12.5px; font-weight:600; }
+  /* ── экран «Бойцы»: сотрудник-контейнер с работами ── */
+  .crew{ border:1.5px solid var(--line); border-radius:14px; background:var(--card); margin-bottom:10px; overflow:hidden; }
+  .crew.full{ border-color:#9ccfa6; } .crew.low{ border-color:#f0c98a; } .crew.empty{ border-style:dashed; }
+  .ch{ display:flex; align-items:center; gap:9px; padding:10px 12px 6px; flex-wrap:wrap; }
+  .ch .nm{ font-weight:800; font-size:15px; }
+  .ch .stat{ font-size:11.5px; color:var(--muted); }
+  .load{ height:12px; background:#eef1f8; border-radius:7px; overflow:hidden; margin:0 12px; display:flex; }
+  .load > i{ display:block; height:100%; background:var(--accent); transition:width .3s ease; }
+  .load > i.ov{ background:var(--red); }
+  .lnums{ padding:4px 12px 0; font-size:12px; color:var(--muted); }
+  .lnums b{ color:var(--fg); }
+  .tasks{ padding:6px 12px 4px; }
+  .task{ display:flex; align-items:center; gap:8px; padding:5px 0; border-top:1px solid var(--line); font-size:13px; flex-wrap:wrap; }
+  .task:first-child{ border-top:0; }
+  .task .tn{ flex:1; min-width:150px; }
+  .task .tq{ font-weight:700; font-variant-numeric:tabular-nums; }
+  .task .tw{ color:#a35b12; font-size:11.5px; font-weight:700; }
+  .task .tg{ font-size:10.5px; color:var(--muted); border:1px solid var(--line); border-radius:20px; padding:1px 7px; }
+  .cwarn{ margin:0 12px 8px; font-size:12px; color:#a35b12; }
+  .cwarn div{ padding:1px 0; }
+  .picker{ margin:6px 12px 10px; border:1px dashed var(--line); border-radius:10px; padding:8px 10px; max-height:290px; overflow-y:auto; }
+  .pk{ display:flex; align-items:center; gap:8px; padding:5px 0; border-top:1px solid var(--line); font-size:12.5px; cursor:pointer; }
+  .pk:first-child{ border-top:0; } .pk:hover{ background:#f7f9fd; }
+  .pk .pn{ flex:1; min-width:140px; } .pk .pa{ font-weight:700; color:#137333; white-space:nowrap; }
+  .pk.no .pa{ color:var(--muted); }
   .zbody{ padding:8px 12px; min-height:42px; }
   .zrow{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:3px 0; }
   .zrow + .zrow{ border-top:1px dashed var(--line); margin-top:3px; }
@@ -106,13 +131,14 @@ var app=$('app'), TAB='t', DATE=isoToday(), D=null, BATCHES=[], OID='', PLANDATE
 function shell(){
   app.innerHTML='<div class="tabs">'
     +'<button id="tb-t" onclick="showTab(\'t\')">📅 Табель</button>'
-    +'<button id="tb-p" onclick="showTab(\'p\')">🎯 План на день</button>'
+    +'<button id="tb-c" onclick="showTab(\'c\')">👷 Бойцы</button>'
+    +'<button id="tb-p" onclick="showTab(\'p\')">🎯 По участкам</button>'
     +'<button id="tb-m" onclick="showTab(\'m\')">🗓 Месяц</button></div>'
     +'<div id="pane"></div>';
   showTab(TAB);
 }
-function showTab(t){ TAB=t; ['t','p','m'].forEach(function(x){ var b=$('tb-'+x); if(b) b.className=(x===t?'active':''); });
-  if(t==='t') loadDay(); else if(t==='p') loadPlan(); else loadMonth(); }
+function showTab(t){ TAB=t; ['t','c','p','m'].forEach(function(x){ var b=$('tb-'+x); if(b) b.className=(x===t?'active':''); });
+  if(t==='t') loadDay(); else if(t==='c') loadCrew(); else if(t==='p') loadPlan(); else loadMonth(); }
 
 /* ── ТАБЕЛЬ НА ДАТУ ──
    Отклик мгновенный: кнопка меняется СРАЗУ (оптимистично), запись уходит в фоне;
@@ -421,6 +447,125 @@ function saveTarget(){
 }
 function resetTarget(){ delete PLANCACHE[PLANDATE+'|'+OID]; api({vapi:'daytarget',date:PLANDATE,rub:'',tgid:TGID}).then(function(){ loadPlan(); }); }
 
+/* ── ЭКРАН «БОЙЦЫ»: сотрудник = контейнер, в него кладём конкретные работы ── */
+var CREW=null, PICK='', PICKF='', CREWCACHE={};
+function loadCrew(){
+  var ck=PLANDATE+'|'+OID, c=CREWCACHE[ck];
+  if(c){ CREW=c; renderCrew(); } else $('pane').innerHTML='<div class="center muted">Загрузка…</div>';
+  var next=BATCHES.length?Promise.resolve():api({vapi:'batches'}).then(function(r){ BATCHES=((r&&r.batches)||[]).filter(function(b){ return b.status==='новая'||b.status==='в работе'; }); if(!OID&&BATCHES.length) OID=BATCHES[0].id; });
+  next.then(function(){ var d=PLANDATE,o=OID; return api({vapi:'crewplan',date:d,batch:o,tgid:TGID}).then(function(r){ return (d!==PLANDATE||o!==OID)?null:r; }); }).then(function(r){
+    if(r===null) return;
+    if(!r||!r.ok){ if(!c&&TAB==='c') $('pane').innerHTML='<div class="box err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
+    CREWCACHE[PLANDATE+'|'+OID]=r;
+    if(TAB!=='c'||SAVING>0) return;
+    CREW=r; renderCrew();
+  });
+}
+function autoQty(p,c){                        // «сколько успеет»: остаток смены × норма, но не больше доступного
+  var free=Math.max(0,p.shiftHours-p.planHours);
+  var byTime=(c.norm>0)?Math.floor(free*c.norm):0;
+  var cap=Math.max(0,Math.min(c.availQty!=null?c.availQty:c.leftQty,c.leftQty));
+  var q=byTime>0?Math.min(byTime,cap):cap;
+  return Math.max(1,Math.round(q));
+}
+function renderCrew(){
+  var r=CREW;
+  var opts=BATCHES.map(function(b){ return '<option value="'+esc(b.id)+'"'+(b.id===OID?' selected':'')+'>'+esc(b.num)+' · '+esc(b.name||'')+'</option>'; }).join('');
+  var head='<div class="box"><div class="row">'
+    +'<input type="date" value="'+PLANDATE+'" onchange="PLANDATE=this.value;PICK=\'\';loadCrew();"><b>'+ruDate(PLANDATE)+' ('+dayName(PLANDATE)+')</b>'
+    +'<span class="muted">заказ:</span><select onchange="OID=this.value;PICK=\'\';loadCrew();">'+opts+'</select></div></div>';
+  var kpi='<div class="box kpi">'
+    +'<span><span class="k">Бойцов</span><b>'+r.people.length+'</b></span>'
+    +'<span><span class="k">Загрузка</span><b>'+h1(r.totalHours)+' / '+h1(r.capHours)+' ч</b></span>'
+    +'<span><span class="k">План выработки</span><b style="color:#137333">'+money(r.totalRub)+' ₽</b></span>'
+    +'</div>';
+  var cards=r.people.map(function(p,i){
+    var pct=p.shiftHours>0?Math.min(100,Math.round(p.planHours/p.shiftHours*100)):0;
+    var over=p.planHours>p.shiftHours+0.01;
+    var cls=p.empty?'empty':(p.planRub>=r.minRub&&p.freeHours<=0.5?'full':(p.planRub>0?'low':'empty'));
+    var tasks=p.tasks.map(function(t,ti){
+      var w=t.over?'<span class="tw">⚠ есть только '+Math.round(t.availQty)+'</span>':'';
+      return '<div class="task"><span class="tg">'+esc(t.group||'—')+'</span>'
+        +'<span class="tn">'+esc(t.op)+(t.detail?' <span class="muted">› '+esc(t.detail)+'</span>':'')+'</span>'
+        +'<span class="tq">'+Math.round(t.qty)+' шт</span>'
+        +'<span class="muted">'+h1(t.hours)+' ч · '+money(t.rub)+' ₽</span>'+w
+        +'<button class="gho" onclick="editQty('+i+','+ti+')" title="изменить количество">✏️</button>'
+        +'<button class="gho" onclick="delTask('+i+','+ti+')" title="убрать работу">🗑</button></div>';
+    }).join('');
+    var warns=p.warns.length?('<div class="cwarn">'+p.warns.map(function(w){ return '<div>⚠ '+esc(w)+'</div>'; }).join('')+'</div>'):'';
+    var picker=(PICK===p.name)?pickerHtml(p,i):'';
+    return '<div class="crew '+cls+'">'
+      +'<div class="ch"><span>'+(p.shift==='ночь'?'🌙':'☀️')+'</span><span class="nm">'+esc(p.name)+'</span>'
+        +(p.topGroup?'<span class="stat">⭐ '+esc(p.topGroup)+'</span>':'')
+        +'<span class="stat">⚡ обычно '+Math.round(p.expect)+' ₽/д</span>'
+        +'<span style="flex:1"></span>'
+        +'<button class="sec" style="padding:4px 10px;font-size:12px" onclick="togglePick(\''+esc(p.name)+'\')">'+(PICK===p.name?'закрыть':'+ работа')+'</button></div>'
+      +'<div class="load"><i class="'+(over?'ov':'')+'" style="width:'+pct+'%"></i></div>'
+      +'<div class="lnums"><b>'+h1(p.planHours)+'</b> из '+p.shiftHours+' ч · <b>'+money(p.planRub)+' ₽</b>'
+        +(p.freeHours>0.05?(' · резерв '+h1(p.freeHours)+' ч'):(over?' · <span style="color:var(--red)">перегруз</span>':' · смена заполнена'))+'</div>'
+      +'<div class="tasks">'+(tasks||'<div class="muted" style="padding:6px 0">работ не назначено — нажмите «+ работа»</div>')+'</div>'
+      +warns+picker+'</div>';
+  }).join('');
+  var empty=r.people.length?'':'<div class="box muted">На эту дату никто не отмечен в табеле — начните с вкладки «Табель».</div>';
+  $('pane').innerHTML=head+kpi+cards+empty;
+}
+function pickerHtml(p,i){
+  var cat=CREW.catalog||[], q=(PICKF||'').toLowerCase();
+  var have={}; p.tasks.forEach(function(t){ have[t.op+' › '+t.detail]=1; });
+  var list=cat.filter(function(c){ return !have[c.key] && (!q || c.key.toLowerCase().indexOf(q)>=0 || c.group.toLowerCase().indexOf(q)>=0); });
+  // сначала работы «родного» участка бойца
+  list.sort(function(a,b){ var ap=(a.group===p.topGroup)?0:1, bp=(b.group===p.topGroup)?0:1; return ap-bp || b.availQty-a.availQty; });
+  var rows=list.slice(0,40).map(function(c){
+    var no=(c.availQty<=0);
+    return '<div class="pk'+(no?' no':'')+'" onclick="addTask('+i+',\''+esc(c.key).replace(/'/g,"\\'")+'\')">'
+      +'<span class="tg">'+esc(c.group)+'</span>'
+      +'<span class="pn">'+esc(c.op)+' <span class="muted">› '+esc(c.detail)+'</span></span>'
+      +'<span class="pa">'+(no?'ждёт предыдущих':('можно '+Math.round(c.availQty)+' шт'))+'</span></div>';
+  }).join('');
+  return '<div class="picker" onclick="event.stopPropagation()">'
+    +'<input placeholder="поиск работы…" value="'+esc(PICKF)+'" oninput="PICKF=this.value;renderCrew()" style="width:100%;margin-bottom:6px">'
+    +(rows||'<div class="muted">ничего не найдено</div>')+'</div>';
+}
+function togglePick(name){ PICK=(PICK===name)?'':name; PICKF=''; renderCrew(); }
+function addTask(i,key){
+  var p=CREW.people[i], c=(CREW.catalog||[]).filter(function(x){ return x.key===key; })[0];
+  if(!c) return;
+  var q=autoQty(p,c);
+  p.tasks.push({ op:c.op, detail:c.detail, qty:q, group:c.group, rate:c.rate, norm:c.norm,
+                 availQty:c.availQty, leftQty:c.leftQty, rub:Math.round(q*c.rate*100)/100,
+                 hours:c.norm>0?Math.round(q/c.norm*100)/100:0, over:q>c.availQty });
+  recalcCrew(p); PICK=''; renderCrew(); saveTasks(p);
+}
+function editQty(i,ti){
+  var p=CREW.people[i], t=p.tasks[ti];
+  var v=prompt('Количество для «'+t.op+(t.detail?' › '+t.detail:'')+'»'+(t.availQty!=null?('\nДоступно сейчас: '+Math.round(t.availQty)+' шт'):''), Math.round(t.qty));
+  if(v===null) return; var q=Number(String(v).replace(',','.'))||0;
+  if(q<=0){ delTask(i,ti); return; }
+  t.qty=q; t.rub=Math.round(q*(t.rate||0)*100)/100; t.hours=(t.norm>0)?Math.round(q/t.norm*100)/100:0; t.over=(t.availQty!=null&&q>t.availQty);
+  recalcCrew(p); renderCrew(); saveTasks(p);
+}
+function delTask(i,ti){ var p=CREW.people[i]; p.tasks.splice(ti,1); recalcCrew(p); renderCrew(); saveTasks(p); }
+function recalcCrew(p){
+  var rub=0,h=0; p.tasks.forEach(function(t){ rub+=t.rub||0; h+=t.hours||0; });
+  p.planRub=Math.round(rub*100)/100; p.planHours=Math.round(h*100)/100;
+  p.freeHours=Math.round((p.shiftHours-p.planHours)*100)/100; p.empty=!p.tasks.length;
+  p.warns=[];
+  p.tasks.forEach(function(t){ if(t.over) p.warns.push('«'+t.op+(t.detail?' › '+t.detail:'')+'»: столько работы нет — доступно '+Math.round(t.availQty)+' шт'); });
+  if(p.planRub>0&&p.planRub<CREW.minRub) p.warns.push('план ниже минимума '+CREW.minRub+' ₽ — догрузите работой');
+  if(p.freeHours>0.5&&p.tasks.length) p.warns.push('резерв '+h1(p.freeHours)+' ч (~'+Math.round(p.freeHours*CREW.hourRate)+' ₽) — можно догрузить');
+  var tr=0,th=0; CREW.people.forEach(function(x){ tr+=x.planRub||0; th+=x.planHours||0; });
+  CREW.totalRub=Math.round(tr*100)/100; CREW.totalHours=Math.round(th*100)/100;
+}
+function saveTasks(p){
+  CREWCACHE={}; PLANCACHE={};
+  var payload=p.tasks.map(function(t){ return {op:t.op,detail:t.detail,qty:t.qty}; });
+  SAVING++;
+  SAVEQ=SAVEQ.then(function(){ return api({vapi:'crewtasks',date:PLANDATE,worker:p.name,tasks:JSON.stringify(payload),tgid:TGID}); }).then(function(r){
+    SAVING--; if(SAVING<0) SAVING=0;
+    if(!r||!r.ok){ alert((r&&r.error)||'не сохранилось — обновляю'); loadCrew(); }
+  }).catch(function(){ SAVING--; if(SAVING<0)SAVING=0; alert('Нет связи — обновляю'); loadCrew(); });
+}
+
 /* ── МЕСЯЦ ── */
 var YM=isoToday().slice(0,7);
 function shiftMonth(d){ var p=YM.split('-'); var dt=new Date(Number(p[0]),Number(p[1])-1+d,1); YM=dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0'); loadMonth(); }
@@ -454,7 +599,7 @@ shell();
 // авто-обновление: оболочка шлёт «refresh» при возврате на раздел — перечитываем данные без перезагрузки страницы
 (function(){
   try{ var m=/[?&]twsec=([^&]+)/.exec(location.search); window.top.postMessage({tw:'hello',sec:m?decodeURIComponent(m[1]):''},'*'); }catch(e){}
-  window.addEventListener('message',function(e){ var d=e&&e.data; if(d&&d.tw==='refresh'){ try{ DAYCACHE={};PLANCACHE={};if(TAB==="t")loadDay(true);else if(TAB==="p")loadPlan();else loadMonth(); }catch(err){} } });
+  window.addEventListener('message',function(e){ var d=e&&e.data; if(d&&d.tw==='refresh'){ try{ DAYCACHE={};PLANCACHE={};CREWCACHE={};if(TAB==="t")loadDay(true);else if(TAB==="c")loadCrew();else if(TAB==="p")loadPlan();else loadMonth(); }catch(err){} } });
 })();
 </script>
 </body>
