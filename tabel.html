@@ -72,6 +72,19 @@
   .zlegend{ display:flex; gap:12px; flex-wrap:wrap; padding:4px 12px 0; font-size:11.5px; color:var(--muted); }
   .zlegend i{ display:inline-block; width:9px; height:9px; border-radius:3px; margin-right:4px; vertical-align:-1px; }
   .warnbar{ margin:6px 12px 0; padding:6px 9px; border-radius:9px; background:#fdf3ec; color:#a35b12; font-size:12.5px; font-weight:600; }
+  /* ── ведомость заработка: рабочий × дни месяца ── */
+  .paywrap{ overflow-x:auto; }
+  table.pay{ border-collapse:collapse; font-size:12px; white-space:nowrap; }
+  table.pay th,table.pay td{ border:1px solid var(--line); padding:3px 6px; text-align:right; }
+  table.pay th{ background:#f7f9fd; font-weight:700; color:var(--muted); font-size:11px; }
+  table.pay td.nmc,table.pay th.nmc{ text-align:left; position:sticky; left:0; background:var(--card); z-index:2;
+    font-weight:700; min-width:150px; box-shadow:2px 0 4px rgba(20,30,60,.06); }
+  table.pay th.nmc{ background:#f7f9fd; }
+  table.pay .tot{ background:#f4f8ff; font-variant-numeric:tabular-nums; }
+  table.pay .tdy{ background:#fff8e1; }
+  table.pay tr.ftr td{ background:#eef2f9; font-weight:700; }
+  table.pay tr.ftr td.nmc{ background:#eef2f9; }
+  table.pay .nn{ font-size:9px; margin-left:1px; }
   /* ── экран «Бойцы»: сотрудник-контейнер с работами ── */
   .crew{ border:1.5px solid var(--line); border-radius:14px; background:var(--card); margin-bottom:10px; overflow:hidden; }
   .crew.full{ border-color:#9ccfa6; } .crew.low{ border-color:#f0c98a; } .crew.empty{ border-style:dashed; }
@@ -135,12 +148,13 @@ function shell(){
     +'<button id="tb-t" onclick="showTab(\'t\')">📅 Табель</button>'
     +'<button id="tb-c" onclick="showTab(\'c\')">👷 Бойцы</button>'
     +'<button id="tb-p" onclick="showTab(\'p\')">🎯 По участкам</button>'
-    +'<button id="tb-m" onclick="showTab(\'m\')">🗓 Месяц</button></div>'
+    +'<button id="tb-m" onclick="showTab(\'m\')">🗓 Месяц</button>'
+    +'<button id="tb-z" onclick="showTab(\'z\')">💰 Заработок</button></div>'
     +'<div id="pane"></div>';
   showTab(TAB);
 }
-function showTab(t){ TAB=t; ['t','c','p','m'].forEach(function(x){ var b=$('tb-'+x); if(b) b.className=(x===t?'active':''); });
-  if(t==='t') loadDay(); else if(t==='c') loadCrew(); else if(t==='p') loadPlan(); else loadMonth(); }
+function showTab(t){ TAB=t; ['t','c','p','m','z'].forEach(function(x){ var b=$('tb-'+x); if(b) b.className=(x===t?'active':''); });
+  if(t==='t') loadDay(); else if(t==='c') loadCrew(); else if(t==='p') loadPlan(); else if(t==='z') loadPay(); else loadMonth(); }
 
 /* ── ТАБЕЛЬ НА ДАТУ ──
    Отклик мгновенный: кнопка меняется СРАЗУ (оптимистично), запись уходит в фоне;
@@ -584,6 +598,46 @@ function saveTasks(p){
   }).catch(function(){ SAVING--; if(SAVING<0)SAVING=0; alert('Нет связи — обновляю'); loadCrew(); });
 }
 
+/* ── ЗАРАБОТОК: ведомость «рабочий × день месяца» ── */
+var ZYM=isoToday().slice(0,7), PAY=null;
+function shiftZ(d){ var p=ZYM.split('-'); var dt=new Date(Number(p[0]),Number(p[1])-1+d,1); ZYM=dt.getFullYear()+'-'+pad2(dt.getMonth()+1); loadPay(); }
+function loadPay(){
+  $('pane').innerHTML='<div class="center muted">Считаю заработок…</div>';
+  var ym0=ZYM;
+  api({vapi:'payrolldaily',ym:ZYM,tgid:TGID}).then(function(r){
+    if(TAB!=='z'||ym0!==ZYM) return;
+    if(!r||!r.ok){ $('pane').innerHTML='<div class="box err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
+    PAY=r; renderPay();
+  }).catch(function(e){ if(TAB==='z') $('pane').innerHTML='<div class="box err">Ошибка: '+esc(e.message||e)+'</div>'; });
+}
+function renderPay(){
+  var r=PAY, days=r.daysInMonth, p=r.ym.split('-');
+  var todayD=(r.today.slice(0,7)===r.ym)?Number(r.today.slice(8)):0;
+  var head='<div class="box"><div class="row">'
+    +'<button class="gho" onclick="shiftZ(-1)">←</button><b style="font-size:15px">'+esc(r.ym)+'</b><button class="gho" onclick="shiftZ(1)">→</button>'
+    +'<span style="flex:1"></span>'
+    +'<span class="muted">подтверждено за месяц:</span><b style="color:#137333;font-size:16px">'+money(r.grand)+' ₽</b>'
+    +(r.pendingTotal>0?'<span class="pill" style="background:#fff3d6;color:#8a6d00">на проверке '+money(r.pendingTotal)+' ₽</span>':'')
+    +'</div><div class="muted" style="margin-top:4px">Сумма — подтверждённая мастером выработка за день. 🌙 — в этот день была ночная смена.</div></div>';
+  if(!r.workers.length){ $('pane').innerHTML=head+'<div class="box muted">За этот месяц подтверждённой выработки нет.</div>'; return; }
+  var th='<tr><th class="nmc">Рабочий</th>';
+  for(var d=1;d<=days;d++) th+='<th'+(d===todayD?' class="tdy"':'')+'>'+d+'</th>';
+  th+='<th class="tot">Итого</th><th class="tot">дней</th><th class="tot">ср/день</th></tr>';
+  var body=r.workers.map(function(w){
+    var tds='';
+    for(var d=1;d<=days;d++){
+      var v=w.byDay[d];
+      tds+='<td'+(d===todayD?' class="tdy"':'')+'>'+(v?('<b>'+money(v).replace(',00','')+'</b>'+(w.night[d]?'<span class="nn">🌙</span>':'')):'')+'</td>';
+    }
+    return '<tr><td class="nmc">'+esc(w.name)+(w.pending>0?' <span class="pill" style="background:#fff3d6;color:#8a6d00;font-size:10px">+'+money(w.pending)+' на проверке</span>':'')+'</td>'
+      +tds+'<td class="tot"><b>'+money(w.total)+'</b></td><td class="tot">'+w.days+'</td><td class="tot">'+money(w.avgDay)+'</td></tr>';
+  }).join('');
+  var ft='<tr class="ftr"><td class="nmc">Всего за день</td>';
+  for(var d2=1;d2<=days;d2++){ var t=r.dayTotals[d2]; ft+='<td'+(d2===todayD?' class="tdy"':'')+'>'+(t?money(t).replace(',00',''):'')+'</td>'; }
+  ft+='<td class="tot"><b>'+money(r.grand)+'</b></td><td class="tot"></td><td class="tot"></td></tr>';
+  $('pane').innerHTML=head+'<div class="box paywrap"><table class="pay">'+th+body+ft+'</table></div>';
+}
+
 /* ── МЕСЯЦ ── */
 var YM=isoToday().slice(0,7);
 function shiftMonth(d){ var p=YM.split('-'); var dt=new Date(Number(p[0]),Number(p[1])-1+d,1); YM=dt.getFullYear()+'-'+pad2(dt.getMonth()+1); loadMonth(); }
@@ -617,7 +671,7 @@ shell();
 // авто-обновление: оболочка шлёт «refresh» при возврате на раздел — перечитываем данные без перезагрузки страницы
 (function(){
   try{ var m=/[?&]twsec=([^&]+)/.exec(location.search); window.top.postMessage({tw:'hello',sec:m?decodeURIComponent(m[1]):''},'*'); }catch(e){}
-  window.addEventListener('message',function(e){ var d=e&&e.data; if(d&&d.tw==='refresh'){ try{ DAYCACHE={};PLANCACHE={};CREWCACHE={};if(TAB==="t")loadDay(true);else if(TAB==="c")loadCrew();else if(TAB==="p")loadPlan();else loadMonth(); }catch(err){} } });
+  window.addEventListener('message',function(e){ var d=e&&e.data; if(d&&d.tw==='refresh'){ try{ DAYCACHE={};PLANCACHE={};CREWCACHE={};if(TAB==="z")loadPay();else if(TAB==="t")loadDay(true);else if(TAB==="c")loadCrew();else if(TAB==="p")loadPlan();else loadMonth(); }catch(err){} } });
 })();
 </script>
 </body>
