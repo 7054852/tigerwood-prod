@@ -27,6 +27,45 @@
 </style>
 </head>
 <body>
+<script>
+// Поддержка старых Android (нет fetch/Promise) — минимальная замена на XMLHttpRequest
+if(!window.Promise){window.Promise=function(f){var s=this;s._c=[];s._e=[];s._v=null;s._s=0;
+ function res(v){s._s=1;s._v=v;for(var i=0;i<s._c.length;i++)s._c[i](v);}
+ function rej(v){s._s=2;s._v=v;for(var i=0;i<s._e.length;i++)s._e[i](v);}
+ try{f(res,rej);}catch(e){rej(e);}};
+ window.Promise.prototype.then=function(cb,eb){var s=this;var p=new window.Promise(function(res,rej){
+  function ok(v){try{res(cb?cb(v):v);}catch(e){rej(e);}}
+  function no(v){if(eb){try{res(eb(v));}catch(e){rej(e);}}else rej(v);}
+  if(s._s===1)ok(s._v);else if(s._s===2)no(s._v);else{s._c.push(ok);s._e.push(no);}});return p;};
+ window.Promise.prototype['catch']=function(eb){return this.then(null,eb);};
+ window.Promise.resolve=function(v){return new window.Promise(function(r){r(v);});};
+ window.Promise.all=function(a){return new window.Promise(function(res,rej){var n=a.length,out=[],c=0;if(!n)return res(out);
+  for(var i=0;i<n;i++)(function(i){a[i].then(function(v){out[i]=v;if(++c===n)res(out);},rej);})(i);});};
+}
+if(!window.fetch){window.fetch=function(url){return new window.Promise(function(res,rej){
+ var x=new XMLHttpRequest();x.open('GET',url,true);
+ x.onreadystatechange=function(){if(x.readyState===4){ if(x.status>=200&&x.status<400){
+   res({ok:true,status:x.status,json:function(){return window.Promise.resolve(JSON.parse(x.responseText));},text:function(){return window.Promise.resolve(x.responseText);}});
+ } else rej(new Error('HTTP '+x.status)); }};
+ x.onerror=function(){rej(new Error('сеть недоступна'));};x.send();});};}
+</script>
+
+<script>
+// Страховка от «белого экрана» на старых телефонах: если скрипт упал — покажем причину, а не пустоту
+window.onerror=function(msg,src,line){
+  try{
+    var b=document.getElementById('app')||document.body;
+    b.innerHTML='<div style="font-family:-apple-system,Roboto,Arial,sans-serif;padding:18px;line-height:1.5">'
+      +'<div style="font-size:17px;font-weight:700;margin-bottom:8px">Не удалось открыть приложение</div>'
+      +'<div style="color:#666;font-size:13px">Покажите это сообщение руководителю:</div>'
+      +'<div style="background:#fdecea;color:#c0392b;border-radius:9px;padding:9px;margin-top:8px;font-size:12px;word-break:break-word">'
+      +String(msg)+' (строка '+line+')</div>'
+      +'<div style="margin-top:12px;font-size:13px;color:#666">Часто помогает: закрыть приложение и открыть заново из бота.</div></div>';
+  }catch(e){}
+  return false;
+};
+</script>
+
 <div class="tabs">
   <button id="tab-w" class="active" onclick="showTab('w')">✍️ Выработка</button>
   <button id="tab-m" onclick="showTab('m')">👏 Проверка</button>
@@ -75,6 +114,8 @@
   <div id="jlist" style="margin-top:10px"></div>
 </div>
 <script>
+// две цифры с ведущим нулём — вместо padStart (его нет в старых Android-браузерах, страница падала)
+function pad2(v){ v=String(v); return v.length<2?('0'+v):v; }
 var BASE='https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';
 var APP='tw7prod', DATA={equipments:[],batches:[],workers:[],comp:{},worker:''}, TGID='';
 var COMP={}, EQUIPS=[];   // состав операций ВЫБРАННОЙ партии
@@ -149,7 +190,7 @@ function setShift(sh){ SHIFT=sh;
   document.getElementById('shift-night').className=(sh==='ночь')?'active':'';
   updateWhen(); renderCart(); }
 function setDate(off){ var d=new Date(); d.setDate(d.getDate()+off);
-  var s=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  var s=d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());
   var el=document.getElementById('wdate'); if(el) el.value=s; updateWhen(); }
 // наглядно: за какую дату и смену будет отчёт
 function updateWhen(){ var el=document.getElementById('whenline'); if(!el) return;
@@ -249,8 +290,8 @@ function myDel(id){
 function loadMySummary(){
   var worker=DATA.worker||'', box=document.getElementById('mysum'); if(!box) return;
   if(!worker){ box.innerHTML=''; return; }
-  var n=new Date(), m=String(n.getMonth()+1).padStart(2,'0');
-  var fromRu='01.'+m+'.'+n.getFullYear(), toRu=String(n.getDate()).padStart(2,'0')+'.'+m+'.'+n.getFullYear();
+  var n=new Date(), m=pad2(n.getMonth()+1);
+  var fromRu='01.'+m+'.'+n.getFullYear(), toRu=pad2(n.getDate())+'.'+m+'.'+n.getFullYear();
   api({vapi:'journal',from:fromRu,to:toRu,worker:worker}).then(function(r){
     var items=(r&&r.items)||[], pr=(r&&r.payroll)||[], zp=pr.length?pr[0].sum:0;
     var recent=items.slice(0,5).map(function(it){ return '<div class="row"><span class="muted">'+esc(it.date)+' · '+esc(it.op)+' · '+it.qty+'шт</span><span class="'+(it.status==='подтверждено'?'ok':(it.status==='отклонено'?'err':'muted'))+'">'+it.sum+'р · '+esc(it.status)+'</span></div>'; }).join('');
@@ -434,7 +475,7 @@ function doRegister(){
   if(m){ m.textContent='Регистрирую…'; }
   api({vapi:'register',tgid:TGID,fio:fio}).then(function(r){ if(r&&r.ok){ load(); } else if(m){ m.innerHTML='<span class="err">'+((r&&r.error)||'ошибка')+'</span>'; } });
 }
-(function(){ var n=new Date(), m=String(n.getMonth()+1).padStart(2,'0'), today=n.getFullYear()+'-'+m+'-'+String(n.getDate()).padStart(2,'0');
+(function(){ var n=new Date(), m=pad2(n.getMonth()+1), today=n.getFullYear()+'-'+m+'-'+pad2(n.getDate());
   document.getElementById('jfrom').value=n.getFullYear()+'-'+m+'-01';
   document.getElementById('jto').value=today;
   document.getElementById('wdate').value=today; updateWhen(); })();

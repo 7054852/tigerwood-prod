@@ -78,11 +78,50 @@
 </style>
 </head>
 <body>
+<script>
+// Поддержка старых Android (нет fetch/Promise) — минимальная замена на XMLHttpRequest
+if(!window.Promise){window.Promise=function(f){var s=this;s._c=[];s._e=[];s._v=null;s._s=0;
+ function res(v){s._s=1;s._v=v;for(var i=0;i<s._c.length;i++)s._c[i](v);}
+ function rej(v){s._s=2;s._v=v;for(var i=0;i<s._e.length;i++)s._e[i](v);}
+ try{f(res,rej);}catch(e){rej(e);}};
+ window.Promise.prototype.then=function(cb,eb){var s=this;var p=new window.Promise(function(res,rej){
+  function ok(v){try{res(cb?cb(v):v);}catch(e){rej(e);}}
+  function no(v){if(eb){try{res(eb(v));}catch(e){rej(e);}}else rej(v);}
+  if(s._s===1)ok(s._v);else if(s._s===2)no(s._v);else{s._c.push(ok);s._e.push(no);}});return p;};
+ window.Promise.prototype['catch']=function(eb){return this.then(null,eb);};
+ window.Promise.resolve=function(v){return new window.Promise(function(r){r(v);});};
+ window.Promise.all=function(a){return new window.Promise(function(res,rej){var n=a.length,out=[],c=0;if(!n)return res(out);
+  for(var i=0;i<n;i++)(function(i){a[i].then(function(v){out[i]=v;if(++c===n)res(out);},rej);})(i);});};
+}
+if(!window.fetch){window.fetch=function(url){return new window.Promise(function(res,rej){
+ var x=new XMLHttpRequest();x.open('GET',url,true);
+ x.onreadystatechange=function(){if(x.readyState===4){ if(x.status>=200&&x.status<400){
+   res({ok:true,status:x.status,json:function(){return window.Promise.resolve(JSON.parse(x.responseText));},text:function(){return window.Promise.resolve(x.responseText);}});
+ } else rej(new Error('HTTP '+x.status)); }};
+ x.onerror=function(){rej(new Error('сеть недоступна'));};x.send();});};}
+</script>
+
+<script>
+// Страховка от «белого экрана» на старых телефонах: если скрипт упал — покажем причину, а не пустоту
+window.onerror=function(msg,src,line){
+  try{
+    var b=document.getElementById('app')||document.body;
+    b.innerHTML='<div style="font-family:-apple-system,Roboto,Arial,sans-serif;padding:18px;line-height:1.5">'
+      +'<div style="font-size:17px;font-weight:700;margin-bottom:8px">Не удалось открыть приложение</div>'
+      +'<div style="color:#666;font-size:13px">Покажите это сообщение руководителю:</div>'
+      +'<div style="background:#fdecea;color:#c0392b;border-radius:9px;padding:9px;margin-top:8px;font-size:12px;word-break:break-word">'
+      +String(msg)+' (строка '+line+')</div>'
+      +'<div style="margin-top:12px;font-size:13px;color:#666">Часто помогает: закрыть приложение и открыть заново из бота.</div></div>';
+  }catch(e){}
+  return false;
+};
+</script>
+
 <div id="app"><div class="center">Загрузка…</div></div>
 <script>
 var BASE='https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';
 var APP='tw7prod', TGID='', ME=null, ROLE='', app=document.getElementById('app');
-var VER='20260729h';   // бамп при изменении встраиваемых stat-страниц — сбивает кеш GitHub Pages в iframe
+var VER='20260729i';   // бамп при изменении встраиваемых stat-страниц — сбивает кеш GitHub Pages в iframe
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
 function api(p){ p.app=APP; var q=Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]);}).join('&'); return fetch(BASE+'?'+q).then(function(r){return r.json();}); }

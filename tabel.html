@@ -120,10 +120,11 @@ function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){retur
 function $(id){ return document.getElementById(id); }
 function money(n){ n=Number(n)||0; return n.toFixed(2).replace('.',','); }
 function h1(n){ n=Number(n)||0; return n.toFixed(1).replace('.',','); }   // часы с одним знаком
+function pad2(v){ v=String(v); return v.length<2?('0'+v):v; }             // вместо padStart (нет в старых Android)
 function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
 var TGID=qp('tgid')||(function(){try{return localStorage.getItem('tw_tgid')||'';}catch(e){return '';}})();
 if(TGID){ try{localStorage.setItem('tw_tgid',TGID);}catch(e){} }
-function isoToday(d){ d=d||new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function isoToday(d){ d=d||new Date(); return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate()); }
 function ruDate(iso){ var p=String(iso||'').split('-'); return p.length===3?(p[2]+'.'+p[1]+'.'+p[0]):iso; }
 function dayName(iso){ try{ return ['вс','пн','вт','ср','чт','пт','сб'][new Date(iso+'T12:00:00').getDay()]; }catch(e){ return ''; } }
 
@@ -585,7 +586,7 @@ function saveTasks(p){
 
 /* ── МЕСЯЦ ── */
 var YM=isoToday().slice(0,7);
-function shiftMonth(d){ var p=YM.split('-'); var dt=new Date(Number(p[0]),Number(p[1])-1+d,1); YM=dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0'); loadMonth(); }
+function shiftMonth(d){ var p=YM.split('-'); var dt=new Date(Number(p[0]),Number(p[1])-1+d,1); YM=dt.getFullYear()+'-'+pad2(dt.getMonth()+1); loadMonth(); }
 function loadMonth(){
   $('pane').innerHTML='<div class="center muted">Загрузка…</div>';
   var ym0=YM;
