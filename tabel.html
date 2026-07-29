@@ -462,12 +462,19 @@ function loadCrew(){
     CREW=r; renderCrew();
   });
 }
-function autoQty(p,c){                        // «сколько успеет»: остаток смены × норма, но не больше доступного
+// «сколько успеет»: остаток смены × норма, но не больше доступного.
+// Если времени в смене не осталось — возвращаем 0 (фронт спросит кол-во вручную, а не заполнит перегрузом).
+function autoQty(p,c){
   var free=Math.max(0,p.shiftHours-p.planHours);
-  var byTime=(c.norm>0)?Math.floor(free*c.norm):0;
   var cap=Math.max(0,Math.min(c.availQty!=null?c.availQty:c.leftQty,c.leftQty));
-  var q=byTime>0?Math.min(byTime,cap):cap;
-  return Math.max(1,Math.round(q));
+  if(cap<=0) cap=Math.max(0,c.leftQty||0);           // фронта нет — предложим остаток работы (мастер решит)
+  if(c.norm>0){
+    if(free<=0.01) return 0;                          // смена уже заполнена
+    var byTime=Math.floor(free*c.norm);
+    if(byTime<=0) return 0;
+    return Math.max(1,Math.min(byTime,Math.round(cap)));
+  }
+  return Math.max(1,Math.round(cap));                 // нормы нет — часы посчитать нечем, ставим доступное
 }
 function renderCrew(){
   var r=CREW;
@@ -532,6 +539,14 @@ function addTask(i,key){
   var p=CREW.people[i], c=(CREW.catalog||[]).filter(function(x){ return x.key===key; })[0];
   if(!c) return;
   var q=autoQty(p,c);
+  if(q<=0){   // смена уже заполнена — не создаём перегруз молча, спрашиваем
+    var v=prompt('Смена уже заполнена ('+h1(p.planHours)+' из '+p.shiftHours+' ч).\n'
+      +'Сколько поставить «'+c.op+(c.detail?' › '+c.detail:'')+'»?'+(c.availQty!=null?('\nДоступно сейчас: '+Math.round(c.availQty)+' шт'):'')
+      +'\n\nПустое поле — не добавлять.', '');
+    if(v===null||String(v).trim()==='') { PICK=''; renderCrew(); return; }
+    q=Number(String(v).replace(',','.'))||0;
+    if(q<=0){ PICK=''; renderCrew(); return; }
+  }
   p.tasks.push({ op:c.op, detail:c.detail, qty:q, group:c.group, rate:c.rate, norm:c.norm,
                  availQty:c.availQty, leftQty:c.leftQty, rub:Math.round(q*c.rate*100)/100,
                  hours:c.norm>0?Math.round(q/c.norm*100)/100:0, over:q>c.availQty });
@@ -551,6 +566,7 @@ function recalcCrew(p){
   p.planRub=Math.round(rub*100)/100; p.planHours=Math.round(h*100)/100;
   p.freeHours=Math.round((p.shiftHours-p.planHours)*100)/100; p.empty=!p.tasks.length;
   p.warns=[];
+  if(p.planHours>p.shiftHours+0.01) p.warns.push('перегруз: работ на '+h1(p.planHours)+' ч при смене '+p.shiftHours+' ч — уменьшите количество или снимите работу');
   p.tasks.forEach(function(t){ if(t.over) p.warns.push('«'+t.op+(t.detail?' › '+t.detail:'')+'»: столько работы нет — доступно '+Math.round(t.availQty)+' шт'); });
   if(p.planRub>0&&p.planRub<CREW.minRub) p.warns.push('план ниже минимума '+CREW.minRub+' ₽ — догрузите работой');
   if(p.freeHours>0.5&&p.tasks.length) p.warns.push('резерв '+h1(p.freeHours)+' ч (~'+Math.round(p.freeHours*CREW.hourRate)+' ₽) — можно догрузить');
