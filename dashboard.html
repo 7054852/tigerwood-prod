@@ -83,7 +83,12 @@
 var BASE='https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';
 var APP='tw7prod';
 if(/[?&]embed=1/.test(location.search))document.documentElement.classList.add('emb');
-function api(p){ p.app=APP; var q=Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]==null?'':p[k]);}).join('&'); return fetch(BASE+'?'+q).then(function(r){return r.json();}); }
+function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
+var TGID=qp('tgid')||(function(){try{return localStorage.getItem('tw_tgid')||'';}catch(e){return '';}})();
+try{ if(window.Telegram&&Telegram.WebApp){ var u=Telegram.WebApp.initDataUnsafe&&Telegram.WebApp.initDataUnsafe.user; if(u) TGID=String(u.id); } }catch(e){}
+if(TGID){ try{localStorage.setItem('tw_tgid',TGID);}catch(e){} }
+// tgid идёт в каждый запрос: дашборд показывает ЗП по рабочим, права проверяет сервер
+function api(p){ p.app=APP; if(TGID&&!p.tgid) p.tgid=TGID; var q=Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]==null?'':p[k]);}).join('&'); return fetch(BASE+'?'+q).then(function(r){return r.json();}); }
 function $(id){ return document.getElementById(id); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function money(n){ return (Number(n)||0).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2}); }

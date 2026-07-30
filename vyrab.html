@@ -125,13 +125,16 @@ var FREE='__free__';      // «вне заказа»: работа без при
 function isFree(){ var b=document.getElementById('batch'); return b && b.value===FREE; }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function opt(v,t){ return '<option value="'+esc(v)+'">'+esc(t||v)+'</option>'; }
-function api(p){ p.app=APP; var q=Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]);}).join('&'); return fetch(BASE+'?'+q).then(function(r){return r.json();}); }
+function api(p){ p.app=APP; if(TGID&&!p.tgid) p.tgid=TGID; var q=Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]);}).join('&'); return fetch(BASE+'?'+q).then(function(r){return r.json();}); }
 function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
 try{ if(window.Telegram&&Telegram.WebApp){ Telegram.WebApp.ready(); Telegram.WebApp.expand(); var u=Telegram.WebApp.initDataUnsafe&&Telegram.WebApp.initDataUnsafe.user; if(u) TGID=String(u.id); } }catch(e){}
 if(!TGID){ TGID=qp('tgid')||localStorage.getItem('tw_tgid')||''; } if(TGID){ try{localStorage.setItem('tw_tgid',TGID);}catch(e){} }
 // РЕЖИМ: 'master' — панель проверки (?tab=check): все наряды + правки + коэффициент + ввод за любого сотрудника;
 //        'my' — личный кабинет: только свои наряды, свои на проверке, свой журнал.
-var MODE = (qp('tab')==='check'||qp('tab')==='m') ? 'master' : 'my';
+// ВАЖНО: ?tab=check — лишь ПОЖЕЛАНИЕ открыть панель проверки. Право даёт сервер (DATA.canCheck по роли),
+// иначе любой рабочий увидел бы чужие наряды, дописав параметр в адрес.
+var WANT_CHECK = (qp('tab')==='check'||qp('tab')==='m');
+var MODE = 'my';
 function isMaster(){ return MODE==='master'; }
 // текущий работник для формы: в личном режиме — я; в режиме мастера — выбранный в списке (или я)
 function curWorker(){
@@ -155,6 +158,9 @@ function showTab(t){
 function load(){
   api({vapi:'data',tgid:TGID}).then(function(d){
     DATA=d||DATA;
+    MODE = (WANT_CHECK && DATA.canCheck) ? 'master' : 'my';   // роль пришла с сервера
+    applyMode();
+    if(isMaster()) showTab('m'); else if(qp('tab')==='j') showTab('j');
     // ПАРТИЯ или «вне заказа» (работа без привязки к заказу: задел, переделка, помощь другому участку)
     document.getElementById('batch').innerHTML=(DATA.batches||[]).map(function(b){return opt(b.id,b.num+' · '+b.name);}).join('')
       +'<option value="'+FREE+'">🧰 Вне заказа (задел, переделка, помощь)</option>';
@@ -319,7 +325,7 @@ function loadMySummary(){
 function loadPending(){
   var el=document.getElementById('mlist'); el.textContent='Загрузка…';
   var master=isMaster();
-  var p={vapi:'pending'}; if(!master) p.worker=DATA.worker||'';   // личный режим — только свои
+  var p={vapi:'pending'};   // рабочему сервер отдаёт ТОЛЬКО его наряды
   api(p).then(function(r){
     var reps=(r&&r.reports)||[];
     if(!reps.length){ el.innerHTML='<div class="muted">'+(master?'Нет нарядов на проверке.':'У вас нет нарядов на проверке — всё обработано.')+'</div>'; return; }
@@ -446,7 +452,7 @@ function loadJournal(){
   var from=document.getElementById('jfrom').value, to=document.getElementById('jto').value;
   var fromRu=from?from.split('-').reverse().join('.'):'', toRu=to?to.split('-').reverse().join('.'):'';
   var master=isMaster();
-  var jp={vapi:'journal',from:fromRu,to:toRu}; if(!master) jp.worker=DATA.worker||'';   // личный режим — только свой журнал
+  var jp={vapi:'journal',from:fromRu,to:toRu};   // рабочему сервер отдаёт ТОЛЬКО его строки (фильтр по Telegram ID)
   api(jp).then(function(r){
     var items=(r&&r.items)||[], pr=(r&&r.payroll)||[];
     if(pr.length){
@@ -515,10 +521,8 @@ function loadMyShifts(){
   }).catch(function(){});
 }
 applyMode();
-load();
+load();          // режим и вкладка выставятся в load(), когда сервер вернёт роль
 loadMyShifts();
-if(isMaster()) showTab('m');   // панель проверки открывается на вкладке «Проверка»
-if(qp('tab')==='j') showTab('j');
 
 // авто-обновление: оболочка шлёт «refresh» при возврате на раздел — перечитываем данные без перезагрузки страницы
 (function(){
