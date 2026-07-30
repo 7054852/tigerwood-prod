@@ -266,10 +266,11 @@ function computeBreakdown(base, night){
 }
 // единый блок «База / Премия / Ночная / Итого» — БЕЗ процентов, только рубли. Виден рабочему, мастеру, директору.
 function bonusBlockHtml(bd){
-  var base=bd.base||0, prem=bd.premium||0, ni=bd.night||0, total=(bd.total!=null)?bd.total:(base+prem+ni);
+  var base=bd.base||0, prem=bd.premium||0, ni=bd.night||0, bon=bd.bonus||0, total=(bd.total!=null)?bd.total:(base+prem+ni+bon);
   var rows='<div class="row"><span class="muted">База (сдельно)</span><span>'+base+' р.</span></div>';
   if(prem>0) rows+='<div class="row"><span class="muted">Премия за наряд</span><span class="ok">+'+prem+' р.</span></div>';
   if(ni>0) rows+='<div class="row"><span class="muted">Ночная смена</span><span class="ok">+'+ni+' р.</span></div>';
+  if(bd.bonus>0) rows+='<div class="row"><span class="muted">🎁 Премия мастера</span><span class="ok">+'+bd.bonus+' р.</span></div>';
   rows+='<div class="row" style="margin-top:5px;border-top:1px solid #dbe8de;padding-top:6px"><b>Итого к оплате</b><b class="ok" style="font-size:16px">'+(Math.round(total*100)/100)+' р.</b></div>';
   return '<div style="background:#f4faf6;border:1px solid #dbe8de;border-radius:10px;padding:9px 11px;margin:8px 0">'+rows+'</div>';
 }
@@ -424,6 +425,11 @@ function loadPending(){
           vsel='<div class="row" style="margin-top:3px"><span class="muted" style="font-size:12px">изделие:</span>'
             +'<select class="vsel" onchange="setOutTarget(\''+esc(l.id)+'\',this.value,this)">'+opts+'</select></div>';
         }
+        if(l.kind==='премия'){
+          return '<div style="border-top:1px solid #eee;padding-top:5px"><div class="row">'
+            +'<span>🎁 <b>Премия</b>'+(l.note?(' — '+esc(l.note)):'')+'</span>'
+            +'<span class="ok">+'+l.sum+' р.'+(master?(' <button class="sm gray" onclick="delJournal(\''+esc(l.id)+'\')" title="убрать премию">🗑</button><span id="jm-'+esc(l.id)+'" class="msg"></span>'):'')+'</span></div></div>';
+        }
         return '<div style="border-top:1px solid #eee;padding-top:5px">'
           +'<div class="row"><span>'+kindBadge(l)+esc(l.detail)+' · '+esc(l.op)+' · '+l.qty+' шт'+kbadge+'</span>'
           +'<span>'+l.sum+' р.'+acts+'</span></div>'
@@ -439,7 +445,8 @@ function loadPending(){
           +'<button class="sm gray" onclick="setRepKoef(\''+esc(rid)+'\','+(uniK!=null?uniK:1)+')">'+koefLbl+'</button></div>'
         : (night?'<div class="muted" style="font-size:12px">🌙 ночная смена</div>':'');
       var footer = master
-        ? '<div class="row" style="margin-top:10px"><button class="sm" onclick="apprRep(\''+esc(rid)+'\',1)">✅ Одобрить'+(rp.single?'':' наряд')+'</button>'
+        ? '<div class="row" style="margin-top:10px"><button class="sm gray" onclick="addBonus(\''+esc(rid)+'\',\''+esc(rp.worker)+'\')" title="премия рабочему за этот наряд">🎁 + премия</button>'
+          +'<button class="sm" onclick="apprRep(\''+esc(rid)+'\',1)">✅ Одобрить'+(rp.single?'':' наряд')+'</button>'
           +'<button class="sm gray" onclick="apprRep(\''+esc(rid)+'\',0)">✖ Отклонить</button><span id="rm-'+esc(rid)+'" class="msg"></span></div>'
         : '<div class="row" style="margin-top:8px">'
           +(rp.single?'':'<button class="sm" onclick="startAdd(\''+esc(rid)+'\',\''+esc(rp.date+' · '+rp.batch)+'\')">➕ Дополнить наряд</button>')
@@ -518,6 +525,20 @@ function setKoefJ(id,cur){
   if(k===null) return; k=Number(String(k).replace(',','.')); if(isNaN(k)||k<0){ alert('Введите число ≥ 0'); return; }
   api({vapi:'setoutputkoef',id:id,koef:k,master:DATA.worker||'мастер'}).then(function(r){ if(r&&r.ok){ loadJournal(); } else alert((r&&r.error)||'ошибка'); });
 }
+// 🎁 премия рабочему за наряд: не сдельная база, надбавки на неё не начисляются
+function addBonus(rid,worker){
+  var s=prompt('Премия рабочему'+(worker?(' ('+worker+')'):'')+', руб.:','');
+  if(s===null) return; s=Number(String(s).replace(',','.'));
+  if(!(s>0)){ alert('Введите сумму больше 0'); return; }
+  var note=prompt('За что премия?','срочный заказ'); if(note===null) note='';
+  var single=(String(rid).charAt(0)==='_');
+  var p={vapi:'addbonus',sum:s,note:note};
+  if(single) p.id=String(rid).slice(1); else p.report=rid;
+  api(p).then(function(r){
+    if(r&&r.ok){ loadPending(); try{ loadJournal(); }catch(e){} }
+    else alert((r&&r.error)||'ошибка');
+  }).catch(function(){ alert('Ошибка сети'); });
+}
 function editTimePay(id,cur,note){
   var s=prompt('Сумма доплаты, руб.:', cur||'');
   if(s===null) return; s=Number(String(s).replace(',','.')); if(!(s>0)){ alert('Введите сумму больше 0'); return; }
@@ -564,16 +585,22 @@ function loadJournal(){
         }
         var body = (it.kind==='повременно')
           ? kindBadge(it)+esc(it.note||it.detail)
-          : kindBadge(it)+esc(it.detail)+' · '+esc(it.op)+' · '+it.qty+' шт'+kbadge;
+          : (it.kind==='премия')
+            ? ('🎁 <b>Премия</b>'+(it.note?(' — '+esc(it.note)):''))
+            : kindBadge(it)+esc(it.detail)+' · '+esc(it.op)+' · '+it.qty+' шт'+kbadge;
         return '<div class="row" id="j-'+esc(it.id)+'" style="border-top:1px solid #eee;padding-top:5px"><span>'+body+'</span>'
           +'<span class="ok">'+it.sum+' р '+acts+'</span></div>';
       }).join('');
+      var bonBtn = master ? '<button class="sm gray" onclick="addBonus(\''+esc(rep||('_'+g.lines[0].id))+'\',\''+esc(g.worker)+'\')" title="премия за наряд">🎁 + премия</button>' : '';
       var shiftCtl = (master && !g.single && rep)
         ? '<div class="tabs" style="margin:6px 0 0"><button class="sm '+(night?'':'active')+'" onclick="setRepShiftJ(\''+esc(rep)+'\',\'день\')">☀️ День</button><button class="sm '+(night?'active':'')+'" onclick="setRepShiftJ(\''+esc(rep)+'\',\'ночь\')">🌙 Ночь</button></div>'
         : (night?'<div class="muted" style="font-size:12px">🌙 ночная</div>':'');
-      var effBase=g.lines.reduce(function(s,it){return s+(it.base||0)*(it.koef||1);},0);
+      var effBase=0, gbon=0;
+      for(var q=0;q<g.lines.length;q++){ var L=g.lines[q];
+        if(L.kind==='премия') gbon+=L.sum||0; else effBase+=(L.base||0)*(L.koef||1); }
       var gbd=computeBreakdown(effBase, night);
-      return '<div class="card"><div class="row"><b>'+esc(g.worker)+'</b><span class="muted">за '+esc(g.date)+' · '+(night?'🌙 ночь':'☀️ день')+'</span></div>'
+      if(gbon){ gbd.bonus=Math.round(gbon*100)/100; gbd.total=Math.round((gbd.total+gbon)*100)/100; }
+      return '<div class="card"><div class="row"><b>'+esc(g.worker)+'</b><span class="muted">за '+esc(g.date)+' · '+(night?'🌙 ночь':'☀️ день')+'</span>'+bonBtn+'</div>'
         +'<div class="muted" style="font-size:12px">'+(g.submitted?'подан '+esc(g.submitted)+' · ':'')
           +((g.lines[0]&&g.lines[0].free)?'<span class="freeb">🧰 вне заказа</span>':esc(g.batch))
           +(g.single?'':' · наряд')+' · '+g.lines.length+' оп.</div>'
