@@ -25,6 +25,8 @@
   .tabs button{ width:auto; margin:0; padding:8px 14px; background:#eef; color:#334; }
   .tabs button.active{ background:var(--accent); color:#fff; }
   .freeb{ display:inline-block; background:#eef4ff; color:#2b5fd9; border-radius:20px; padding:1px 9px; font-size:11.5px; font-weight:700; }
+  .kb{ display:inline-block; border-radius:20px; padding:1px 9px; font-size:11.5px; font-weight:700; }
+  .kb.sheet{ background:#e8f1ff; color:#1b4fa8; } .kb.time{ background:#f3e8ff; color:#6b21a8; }
 </style>
 </head>
 <body>
@@ -101,6 +103,7 @@ window.onerror=function(msg,src,line){
   <div class="msg" id="wmsg"></div>
 </div>
 <div id="pane-m" style="display:none">
+  <div id="tpbox"></div>
   <h2>На проверке</h2>
   <div class="muted">Подтвердите, измените кол-во или отклоните — рабочий получит уведомление.</div>
   <div id="mlist" style="margin-top:10px">Загрузка…</div>
@@ -323,6 +326,7 @@ function loadMySummary(){
   }).catch(function(){});
 }
 function loadPending(){
+  renderTimePay();   // блок «доплата за время» — только мастеру
   var el=document.getElementById('mlist'); el.textContent='Загрузка…';
   var master=isMaster();
   var p={vapi:'pending'};   // рабочему сервер отдаёт ТОЛЬКО его наряды
@@ -350,7 +354,7 @@ function loadPending(){
             +'<select class="vsel" onchange="setOutTarget(\''+esc(l.id)+'\',this.value,this)">'+opts+'</select></div>';
         }
         return '<div style="border-top:1px solid #eee;padding-top:5px">'
-          +'<div class="row"><span>'+esc(l.detail)+' · '+esc(l.op)+' · '+l.qty+' шт'+kbadge+'</span>'
+          +'<div class="row"><span>'+kindBadge(l)+esc(l.detail)+' · '+esc(l.op)+' · '+l.qty+' шт'+kbadge+'</span>'
           +'<span>'+l.sum+' р.'+acts+'</span></div>'
           +vsel+'</div>';
       }).join('');
@@ -443,6 +447,12 @@ function setKoefJ(id,cur){
   if(k===null) return; k=Number(String(k).replace(',','.')); if(isNaN(k)||k<0){ alert('Введите число ≥ 0'); return; }
   api({vapi:'setoutputkoef',id:id,koef:k,master:DATA.worker||'мастер'}).then(function(r){ if(r&&r.ok){ loadJournal(); } else alert((r&&r.error)||'ошибка'); });
 }
+function editTimePay(id,cur,note){
+  var s=prompt('Сумма доплаты, руб.:', cur||'');
+  if(s===null) return; s=Number(String(s).replace(',','.')); if(!(s>0)){ alert('Введите сумму больше 0'); return; }
+  var n=prompt('За что доплата:', note||''); if(n===null) n=note||'';
+  api({vapi:'edittimepay',id:id,sum:s,note:n}).then(function(r){ if(r&&r.ok) loadJournal(); else alert((r&&r.error)||'ошибка'); });
+}
 function setRepShiftJ(rid,sh){
   api({vapi:'setreportshift',report:rid,shift:sh,master:DATA.worker||'мастер'}).then(function(r){ if(r&&r.ok) loadJournal(); });
 }
@@ -473,12 +483,18 @@ function loadJournal(){
       var rep=g.lines[0]&&g.lines[0].report||'', night=(g.lines[0]&&g.lines[0].shift==='ночь');
       var lines=g.lines.map(function(it){
         var koef=it.koef||1, kbadge=(koef!==1)?' <span class="muted" style="font-size:12px">×'+koef+'</span>':'';
-        var acts = master
-          ? ' <button class="sm gray" onclick="editJournal(\''+esc(it.id)+'\','+it.qty+',\''+esc(it.date)+'\')">✏️</button>'
-            +'<button class="sm gray" onclick="setKoefJ(\''+esc(it.id)+'\','+koef+')" title="коэффициент к сумме">×k</button>'
-            +'<button class="sm gray" onclick="delJournal(\''+esc(it.id)+'\')">🗑</button><span id="jm-'+esc(it.id)+'" class="msg"></span>'
-          : '';
-        return '<div class="row" id="j-'+esc(it.id)+'" style="border-top:1px solid #eee;padding-top:5px"><span>'+esc(it.detail)+' · '+esc(it.op)+' · '+it.qty+' шт'+kbadge+'</span>'
+        var acts = '';
+        if(master){
+          var del='<button class="sm gray" onclick="delJournal(\''+esc(it.id)+'\')">🗑</button><span id="jm-'+esc(it.id)+'" class="msg"></span>';
+          acts = (it.kind==='повременно')   // у доплаты правится СУММА (кол-во у неё всегда 1)
+            ? ' <button class="sm gray" onclick="editTimePay(\''+esc(it.id)+'\','+it.sum+',\''+esc(it.note||'')+'\')" title="изменить сумму">✏️</button>'+del
+            : ' <button class="sm gray" onclick="editJournal(\''+esc(it.id)+'\','+it.qty+',\''+esc(it.date)+'\')">✏️</button>'
+              +'<button class="sm gray" onclick="setKoefJ(\''+esc(it.id)+'\','+koef+')" title="коэффициент к сумме">×k</button>'+del;
+        }
+        var body = (it.kind==='повременно')
+          ? kindBadge(it)+esc(it.note||it.detail)
+          : kindBadge(it)+esc(it.detail)+' · '+esc(it.op)+' · '+it.qty+' шт'+kbadge;
+        return '<div class="row" id="j-'+esc(it.id)+'" style="border-top:1px solid #eee;padding-top:5px"><span>'+body+'</span>'
           +'<span class="ok">'+it.sum+' р '+acts+'</span></div>';
       }).join('');
       var shiftCtl = (master && !g.single && rep)
@@ -493,6 +509,51 @@ function loadJournal(){
         +shiftCtl+lines+bonusBlockHtml(gbd)+'</div>';
     }).join('');
   }).catch(function(){ lst.innerHTML='<span class="err">Ошибка загрузки</span>'; });
+}
+// ── ПОВРЕМЕННАЯ ДОПЛАТА: мастер дописывает деньги за работу по времени (разгрузка машины и т.п.)
+function kindBadge(it){
+  if(!it) return '';
+  if(it.kind==='повременно') return '<span class="kb time" title="доплата за работу по времени">\uD83D\uDCB5 доплата</span> ';
+  if(it.kind==='лист') return '<span class="kb sheet" title="раскрой листа на ЧПУ — оплата за лист">\uD83D\uDCD0 лист</span> ';
+  return '';
+}
+function renderTimePay(){
+  var box=document.getElementById('tpbox'); if(!box) return;
+  if(!isMaster()){ box.innerHTML=''; return; }
+  var opts=(DATA.workers||[]).map(function(w){ return opt(w.name); }).join('');
+  box.innerHTML='<div class="card" style="background:#faf7ff;border-color:#e4d4fb">'
+    +'<div class="row"><b>\uD83D\uDCB5 Доплата за работу по времени</b>'
+      +'<button class="sm gray" onclick="toggleTP()" id="tpbtn">развернуть</button></div>'
+    +'<div class="muted">Разгрузка/загрузка машины, помощь — сдельной расценки нет, а время потрачено. Идёт в ЗП сразу, на заказы не влияет.</div>'
+    +'<div id="tpform" style="display:none">'
+      +'<label>Сотрудник</label><select id="tpw">'+(opts||opt('','нет сотрудников'))+'</select>'
+      +'<label>Дата</label><input id="tpd" type="date">'
+      +'<label>За что</label><input id="tpn" placeholder="Разгрузка машины с фанерой">'
+      +'<label>Сумма, руб.</label><input id="tps" type="number" min="0" step="0.5" inputmode="decimal" placeholder="15">'
+      +'<button onclick="addTimePay()">\uD83D\uDCB5 Начислить</button><div class="msg" id="tpmsg"></div>'
+    +'</div></div>';
+  var d=document.getElementById('tpd'); if(d) d.value=todayIso();
+}
+function todayIso(){ var t=new Date(); return t.getFullYear()+'-'+pad2(t.getMonth()+1)+'-'+pad2(t.getDate()); }
+function toggleTP(){
+  var f=document.getElementById('tpform'), b=document.getElementById('tpbtn'); if(!f) return;
+  var open=(f.style.display==='none'); f.style.display=open?'':'none'; if(b) b.textContent=open?'свернуть':'развернуть';
+}
+function addTimePay(){
+  var w=(document.getElementById('tpw')||{}).value||'', d=(document.getElementById('tpd')||{}).value||'';
+  var note=(document.getElementById('tpn')||{}).value||'', sum=(document.getElementById('tps')||{}).value||'';
+  var m=document.getElementById('tpmsg');
+  if(!w){ m.innerHTML='<span class="err">Выберите сотрудника</span>'; return; }
+  if(!note.replace(/\s/g,'')){ m.innerHTML='<span class="err">Напишите, за что доплата</span>'; return; }
+  if(!(Number(sum)>0)){ m.innerHTML='<span class="err">Укажите сумму</span>'; return; }
+  m.innerHTML='Начисляю…';
+  var dateRu=d?d.split('-').reverse().join('.'):'';
+  api({vapi:'addtimepay',worker:w,date:dateRu,sum:sum,note:note}).then(function(r){
+    if(r&&r.ok){
+      m.innerHTML='<span class="ok">\u2713 '+esc(r.worker)+' \u2014 '+r.sum+' руб. за «'+esc(r.note)+'»</span>';
+      document.getElementById('tpn').value=''; document.getElementById('tps').value='';
+    } else m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>';
+  }).catch(function(){ m.innerHTML='<span class="err">Ошибка сети</span>'; });
 }
 function doRegister(){
   var fio=(document.getElementById('reg-fio')||{}).value||'';
