@@ -129,7 +129,7 @@ function draw(){
       +'<td class="num">'+price+'</td>'
       +'<td class="num" title="средняя поставок + 10%, округл.">'+forCost+'</td>'
       +'<td class="muted">'+esc(m.note||'')+'</td>'
-      +'<td><button class="gray sm" title="переименовать" onclick="renameMat(\''+esc(m.name).replace(/\x27/g,"\\x27")+'\')">✎</button> '+tplBtn(m)+'<button class="gray sm" title="удалить материал" onclick="delMat(\''+esc(m.name).replace(/\x27/g,"\\x27")+'\')">🗑</button> <span class="msg" id="m'+idx+'"></span></td>'
+      +'<td><button class="gray sm" title="переименовать" onclick="renameMat(\''+esc(m.name).replace(/\x27/g,"\\x27")+'\')">✎</button> <button class="gray sm" title="удалить материал" onclick="delMat(\''+esc(m.name).replace(/\x27/g,"\\x27")+'\')">🗑</button> <span class="msg" id="m'+idx+'"></span></td>'
       +'</tr>';
   }).join('')||'<tr><td colspan=10 class="center muted">ничего не найдено</td></tr>';
   syncSel();
@@ -219,7 +219,10 @@ function openStd(){
   var fixes=[], manual=[];
   ROWS.forEach(function(m){
     var v=stdName(m.name);
-    if(v&&v!==m.name) fixes.push({from:m.name,to:v});
+    if(v&&v!==m.name) fixes.push({from:m.name,to:v,kind:'std'});
+    // шаблон умеет то, чего не умеет стандартизация: собрать имя из полей «толщина» и «размер»
+    var t=tplName({name:(v||m.name), thick:m.thick, size:m.size});
+    if(t&&t!==(v||m.name)) fixes.push({from:m.name,to:t,kind:'tpl'});
     if(!String(m.unit||'').trim()) manual.push(m.name+' — не указана единица измерения');
     if(/широкая/i.test(m.name)) manual.push(m.name+' — «Широкая» это жаргон: размер уже есть в названии');
     if(/^Коробки\s/i.test(m.name)) manual.push(m.name+' — «Коробки» во множественном, у остальных «Коробка»');
@@ -227,22 +230,31 @@ function openStd(){
   });
   // конфликты: после правки имя займёт уже существующее
   var have={}; ROWS.forEach(function(m){ have[m.name.toLowerCase()]=1; });
+  var byTpl={}; fixes.forEach(function(f){ if(f.kind==='tpl') byTpl[f.from]=1; });
+  fixes=fixes.filter(function(f){ return !(f.kind==='std'&&byTpl[f.from]); });   // шаблон уже включает правку написания
   // правка одного регистра — не конфликт с самим собой
   var busy=function(f){ return have[f.to.toLowerCase()] && f.to.toLowerCase()!==f.from.toLowerCase(); };
   var conf=fixes.filter(busy);
   fixes=fixes.filter(function(f){ return !busy(f); });
   window.STDFIX=fixes;
-  var rows=fixes.map(function(f,i){
-    return '<label style="display:block;padding:4px 0;border-bottom:1px solid rgba(128,128,128,.15)">'
+  var rowsOf=function(kind){
+    return fixes.map(function(f,i){ return f.kind!==kind ? '' :
+      '<label style="display:block;padding:4px 0;border-bottom:1px solid rgba(128,128,128,.15)">'
       +'<input type="checkbox" class="stdchk" value="'+i+'" checked> '
       +'<span class="muted">'+esc(f.from)+'</span> &nbsp;→&nbsp; <b>'+esc(f.to)+'</b></label>';
-  }).join('');
+    }).join('');
+  };
+  var nStd=fixes.filter(function(f){return f.kind==='std';}).length,
+      nTpl=fixes.filter(function(f){return f.kind==='tpl';}).length;
   $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><h3>Навести порядок в названиях</h3>'
     +'<div class="muted">Стандарт: <b>Что · характеристика · размер</b> — с заглавной буквы, размер латинской «x» без пробелов (1525x1525), единица слитно с числом (18мм), только кириллица в русских словах.</div>'
     +'<div class="muted" style="margin-top:4px">Старое название каждого переименованного материала останется как «называют поставщики» — распознавание накладных не сломается.</div>'
+    +(nStd? '<div class="lbl" style="margin-top:10px">Написание: '+nStd+'</div><div class="box" style="padding:8px;max-height:280px;overflow:auto">'+rowsOf('std')+'</div>' : '')
+    +(nTpl? '<div class="lbl" style="margin-top:10px">Собрать имя из толщины и размера: '+nTpl
+        +' <span class="muted" style="font-weight:normal">— характеристика вперёд, размеры в конец, из полей реестра</span></div>'
+        +'<div class="box" style="padding:8px;max-height:280px;overflow:auto">'+rowsOf('tpl')+'</div>' : '')
     +(fixes.length
-      ? '<div class="lbl" style="margin-top:10px">Можно исправить автоматически: '+fixes.length+'</div><div class="box" style="padding:8px;max-height:340px;overflow:auto">'+rows+'</div>'
-        +'<div style="margin-top:8px"><button class="gray sm" onclick="stdAll(true)">отметить все</button> <button class="gray sm" onclick="stdAll(false)">снять</button> '
+      ? '<div style="margin-top:8px"><button class="gray sm" onclick="stdAll(true)">отметить все</button> <button class="gray sm" onclick="stdAll(false)">снять</button> '
         +'<button class="green" onclick="applyStd()">✓ Применить отмеченные</button> <span class="msg" id="std_msg"></span></div>'
       : '<div class="lbl" style="margin-top:10px">✓ Названия уже по стандарту</div>')
     +(conf.length? '<div class="lbl" style="margin-top:12px">Совпадёт с существующим — это дубли</div><div class="box" style="padding:8px">'
@@ -280,17 +292,6 @@ function tplName(m){
     .replace(/[,\s]+/g,' ').trim();
   if(!base) return '';
   return base+' '+String(t).replace('.',',')+'мм '+sz.replace(/\s*[xх*]\s*/,'x');
-}
-function tplBtn(m){
-  var t=tplName(m); if(!t||t===m.name) return '';
-  return '<button class="gray sm" title="привести к единому виду: '+esc(t)+'" onclick="toTpl(\''+esc(m.name).replace(/\x27/g,"\\x27")+'\',\''+esc(t).replace(/\x27/g,"\\x27")+'\')">✎</button> ';
-}
-function toTpl(oldName,newName){
-  if(!confirm('Переименовать\n«'+oldName+'»\n→ «'+newName+'»?\n\nСтарое название останется как «называют поставщики» — распознавание накладных не сломается.')) return;
-  api({vapi:'renamematerial', old:oldName, 'new':newName}).then(function(r){
-    if(r&&r.ok) api({vapi:'mataliasadd', alias:oldName, name:newName}).then(function(){ load(); });
-    else alert('Ошибка: '+((r&&r.error)||'?'));
-  });
 }
 function save(i,field,val){
   var m=ROWS[i], f={name:m.name}; f[field]=val; var el=$('m'+i); if(el) el.textContent='…';
