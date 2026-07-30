@@ -601,22 +601,35 @@ function sendBonus(rid,where){
     else if(m) m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>';
   }).catch(function(){ if(m) m.innerHTML='<span class="err">Ошибка сети</span>'; });
 }
-// отклонённые за последние дни — чтобы промах кнопкой можно было исправить самому
+// отклонённые за последние дни — свёрнуты в архив, чтобы не мешать проверке;
+// разворачивается по нажатию (нужен, когда наряд отклонили по ошибке)
+var REJ=[], REJOPEN=false;
 function loadRejected(){
   var el=document.getElementById('rejlist'); if(!el||!isMaster()) return;
   api({vapi:'rejected',days:3}).then(function(r){
-    var list=(r&&r.reports)||[];
-    if(!list.length){ el.innerHTML=''; return; }
-    el.innerHTML='<div class="muted" style="margin-bottom:6px">Отклонённые за 3 дня — можно вернуть, если отклонили по ошибке:</div>'
-      +list.map(function(g){
+    REJ=(r&&r.reports)||[]; renderRejected();
+  }).catch(function(){});
+}
+function toggleRej(){ REJOPEN=!REJOPEN; renderRejected(); }
+function renderRejected(){
+  var el=document.getElementById('rejlist'); if(!el) return;
+  if(!REJ.length){ el.innerHTML=''; return; }
+  var sum=0; for(var i=0;i<REJ.length;i++) sum+=REJ[i].sum;
+  var head='<div class="row" style="margin-top:6px"><span class="muted">🗄 Архив отклонённых: '+REJ.length+' на '+(Math.round(sum*100)/100)+' р.</span>'
+    +'<button class="sm gray" onclick="toggleRej()">'+(REJOPEN?'скрыть':'показать')+'</button></div>';
+  var body='';
+  if(REJOPEN){
+    body='<div class="muted" style="margin:6px 0">Если наряд отклонили по ошибке — верните его на проверку.</div>'
+      +REJ.map(function(g){
         return '<div class="card" style="opacity:.85"><div class="row"><span><b>'+esc(g.worker)+'</b> <span class="muted">'+esc(g.date)+' · '+g.lines+' оп. · '+g.sum+' р.</span></span>'
           +'<button class="sm gray" onclick="restoreRep(\''+esc(g.report)+'\')">↩ вернуть на проверку</button></div></div>';
       }).join('');
-  }).catch(function(){});
+  }
+  el.innerHTML=head+body;
 }
 function restoreRep(rid){
   api({vapi:'restorereport',report:rid}).then(function(r){
-    if(r&&r.ok){ loadPending(); }
+    if(r&&r.ok){ REJOPEN=true; loadPending(); }
     else alert((r&&r.error)||'ошибка');
   }).catch(function(){ alert('Ошибка сети'); });
 }
