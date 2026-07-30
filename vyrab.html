@@ -26,6 +26,15 @@
   .tabs button.active{ background:var(--accent); color:#fff; }
   .freeb{ display:inline-block; background:#eef4ff; color:#2b5fd9; border-radius:20px; padding:1px 9px; font-size:11.5px; font-weight:700; }
   .kb{ display:inline-block; border-radius:20px; padding:1px 9px; font-size:11.5px; font-weight:700; }
+  /* Панель отправки прибита к низу экрана: наряд бывает длинным, и на телефоне
+     рабочий не мог долистать до кнопки «Отправить». Теперь она всегда под рукой. */
+  #workbar{ position:fixed; left:0; right:0; bottom:0; background:var(--bg); border-top:1px solid var(--line);
+            box-shadow:0 -4px 14px rgba(0,0,0,.10); padding:8px 14px calc(10px + env(safe-area-inset-bottom));
+            z-index:60; display:none; }
+  #workbar .wl{ font-size:13px; color:var(--muted); margin-bottom:4px; }
+  #workbar .wl b{ color:var(--fg); }
+  #workbar button{ margin-top:0; padding:13px; }
+  body.hasbar{ padding-bottom:120px; }   /* чтобы панель не накрывала конец списка */
   .kb.sheet{ background:#e8f1ff; color:#1b4fa8; } .kb.time{ background:#f3e8ff; color:#6b21a8; }
 </style>
 </head>
@@ -119,8 +128,11 @@ window.onerror=function(msg,src,line){
 <div id="workfoot" style="display:none">
   <div id="whenline" style="margin-top:8px;font-weight:600"></div>
   <div id="worksum" style="margin-top:8px"></div>
-  <button onclick="sendWork()" id="worksend" style="display:none">📨 Отправить наряд мастеру</button>
   <div class="msg" id="wmsg"></div>
+</div>
+<div id="workbar">
+  <div class="wl" id="workline"></div>
+  <button onclick="sendWork()" id="worksend">📨 Отправить наряд мастеру</button>
 </div>
 <div id="pane-j" style="display:none">
   <h2>Журнал выработки</h2>
@@ -144,7 +156,8 @@ function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){retur
 function opt(v,t){ return '<option value="'+esc(v)+'">'+esc(t||v)+'</option>'; }
 function api(p){ p.app=APP; if(TGID&&!p.tgid) p.tgid=TGID; var q=Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]);}).join('&'); return fetch(BASE+'?'+q).then(function(r){return r.json();}); }
 function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
-try{ if(window.Telegram&&Telegram.WebApp){ Telegram.WebApp.ready(); Telegram.WebApp.expand(); var u=Telegram.WebApp.initDataUnsafe&&Telegram.WebApp.initDataUnsafe.user; if(u) TGID=String(u.id); } }catch(e){}
+try{ if(window.Telegram&&Telegram.WebApp){ Telegram.WebApp.ready(); Telegram.WebApp.expand();
+  try{ if(Telegram.WebApp.disableVerticalSwipes) Telegram.WebApp.disableVerticalSwipes(); }catch(e0){} var u=Telegram.WebApp.initDataUnsafe&&Telegram.WebApp.initDataUnsafe.user; if(u) TGID=String(u.id); } }catch(e){}
 if(!TGID){ TGID=qp('tgid')||localStorage.getItem('tw_tgid')||''; } if(TGID){ try{localStorage.setItem('tw_tgid',TGID);}catch(e){} }
 // РЕЖИМ: 'master' — панель проверки (?tab=check): все наряды + правки + коэффициент + ввод за любого сотрудника;
 //        'my' — личный кабинет: только свои наряды, свои на проверке, свой журнал.
@@ -175,7 +188,10 @@ function showTab(t){
     document.getElementById('pane-'+x).style.display = x===t?'':'none';
     document.getElementById('tab-'+x).className = x===t?'active':'';
   });
+  CURTAB=t;
   var ff=document.getElementById('workfoot'); if(ff) ff.style.display=(t==='w'||t==='c')?'':'none';
+  var bar=document.getElementById('workbar');
+  if(bar){ var on=(BARON&&(t==='w'||t==='c')); bar.style.display=on?'':'none'; document.body.className=on?'hasbar':''; }
   var wh=document.getElementById('whead'); if(wh) wh.style.display=(t==='w'||t==='c')?'':'none';
   if(t==='c') loadCut();
   if(t==='m') loadPending();
@@ -303,15 +319,29 @@ function renderTotals(){
   for(var k=0;k<SHEETS.length;k++){ if(SHEETS[k].mat&&SHEETS[k].qty>0) nSheets++; 
     for(var j=0;j<SHEETS[k].items.length;j++) if(SHEETS[k].items[j].detail&&SHEETS[k].items[j].qty>0) nDet++; }
   var total=Math.round((opsSum+(CUTTOTAL||0))*100)/100;
-  if(!CART.length && !nSheets){ box.innerHTML=''; btn.style.display='none'; return; }
+  if(!CART.length && !nSheets){ box.innerHTML=''; setBar('',false); return; }
   var parts=[];
   if(CART.length) parts.push(CART.length+' оп.');
   if(nSheets) parts.push(nSheets+' лист(ов)'+(nDet?(' · '+nDet+' дет.'):''));
   var bd=computeBreakdown(total, SHIFT==='ночь');
   box.innerHTML='<div class="card"><div class="row"><b>В наряде: '+parts.join(' + ')+'</b><span class="muted">'+esc(SHIFT==='ночь'?'🌙 ночь':'☀️ день')+'</span></div>'
     +bonusBlockHtml(bd)+(CUTNEEDPICK?'<div class="muted" style="color:#b7791f">Выберите заказ у отмеченных деталей на вкладке «Раскрой»</div>':'')+'</div>';
-  btn.style.display=''; btn.textContent=ADDTO?'➕ Добавить в наряд':'📨 Отправить наряд мастеру';
+  setBar('<b>'+parts.join(' + ')+'</b> · <b>'+bd.total+' р.</b>'+(CUTNEEDPICK?' · <span style="color:#b7791f">выберите заказ у деталей</span>':''), true);
+  btn.textContent=ADDTO?'➕ Добавить в наряд':'📨 Отправить наряд мастеру';
 }
+// закреплённая внизу панель отправки: показываем только когда в наряде что-то есть
+// и только на вкладках «Выработка»/«Раскрой»
+function setBar(html, on){
+  var bar=document.getElementById('workbar'), line=document.getElementById('workline');
+  if(!bar) return;
+  BARON = !!on;
+  if(line) line.innerHTML=html||'';
+  var tabOk=(CURTAB==='w'||CURTAB==='c');
+  bar.style.display=(on&&tabOk)?'':'none';
+  document.body.className=(on&&tabOk)?'hasbar':'';
+}
+var BARON=false, CURTAB='w';
+
 // ── ДОПОЛНЕНИЕ НАРЯДА: рабочий вспомнил операции, пока мастер не проверил ──
 var ADDTO='', ADDINFO='';
 function startAdd(rid,info){
