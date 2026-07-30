@@ -15,7 +15,7 @@
   select.vsel{ width:auto; flex:1; min-width:120px; padding:5px 8px; font-size:13px; }
   select.vsel.need{ border-color:#b7791f; background:#fdf7ec; }
   button{ width:100%; padding:12px; margin-top:14px; border:0; border-radius:9px; font-size:16px; font-weight:600; color:#fff; background:var(--accent); cursor:pointer; }
-  button.gray{ background:#eef; color:#334; } button.sm{ width:auto; padding:7px 12px; font-size:13px; margin:0; }
+  button.gray{ background:#eef; color:#334; } button.danger{ background:#fdecea; color:#c0392b; } button.sm{ width:auto; padding:7px 12px; font-size:13px; margin:0; }
   .sum{ font-size:20px; font-weight:700; color:var(--green); margin-top:12px; text-align:center; }
   .msg{ font-size:14px; margin-top:10px; text-align:center; } .err{ color:var(--red); } .ok{ color:var(--green); }
   .card{ border:1px solid var(--line); border-radius:11px; padding:10px 12px; margin-bottom:8px; }
@@ -124,6 +124,7 @@ window.onerror=function(msg,src,line){
   <h2>На проверке</h2>
   <div class="muted">Подтвердите, измените кол-во или отклоните — рабочий получит уведомление.</div>
   <div id="mlist" style="margin-top:10px">Загрузка…</div>
+  <div id="rejlist" style="margin-top:16px"></div>
 </div>
 <div id="workfoot" style="display:none">
   <div id="whenline" style="margin-top:8px;font-weight:600"></div>
@@ -428,6 +429,7 @@ function loadMySummary(){
 }
 function loadPending(){
   var el=document.getElementById('mlist'); el.textContent='Загрузка…';
+  loadRejected();
   var master=isMaster();
   var p={vapi:'pending'};   // рабочему сервер отдаёт ТОЛЬКО его наряды
   api(p).then(function(r){
@@ -474,9 +476,10 @@ function loadPending(){
         : (night?'<div class="muted" style="font-size:12px">🌙 ночная смена</div>':'');
       var footer = master
         ? '<div id="bonbox-m-'+bonKey(rid)+'"></div>'
-          +'<div class="row" style="margin-top:10px"><button class="sm gray" onclick="addBonus(\''+esc(rid)+'\',\''+esc(rp.worker)+'\',\'m\')" title="премия рабочему за этот наряд">🎁 + премия</button>'
+          +'<div class="row" style="margin-top:10px" id="acts-m-'+bonKey(rid)+'"><button class="sm gray" onclick="addBonus(\''+esc(rid)+'\',\''+esc(rp.worker)+'\',\'m\')" title="премия рабочему за этот наряд">🎁 + премия</button>'
           +'<button class="sm" onclick="apprRep(\''+esc(rid)+'\',1)">✅ Одобрить'+(rp.single?'':' наряд')+'</button>'
-          +'<button class="sm gray" onclick="apprRep(\''+esc(rid)+'\',0)">✖ Отклонить</button><span id="rm-'+esc(rid)+'" class="msg"></span></div>'
+          +'<button class="sm danger" onclick="rejectRep(\''+esc(rid)+'\',\''+esc(rp.worker)+'\','+rp.sum+','+rp.lines.length+')" title="отклонить ВЕСЬ наряд">✖ Отклонить наряд</button>'
+          +'<span id="rm-'+esc(rid)+'" class="msg"></span></div>'
         : '<div class="row" style="margin-top:8px">'
           +(rp.single?'':'<button class="sm" onclick="startAdd(\''+esc(rid)+'\',\''+esc(rp.date+' · '+rp.batch)+'\')">➕ Дополнить наряд</button>')
           +'<span class="muted" style="font-size:12px">⏳ ждёт подтверждения мастера</span></div>';
@@ -557,9 +560,11 @@ function setKoefJ(id,cur){
 // 🎁 премия рабочему за наряд: два поля — за что и сколько. Не сдельная база: надбавки на неё не начисляются.
 function bonKey(rid){ return String(rid).replace(/[^0-9A-Za-zА-Яа-яЁё_-]/g,'_'); }
 function addBonus(rid,worker,where){
-  var box=document.getElementById('bonbox-'+(where||'m')+'-'+bonKey(rid)); if(!box) return;
-  if(box.innerHTML){ box.innerHTML=''; return; }   // повторное нажатие — свернуть
-  var k=bonKey(rid), w=where||'m';
+  var w=where||'m', box=document.getElementById('bonbox-'+w+'-'+bonKey(rid)); if(!box) return;
+  var acts=document.getElementById('acts-'+w+'-'+bonKey(rid));
+  if(box.innerHTML){ box.innerHTML=''; if(acts) acts.style.display=''; return; }   // повторное нажатие — свернуть
+  if(acts) acts.style.display='none';   // прячем «Одобрить/Отклонить»: они относятся к наряду, а не к премии
+  var k=bonKey(rid);
   box.innerHTML='<div class="card" style="background:#fff8f2;border-color:#f3ddc7;margin-top:8px">'
     +'<div class="row"><b>🎁 Премия'+(worker?(' — '+esc(worker)):'')+'</b>'
       +'<button class="sm gray" onclick="addBonus(\''+esc(rid)+'\',\'\',\''+w+'\')">отмена</button></div>'
@@ -571,7 +576,7 @@ function addBonus(rid,worker,where){
   var f=document.getElementById('bn-note-'+k); if(f) f.focus();
 }
 function sendBonus(rid,where){
-  var k=bonKey(rid);
+  var k=bonKey(rid), w=where||'m';
   var note=(document.getElementById('bn-note-'+k)||{}).value||'';
   var sum=(document.getElementById('bn-sum-'+k)||{}).value||'';
   var m=document.getElementById('bn-msg-'+k);
@@ -582,9 +587,36 @@ function sendBonus(rid,where){
   var p={vapi:'addbonus',sum:sum,note:note};
   if(single) p.id=String(rid).slice(1); else p.report=rid;
   api(p).then(function(r){
-    if(r&&r.ok){ if(where==='j') loadJournal(); else loadPending(); }
+    if(r&&r.ok){ if(w==='j') loadJournal(); else loadPending(); }
     else if(m) m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>';
   }).catch(function(){ if(m) m.innerHTML='<span class="err">Ошибка сети</span>'; });
+}
+// отклонённые за последние дни — чтобы промах кнопкой можно было исправить самому
+function loadRejected(){
+  var el=document.getElementById('rejlist'); if(!el||!isMaster()) return;
+  api({vapi:'rejected',days:3}).then(function(r){
+    var list=(r&&r.reports)||[];
+    if(!list.length){ el.innerHTML=''; return; }
+    el.innerHTML='<div class="muted" style="margin-bottom:6px">Отклонённые за 3 дня — можно вернуть, если отклонили по ошибке:</div>'
+      +list.map(function(g){
+        return '<div class="card" style="opacity:.85"><div class="row"><span><b>'+esc(g.worker)+'</b> <span class="muted">'+esc(g.date)+' · '+g.lines+' оп. · '+g.sum+' р.</span></span>'
+          +'<button class="sm gray" onclick="restoreRep(\''+esc(g.report)+'\')">↩ вернуть на проверку</button></div></div>';
+      }).join('');
+  }).catch(function(){});
+}
+function restoreRep(rid){
+  api({vapi:'restorereport',report:rid}).then(function(r){
+    if(r&&r.ok){ loadPending(); }
+    else alert((r&&r.error)||'ошибка');
+  }).catch(function(){ alert('Ошибка сети'); });
+}
+// отклонение — необратимое для рабочего действие, поэтому спрашиваем явно и называем, что именно отклоняем
+function rejectRep(rid,worker,sum,cnt){
+  var txt='Отклонить ВЕСЬ наряд'+(worker?(' — '+worker):'')+'?\n\n'
+    +cnt+' оп. на '+sum+' руб. пропадут из проверки, рабочему уйдёт уведомление.\n'
+    +'Если вы хотели убрать премию — нажмите 🗑 на строке премии.';
+  if(!confirm(txt)) return;
+  apprRep(rid,0);
 }
 function editTimePay(id,cur,note){
   var s=prompt('Сумма доплаты, руб.:', cur||'');
