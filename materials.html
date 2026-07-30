@@ -24,6 +24,7 @@
   th{ color:var(--muted); font-size:11.5px; font-weight:600; text-transform:uppercase; letter-spacing:.03em; }
   td.num,th.num{ text-align:right; font-variant-numeric:tabular-nums; }
   td input.p{ width:78px; text-align:right; } td input.u{ width:52px; }
+  input.mchk,#chkAll{ width:18px; height:18px; }
   .nm{ cursor:pointer; color:var(--accent); font-weight:700; }
   .role{ font-size:11px; padding:2px 8px; border-radius:20px; background:#f0edfb; color:var(--accent); font-weight:700; }
   .up{ color:var(--red); } .down{ color:var(--green); }
@@ -38,6 +39,12 @@
   .frm{ display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
   .frm input,.frm select{ padding:6px 8px; font-size:13px; }
   .frm input.s{ width:88px; } .frm input.xs{ width:60px; }
+  /* панель выбранных — всегда под рукой, без прокрутки наверх */
+  #selBar{ position:fixed; left:0; right:0; bottom:0; z-index:8; margin:0;
+    background:var(--card); border-top:1px solid var(--line); box-shadow:0 -6px 18px rgba(20,25,50,.12);
+    padding:10px 14px calc(10px + env(safe-area-inset-bottom)); justify-content:center; }
+  body.hasSel{ padding-bottom:74px; }              /* чтобы панель не закрывала последние строки */
+  @media(max-width:520px){ #selBar #selCnt{ width:100%; text-align:center } }
 </style>
 </head>
 <body>
@@ -148,6 +155,7 @@ function syncSel(){
   for(var i=0;i<boxes.length;i++) boxes[i].checked=!!SEL[boxes[i].value];   // вернуть галочки после перерисовки
   var n=selNames().length;
   $('selBar').style.display=n?'flex':'none';
+  document.body.className=n?'hasSel':'';
   $('selCnt').textContent='выбрано: '+n;
   var all=$('chkAll'); if(all) all.checked=boxes.length>0&&n>=boxes.length;
 }
