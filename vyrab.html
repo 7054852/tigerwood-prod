@@ -112,7 +112,6 @@ window.onerror=function(msg,src,line){
   <div id="cutlog" style="margin-top:18px"></div>
 </div>
 <div id="pane-m" style="display:none">
-  <div id="tpbox"></div>
   <h2>На проверке</h2>
   <div class="muted">Подтвердите, измените кол-во или отклоните — рабочий получит уведомление.</div>
   <div id="mlist" style="margin-top:10px">Загрузка…</div>
@@ -398,7 +397,6 @@ function loadMySummary(){
   }).catch(function(){});
 }
 function loadPending(){
-  renderTimePay();   // блок «доплата за время» — только мастеру
   var el=document.getElementById('mlist'); el.textContent='Загрузка…';
   var master=isMaster();
   var p={vapi:'pending'};   // рабочему сервер отдаёт ТОЛЬКО его наряды
@@ -535,7 +533,8 @@ function addBonus(rid,worker,where){
   box.innerHTML='<div class="card" style="background:#fff8f2;border-color:#f3ddc7;margin-top:8px">'
     +'<div class="row"><b>🎁 Премия'+(worker?(' — '+esc(worker)):'')+'</b>'
       +'<button class="sm gray" onclick="addBonus(\''+esc(rid)+'\',\'\',\''+w+'\')">отмена</button></div>'
-    +'<label>За что</label><input id="bn-note-'+k+'" placeholder="срочный заказ, качество, выручил">'
+    +'<div class="muted">Сверх сдельной: надбавки на премию не начисляются, на заказы не влияет.</div>'
+    +'<label>За что</label><input id="bn-note-'+k+'" placeholder="срочный заказ, помог на разгрузке, качество">'
     +'<label>Сколько, руб.</label><input id="bn-sum-'+k+'" type="number" min="0" step="0.5" inputmode="decimal" placeholder="10">'
     +'<button onclick="sendBonus(\''+esc(rid)+'\',\''+w+'\')">🎁 Начислить премию</button>'
     +'<div class="msg" id="bn-msg-'+k+'"></div></div>';
@@ -628,60 +627,6 @@ function loadJournal(){
     }).join('');
   }).catch(function(){ lst.innerHTML='<span class="err">Ошибка загрузки</span>'; });
 }
-// ── ПОВРЕМЕННАЯ ДОПЛАТА: мастер дописывает деньги за работу по времени (разгрузка машины и т.п.)
-function kindBadge(it){
-  if(!it) return '';
-  if(it.kind==='повременно') return '<span class="kb time" title="доплата за работу по времени">\uD83D\uDCB5 доплата</span> ';
-  if(it.kind==='лист') return '<span class="kb sheet" title="раскрой листа на ЧПУ — оплата за лист">\uD83D\uDCD0 лист</span> ';
-  return '';
-}
-function renderTimePay(){
-  var box=document.getElementById('tpbox'); if(!box) return;
-  if(!isMaster()){ box.innerHTML=''; return; }
-  var opts=(DATA.workers||[]).map(function(w){ return opt(w.name); }).join('');
-  box.innerHTML='<div class="card" style="background:#faf7ff;border-color:#e4d4fb">'
-    +'<div class="row"><b>\uD83D\uDCB5 Доплата за работу по времени</b>'
-      +'<button class="sm gray" onclick="toggleTP()" id="tpbtn">развернуть</button></div>'
-    +'<div class="muted">Разгрузка/загрузка машины, помощь — сдельной расценки нет, а время потрачено. Идёт в ЗП сразу, на заказы не влияет.</div>'
-    +'<div id="tpform" style="display:none">'
-      +'<label>Сотрудник</label><select id="tpw">'+(opts||opt('','нет сотрудников'))+'</select>'
-      +'<label>Дата</label><input id="tpd" type="date">'
-      +'<label>За что</label><input id="tpn" placeholder="Разгрузка машины с фанерой">'
-      +'<label>Сумма, руб.</label><input id="tps" type="number" min="0" step="0.5" inputmode="decimal" placeholder="15">'
-      +'<button onclick="addTimePay()">\uD83D\uDCB5 Начислить</button><div class="msg" id="tpmsg"></div>'
-    +'</div></div>';
-  var d=document.getElementById('tpd'); if(d) d.value=todayIso();
-}
-function todayIso(){ var t=new Date(); return t.getFullYear()+'-'+pad2(t.getMonth()+1)+'-'+pad2(t.getDate()); }
-function toggleTP(){
-  var f=document.getElementById('tpform'), b=document.getElementById('tpbtn'); if(!f) return;
-  var open=(f.style.display==='none'); f.style.display=open?'':'none'; if(b) b.textContent=open?'свернуть':'развернуть';
-}
-function addTimePay(){
-  var w=(document.getElementById('tpw')||{}).value||'', d=(document.getElementById('tpd')||{}).value||'';
-  var note=(document.getElementById('tpn')||{}).value||'', sum=(document.getElementById('tps')||{}).value||'';
-  var m=document.getElementById('tpmsg');
-  if(!w){ m.innerHTML='<span class="err">Выберите сотрудника</span>'; return; }
-  if(!note.replace(/\s/g,'')){ m.innerHTML='<span class="err">Напишите, за что доплата</span>'; return; }
-  if(!(Number(sum)>0)){ m.innerHTML='<span class="err">Укажите сумму</span>'; return; }
-  m.innerHTML='Начисляю…';
-  var dateRu=d?d.split('-').reverse().join('.'):'';
-  api({vapi:'addtimepay',worker:w,date:dateRu,sum:sum,note:note}).then(function(r){
-    if(r&&r.ok){
-      m.innerHTML='<span class="ok">\u2713 '+esc(r.worker)+' \u2014 '+r.sum+' руб. за «'+esc(r.note)+'»</span>';
-      document.getElementById('tpn').value=''; document.getElementById('tps').value='';
-    } else m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>';
-  }).catch(function(){ m.innerHTML='<span class="err">Ошибка сети</span>'; });
-}
-// ═══════════ 🪚 РАСКРОЙ НА ЧПУ: лист → детали ═══════════
-// Рабочий указывает лист материала и что с него вышло. Платим и за лист, и за детали.
-// Деталь, которой нет ни в одном активном заказе, идёт «вне заказа» автоматически;
-// если деталь в заказах есть — заказ выбирается явно (в т.ч. явное «вне заказа»).
-//
-// ВАЖНО про рендер: список НЕ перерисовывается при вводе количества — иначе поле ввода
-// пересоздаётся и слетает фокус (после каждой цифры приходилось тыкать в поле заново).
-// Структуру строит renderCut/addSheetDom, а цифры обновляет recalcCut через textContent.
-var CUT=null, SHEETS=[], UID=0, MATOPTS='', DETOPTS='';
 function findS(u){ for(var i=0;i<SHEETS.length;i++) if(SHEETS[i].uid===u) return SHEETS[i]; return null; }
 function findSIdx(u){ for(var i=0;i<SHEETS.length;i++) if(SHEETS[i].uid===u) return i; return -1; }
 function findI(sd,u){ for(var j=0;j<sd.items.length;j++) if(sd.items[j].uid===u) return sd.items[j]; return null; }
@@ -887,6 +832,13 @@ function loadCutLog(){
           +dets+'</div>';
       }).join('');
   }).catch(function(){});
+}
+// бейдж вида строки: раскрой листа / доплата (исторические строки «повременно» тоже показываем)
+function kindBadge(it){
+  if(!it) return '';
+  if(it.kind==='повременно') return '<span class="kb time" title="доплата за работу по времени">💵 доплата</span> ';
+  if(it.kind==='лист') return '<span class="kb sheet" title="раскрой листа на ЧПУ — оплата за лист">📐 лист</span> ';
+  return '';
 }
 function doRegister(){
   var fio=(document.getElementById('reg-fio')||{}).value||'';
