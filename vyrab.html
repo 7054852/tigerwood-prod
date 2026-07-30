@@ -614,8 +614,7 @@ function toggleRej(){ REJOPEN=!REJOPEN; renderRejected(); }
 function renderRejected(){
   var el=document.getElementById('rejlist'); if(!el) return;
   if(!REJ.length){ el.innerHTML=''; return; }
-  var sum=0; for(var i=0;i<REJ.length;i++) sum+=REJ[i].sum;
-  var head='<div class="row" style="margin-top:6px"><span class="muted">🗄 Архив отклонённых: '+REJ.length+' на '+(Math.round(sum*100)/100)+' р.</span>'
+  var head='<div class="row" style="margin-top:6px"><span class="muted">🗄 Архив отклонённых: '+REJ.length+'</span>'
     +'<button class="sm gray" onclick="toggleRej()">'+(REJOPEN?'скрыть':'показать')+'</button></div>';
   var body='';
   if(REJOPEN){
@@ -749,32 +748,14 @@ function buildCutOpts(){
     +(inOrd.length?('<optgroup label="Нужны в заказах">'+inOrd.join('')+'</optgroup>'):'')
     +(free.length?('<optgroup label="Вне заказа">'+free.join('')+'</optgroup>'):'');
 }
-// расценка за лист ведётся в справочнике «Расценки» — заводит начальник/мастер прямо отсюда
+// расценки за лист ведёт мастер+ в разделе «🧰 Операции и расценки» → вкладка «🪚 Раскрой ЧПУ»
 function renderCutRateBox(){
   var box=document.getElementById('cutrate'); if(!box) return;
   var no=!(CUT.sheets||[]).length;
-  if(!CUT.canCheck){ box.innerHTML = no ? '<div class="card" style="background:#fff8e6;border-color:#f0dca8">Пока не заведена расценка за раскрой листа — попросите начальника.</div>' : ''; return; }
-  var opts=(CUT.sheetsAll||[]).map(function(m){ return '<option value="'+esc(m.name)+'">'+esc(m.name)+(m.rate>0?(' — '+m.rate+' р./лист'):' — нет расценки')+'</option>'; }).join('');
-  box.innerHTML='<div class="card" style="background:#f6f9ff;border-color:#d6e2fb">'
-    +'<div class="row"><b>💰 Расценка за лист</b><button class="sm gray" onclick="toggleCR()" id="crbtn">'+(no?'завести':'изменить')+'</button></div>'
-    +'<div class="muted">Сколько листов рабочий кроит за час — ₽ за лист посчитается само.</div>'
-    +'<div id="crform" style="display:none">'
-      +'<label>Материал</label><select id="crm">'+(opts||opt('','нет листовых материалов'))+'</select>'
-      +'<label>Листов в час</label><input id="crh" type="number" min="0" step="0.1" inputmode="decimal" placeholder="3">'
-      +'<button onclick="saveSheetRate()">Сохранить расценку</button><div class="msg" id="crmsg"></div>'
-    +'</div></div>';
-}
-function toggleCR(){ var f=document.getElementById('crform'), b=document.getElementById('crbtn');
-  if(!f) return; var open=(f.style.display==='none'); f.style.display=open?'':'none'; if(b) b.textContent=open?'свернуть':'изменить'; }
-function saveSheetRate(){
-  var m=(document.getElementById('crm')||{}).value||'', h=(document.getElementById('crh')||{}).value||'';
-  var msg=document.getElementById('crmsg');
-  if(!(Number(h)>0)){ msg.innerHTML='<span class="err">Укажите, сколько листов в час</span>'; return; }
-  msg.innerHTML='Сохраняю…';
-  api({vapi:'setsheetrate',material:m,perhour:h}).then(function(r){
-    if(r&&r.ok){ msg.innerHTML='<span class="ok">✓ '+esc(r.material)+' — '+r.rate+' р./лист</span>'; CUT=null; loadCut(); }
-    else msg.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>';
-  }).catch(function(){ msg.innerHTML='<span class="err">Ошибка сети</span>'; });
+  box.innerHTML = no
+    ? '<div class="card" style="background:#fff8e6;border-color:#f0dca8">Нет расценок за раскрой листа.'
+      +(CUT.canCheck?' Заведите их в разделе <b>🧰 Операции и расценки</b> → вкладка <b>🪚 Раскрой ЧПУ</b>.':' Попросите начальника завести.')+'</div>'
+    : '';
 }
 function sheetRateOf(mat){ var l=(CUT&&CUT.sheets)||[]; for(var i=0;i<l.length;i++) if(l[i].name===mat) return l[i].rate; return 0; }
 function detRateOf(det){ var d=CUT&&CUT.byDetail[det]; return d?(d.rate||0):0; }
