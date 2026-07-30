@@ -68,8 +68,14 @@
   <div class="muted">Для листовых материалов толщина и размер нужны, чтобы посчиталась расценка за раскрой (площадь × толщина ÷ делитель).</div>
 </div>
 <div class="chips" id="roles"></div>
+<div id="selBar" class="bar" style="display:none;align-items:center">
+  <b id="selCnt"></b>
+  <button class="gray sm" onclick="selAll(false)">снять выбор</button>
+  <button class="sm" style="background:#dc2626;color:#fff" onclick="delSelected()">🗑 Удалить выбранные</button>
+  <span class="msg" id="selMsg"></span>
+</div>
 <div style="height:10px"></div>
-<div class="box"><table><thead><tr><th>Материал</th><th>Ед</th><th>Роль</th><th class="num" title="для листовых — считается расценка за раскрой">Толщина</th><th title="напр. 1525x1525">Размер листа</th><th class="num">Последняя цена</th><th class="num">Для расчёта</th><th>Комментарий</th><th></th></tr></thead><tbody id="tb"><tr><td colspan=9 class="center muted">Загрузка…</td></tr></tbody></table></div>
+<div class="box"><table><thead><tr><th style="width:26px"><input type="checkbox" id="chkAll" onclick="selAll(this.checked)" title="выбрать всё, что сейчас в списке"></th><th>Материал</th><th>Ед</th><th>Роль</th><th class="num" title="для листовых — считается расценка за раскрой">Толщина</th><th title="напр. 1525x1525">Размер листа</th><th class="num">Последняя цена</th><th class="num">Для расчёта</th><th>Комментарий</th><th></th></tr></thead><tbody id="tb"><tr><td colspan=9 class="center muted">Загрузка…</td></tr></tbody></table></div>
 <datalist id="matlist"></datalist>
 
 <div class="ov" id="ov"><div class="modal" id="modal"></div></div>
@@ -98,7 +104,7 @@ function load(){
     $('matlist').innerHTML=ROWS.map(function(m){return '<option value="'+esc(m.name)+'">';}).join('');
     draw();
     refreshSnabCount();
-  }).catch(function(e){ $('tb').innerHTML='<tr><td colspan=7 class="center err">Ошибка: '+esc(e.message||e)+'</td></tr>'; });
+  }).catch(function(e){ $('tb').innerHTML='<tr><td colspan=10 class="center err">Ошибка: '+esc(e.message||e)+'</td></tr>'; });
 }
 function setRole(r){ FROLE=r; load(); }
 function draw(){
@@ -113,6 +119,7 @@ function draw(){
     var price=m.hasBuys?('<b>'+money(m.lastPrice)+'</b>'+dyn):('<span class="muted">'+money(m.calcPrice)+'</span>');
     var forCost=(Number(m.priceForCost)||0)>0?('<b>'+Math.round(m.priceForCost)+'</b>'):'<span class="muted">—</span>';
     return '<tr>'
+      +'<td><input type="checkbox" class="mchk" value="'+esc(m.name)+'"'+(SEL[m.name]?' checked':'')+' onclick="selOne(this)"></td>'
       +'<td><span class="nm" onclick="openCard(\''+esc(m.name).replace(/\x27/g,"\\x27")+'\')">'+esc(m.name)+'</span></td>'
       +'<td><input class="u" value="'+esc(m.unit)+'" onchange="save('+idx+',\'unit\',this.value)"></td>'
       +'<td>'+roleSel+'</td>'
@@ -123,8 +130,48 @@ function draw(){
       +'<td class="muted">'+esc(m.note||'')+'</td>'
       +'<td>'+tplBtn(m)+'<button class="gray sm" title="удалить материал" onclick="delMat(\''+esc(m.name).replace(/\x27/g,"\\x27")+'\')">🗑</button> <span class="msg" id="m'+idx+'"></span></td>'
       +'</tr>';
-  }).join('')||'<tr><td colspan=9 class="center muted">ничего не найдено</td></tr>';
+  }).join('')||'<tr><td colspan=10 class="center muted">ничего не найдено</td></tr>';
+  syncSel();
 }
+// ── выбор нескольких материалов ──
+var SEL={};                                   // имя → true; переживает перерисовку и фильтры
+function selOne(el){ if(el.checked) SEL[el.value]=true; else delete SEL[el.value]; syncSel(); }
+function selAll(on){
+  var boxes=document.querySelectorAll('.mchk');
+  for(var i=0;i<boxes.length;i++){ boxes[i].checked=on; if(on) SEL[boxes[i].value]=true; else delete SEL[boxes[i].value]; }
+  syncSel();
+}
+function selNames(){ return Object.keys(SEL); }
+function syncSel(){
+  var boxes=document.querySelectorAll('.mchk');
+  for(var i=0;i<boxes.length;i++) boxes[i].checked=!!SEL[boxes[i].value];   // вернуть галочки после перерисовки
+  var n=selNames().length;
+  $('selBar').style.display=n?'flex':'none';
+  $('selCnt').textContent='выбрано: '+n;
+  var all=$('chkAll'); if(all) all.checked=boxes.length>0&&n>=boxes.length;
+}
+function delSelected(){
+  var names=selNames(); if(!names.length) return;
+  var m=$('selMsg'); m.className='msg'; m.textContent='Проверяю, где используются…';
+  api({vapi:'delmaterials', names:JSON.stringify(names), dry:1}).then(function(r){
+    if(!r||!r.ok){ m.className='msg err'; m.textContent='Ошибка: '+((r&&r.error)||'?'); return; }
+    var u=r.usage||{}, warn=[];
+    names.forEach(function(n){ var x=u[n]||{}; if(x.bom) warn.push('• '+n+' — в составе изделий: '+x.bom); });
+    var txt='Удалить материалов: '+names.length+'?\n\n'+names.slice(0,15).join('\n')+(names.length>15?'\n…и ещё '+(names.length-15):'')
+      +'\n\nВместе с ними уйдут расценки за раскрой листа.';
+    if(warn.length) txt+='\n\n⚠️ ЭТИ СТОЯТ В СОСТАВЕ ИЗДЕЛИЙ — себестоимость перестанет считаться:\n'+warn.join('\n');
+    if(!confirm(txt)){ m.textContent=''; return; }
+    m.textContent='Удаляю…';
+    api({vapi:'delmaterials', names:JSON.stringify(names)}).then(function(r2){
+      if(r2&&r2.ok){
+        m.className='msg ok';
+        m.textContent='✓ удалено '+r2.deleted+(r2.rateRemoved?', расценок '+r2.rateRemoved:'')+((r2.missed&&r2.missed.length)?'; не найдено: '+r2.missed.join(', '):'');
+        SEL={}; load();
+      } else { m.className='msg err'; m.textContent='Ошибка: '+((r2&&r2.error)||'?'); }
+    });
+  });
+}
+
 // ── единое имя: «<Материал> <толщина>мм <Ш>x<Д>» ──
 // ⚠ \b в JS не знает кириллицы — границы слов задаём явно
 function tplName(m){
