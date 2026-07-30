@@ -445,7 +445,8 @@ function loadPending(){
           +'<button class="sm gray" onclick="setRepKoef(\''+esc(rid)+'\','+(uniK!=null?uniK:1)+')">'+koefLbl+'</button></div>'
         : (night?'<div class="muted" style="font-size:12px">🌙 ночная смена</div>':'');
       var footer = master
-        ? '<div class="row" style="margin-top:10px"><button class="sm gray" onclick="addBonus(\''+esc(rid)+'\',\''+esc(rp.worker)+'\')" title="премия рабочему за этот наряд">🎁 + премия</button>'
+        ? '<div id="bonbox-m-'+bonKey(rid)+'"></div>'
+          +'<div class="row" style="margin-top:10px"><button class="sm gray" onclick="addBonus(\''+esc(rid)+'\',\''+esc(rp.worker)+'\',\'m\')" title="премия рабочему за этот наряд">🎁 + премия</button>'
           +'<button class="sm" onclick="apprRep(\''+esc(rid)+'\',1)">✅ Одобрить'+(rp.single?'':' наряд')+'</button>'
           +'<button class="sm gray" onclick="apprRep(\''+esc(rid)+'\',0)">✖ Отклонить</button><span id="rm-'+esc(rid)+'" class="msg"></span></div>'
         : '<div class="row" style="margin-top:8px">'
@@ -525,19 +526,36 @@ function setKoefJ(id,cur){
   if(k===null) return; k=Number(String(k).replace(',','.')); if(isNaN(k)||k<0){ alert('Введите число ≥ 0'); return; }
   api({vapi:'setoutputkoef',id:id,koef:k,master:DATA.worker||'мастер'}).then(function(r){ if(r&&r.ok){ loadJournal(); } else alert((r&&r.error)||'ошибка'); });
 }
-// 🎁 премия рабочему за наряд: не сдельная база, надбавки на неё не начисляются
-function addBonus(rid,worker){
-  var s=prompt('Премия рабочему'+(worker?(' ('+worker+')'):'')+', руб.:','');
-  if(s===null) return; s=Number(String(s).replace(',','.'));
-  if(!(s>0)){ alert('Введите сумму больше 0'); return; }
-  var note=prompt('За что премия?','срочный заказ'); if(note===null) note='';
+// 🎁 премия рабочему за наряд: два поля — за что и сколько. Не сдельная база: надбавки на неё не начисляются.
+function bonKey(rid){ return String(rid).replace(/[^0-9A-Za-zА-Яа-яЁё_-]/g,'_'); }
+function addBonus(rid,worker,where){
+  var box=document.getElementById('bonbox-'+(where||'m')+'-'+bonKey(rid)); if(!box) return;
+  if(box.innerHTML){ box.innerHTML=''; return; }   // повторное нажатие — свернуть
+  var k=bonKey(rid), w=where||'m';
+  box.innerHTML='<div class="card" style="background:#fff8f2;border-color:#f3ddc7;margin-top:8px">'
+    +'<div class="row"><b>🎁 Премия'+(worker?(' — '+esc(worker)):'')+'</b>'
+      +'<button class="sm gray" onclick="addBonus(\''+esc(rid)+'\',\'\',\''+w+'\')">отмена</button></div>'
+    +'<label>За что</label><input id="bn-note-'+k+'" placeholder="срочный заказ, качество, выручил">'
+    +'<label>Сколько, руб.</label><input id="bn-sum-'+k+'" type="number" min="0" step="0.5" inputmode="decimal" placeholder="10">'
+    +'<button onclick="sendBonus(\''+esc(rid)+'\',\''+w+'\')">🎁 Начислить премию</button>'
+    +'<div class="msg" id="bn-msg-'+k+'"></div></div>';
+  var f=document.getElementById('bn-note-'+k); if(f) f.focus();
+}
+function sendBonus(rid,where){
+  var k=bonKey(rid);
+  var note=(document.getElementById('bn-note-'+k)||{}).value||'';
+  var sum=(document.getElementById('bn-sum-'+k)||{}).value||'';
+  var m=document.getElementById('bn-msg-'+k);
+  if(!note.replace(/\s/g,'')){ if(m) m.innerHTML='<span class="err">Напишите, за что премия</span>'; return; }
+  if(!(Number(sum)>0)){ if(m) m.innerHTML='<span class="err">Укажите сумму</span>'; return; }
+  if(m) m.innerHTML='Начисляю…';
   var single=(String(rid).charAt(0)==='_');
-  var p={vapi:'addbonus',sum:s,note:note};
+  var p={vapi:'addbonus',sum:sum,note:note};
   if(single) p.id=String(rid).slice(1); else p.report=rid;
   api(p).then(function(r){
-    if(r&&r.ok){ loadPending(); try{ loadJournal(); }catch(e){} }
-    else alert((r&&r.error)||'ошибка');
-  }).catch(function(){ alert('Ошибка сети'); });
+    if(r&&r.ok){ if(where==='j') loadJournal(); else loadPending(); }
+    else if(m) m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>';
+  }).catch(function(){ if(m) m.innerHTML='<span class="err">Ошибка сети</span>'; });
 }
 function editTimePay(id,cur,note){
   var s=prompt('Сумма доплаты, руб.:', cur||'');
@@ -591,7 +609,8 @@ function loadJournal(){
         return '<div class="row" id="j-'+esc(it.id)+'" style="border-top:1px solid #eee;padding-top:5px"><span>'+body+'</span>'
           +'<span class="ok">'+it.sum+' р '+acts+'</span></div>';
       }).join('');
-      var bonBtn = master ? '<button class="sm gray" onclick="addBonus(\''+esc(rep||('_'+g.lines[0].id))+'\',\''+esc(g.worker)+'\')" title="премия за наряд">🎁 + премия</button>' : '';
+      var bonRid = rep||('_'+g.lines[0].id);
+      var bonBtn = master ? '<button class="sm gray" onclick="addBonus(\''+esc(bonRid)+'\',\''+esc(g.worker)+'\',\'j\')" title="премия за наряд">🎁 + премия</button>' : '';
       var shiftCtl = (master && !g.single && rep)
         ? '<div class="tabs" style="margin:6px 0 0"><button class="sm '+(night?'':'active')+'" onclick="setRepShiftJ(\''+esc(rep)+'\',\'день\')">☀️ День</button><button class="sm '+(night?'active':'')+'" onclick="setRepShiftJ(\''+esc(rep)+'\',\'ночь\')">🌙 Ночь</button></div>'
         : (night?'<div class="muted" style="font-size:12px">🌙 ночная</div>':'');
@@ -604,6 +623,7 @@ function loadJournal(){
         +'<div class="muted" style="font-size:12px">'+(g.submitted?'подан '+esc(g.submitted)+' · ':'')
           +((g.lines[0]&&g.lines[0].free)?'<span class="freeb">🧰 вне заказа</span>':esc(g.batch))
           +(g.single?'':' · наряд')+' · '+g.lines.length+' оп.</div>'
+        +'<div id="bonbox-j-'+bonKey(bonRid)+'"></div>'
         +shiftCtl+lines+bonusBlockHtml(gbd)+'</div>';
     }).join('');
   }).catch(function(){ lst.innerHTML='<span class="err">Ошибка загрузки</span>'; });
