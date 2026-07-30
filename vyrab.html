@@ -79,6 +79,7 @@ window.onerror=function(msg,src,line){
 </script>
 
 <div id="wsel-top"></div>
+<div id="whobar"></div>
 <div id="whead">
   <label>За какую смену — дата начала</label>
   <div class="row" style="gap:6px"><input id="wdate" type="date" style="flex:1" onchange="updateWhen()"><button class="sm gray" type="button" onclick="setDate(0)">Сегодня</button><button class="sm gray" type="button" onclick="setDate(-1)">Вчера</button></div>
@@ -223,13 +224,20 @@ function load(){
     if(keep){ bsel.value=keep; if(!bsel.value) bsel.selectedIndex=0; }
     if(!keep || bsel.value!==keep) onBatchChange(); else updateWhen();
     loadMySummary();
+    restoreDraft();
     if(isMaster()){
       // мастер вводит наряд за себя ИЛИ за любого сотрудника
       document.getElementById('who').textContent='';
-      var opts=(DATA.workers||[]).map(function(w){return '<option value="'+esc(w.name)+'"'+(w.name===DATA.worker?' selected':'')+'>'+esc(w.name)+'</option>';}).join('');
+      var wsOld=document.getElementById('worker');
+      var keepW=(wsOld&&wsOld.value)||DRAFT.worker||DATA.worker||'';   // НЕ теряем, за кого вводим: свернул приложение — вернулся, тот же сотрудник
+      var opts=(DATA.workers||[]).map(function(w){return '<option value="'+esc(w.name)+'">'+esc(w.name)+'</option>';}).join('');
       document.getElementById('wsel').innerHTML='';
       // селектор общий для всех вкладок (выработка и раскрой) — поэтому живёт над ними
-      document.getElementById('wsel-top').innerHTML='<label>Сотрудник (за кого наряд)</label><select id="worker">'+(opts||opt('','нет сотрудников'))+'</select>';
+      if(!wsOld) document.getElementById('wsel-top').innerHTML='<label>Сотрудник (за кого наряд)</label><select id="worker" onchange="onWorkerChange()">'+(opts||opt('','нет сотрудников'))+'</select>';
+      var ws=document.getElementById('worker');
+      if(ws){ if(!wsOld) ws.innerHTML=opts||opt('','нет сотрудников');
+              if(keepW){ ws.value=keepW; if(!ws.value) ws.value=DATA.worker||''; } }
+      renderWhoBar();
     }
     else if(DATA.worker){ document.getElementById('who').textContent='Рабочий: '+DATA.worker; document.getElementById('wsel').innerHTML=''; }
     else if(TGID){ document.getElementById('wsel').innerHTML='<label>Вы впервые. Представьтесь — <b>Фамилия Имя</b>:</label><input id="reg-fio" placeholder="Иванов Иван"><button onclick="doRegister()">Зарегистрироваться</button><div class="msg" id="reg-msg"></div>'; }
@@ -269,10 +277,10 @@ var BONUS={premPct:10,premThr:100,nightPct:15};   // как в Config
 function setShift(sh){ SHIFT=sh;
   document.getElementById('shift-day').className=(sh==='день')?'active':'';
   document.getElementById('shift-night').className=(sh==='ночь')?'active':'';
-  updateWhen(); renderCart(); }
+  updateWhen(); renderCart(); saveDraft(); }
 function setDate(off){ var d=new Date(); d.setDate(d.getDate()+off);
   var s=d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());
-  var el=document.getElementById('wdate'); if(el) el.value=s; updateWhen(); }
+  var el=document.getElementById('wdate'); if(el) el.value=s; updateWhen(); saveDraft(); }
 // наглядно: за какую дату и смену будет отчёт
 function updateWhen(){ var el=document.getElementById('whenline'); if(!el) return;
   var wd=(document.getElementById('wdate')||{}).value||'';
@@ -310,9 +318,9 @@ function addToCart(){
   var bs=document.getElementById('batch'), bv=bs.value, bn=bs.options[bs.selectedIndex]?bs.options[bs.selectedIndex].text:'';
   CART.push({equip:equip,detail:detail,op:op,qty:qty,rate:rate,sum:Math.round(qty*rate*100)/100,
              batch:(bv===FREE?'':bv), batchName:(bv===FREE?'🧰 вне заказа':bn)});
-  document.getElementById('qty').value=''; calc(); wmsg(''); renderCart();
+  document.getElementById('qty').value=''; calc(); wmsg(''); renderCart(); saveDraft();
 }
-function rmCart(i){ CART.splice(i,1); renderCart(); }
+function rmCart(i){ CART.splice(i,1); renderCart(); saveDraft(); }
 function renderCart(){
   var c=document.getElementById('cart');
   if(!CART.length){ c.innerHTML=''; renderTotals(); return; }
@@ -331,14 +339,17 @@ function renderTotals(){
     for(var j=0;j<SHEETS[k].items.length;j++) if(SHEETS[k].items[j].detail&&SHEETS[k].items[j].qty>0) nDet++; }
   var total=Math.round((opsSum+(CUTTOTAL||0))*100)/100;
   if(!CART.length && !nSheets){ box.innerHTML=''; setBar('',false); return; }
+  var wsel=document.getElementById('worker'), forWho=(wsel&&wsel.value)||'';
+  var forOther=(isMaster()&&forWho&&forWho!==DATA.worker);
   var parts=[];
   if(CART.length) parts.push(CART.length+' оп.');
   if(nSheets) parts.push(nSheets+' лист(ов)'+(nDet?(' · '+nDet+' дет.'):''));
   var bd=computeBreakdown(total, SHIFT==='ночь');
   box.innerHTML='<div class="card"><div class="row"><b>В наряде: '+parts.join(' + ')+'</b><span class="muted">'+esc(SHIFT==='ночь'?'🌙 ночь':'☀️ день')+'</span></div>'
     +bonusBlockHtml(bd)+(CUTNEEDPICK?'<div class="muted" style="color:#b7791f">Выберите заказ у отмеченных деталей на вкладке «Раскрой»</div>':'')+'</div>';
-  setBar('<b>'+parts.join(' + ')+'</b> · <b>'+bd.total+' р.</b>'+(CUTNEEDPICK?' · <span style="color:#b7791f">выберите заказ у деталей</span>':''), true);
-  btn.textContent=ADDTO?'➕ Добавить в наряд':'📨 Отправить наряд мастеру';
+  setBar((forOther?('<b style="color:#b7791f">за '+esc(forWho)+'</b> · '):'')+'<b>'+parts.join(' + ')+'</b> · <b>'+bd.total+' р.</b>'
+    +(CUTNEEDPICK?' · <span style="color:#b7791f">выберите заказ у деталей</span>':''), true);
+  btn.textContent=ADDTO?'➕ Добавить в наряд':(forOther?('📨 Отправить наряд за '+forWho):'📨 Отправить наряд мастеру');
 }
 // закреплённая внизу панель отправки: показываем только когда в наряде что-то есть
 // и только на вкладках «Выработка»/«Раскрой»
@@ -352,6 +363,58 @@ function setBar(html, on){
   document.body.className=(on&&tabOk)?'hasbar':'';
 }
 var BARON=false, CURTAB='w';
+
+// восстановить набранное после сворачивания/перезагрузки (один раз за сеанс)
+var DRAFTUSED=0;
+function restoreDraft(){
+  if(DRAFTUSED) return; DRAFTUSED=1;
+  var d=loadDraft(); if(!d) return;
+  DRAFT=d;
+  if(d.date){ var el=document.getElementById('wdate'); if(el) el.value=d.date; }
+  if(d.shift){ SHIFT=d.shift;
+    var sd=document.getElementById('shift-day'), sn=document.getElementById('shift-night');
+    if(sd) sd.className=(SHIFT==='день')?'active':''; if(sn) sn.className=(SHIFT==='ночь')?'active':''; }
+  if(d.cart && d.cart.length){ CART=d.cart; renderCart(); }
+  if(d.sheets && d.sheets.length){ SHEETS=d.sheets; for(var i=0;i<SHEETS.length;i++) if(SHEETS[i].uid>UID) UID=SHEETS[i].uid; }
+  if(d.addto){ ADDTO=d.addto; ADDINFO=d.addinfo||''; renderAddBanner(); }
+  updateWhen(); renderTotals();
+}
+
+// ── ЧЕРНОВИК НАРЯДА ──
+// Telegram при сворачивании может перезагрузить страницу, а оболочка шлёт «обновись» —
+// раньше от этого слетал выбранный сотрудник (и наряд уходил на мастера) и терялась корзина.
+// Держим набранное в памяти телефона: за кого, дата, смена, операции и листы.
+var DRAFT={};
+function draftKey(){ return 'tw_draft_'+TGID; }
+function saveDraft(){
+  try{
+    var ws=document.getElementById('worker');
+    DRAFT={ worker:(ws&&ws.value)||'', date:(document.getElementById('wdate')||{}).value||'',
+            shift:SHIFT, cart:CART, sheets:SHEETS, addto:ADDTO, addinfo:ADDINFO, ts:new Date().getTime() };
+    localStorage.setItem(draftKey(), JSON.stringify(DRAFT));
+  }catch(e){}
+}
+function loadDraft(){
+  try{
+    var raw=localStorage.getItem(draftKey()); if(!raw) return null;
+    var d=JSON.parse(raw);
+    if(!d || !d.ts || (new Date().getTime()-d.ts) > 14*3600*1000){ localStorage.removeItem(draftKey()); return null; }   // старше смены — не восстанавливаем
+    return d;
+  }catch(e){ return null; }
+}
+function clearDraft(){ DRAFT={}; try{ localStorage.removeItem(draftKey()); }catch(e){} }
+// крупно показываем, ЗА КОГО наряд — чтобы случайная отправка на себя была заметна
+function renderWhoBar(){
+  var el=document.getElementById('whobar'); if(!el) return;
+  if(!isMaster()){ el.innerHTML=''; return; }
+  var ws=document.getElementById('worker'), w=(ws&&ws.value)||'';
+  var self=(!w || w===DATA.worker);
+  el.innerHTML = '<div class="card" style="margin:6px 0;background:'+(self?'#f6f7fb':'#fff6e8')+';border-color:'+(self?'#e3e3e3':'#f0d9a0')+'">'
+    +'<div class="row"><span>'+(self?'✍️ Наряд <b>за себя</b>':'👤 Наряд за <b>'+esc(w)+'</b>')+'</span>'
+    +(self?'':'<button class="sm gray" onclick="backToSelf()">за себя</button>')+'</div></div>';
+}
+function backToSelf(){ var ws=document.getElementById('worker'); if(ws){ ws.value=DATA.worker||''; onWorkerChange(); } }
+function onWorkerChange(){ renderWhoBar(); renderTotals(); saveDraft(); }
 
 // ── ДОПОЛНЕНИЕ НАРЯДА: рабочий вспомнил операции, пока мастер не проверил ──
 var ADDTO='', ADDINFO='';
@@ -404,7 +467,7 @@ function sendWork(){
       var parts=[]; if(r.ops) parts.push(r.ops+' оп.'); if(r.sheets) parts.push(r.sheets+' лист(ов)'); if(r.details) parts.push(r.details+' дет.');
       var w=(r.warnings&&r.warnings.length)?('<br><span class="muted">'+r.warnings.map(esc).join('<br>')+'</span>'):'';
       wmsg('<span class="ok">✅ '+(r.added?'Добавлено в наряд: ':'Наряд отправлен: ')+parts.join(' + ')+' на <b>'+r.sum+' руб.</b> (на проверке)</span>'+w);
-      CART=[]; SHEETS=[]; CUTTOTAL=0; CUTNEEDPICK=false; ADDTO=''; ADDINFO='';
+      CART=[]; SHEETS=[]; CUTTOTAL=0; CUTNEEDPICK=false; ADDTO=''; ADDINFO=''; clearDraft();
       if(CUT) addSheet(); else renderCut();
       renderAddBanner(); renderCart(); loadMySummary(); loadCutLog();
       try{ loadPending(); }catch(e){}
@@ -830,6 +893,7 @@ function recalcCut(){
     txt('s-out-'+sd.uid,'выход: '+out+' дет.');
   }
   CUTTOTAL=Math.round(total*100)/100; CUTNEEDPICK=needPick;
+  saveDraft();
   var em=document.getElementById('cutempty'); if(em) em.style.display=SHEETS.length?'none':'';
   renderTotals();
 }
