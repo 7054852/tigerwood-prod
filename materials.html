@@ -154,7 +154,7 @@ function syncSel(){
 function delSelected(){
   var names=selNames(); if(!names.length) return;
   var m=$('selMsg'); m.className='msg'; m.textContent='Проверяю, где используются…';
-  api({vapi:'delmaterials', names:JSON.stringify(names), dry:1}).then(function(r){
+  apiPost({vapi:'delmaterials', names:JSON.stringify(names), dry:1}).then(function(r){
     if(!r||!r.ok){ m.className='msg err'; m.textContent='Ошибка: '+((r&&r.error)||'?'); return; }
     var u=r.usage||{}, warn=[];
     names.forEach(function(n){ var x=u[n]||{}; if(x.bom) warn.push('• '+n+' — в составе изделий: '+x.bom); });
@@ -163,14 +163,14 @@ function delSelected(){
     if(warn.length) txt+='\n\n⚠️ ЭТИ СТОЯТ В СОСТАВЕ ИЗДЕЛИЙ — себестоимость перестанет считаться:\n'+warn.join('\n');
     if(!confirm(txt)){ m.textContent=''; return; }
     m.textContent='Удаляю…';
-    api({vapi:'delmaterials', names:JSON.stringify(names)}).then(function(r2){
+    apiPost({vapi:'delmaterials', names:JSON.stringify(names)}).then(function(r2){
       if(r2&&r2.ok){
         m.className='msg ok';
         m.textContent='✓ удалено '+r2.deleted+(r2.rateRemoved?', расценок '+r2.rateRemoved:'')+((r2.missed&&r2.missed.length)?'; не найдено: '+r2.missed.join(', '):'');
         SEL={}; load();
       } else { m.className='msg err'; m.textContent='Ошибка: '+((r2&&r2.error)||'?'); }
-    });
-  });
+    }).catch(function(e){ m.className='msg err'; m.textContent='Связь оборвалась: '+(e.message||e); });
+  }).catch(function(e){ m.className='msg err'; m.textContent='Связь оборвалась: '+(e.message||e); });
 }
 
 // ── переименование ──
@@ -178,10 +178,10 @@ function delSelected(){
 function renameMat(oldName){
   var v=prompt('Новое название материала:\n\nСтарое имя останется как «называют поставщики» — распознавание накладных не сломается.', oldName);
   if(v===null) return; v=String(v).trim(); if(!v||v===oldName) return;
-  api({vapi:'renamematerials', pairs:JSON.stringify([{from:oldName,to:v}])}).then(function(r){
+  apiPost({vapi:'renamematerials', pairs:JSON.stringify([{from:oldName,to:v}])}).then(function(r){
     if(r&&r.ok&&r.renamed) load();
     else alert('Не переименовано: '+(((r&&r.failed&&r.failed[0])||{}).error||(r&&r.error)||'?'));
-  });
+  }).catch(function(e){ alert('Связь оборвалась: '+(e.message||e)); });
 }
 
 // ── единый стандарт названий ──
@@ -256,13 +256,14 @@ function applyStd(){
   for(var i=0;i<b.length;i++) if(b[i].checked) pairs.push(window.STDFIX[Number(b[i].value)]);
   if(!pairs.length) return;
   if(!confirm('Переименовать материалов: '+pairs.length+'?\nСтарые названия сохранятся как «называют поставщики».')) return;
-  var m=$('std_msg'); m.className='msg'; m.textContent='Переименовываю…';
-  api({vapi:'renamematerials', pairs:JSON.stringify(pairs)}).then(function(r){
+  var m=$('std_msg'); m.className='msg'; m.textContent='Переименовываю '+pairs.length+'… это займёт до минуты';
+  // ⚠ только POST: список пар не влезает в длину GET-адреса — запрос молча обрывался
+  apiPost({vapi:'renamematerials', pairs:JSON.stringify(pairs)}).then(function(r){
     if(r&&r.ok){
       m.className='msg ok'; m.textContent='✓ переименовано '+r.renamed+((r.failed&&r.failed.length)?', не вышло '+r.failed.length:'');
       load(); setTimeout(openStd,900);
     } else { m.className='msg err'; m.textContent='Ошибка: '+((r&&r.error)||'?'); }
-  });
+  }).catch(function(e){ m.className='msg err'; m.textContent='Связь оборвалась: '+(e.message||e)+'. Отметьте меньше позиций и повторите.'; });
 }
 
 // ── единое имя: «<Материал> <толщина>мм <Ш>x<Д>» ──
