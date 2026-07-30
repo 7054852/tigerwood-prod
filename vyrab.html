@@ -70,9 +70,18 @@ window.onerror=function(msg,src,line){
 </script>
 
 <div id="wsel-top"></div>
-<div class="tabs">
+<div id="whead">
+  <label>За какую смену — дата начала</label>
+  <div class="row" style="gap:6px"><input id="wdate" type="date" style="flex:1" onchange="updateWhen()"><button class="sm gray" type="button" onclick="setDate(0)">Сегодня</button><button class="sm gray" type="button" onclick="setDate(-1)">Вчера</button></div>
+  <div class="tabs" style="margin:8px 0 0">
+    <button id="shift-day" class="active" onclick="setShift('день')">☀️ День</button>
+    <button id="shift-night" onclick="setShift('ночь')">🌙 Ночь</button>
+  </div>
+  <div class="muted" style="font-size:12px;margin-top:4px">🌙 Ночная смена с 23 на 24 — ставьте <b>23</b> (день, когда смена началась).</div>
+</div>
+<div class="tabs" style="margin-top:12px">
   <button id="tab-w" class="active" onclick="showTab('w')">✍️ Выработка</button>
-  <button id="tab-c" onclick="showTab('c')">🪚 Раскрой</button>
+  <button id="tab-c" onclick="showTab('c')" style="display:none">🪚 Раскрой</button>
   <button id="tab-m" onclick="showTab('m')">👏 Проверка</button>
   <button id="tab-j" onclick="showTab('j')">📋 Журнал</button>
 </div>
@@ -83,9 +92,6 @@ window.onerror=function(msg,src,line){
   <h2>Новый наряд</h2>
   <div class="muted" id="who"></div>
   <div id="wsel"></div>
-  <label>За какую смену — дата начала</label>
-  <div class="row" style="gap:6px"><input id="wdate" type="date" style="flex:1" onchange="updateWhen()"><button class="sm gray" type="button" onclick="setDate(0)">Сегодня</button><button class="sm gray" type="button" onclick="setDate(-1)">Вчера</button></div>
-  <div class="muted" style="font-size:12px;margin-top:3px">🌙 Ночная смена с 23 на 24 — ставьте <b>23</b> (день, когда смена началась).</div>
   <label>Партия / вне заказа</label><select id="batch" onchange="onBatchChange()"></select>
   <div id="freenote" style="margin-top:6px"></div>
   <label>Оборудование</label><select id="equip" onchange="fillDetails()"></select>
@@ -94,32 +100,15 @@ window.onerror=function(msg,src,line){
   <label>Количество</label><input id="qty" type="number" min="0" inputmode="numeric" oninput="calc()" placeholder="сколько сделано">
   <div class="sum" id="sum">—</div>
   <button class="gray" onclick="addToCart()">＋ Добавить в наряд</button>
-  <label style="margin-top:14px">Смена</label>
-  <div class="tabs" style="margin-bottom:0">
-    <button id="shift-day" class="active" onclick="setShift('день')">☀️ День</button>
-    <button id="shift-night" onclick="setShift('ночь')">🌙 Ночь</button>
-  </div>
-  <div id="whenline" style="margin-top:8px;font-weight:600"></div>
   <div id="cart" style="margin-top:12px"></div>
-  <button onclick="sendReport()" id="sendbtn" style="display:none">📨 Отправить наряд мастеру</button>
-  <div class="msg" id="wmsg"></div>
 </div>
 <div id="pane-c" style="display:none">
   <h2>🪚 Раскрой на ЧПУ</h2>
   <div class="muted">Указываете лист и что с него вышло. Оплата: за листы + за детали. Детали попадут в свои заказы.</div>
   <div id="cutrate"></div>
-  <label>За какую смену — дата начала</label>
-  <div class="row" style="gap:6px"><input id="cdate" type="date" style="flex:1"><button class="sm gray" type="button" onclick="setCutDate(0)">Сегодня</button><button class="sm gray" type="button" onclick="setCutDate(-1)">Вчера</button></div>
-  <label style="margin-top:10px">Смена</label>
-  <div class="tabs" style="margin-bottom:0">
-    <button id="cshift-day" class="active" onclick="setCutShift('день')">☀️ День</button>
-    <button id="cshift-night" onclick="setCutShift('ночь')">🌙 Ночь</button>
-  </div>
   <div id="cutlist" style="margin-top:12px">Загрузка…</div>
+  <div id="cutempty" class="muted" style="display:none;margin:10px 0">Листов пока нет — нажмите «＋ Добавить лист».</div>
   <button class="gray" onclick="addSheet()">＋ Добавить лист</button>
-  <div id="cutsum" style="margin-top:10px"></div>
-  <button onclick="sendCut()" id="cutsend" style="display:none">📨 Отправить наряд мастеру</button>
-  <div class="msg" id="cmsg"></div>
   <div id="cutlog" style="margin-top:18px"></div>
 </div>
 <div id="pane-m" style="display:none">
@@ -127,6 +116,12 @@ window.onerror=function(msg,src,line){
   <h2>На проверке</h2>
   <div class="muted">Подтвердите, измените кол-во или отклоните — рабочий получит уведомление.</div>
   <div id="mlist" style="margin-top:10px">Загрузка…</div>
+</div>
+<div id="workfoot" style="display:none">
+  <div id="whenline" style="margin-top:8px;font-weight:600"></div>
+  <div id="worksum" style="margin-top:8px"></div>
+  <button onclick="sendWork()" id="worksend" style="display:none">📨 Отправить наряд мастеру</button>
+  <div class="msg" id="wmsg"></div>
 </div>
 <div id="pane-j" style="display:none">
   <h2>Журнал выработки</h2>
@@ -156,7 +151,7 @@ if(!TGID){ TGID=qp('tgid')||localStorage.getItem('tw_tgid')||''; } if(TGID){ try
 //        'my' — личный кабинет: только свои наряды, свои на проверке, свой журнал.
 // ВАЖНО: ?tab=check — лишь ПОЖЕЛАНИЕ открыть панель проверки. Право даёт сервер (DATA.canCheck по роли),
 // иначе любой рабочий увидел бы чужие наряды, дописав параметр в адрес.
-var WANT_CHECK = (qp('tab')==='check'||qp('tab')==='m');
+var WANT_CHECK = (qp('tab')==='check'||qp('tab')==='m'), TABSET=0;
 var MODE = 'my';
 function isMaster(){ return MODE==='master'; }
 // текущий работник для формы: в личном режиме — я; в режиме мастера — выбранный в списке (или я)
@@ -167,6 +162,12 @@ function curWorker(){
 }
 function applyMode(){
   var lw=document.getElementById('tab-w'), lm=document.getElementById('tab-m'), lj=document.getElementById('tab-j');
+  // вкладка «Раскрой» — по персональной отметке в «Сотрудники и доступы» (мастеру/начальнику — по роли)
+  var lc=document.getElementById('tab-c');
+  if(lc){
+    lc.style.display = DATA.canCut ? '' : 'none';
+    if(!DATA.canCut && document.getElementById('pane-c').style.display!=='none') showTab('w');
+  }
   if(isMaster()){ lw.textContent='✍️ Ввести за сотрудника'; lm.textContent='👏 Проверка'; lj.textContent='📋 Журнал (все)'; }
   else { lw.textContent='✍️ Моя выработка'; lm.textContent='⏳ Мои на проверке'; lj.textContent='📋 Мой журнал'; }
 }
@@ -175,6 +176,8 @@ function showTab(t){
     document.getElementById('pane-'+x).style.display = x===t?'':'none';
     document.getElementById('tab-'+x).className = x===t?'active':'';
   });
+  var ff=document.getElementById('workfoot'); if(ff) ff.style.display=(t==='w'||t==='c')?'':'none';
+  var wh=document.getElementById('whead'); if(wh) wh.style.display=(t==='w'||t==='c')?'':'none';
   if(t==='c') loadCut();
   if(t==='m') loadPending();
   if(t==='j') loadJournal();
@@ -184,11 +187,15 @@ function load(){
     DATA=d||DATA;
     MODE = (WANT_CHECK && DATA.canCheck) ? 'master' : 'my';   // роль пришла с сервера
     applyMode();
-    if(isMaster()) showTab('m'); else if(qp('tab')==='j') showTab('j');
+    // стартовую вкладку выбираем ОДИН раз: load() зовётся и при обновлении из оболочки,
+    // иначе экран посреди работы перескакивал на «Проверку»
+    if(!TABSET){ TABSET=1; if(isMaster()) showTab('m'); else if(qp('tab')==='j') showTab('j'); }
     // ПАРТИЯ или «вне заказа» (работа без привязки к заказу: задел, переделка, помощь другому участку)
-    document.getElementById('batch').innerHTML=(DATA.batches||[]).map(function(b){return opt(b.id,b.num+' · '+b.name);}).join('')
+    var bsel=document.getElementById('batch'), keep=bsel.value;   // при обновлении не сбрасываем выбор рабочего
+    bsel.innerHTML=(DATA.batches||[]).map(function(b){return opt(b.id,b.num+' · '+b.name);}).join('')
       +'<option value="'+FREE+'">🧰 Вне заказа (задел, переделка, помощь)</option>';
-    onBatchChange();
+    if(keep){ bsel.value=keep; if(!bsel.value) bsel.selectedIndex=0; }
+    if(!keep || bsel.value!==keep) onBatchChange(); else updateWhen();
     loadMySummary();
     if(isMaster()){
       // мастер вводит наряд за себя ИЛИ за любого сотрудника
@@ -273,19 +280,37 @@ function addToCart(){
   var equip=document.getElementById('equip').value, detail=document.getElementById('detail').value, op=document.getElementById('op').value, qty=Number(document.getElementById('qty').value)||0, rate=curRate();
   if(!op){ wmsg('<span class="err">Выберите операцию</span>'); return; }
   if(!(qty>0)){ wmsg('<span class="err">Укажите количество</span>'); return; }
-  CART.push({equip:equip,detail:detail,op:op,qty:qty,rate:rate,sum:Math.round(qty*rate*100)/100});
+  var bs=document.getElementById('batch'), bv=bs.value, bn=bs.options[bs.selectedIndex]?bs.options[bs.selectedIndex].text:'';
+  CART.push({equip:equip,detail:detail,op:op,qty:qty,rate:rate,sum:Math.round(qty*rate*100)/100,
+             batch:(bv===FREE?'':bv), batchName:(bv===FREE?'🧰 вне заказа':bn)});
   document.getElementById('qty').value=''; calc(); wmsg(''); renderCart();
 }
 function rmCart(i){ CART.splice(i,1); renderCart(); }
 function renderCart(){
-  var c=document.getElementById('cart'), sb=document.getElementById('sendbtn');
-  if(!CART.length){ c.innerHTML=''; sb.style.display='none'; return; }
-  var tot=CART.reduce(function(s,x){return s+x.sum;},0), bd=computeBreakdown(tot, SHIFT==='ночь');
-  c.innerHTML='<div class="card"><div class="row"><b>В наряде: '+CART.length+' оп.</b><span class="muted">'+esc(SHIFT==='ночь'?'🌙 ночь':'☀️ день')+'</span></div>'
-    +CART.map(function(x,i){ return '<div class="row" style="border-top:1px solid #eee;padding-top:5px"><span>'+esc(x.detail)+' · '+esc(x.op)+' · '+x.qty+' шт → '+x.sum+' р.</span><button class="sm gray" onclick="rmCart('+i+')">✕</button></div>'; }).join('')
-    +bonusBlockHtml(bd)
+  var c=document.getElementById('cart');
+  if(!CART.length){ c.innerHTML=''; renderTotals(); return; }
+  c.innerHTML='<div class="card"><div class="row"><b>Операции: '+CART.length+'</b><span class="muted">'+esc(SHIFT==='ночь'?'🌙 ночь':'☀️ день')+'</span></div>'
+    +CART.map(function(x,i){ return '<div class="row" style="border-top:1px solid #eee;padding-top:5px"><span>'+esc(x.detail)+' · '+esc(x.op)+' · '+x.qty+' шт → '+x.sum+' р.'
+      +' <span class="muted" style="font-size:11px">'+esc(x.batchName||'')+'</span></span><button class="sm gray" onclick="rmCart('+i+')">✕</button></div>'; }).join('')
     +'</div>';
-  sb.style.display='';
+  renderTotals();
+}
+// ОДИН итог на весь наряд: обычные операции + раскрой. Премия за наряд считается от общей суммы.
+function renderTotals(){
+  var box=document.getElementById('worksum'), btn=document.getElementById('worksend'); if(!box||!btn) return;
+  var opsSum=0; for(var i=0;i<CART.length;i++) opsSum+=CART[i].sum;
+  var nSheets=0, nDet=0;
+  for(var k=0;k<SHEETS.length;k++){ if(SHEETS[k].mat&&SHEETS[k].qty>0) nSheets++; 
+    for(var j=0;j<SHEETS[k].items.length;j++) if(SHEETS[k].items[j].detail&&SHEETS[k].items[j].qty>0) nDet++; }
+  var total=Math.round((opsSum+(CUTTOTAL||0))*100)/100;
+  if(!CART.length && !nSheets){ box.innerHTML=''; btn.style.display='none'; return; }
+  var parts=[];
+  if(CART.length) parts.push(CART.length+' оп.');
+  if(nSheets) parts.push(nSheets+' лист(ов)'+(nDet?(' · '+nDet+' дет.'):''));
+  var bd=computeBreakdown(total, SHIFT==='ночь');
+  box.innerHTML='<div class="card"><div class="row"><b>В наряде: '+parts.join(' + ')+'</b><span class="muted">'+esc(SHIFT==='ночь'?'🌙 ночь':'☀️ день')+'</span></div>'
+    +bonusBlockHtml(bd)+(CUTNEEDPICK?'<div class="muted" style="color:#b7791f">Выберите заказ у отмеченных деталей на вкладке «Раскрой»</div>':'')+'</div>';
+  btn.style.display=''; btn.textContent=ADDTO?'➕ Добавить в наряд':'📨 Отправить наряд мастеру';
 }
 // ── ДОПОЛНЕНИЕ НАРЯДА: рабочий вспомнил операции, пока мастер не проверил ──
 var ADDTO='', ADDINFO='';
@@ -302,27 +327,50 @@ function renderAddBanner(){
       +'<button class="sm gray" onclick="cancelAdd()">отмена</button></div>'
       +'<div class="muted" style="margin-top:4px">Партия, дата и смена берутся из наряда — просто добавьте операции.</div></div>'
     : '';
-  var sb=document.getElementById('sendbtn'); if(sb&&CART.length) sb.textContent=ADDTO?'➕ Добавить в наряд':'📨 Отправить наряд мастеру';
+  renderTotals();
 }
-function sendReport(){
+function apiPost(p){   // смешанный наряд длинный — GET-строка на телефоне может не влезть
+  p.app=APP; if(TGID&&!p.tgid) p.tgid=TGID;
+  var body=Object.keys(p).map(function(k){ return encodeURIComponent(k)+'='+encodeURIComponent(p[k]==null?'':p[k]); }).join('&');
+  return fetch(BASE,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body}).then(function(r){return r.json();});
+}
+// ОДНА отправка на весь наряд: и обычные операции, и раскрой попадают в один наряд мастеру
+function sendWork(){
   var worker=curWorker();
   if(!worker){ wmsg('<span class="err">Не выбран рабочий</span>'); return; }
-  if(!CART.length){ wmsg('<span class="err">Наряд пуст</span>'); return; }
-  var batch=document.getElementById('batch').value, wd=document.getElementById('wdate').value, dateRu=wd?wd.split('-').reverse().join('.'):'';
-  if(batch===FREE) batch='';   // вне заказа — партию не записываем (на выполнение заказов не влияет)
-  var items=CART.map(function(x){ return {equip:x.equip,detail:x.detail,op:x.op,qty:x.qty}; });
+  var items=CART.map(function(x){ return {equip:x.equip,detail:x.detail,op:x.op,qty:x.qty,batch:x.batch||''}; });
+  var sheets=[];
+  for(var i=0;i<SHEETS.length;i++){
+    var sd=SHEETS[i]; if(!sd.mat||!(sd.qty>0)) continue;
+    var its=[];
+    for(var j=0;j<sd.items.length;j++){
+      var it=sd.items[j]; if(!it.detail||!(it.qty>0)) continue;
+      if(it.batch===null){ wmsg('<span class="err">Выберите заказ для детали «'+esc(it.detail)+'» (вкладка «Раскрой»)</span>'); showTab('c'); return; }
+      var d=CUT&&CUT.byDetail[it.detail]||{}, eq='';
+      for(var k=0;k<(d.orders||[]).length;k++) if(d.orders[k].orderId===it.batch) eq=d.orders[k].eq;
+      its.push({detail:it.detail, qty:it.qty, batch:it.batch, eq:eq||d.eq||''});
+    }
+    sheets.push({mat:sd.mat, qty:sd.qty, items:its});
+  }
+  if(!items.length && !sheets.length){ wmsg('<span class="err">Наряд пуст</span>'); return; }
+  var wd=(document.getElementById('wdate')||{}).value||'';
   wmsg(ADDTO?'Добавляю в наряд…':'Отправляю наряд…');
-  var p={vapi:'submitreport',worker:worker,tgid:TGID,batch:batch,date:dateRu,shift:SHIFT,items:JSON.stringify(items)};
+  var p={vapi:'submitwork',worker:worker,date:(wd?wd.split('-').reverse().join('.'):''),shift:SHIFT,
+         items:JSON.stringify(items), sheets:JSON.stringify(sheets)};
   if(ADDTO) p.addto=ADDTO;
-  api(p).then(function(r){
-    if(r&&r.ok){ var b=r.breakdown||{}; var extra=(b.premApplied||b.nightApplied)?(' (заработок '+b.base+' + надбавки '+(Math.round(((b.premium||0)+(b.night||0))*100)/100)+')'):'';
-      wmsg('<span class="ok">✅ '+(r.added?('Добавлено в наряд: '+r.count+' оп. Наряд теперь на <b>'+r.sum+' руб.</b>'):('Наряд отправлен: '+r.count+' оп. на <b>'+r.sum+' руб.</b>'))+extra+' (на проверке)</span>');
-      CART=[]; ADDTO=''; ADDINFO=''; renderAddBanner(); renderCart(); loadMySummary();
-      try{ loadPending(); }catch(e){} }
+  apiPost(p).then(function(r){
+    if(r&&r.ok){
+      var parts=[]; if(r.ops) parts.push(r.ops+' оп.'); if(r.sheets) parts.push(r.sheets+' лист(ов)'); if(r.details) parts.push(r.details+' дет.');
+      var w=(r.warnings&&r.warnings.length)?('<br><span class="muted">'+r.warnings.map(esc).join('<br>')+'</span>'):'';
+      wmsg('<span class="ok">✅ '+(r.added?'Добавлено в наряд: ':'Наряд отправлен: ')+parts.join(' + ')+' на <b>'+r.sum+' руб.</b> (на проверке)</span>'+w);
+      CART=[]; SHEETS=[]; CUTTOTAL=0; CUTNEEDPICK=false; ADDTO=''; ADDINFO='';
+      if(CUT) addSheet(); else renderCut();
+      renderAddBanner(); renderCart(); loadMySummary(); loadCutLog();
+      try{ loadPending(); }catch(e){}
+    }
     else wmsg('<span class="err">⚠️ '+esc((r&&r.error)||'ошибка')+'</span>');
   }).catch(function(){ wmsg('<span class="err">Ошибка отправки</span>'); });
 }
-// правка/удаление СВОЕЙ строки, пока наряд на проверке
 function myEdit(id,cur){
   var v=prompt('Новое количество:', cur); if(v===null) return;
   var q=Number(String(v).replace(',','.')); if(!(q>0)){ alert('Введите число больше 0'); return; }
@@ -580,28 +628,42 @@ function addTimePay(){
 }
 // ═══════════ 🪚 РАСКРОЙ НА ЧПУ: лист → детали ═══════════
 // Рабочий указывает лист материала и что с него вышло. Платим и за лист, и за детали.
-// Деталь, которой нет ни в одном активном заказе, автоматически идёт «вне заказа»;
+// Деталь, которой нет ни в одном активном заказе, идёт «вне заказа» автоматически;
 // если деталь в заказах есть — заказ выбирается явно (в т.ч. явное «вне заказа»).
-var CUT=null, SHEETS=[], CSHIFT='день';
-function setCutShift(sh){ CSHIFT=sh;
-  document.getElementById('cshift-day').className=(sh==='день')?'active':'';
-  document.getElementById('cshift-night').className=(sh==='ночь')?'active':'';
-  renderCut(); }
-function setCutDate(off){ var d=new Date(); d.setDate(d.getDate()+off);
-  var el=document.getElementById('cdate'); if(el) el.value=d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate()); }
+//
+// ВАЖНО про рендер: список НЕ перерисовывается при вводе количества — иначе поле ввода
+// пересоздаётся и слетает фокус (после каждой цифры приходилось тыкать в поле заново).
+// Структуру строит renderCut/addSheetDom, а цифры обновляет recalcCut через textContent.
+var CUT=null, SHEETS=[], UID=0, MATOPTS='', DETOPTS='';
+function findS(u){ for(var i=0;i<SHEETS.length;i++) if(SHEETS[i].uid===u) return SHEETS[i]; return null; }
+function findSIdx(u){ for(var i=0;i<SHEETS.length;i++) if(SHEETS[i].uid===u) return i; return -1; }
+function findI(sd,u){ for(var j=0;j<sd.items.length;j++) if(sd.items[j].uid===u) return sd.items[j]; return null; }
+function txt(id,v){ var e=document.getElementById(id); if(e) e.textContent=v; }
 function loadCut(){
   var el=document.getElementById('cutlist');
-  if(CUT){ renderCut(); loadCutLog(); return; }
+  if(CUT){ renderCut(); return; }
   el.textContent='Загрузка…';
   api({vapi:'cutdata'}).then(function(r){
     if(!r||!r.ok){ el.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка загрузки')+'</span>'; return; }
     CUT=r; CUT.byDetail={};
     (CUT.details||[]).forEach(function(d){ CUT.byDetail[d.detail]=d; });
-    var cd=document.getElementById('cdate'); if(cd&&!cd.value) setCutDate(0);
+    buildCutOpts();
     renderCutRateBox();
     if(!SHEETS.length) addSheet(); else renderCut();
     loadCutLog();
   }).catch(function(){ el.innerHTML='<span class="err">Ошибка сети</span>'; });
+}
+// списки опций строим ОДИН раз (58 деталей в каждом селекте — на телефоне это дорого)
+function buildCutOpts(){
+  MATOPTS=(CUT.sheets||[]).map(function(m){ return '<option value="'+esc(m.name)+'">'+esc(m.name)+' — '+m.rate+' р.</option>'; }).join('');
+  var inOrd=[], free=[];
+  (CUT.details||[]).forEach(function(d){
+    var o='<option value="'+esc(d.detail)+'">'+esc(d.detail)+'</option>';
+    if(d.orders.length) inOrd.push(o); else free.push(o);
+  });
+  DETOPTS='<option value="">— выберите деталь —</option>'
+    +(inOrd.length?('<optgroup label="Нужны в заказах">'+inOrd.join('')+'</optgroup>'):'')
+    +(free.length?('<optgroup label="Вне заказа">'+free.join('')+'</optgroup>'):'');
 }
 // расценка за лист ведётся в справочнике «Расценки» — заводит начальник/мастер прямо отсюда
 function renderCutRateBox(){
@@ -630,106 +692,137 @@ function saveSheetRate(){
     else msg.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>';
   }).catch(function(){ msg.innerHTML='<span class="err">Ошибка сети</span>'; });
 }
-function addSheet(){
-  var last=SHEETS.length?SHEETS[SHEETS.length-1]:null;
-  SHEETS.push({mat:(last?last.mat:((CUT&&CUT.sheets&&CUT.sheets[0])?CUT.sheets[0].name:'')), qty:1, items:[]});
-  renderCut();
-}
-// «как предыдущий»: тот же материал и тот же состав деталей — правим только отличия
-function cloneSheet(i){
-  var src=SHEETS[i]; if(!src) return;
-  var items=[]; for(var k=0;k<src.items.length;k++) items.push({detail:src.items[k].detail, qty:src.items[k].qty, batch:src.items[k].batch});
-  SHEETS.splice(i+1,0,{mat:src.mat, qty:src.qty, items:items});
-  renderCut();
-}
-function rmSheet(i){ SHEETS.splice(i,1); if(!SHEETS.length) addSheet(); else renderCut(); }
-function setSheetMat(i,v){ SHEETS[i].mat=v; renderCut(); }
-function setSheetQty(i,v){ SHEETS[i].qty=Number(v)||0; renderCut(); }
-function addCutItem(i){ SHEETS[i].items.push({detail:'', qty:0, batch:null}); renderCut(); }
-function rmCutItem(i,j){ SHEETS[i].items.splice(j,1); renderCut(); }
-function setItemDetail(i,j,v){
-  var it=SHEETS[i].items[j]; it.detail=v;
-  var d=CUT.byDetail[v];
-  // деталь не нужна ни в одном заказе → вне заказа автоматически; ровно один заказ → он и подставляется
-  it.batch = (!d||!d.orders.length) ? '' : (d.orders.length===1 ? d.orders[0].orderId : null);
-  renderCut();
-}
-function setItemQty(i,j,v){ SHEETS[i].items[j].qty=Number(v)||0; renderCut(); }
-function setItemBatch(i,j,v){ SHEETS[i].items[j].batch=v; renderCut(); }
 function sheetRateOf(mat){ var l=(CUT&&CUT.sheets)||[]; for(var i=0;i<l.length;i++) if(l[i].name===mat) return l[i].rate; return 0; }
 function detRateOf(det){ var d=CUT&&CUT.byDetail[det]; return d?(d.rate||0):0; }
+// ── структура: карточка листа и строка детали (собираются один раз, дальше только цифры) ──
+function sheetCardHtml(sd){
+  return '<div class="card" id="s-'+sd.uid+'">'
+    +'<div class="row"><b id="s-lbl-'+sd.uid+'">Лист</b><span class="ok" id="s-sum-'+sd.uid+'">0 р.</span></div>'
+    +'<div class="row" style="margin-top:5px"><select class="vsel" id="s-mat-'+sd.uid+'" onchange="setSheetMat('+sd.uid+',this.value)"></select>'
+      +'<input type="number" min="0" inputmode="numeric" id="s-qty-'+sd.uid+'" style="width:74px;padding:5px 8px;font-size:14px" oninput="setSheetQty('+sd.uid+',this.value)" onchange="setSheetQty('+sd.uid+',this.value)">'
+      +'<span class="muted">листов</span></div>'
+    +'<div id="s-items-'+sd.uid+'"></div>'
+    +'<div class="row" style="margin-top:8px"><button class="sm gray" onclick="addCutItem('+sd.uid+')">＋ деталь</button>'
+      +'<button class="sm gray" onclick="cloneSheet('+sd.uid+')" title="создать такой же лист">📋 как этот</button>'
+      +'<button class="sm gray" onclick="rmSheet('+sd.uid+')">✕ лист</button>'
+      +'<span class="muted" id="s-out-'+sd.uid+'">выход: 0 дет.</span></div>'
+    +'</div>';
+}
+function itemRowHtml(sd,it){
+  var k=sd.uid+'-'+it.uid;
+  return '<div id="d-'+k+'" style="border-top:1px solid #eee;padding-top:6px;margin-top:6px">'
+    +'<div class="row"><select class="vsel" id="d-det-'+k+'" onchange="setItemDetail('+sd.uid+','+it.uid+',this.value)"></select>'
+      +'<input type="number" min="0" inputmode="numeric" id="d-qty-'+k+'" placeholder="шт" style="width:74px;padding:5px 8px;font-size:14px" oninput="setItemQty('+sd.uid+','+it.uid+',this.value)" onchange="setItemQty('+sd.uid+','+it.uid+',this.value)">'
+      +'<button class="sm gray" onclick="rmCutItem('+sd.uid+','+it.uid+')">✕</button></div>'
+    +'<div class="row" style="margin-top:3px"><span id="d-pick-'+k+'"></span><span class="muted" id="d-sum-'+k+'"></span></div></div>';
+}
+// выбор заказа у детали: нет заказов → авто «вне заказа»; один → подставлен; несколько → выбрать обязательно
+function pickHtml(sd,it){
+  if(!it.detail) return '';
+  var d=CUT.byDetail[it.detail];
+  if(!d||!d.orders.length) return '<span class="freeb">🧰 вне заказа</span>';
+  var need=(it.batch===null);
+  return '<select class="vsel'+(need?' need':'')+'" onchange="setItemBatch('+sd.uid+','+it.uid+',this.value)">'
+    +(need?'<option value="__">— выберите заказ —</option>':'')
+    +d.orders.map(function(o){ return '<option value="'+esc(o.orderId)+'"'+(it.batch===o.orderId?' selected':'')+'>'+esc(o.num)+' · нужно '+o.left+'</option>'; }).join('')
+    +'<option value=""'+(it.batch===''?' selected':'')+'>🧰 вне заказа</option></select>';
+}
 function renderCut(){
   var el=document.getElementById('cutlist'); if(!el||!CUT) return;
-  var matOpts=(CUT.sheets||[]).map(function(m){ return '<option value="'+esc(m.name)+'">'+esc(m.name)+' — '+m.rate+' р.</option>'; }).join('');
-  var detOpts='<option value="">— выберите деталь —</option>'+(CUT.details||[]).map(function(d){
-    return '<option value="'+esc(d.detail)+'">'+esc(d.detail)+(d.orders.length?'':' · вне заказа')+'</option>'; }).join('');
-  var total=0, needPick=false, html='';
-  for(var i=0;i<SHEETS.length;i++){
-    var sd=SHEETS[i], srate=sheetRateOf(sd.mat), ssum=Math.round(sd.qty*srate*100)/100;
-    total+=ssum;
-    var rows='', outQty=0;
-    for(var j=0;j<sd.items.length;j++){
-      var it=sd.items[j], d=CUT.byDetail[it.detail], drate=detRateOf(it.detail);
-      var dsum=Math.round(it.qty*drate*100)/100; total+=dsum; outQty+=it.qty;
-      var pick='';
-      if(!it.detail) pick='';
-      else if(!d||!d.orders.length) pick='<span class="freeb">🧰 вне заказа</span>';
-      else {
-        var need=(it.batch===null); if(need) needPick=true;
-        pick='<select class="vsel'+(need?' need':'')+'" onchange="setItemBatch('+i+','+j+',this.value)">'
-          +(need?'<option value="__">— выберите заказ —</option>':'')
-          +d.orders.map(function(o){ return '<option value="'+esc(o.orderId)+'"'+(it.batch===o.orderId?' selected':'')+'>'+esc(o.num)+' · нужно '+o.left+'</option>'; }).join('')
-          +'<option value=""'+(it.batch===''?' selected':'')+'>🧰 вне заказа</option></select>';
-      }
-      rows+='<div style="border-top:1px solid #eee;padding-top:6px;margin-top:6px">'
-        +'<div class="row"><select class="vsel" onchange="setItemDetail('+i+','+j+',this.value)">'+detOpts.replace('value="'+esc(it.detail)+'"','value="'+esc(it.detail)+'" selected')+'</select>'
-          +'<input type="number" min="0" inputmode="numeric" value="'+(it.qty||'')+'" placeholder="шт" style="width:74px;padding:5px 8px;font-size:14px" oninput="setItemQty('+i+','+j+',this.value)">'
-          +'<button class="sm gray" onclick="rmCutItem('+i+','+j+')">✕</button></div>'
-        +'<div class="row" style="margin-top:3px">'+pick+'<span class="muted">'+(dsum?(dsum+' р.'):'')+'</span></div></div>';
-    }
-    html+='<div class="card">'
-      +'<div class="row"><b>Лист '+(i+1)+'</b><span class="ok">'+ssum+' р.</span></div>'
-      +'<div class="row" style="margin-top:5px"><select class="vsel" onchange="setSheetMat('+i+',this.value)">'+(matOpts?matOpts.replace('value="'+esc(sd.mat)+'"','value="'+esc(sd.mat)+'" selected'):'<option>нет расценок за лист</option>')+'</select>'
-        +'<input type="number" min="0" inputmode="numeric" value="'+(sd.qty||'')+'" style="width:74px;padding:5px 8px;font-size:14px" oninput="setSheetQty('+i+',this.value)">'
-        +'<span class="muted">листов</span></div>'
-      +rows
-      +'<div class="row" style="margin-top:8px"><button class="sm gray" onclick="addCutItem('+i+')">＋ деталь</button>'
-        +'<button class="sm gray" onclick="cloneSheet('+i+')" title="создать такой же лист">📋 как этот</button>'
-        +'<button class="sm gray" onclick="rmSheet('+i+')">✕ лист</button>'
-        +'<span class="muted">выход: '+outQty+' дет.</span></div></div>';
-  }
+  var html=''; for(var i=0;i<SHEETS.length;i++) html+=sheetCardHtml(SHEETS[i]);
   el.innerHTML=html;
-  var bd=computeBreakdown(total, CSHIFT==='ночь');
-  var sumEl=document.getElementById('cutsum');
-  sumEl.innerHTML = total>0 ? (bonusBlockHtml(bd)+(needPick?'<div class="muted" style="color:#b7791f">Выберите заказ у отмеченных деталей</div>':'')) : '';
-  document.getElementById('cutsend').style.display = (total>0)?'':'none';
+  for(var k=0;k<SHEETS.length;k++) fillSheetDom(SHEETS[k]);
+  recalcCut();
 }
-function sendCut(){
-  var m=document.getElementById('cmsg'), worker=curWorker();
-  if(!worker){ m.innerHTML='<span class="err">Не выбран рабочий</span>'; return; }
-  var out=[];
+function fillSheetDom(sd){
+  var ms=document.getElementById('s-mat-'+sd.uid);
+  if(ms){ ms.innerHTML=MATOPTS||'<option value="">нет расценок за лист</option>'; ms.value=sd.mat; if(!ms.value&&MATOPTS){ ms.selectedIndex=0; sd.mat=ms.value; } }
+  var qs=document.getElementById('s-qty-'+sd.uid); if(qs) qs.value=sd.qty||'';
+  var box=document.getElementById('s-items-'+sd.uid);
+  if(box){ var h=''; for(var j=0;j<sd.items.length;j++) h+=itemRowHtml(sd,sd.items[j]); box.innerHTML=h;
+    for(var j2=0;j2<sd.items.length;j2++) fillItemDom(sd,sd.items[j2]); }
+}
+function fillItemDom(sd,it){
+  var k=sd.uid+'-'+it.uid;
+  var ds=document.getElementById('d-det-'+k); if(ds){ ds.innerHTML=DETOPTS; ds.value=it.detail||''; }
+  var qs=document.getElementById('d-qty-'+k); if(qs) qs.value=it.qty||'';
+  var pk=document.getElementById('d-pick-'+k); if(pk) pk.innerHTML=pickHtml(sd,it);
+}
+// ТОЛЬКО цифры: ни один input не пересоздаётся, поэтому фокус и каретка на месте
+function recalcCut(){
+  var total=0, needPick=false;
   for(var i=0;i<SHEETS.length;i++){
-    var sd=SHEETS[i]; if(!sd.mat||!(sd.qty>0)) continue;
-    var items=[];
+    var sd=SHEETS[i], ss=Math.round((sd.qty||0)*sheetRateOf(sd.mat)*100)/100, out=0;
+    total+=ss;
     for(var j=0;j<sd.items.length;j++){
-      var it=sd.items[j]; if(!it.detail||!(it.qty>0)) continue;
-      if(it.batch===null){ m.innerHTML='<span class="err">Выберите заказ для детали «'+esc(it.detail)+'»</span>'; return; }
-      var d=CUT.byDetail[it.detail]||{};
-      var eq=''; for(var k=0;k<(d.orders||[]).length;k++) if(d.orders[k].orderId===it.batch) eq=d.orders[k].eq;
-      items.push({detail:it.detail, qty:it.qty, batch:(it.batch==='__'?'':it.batch), eq:eq||d.eq||''});
+      var it=sd.items[j], ds=Math.round((it.qty||0)*detRateOf(it.detail)*100)/100;
+      total+=ds; out+=(it.qty||0);
+      if(it.batch===null) needPick=true;
+      txt('d-sum-'+sd.uid+'-'+it.uid, ds?(ds+' р.'):'');
     }
-    out.push({mat:sd.mat, qty:sd.qty, items:items});
+    txt('s-lbl-'+sd.uid,'Лист '+(i+1));
+    txt('s-sum-'+sd.uid, ss+' р.');
+    txt('s-out-'+sd.uid,'выход: '+out+' дет.');
   }
-  if(!out.length){ m.innerHTML='<span class="err">Добавьте хотя бы один лист</span>'; return; }
-  var wd=(document.getElementById('cdate')||{}).value||'';
-  m.innerHTML='Отправляю…';
-  api({vapi:'submitcut',worker:worker,date:(wd?wd.split('-').reverse().join('.'):''),shift:CSHIFT,sheets:JSON.stringify(out)}).then(function(r){
-    if(r&&r.ok){
-      var w=(r.warnings&&r.warnings.length)?('<br><span class="muted">'+r.warnings.map(esc).join('<br>')+'</span>'):'';
-      m.innerHTML='<span class="ok">✓ Наряд отправлен: '+r.sheets+' лист(ов), '+r.details+' деталей на '+r.sum+' руб.</span>'+w;
-      SHEETS=[]; addSheet(); loadCutLog();
-    } else m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>';
-  }).catch(function(){ m.innerHTML='<span class="err">Ошибка сети</span>'; });
+  CUTTOTAL=Math.round(total*100)/100; CUTNEEDPICK=needPick;
+  var em=document.getElementById('cutempty'); if(em) em.style.display=SHEETS.length?'none':'';
+  renderTotals();
+}
+var CUTTOTAL=0, CUTNEEDPICK=false;
+function addSheet(){
+  var last=SHEETS.length?SHEETS[SHEETS.length-1]:null;
+  var sd={uid:++UID, mat:(last?last.mat:((CUT&&CUT.sheets&&CUT.sheets[0])?CUT.sheets[0].name:'')), qty:1, items:[]};
+  SHEETS.push(sd);
+  var el=document.getElementById('cutlist');
+  if(el&&el.getElementsByTagName('div').length) el.insertAdjacentHTML('beforeend', sheetCardHtml(sd));   // добавляем ТОЛЬКО новую карточку
+  else if(el){ el.innerHTML=sheetCardHtml(sd); }
+  fillSheetDom(sd); recalcCut();
+}
+// «как этот»: тот же материал и тот же состав деталей — правим только отличия
+function cloneSheet(u){
+  var idx=findSIdx(u); if(idx<0) return; var src=SHEETS[idx];
+  var items=[]; for(var k=0;k<src.items.length;k++) items.push({uid:++UID, detail:src.items[k].detail, qty:src.items[k].qty, batch:src.items[k].batch});
+  var sd={uid:++UID, mat:src.mat, qty:src.qty, items:items};
+  SHEETS.splice(idx+1,0,sd);
+  var after=document.getElementById('s-'+u);
+  if(after) after.insertAdjacentHTML('afterend', sheetCardHtml(sd));
+  fillSheetDom(sd); recalcCut();
+}
+function rmSheet(u){
+  var idx=findSIdx(u); if(idx<0) return;
+  SHEETS.splice(idx,1);
+  var n=document.getElementById('s-'+u); if(n&&n.parentNode) n.parentNode.removeChild(n);   // .remove() нет в старых WebView
+  recalcCut();
+}
+function setSheetMat(u,v){ var sd=findS(u); if(sd){ sd.mat=v; recalcCut(); } }
+function setSheetQty(u,v){ var sd=findS(u); if(sd){ sd.qty=Number(v)||0; recalcCut(); } }
+function addCutItem(u){
+  var sd=findS(u); if(!sd) return;
+  var it={uid:++UID, detail:'', qty:0, batch:null}; sd.items.push(it);
+  var box=document.getElementById('s-items-'+u);
+  if(box) box.insertAdjacentHTML('beforeend', itemRowHtml(sd,it));
+  fillItemDom(sd,it); recalcCut();
+}
+function rmCutItem(u,iu){
+  var sd=findS(u); if(!sd) return;
+  for(var j=0;j<sd.items.length;j++) if(sd.items[j].uid===iu){ sd.items.splice(j,1); break; }
+  var n=document.getElementById('d-'+u+'-'+iu); if(n&&n.parentNode) n.parentNode.removeChild(n);
+  recalcCut();
+}
+function setItemDetail(u,iu,v){
+  var sd=findS(u); if(!sd) return; var it=findI(sd,iu); if(!it) return;
+  it.detail=v;
+  var d=CUT.byDetail[v];
+  it.batch = (!d||!d.orders.length) ? '' : (d.orders.length===1 ? d.orders[0].orderId : null);
+  var pk=document.getElementById('d-pick-'+u+'-'+iu); if(pk) pk.innerHTML=pickHtml(sd,it);   // меняем только соседний блок, не строку с полем ввода
+  recalcCut();
+}
+function setItemQty(u,iu,v){ var sd=findS(u); if(!sd) return; var it=findI(sd,iu); if(it){ it.qty=Number(v)||0; recalcCut(); } }
+function setItemBatch(u,iu,v){
+  var sd=findS(u); if(!sd) return; var it=findI(sd,iu); if(!it) return;
+  it.batch = (v==='__') ? null : v;   // «— выберите заказ —» = не выбрано, иначе деталь молча ушла бы «вне заказа»
+  var pk=document.getElementById('d-pick-'+u+'-'+iu); if(pk) pk.innerHTML=pickHtml(sd,it);
+  recalcCut();
 }
 // выход деталей с каждого листа: видно, где вышло меньше обычного
 function loadCutLog(){

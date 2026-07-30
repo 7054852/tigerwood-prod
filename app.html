@@ -121,7 +121,7 @@ window.onerror=function(msg,src,line){
 <script>
 var BASE='https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';
 var APP='tw7prod', TGID='', ME=null, ROLE='', app=document.getElementById('app');
-var VER='20260730f';   // бамп при изменении встраиваемых stat-страниц — сбивает кеш GitHub Pages в iframe
+var VER='20260730g';   // бамп при изменении встраиваемых stat-страниц — сбивает кеш GitHub Pages в iframe
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
 function api(p){ p.app=APP; var q=Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]);}).join('&'); return fetch(BASE+'?'+q).then(function(r){return r.json();}); }
@@ -336,6 +336,11 @@ function renderUsers(box,r){
     var chg=(canEdit&&!self)?' onchange="saveUser('+i+',\''+esc(tg)+'\')"':'';   // авто-сохранение при выборе — не нужно отдельно жать 💾
     var roleCell=canEdit?'<select id="ro'+i+'"'+chg+'>'+roles.map(function(x){return '<option value="'+x+'"'+(x===u.role?' selected':'')+'>'+esc(r.roleTitles[x]||x)+'</option>';}).join('')+'</select>':'<span class="pill">'+esc(r.roleTitles[u.role]||u.role)+'</span>';
     var masterCell=canEdit?'<select id="ma'+i+'" style="max-width:150px"'+chg+'>'+masterOpts(u.master)+'</select>':esc(u.master||'—');
+    // персональный доступ к вкладке «🪚 Раскрой» (мастер/начальник/директор видят её всегда — по роли)
+    var byRole=(u.role==='мастер'||u.role==='начальник'||u.role==='директор'||u.role==='админ');
+    var cutCell=byRole ? '<span class="muted" style="font-size:12px">по роли</span>'
+      : (canEdit ? '<label style="font-size:12px;white-space:nowrap"><input type="checkbox" id="cu'+i+'"'+(u.cut?' checked':'')+(self?' disabled':'')+' onchange="saveUser('+i+',\''+esc(tg)+'\')"> 🪚</label>'
+                 : (u.cut?'🪚':'—'));
     var acts='';
     if(canManage) acts+='<button class="sm" title="переименовать (Фамилия Имя)" onclick="renameWorker(\''+tg+'\',\''+nm+'\')">✎</button> ';
     if(canManage&&u.tgId) acts+='<button class="sm" title="сменить код входа" onclick="setCode(\''+tg+'\',\''+esc(u.code||'')+'\')">🔑</button> ';
@@ -347,7 +352,7 @@ function renderUsers(box,r){
     var reg=archived?'<span class="pill" style="background:#eceff4;color:#77808f">в архиве</span>'
       :(u.tgId?'<span class="pill" style="background:#e7f5ea;color:#137333">в системе</span>':'<span class="pill" style="background:#fdeee7;color:#b9770e">без Telegram</span>');
     var codeCell=u.tgId?'<br><span class="muted" style="font-size:12px">🔑 код: <b>'+esc(u.code||'—')+'</b></span>':'';
-    return '<tr'+(archived?' style="opacity:.6"':'')+'><td><b>'+esc(u.name)+'</b><br><span class="muted" style="font-size:11px">'+esc(u.tgId||'')+'</span>'+codeCell+'</td><td>'+roleCell+'</td><td>'+masterCell+'</td><td>'+reg+'</td><td><span class="msg" id="um'+i+'"></span> '+acts+'</td></tr>';
+    return '<tr'+(archived?' style="opacity:.6"':'')+'><td><b>'+esc(u.name)+'</b><br><span class="muted" style="font-size:11px">'+esc(u.tgId||'')+'</span>'+codeCell+'</td><td>'+roleCell+'</td><td>'+masterCell+'</td><td>'+cutCell+'</td><td>'+reg+'</td><td><span class="msg" id="um'+i+'"></span> '+acts+'</td></tr>';
   }).join('');
   var invite='';
   if(canEdit){
@@ -372,7 +377,7 @@ function renderUsers(box,r){
   }
   var intro=canEdit?'Все, кто зарегистрировался через бота. Приглашайте по ссылке (сразу под ролью) или правьте роль существующим — сохраняйте 💾.'
     :(isMaster?'Ваши рабочие. Пригласите нового по ссылке — он сразу попадёт к вам в бригаду.':'Все, кто зарегистрировался через бота.');
-  box.innerHTML='<div class="pad"><div class="hi">'+pageTitle+'</div><p class="muted">'+intro+'</p>'+invite+'<div class="box" style="overflow-x:auto"><table><thead><tr><th>Сотрудник</th><th>Роль</th><th>Мастер/участок</th><th>Статус</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan=5 class="muted">пусто</td></tr>')+'</tbody></table></div></div>';
+  box.innerHTML='<div class="pad"><div class="hi">'+pageTitle+'</div><p class="muted">'+intro+'</p>'+invite+'<div class="box" style="overflow-x:auto"><table><thead><tr><th>Сотрудник</th><th>Роль</th><th>Мастер/участок</th><th title="доступ к вкладке «Раскрой»">Раскрой</th><th>Статус</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan=6 class="muted">пусто</td></tr>')+'</tbody></table></div></div>';
 }
 function makeInvite(fixedRole,fixedMaster){
   var role=fixedRole||((document.getElementById('invRole')||{}).value), master=(fixedMaster!=null)?fixedMaster:((document.getElementById('invMaster')||{}).value||''), out=document.getElementById('invOut');
@@ -396,7 +401,9 @@ function copyInvite(){
 }
 function saveUser(i,tgid){
   var role=document.getElementById('ro'+i).value, master=document.getElementById('ma'+i).value, m=document.getElementById('um'+i); m.textContent='…';
-  api({vapi:'setuser',tgid:TGID,target:tgid,role:role,master:master}).then(function(r){ m.innerHTML=(r&&r.ok)?'<span class="ok">✅</span>':'<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; }).catch(function(e){ m.innerHTML='<span class="err">ошибка</span>'; });
+  var cb=document.getElementById('cu'+i), p={vapi:'setuser',tgid:TGID,target:tgid,role:role,master:master};
+  if(cb) p.cut=cb.checked?'1':'0';   // доступ к раскрою
+  api(p).then(function(r){ m.innerHTML=(r&&r.ok)?'<span class="ok">✅</span>':'<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; }).catch(function(e){ m.innerHTML='<span class="err">ошибка</span>'; });
 }
 function isActiveJs(v){ var s=String(v==null?'':v).trim().toLowerCase(); return !(s==='нет'||s==='архив'||s==='no'||s==='false'||s==='0'||s==='off'); }
 function reloadUsers(){ var box=document.getElementById('view'); if(box) usersView(box); }
