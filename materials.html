@@ -48,11 +48,27 @@
   <input class="search" id="q" placeholder="поиск…" oninput="draw()">
   <button class="gray" id="snabBtn" onclick="openSupplyDocs()">📥 Накладные из Снаба</button>
   <button class="gray sm" onclick="doImport()">⬇︎ Импорт из файла</button>
+  <button onclick="toggleNew()" id="newBtn">➕ Новый материал</button>
   <span class="msg" id="imsg"></span>
+</div>
+<div id="newBox" class="box" style="display:none;margin-bottom:10px;padding:10px">
+  <div class="bar" style="flex-wrap:wrap">
+    <input id="nName" placeholder="Название, напр. Фанера 18мм 1250х2500" style="min-width:260px;flex:1">
+    <select id="nUnit" style="width:110px"><option value="лист">лист</option><option value="шт">шт</option><option value="кг">кг</option><option value="м">м</option><option value="л">л</option><option value="м²">м²</option></select>
+    <select id="nRole" style="width:170px"></select>
+  </div>
+  <div class="bar" style="flex-wrap:wrap">
+    <input id="nThick" placeholder="толщина, мм" style="width:130px">
+    <input id="nSize" placeholder="размер листа 1525x1525" style="width:200px">
+    <button onclick="addMat()">Добавить</button>
+    <button class="gray" onclick="toggleNew()">Отмена</button>
+    <span class="msg" id="nmsg"></span>
+  </div>
+  <div class="muted">Для листовых материалов толщина и размер нужны, чтобы посчиталась расценка за раскрой (площадь × толщина ÷ делитель).</div>
 </div>
 <div class="chips" id="roles"></div>
 <div style="height:10px"></div>
-<div class="box"><table><thead><tr><th>Материал</th><th>Ед</th><th>Роль</th><th class="num">Последняя цена</th><th class="num">Для расчёта</th><th>Комментарий</th><th></th></tr></thead><tbody id="tb"><tr><td colspan=7 class="center muted">Загрузка…</td></tr></tbody></table></div>
+<div class="box"><table><thead><tr><th>Материал</th><th>Ед</th><th>Роль</th><th class="num" title="для листовых — считается расценка за раскрой">Толщина</th><th title="напр. 1525x1525">Размер листа</th><th class="num">Последняя цена</th><th class="num">Для расчёта</th><th>Комментарий</th><th></th></tr></thead><tbody id="tb"><tr><td colspan=9 class="center muted">Загрузка…</td></tr></tbody></table></div>
 <datalist id="matlist"></datalist>
 
 <div class="ov" id="ov"><div class="modal" id="modal"></div></div>
@@ -99,12 +115,14 @@ function draw(){
       +'<td><span class="nm" onclick="openCard(\''+esc(m.name).replace(/\x27/g,"\\x27")+'\')">'+esc(m.name)+'</span></td>'
       +'<td><input class="u" value="'+esc(m.unit)+'" onchange="save('+idx+',\'unit\',this.value)"></td>'
       +'<td>'+roleSel+'</td>'
+      +'<td class="num"><input class="u" style="width:60px" value="'+(m.thick||'')+'" onchange="save('+idx+',\'thick\',this.value)"></td>'
+      +'<td><input class="u" style="width:110px" value="'+esc(m.size||'')+'" placeholder="1525x1525" onchange="save('+idx+',\'size\',this.value)"></td>'
       +'<td class="num">'+price+'</td>'
       +'<td class="num" title="средняя поставок + 10%, округл.">'+forCost+'</td>'
       +'<td class="muted">'+esc(m.note||'')+'</td>'
-      +'<td><span class="msg" id="m'+idx+'"></span></td>'
+      +'<td><button class="gray sm" title="удалить материал" onclick="delMat(\''+esc(m.name).replace(/\x27/g,"\\x27")+'\')">🗑</button> <span class="msg" id="m'+idx+'"></span></td>'
       +'</tr>';
-  }).join('')||'<tr><td colspan=6 class="center muted">ничего не найдено</td></tr>';
+  }).join('')||'<tr><td colspan=9 class="center muted">ничего не найдено</td></tr>';
 }
 function save(i,field,val){
   var m=ROWS[i], f={name:m.name}; f[field]=val; var el=$('m'+i); if(el) el.textContent='…';
@@ -112,6 +130,42 @@ function save(i,field,val){
     if(r&&r.ok){ m[field]=val; if(el){el.innerHTML='<span class="ok">✓</span>'; setTimeout(function(){el.innerHTML='';},900);} }
     else if(el) el.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>';
   });
+}
+// ── добавление и удаление материалов ──
+function toggleNew(){
+  var b=$('newBox'), open=(b.style.display==='none');
+  b.style.display=open?'':'none'; $('newBtn').textContent=open?'✕ Свернуть':'➕ Новый материал';
+  if(open){
+    var rs=((typeof ROLES!=='undefined'&&ROLES.length)?ROLES:['перерабатываемый','покрытие','крепёж','упаковка','инструкция','заготовка','прочее']);
+    $('nRole').innerHTML=rs.map(function(r){ return '<option'+(r==='перерабатываемый'?' selected':'')+'>'+esc(r)+'</option>'; }).join('');
+    $('nName').focus();
+  }
+}
+function addMat(){
+  var name=($('nName').value||'').trim(), m=$('nmsg');
+  if(name.length<2){ m.className='msg err'; m.textContent='Впишите название'; return; }
+  if(exists(name)){ m.className='msg err'; m.textContent='Такой материал уже есть'; return; }
+  var f={ name:name, unit:$('nUnit').value, role:$('nRole').value,
+          thick:($('nThick').value||'').trim(), size:($('nSize').value||'').trim() };
+  m.className='msg'; m.textContent='Добавляю…';
+  api({vapi:'savematerial', data:JSON.stringify(f)}).then(function(r){
+    if(r&&r.ok){ m.className='msg ok'; m.textContent='✓ добавлен';
+      $('nName').value=''; $('nThick').value=''; $('nSize').value='';
+      load(); setTimeout(function(){ m.textContent=''; }, 1500); }
+    else { m.className='msg err'; m.textContent=(r&&r.error)||'ошибка'; }
+  }).catch(function(){ m.className='msg err'; m.textContent='Ошибка сети'; });
+}
+function exists(name){
+  var n=name.toLowerCase();
+  for(var i=0;i<ROWS.length;i++) if(String(ROWS[i].name).toLowerCase()===n) return true;
+  return false;
+}
+function delMat(name){
+  if(!confirm('Удалить материал «'+name+'»?\n\nВместе с ним удалится расценка за раскрой листа.\nУже поданные наряды и закупки не изменятся.')) return;
+  api({vapi:'delmaterial', name:name}).then(function(r){
+    if(r&&r.ok){ var m=$('imsg'); m.className='msg ok'; m.textContent='✓ удалён'+(r.rateRemoved?' (расценка тоже)':''); load(); setTimeout(function(){ m.textContent=''; },2000); }
+    else alert((r&&r.error)||'ошибка');
+  }).catch(function(){ alert('Ошибка сети'); });
 }
 function doImport(){
   var m=$('imsg'); m.className='msg'; m.textContent='Импортирую…';
