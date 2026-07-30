@@ -165,6 +165,15 @@ if(!TGID){ TGID=qp('tgid')||localStorage.getItem('tw_tgid')||''; } if(TGID){ try
 // ВАЖНО: ?tab=check — лишь ПОЖЕЛАНИЕ открыть панель проверки. Право даёт сервер (DATA.canCheck по роли),
 // иначе любой рабочий увидел бы чужие наряды, дописав параметр в адрес.
 var WANT_CHECK = (qp('tab')==='check'||qp('tab')==='m'), TABSET=0;
+// Права с прошлого входа: экран настраивается сразу, иначе мастер несколько секунд видит
+// вкладки рабочего (и не находит «Раскрой»), а потом всё перескакивает.
+function roleCache(v){
+  try{
+    if(v){ localStorage.setItem('tw_role_'+TGID, JSON.stringify(v)); return v; }
+    var raw=localStorage.getItem('tw_role_'+TGID); return raw?JSON.parse(raw):null;
+  }catch(e){ return null; }
+}
+(function(){ var c=roleCache(); if(c){ DATA.canCheck=c.canCheck; DATA.canCut=c.canCut; DATA.worker=c.worker||''; } })();
 var MODE = 'my';
 function isMaster(){ return MODE==='master'; }
 // текущий работник для формы: в личном режиме — я; в режиме мастера — выбранный в списке (или я)
@@ -202,6 +211,7 @@ function load(){
   api({vapi:'data',tgid:TGID}).then(function(d){
     DATA=d||DATA;
     MODE = (WANT_CHECK && DATA.canCheck) ? 'master' : 'my';   // роль пришла с сервера
+    roleCache({ canCheck: !!DATA.canCheck, canCut: !!DATA.canCut, worker: DATA.worker || '' });
     applyMode();
     // стартовую вкладку выбираем ОДИН раз: load() зовётся и при обновлении из оболочки,
     // иначе экран посреди работы перескакивал на «Проверку»
@@ -935,8 +945,11 @@ function loadMyShifts(){
     el.innerHTML='<div class="card" style="margin-bottom:10px"><b>📅 Мои смены</b><div style="margin-top:5px">'+chips+'</div></div>';
   }).catch(function(){});
 }
+MODE = (WANT_CHECK && DATA.canCheck) ? 'master' : 'my';   // из кэша прошлого входа
 applyMode();
-load();          // режим и вкладка выставятся в load(), когда сервер вернёт роль
+if(WANT_CHECK && DATA.canCheck){ TABSET=1; showTab('m'); }   // мастеру сразу «Проверка», без перескока
+else if(qp('tab')==='j'){ TABSET=1; showTab('j'); }
+load();          // сервер уточнит права и, если надо, поправит экран
 loadMyShifts();
 
 // авто-обновление: оболочка шлёт «refresh» при возврате на раздел — перечитываем данные без перезагрузки страницы
