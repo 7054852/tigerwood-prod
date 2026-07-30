@@ -48,6 +48,7 @@
   <input class="search" id="q" placeholder="поиск…" oninput="draw()">
   <button class="gray" id="snabBtn" onclick="openSupplyDocs()">📥 Накладные из Снаба</button>
   <button class="gray sm" onclick="doImport()">⬇︎ Импорт из файла</button>
+  <button class="gray sm" onclick="openSimilar()" title="найти позиции, которые различаются только сортом или написанием">🔀 Похожие позиции</button>
   <button onclick="toggleNew()" id="newBtn">➕ Новый материал</button>
   <span class="msg" id="imsg"></span>
 </div>
@@ -120,9 +121,34 @@ function draw(){
       +'<td class="num">'+price+'</td>'
       +'<td class="num" title="средняя поставок + 10%, округл.">'+forCost+'</td>'
       +'<td class="muted">'+esc(m.note||'')+'</td>'
-      +'<td><button class="gray sm" title="удалить материал" onclick="delMat(\''+esc(m.name).replace(/\x27/g,"\\x27")+'\')">🗑</button> <span class="msg" id="m'+idx+'"></span></td>'
+      +'<td>'+tplBtn(m)+'<button class="gray sm" title="удалить материал" onclick="delMat(\''+esc(m.name).replace(/\x27/g,"\\x27")+'\')">🗑</button> <span class="msg" id="m'+idx+'"></span></td>'
       +'</tr>';
   }).join('')||'<tr><td colspan=9 class="center muted">ничего не найдено</td></tr>';
+}
+// ── единое имя: «<Материал> <толщина>мм <Ш>x<Д>» ──
+// ⚠ \b в JS не знает кириллицы — границы слов задаём явно
+function tplName(m){
+  var t=Number(String(m.thick||'').replace(',','.'))||0, sz=String(m.size||'').trim();
+  if(!t||!sz) return '';                                  // без размеров шаблон не собрать
+  var base=String(m.name||'')
+    .replace(/(^|[\s(,])\d+(?:[.,]\d+)?\s*мм(?=$|[\s),.])/g,'$1')     // толщина
+    .replace(/(^|[\s(,])\d{3,4}\s*[xх*]\s*\d{3,4}(?=$|[\s),.])/g,'$1') // размер
+    .replace(/(^|[\s(,])(лист|листов|листы)(?=$|[\s),.])/g,'$1')
+    .replace(/(^|[\s(,])\d\s*\/\s*\d(?=$|[\s),.])/g,'$1')            // сорт 1/2
+    .replace(/[,\s]+/g,' ').trim();
+  if(!base) return '';
+  return base+' '+String(t).replace('.',',')+'мм '+sz.replace(/\s*[xх*]\s*/,'x');
+}
+function tplBtn(m){
+  var t=tplName(m); if(!t||t===m.name) return '';
+  return '<button class="gray sm" title="привести к единому виду: '+esc(t)+'" onclick="toTpl(\''+esc(m.name).replace(/\x27/g,"\\x27")+'\',\''+esc(t).replace(/\x27/g,"\\x27")+'\')">✎</button> ';
+}
+function toTpl(oldName,newName){
+  if(!confirm('Переименовать\n«'+oldName+'»\n→ «'+newName+'»?\n\nСтарое название останется как «называют поставщики» — распознавание накладных не сломается.')) return;
+  api({vapi:'renamematerial', old:oldName, 'new':newName}).then(function(r){
+    if(r&&r.ok) api({vapi:'mataliasadd', alias:oldName, name:newName}).then(function(){ load(); });
+    else alert('Ошибка: '+((r&&r.error)||'?'));
+  });
 }
 function save(i,field,val){
   var m=ROWS[i], f={name:m.name}; f[field]=val; var el=$('m'+i); if(el) el.textContent='…';
@@ -185,6 +211,9 @@ function renderCard(name, r){
   var buyRows=buys.map(function(b){ return '<tr><td>'+esc(b.date)+'</td><td>'+esc(b.supplier)+'</td><td class="muted">'+esc(b.docNo)+'</td><td class="num">'+b.qtyW+'</td><td class="num"><b>'+money(b.priceW)+'</b></td><td class="num">'+money(b.sum)+' '+esc(b.cur)+'</td><td><button class="gray sm" title="удалить запись" onclick="delBuy(\''+qn(name)+'\',\''+qn(b.docNo)+'\',\''+qn(b.supplier)+'\')">🗑</button></td></tr>'; }).join('')||'<tr><td colspan=7 class="muted">закупок нет</td></tr>';
   $('modal').innerHTML=
     '<button class="x sm" onclick="closeOv()">✕</button><h3>'+esc(name)+'</h3>'
+    +'<div class="lbl">Как называют поставщики <span class="muted" style="font-weight:normal">— любое из этих названий в накладной система сама переведёт в «'+esc(name)+'»</span></div>'
+    +'<div class="box" id="alBox"><div class="muted">Загрузка…</div></div>'
+    +'<div class="frm" style="margin-top:6px"><input class="s" id="al_new" placeholder="название в накладной" style="min-width:240px"><input class="s" id="al_sup" placeholder="поставщик (необязательно)"><button class="green sm" onclick="addAlias(\''+qn(name)+'\')">＋ запомнить</button><span class="msg" id="al_msg"></span></div>'
     +'<div class="lbl">Поставщики</div><div class="box"><table><thead><tr><th>Поставщик</th><th>У поставщика</th><th class="num">Коэф</th><th class="num">Цена</th><th>Условия</th><th></th></tr></thead><tbody>'+supRows+'</tbody></table></div>'
     +'<div class="lbl">Добавить закупку</div>'
     +'<div class="frm">'
@@ -199,6 +228,70 @@ function renderCard(name, r){
     +'</div><div class="muted" style="margin-top:4px">коэф = сколько рабочих ед в 1 ед. документа (пачка→листы). Цена за лист = сумма ÷ (кол-во × коэф).</div>'
     +'<div class="msg" id="p_msg"></div>'
     +'<div class="lbl">Журнал закупок</div><div class="box"><table><thead><tr><th>Дата</th><th>Поставщик</th><th>№</th><th class="num">Кол-во (раб.)</th><th class="num">Цена/ед</th><th class="num">Сумма</th><th></th></tr></thead><tbody>'+buyRows+'</tbody></table></div>';
+  loadAliases(name);
+}
+
+// ── названия поставщиков (алиасы) ──
+function loadAliases(name){
+  api({vapi:'matalias', name:name}).then(function(r){
+    var box=$('alBox'); if(!box) return;                       // карточку могли уже закрыть
+    var qn=function(s){ return esc(String(s)).replace(/\x27/g,"\\x27"); };
+    var al=(r&&r.aliases)||[];
+    box.innerHTML=al.length
+      ? '<table><thead><tr><th>Название в накладной</th><th>Поставщик</th><th></th></tr></thead><tbody>'+al.map(function(a){
+          return '<tr><td>'+esc(a.alias)+'</td><td class="muted">'+esc(a.sup||'')+'</td>'
+            +'<td><button class="gray sm" title="забыть это название" onclick="delAlias(\''+qn(name)+'\',\''+qn(a.alias)+'\')">🗑</button></td></tr>';
+        }).join('')+'</tbody></table>'
+      : '<div class="muted">пока не запоминали — при первом приходе название из накладной запишется само</div>';
+  });
+}
+function addAlias(name){
+  var v=$('al_new').value.trim(); if(!v) return;
+  var m=$('al_msg'); m.className='msg'; m.textContent='…';
+  api({vapi:'mataliasadd', alias:v, name:name, sup:$('al_sup').value.trim()}).then(function(r){
+    if(r&&r.ok){ m.className='msg ok'; m.textContent='✓ запомнил'; $('al_new').value=''; $('al_sup').value=''; loadAliases(name); }
+    else { m.className='msg err'; m.textContent='Ошибка: '+((r&&r.error)||'?'); }
+  });
+}
+function delAlias(name,alias){
+  if(!confirm('Забыть название «'+alias+'»?\nВ следующий раз система не подставит материал автоматически.')) return;
+  api({vapi:'mataliasdel', alias:alias}).then(function(){ loadAliases(name); });
+}
+
+// ── похожие позиции → слияние ──
+function openSimilar(){
+  $('ov').className='ov on';
+  $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><h3>Похожие позиции</h3><div class="center muted">Ищу дубли…</div>';
+  api({vapi:'matsimilar'}).then(function(r){
+    if(!r||!r.ok){ $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><div class="err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
+    window.SIMG=(r.groups||[]);
+    if(!window.SIMG.length){ $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><h3>Похожие позиции</h3><div class="muted" style="margin-top:8px">✓ дублей не нашлось — реестр чистый</div>'; return; }
+    var blocks=window.SIMG.map(function(g,gi){
+      var rows=g.items.map(function(it,ii){
+        return '<label style="display:block;padding:3px 0"><input type="radio" name="sg'+gi+'" value="'+ii+'"'+(ii===0?' checked':'')+'> <b>'+esc(it.name)+'</b>'
+          +' <span class="muted">'+esc(it.unit||'')+(it.price?' · '+money(it.price)+' р':'')+'</span></label>';
+      }).join('');
+      return '<div class="box" style="padding:10px;margin-bottom:8px">'+rows
+        +'<div style="margin-top:6px"><button class="sm" onclick="doMerge('+gi+')">Объединить в выбранную</button>'
+        +' <span class="muted">остальные названия станут «как называют поставщики»</span> <span class="msg" id="sm'+gi+'"></span></div></div>';
+    }).join('');
+    $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><h3>Похожие позиции</h3>'
+      +'<div class="muted">отметь, какое название главное — закупки, поставщики, составы изделий и расценка переедут на него</div>'
+      +'<div style="margin-top:8px">'+blocks+'</div>';
+  });
+}
+function doMerge(gi){
+  var g=window.SIMG[gi], sel=document.querySelector('input[name="sg'+gi+'"]:checked');
+  if(!g||!sel) return;
+  var keep=g.items[Number(sel.value)].name;
+  var from=g.items.map(function(i){return i.name;}).filter(function(n){return n!==keep;});
+  if(!from.length) return;
+  if(!confirm('Объединить в «'+keep+'»?\nИсчезнут: '+from.join(', ')+'\nИх закупки и составы переедут на главную позицию.')) return;
+  var m=$('sm'+gi); m.className='msg'; m.textContent='Объединяю…';
+  api({vapi:'mergematerials', from:JSON.stringify(from), to:keep}).then(function(r){
+    if(r&&r.ok){ m.className='msg ok'; m.textContent='✓ объединено ('+r.moved+' ссылок)'; load(); setTimeout(openSimilar,700); }
+    else { m.className='msg err'; m.textContent='Ошибка: '+((r&&r.error)||'?'); }
+  });
 }
 function addBuy(name){
   var f={ material:name, supplier:$('p_sup').value, docNo:$('p_doc').value, docType:'Накладная', date:$('p_date').value,
@@ -251,14 +344,19 @@ function docRead(){ // считать текущие правки в DOCP
   window.DOCP=(window.DOCP||[]).map(function(p,i){ return {
     name:$('dn'+i)?$('dn'+i).value:p.name, material:$('dm'+i)?$('dm'+i).value:(p.material||''),
     qty:$('dq'+i)?$('dq'+i).value:p.qty, unit:$('du'+i)?$('du'+i).value:p.unit,
-    coef:$('dc'+i)?$('dc'+i).value:(p.coef||1), sum:$('ds'+i)?$('ds'+i).value:p.sum }; });
+    coef:$('dc'+i)?$('dc'+i).value:(p.coef||1), sum:$('ds'+i)?$('ds'+i).value:p.sum,
+    matSrc:($('dm'+i)&&$('dm'+i).value!==(p.material||''))?'':(p.matSrc||'') }; });   // правил руками — метка распознавания снимается
 }
 function addRow(){ docRead(); window.DOCP.push({name:'',material:'',qty:'',unit:'',coef:1,sum:''}); renderDoc(window.DOCH, window.DOCP); }
 function renderDoc(h, pos){
   window.DOCH=h; window.DOCP=pos;
   var rows=pos.map(function(p,i){
     return '<tr><td><input id="dn'+i+'" value="'+esc(p.name||'')+'" style="width:150px" placeholder="строка документа"></td>'
-      +'<td><input list="matlist" id="dm'+i+'" value="'+esc(p.material||'')+'" style="width:150px" placeholder="наш материал"></td>'
+      +'<td><input list="matlist" id="dm'+i+'" value="'+esc(p.material||'')+'" style="width:150px" placeholder="наш материал">'
+      + (p.material ? (p.matSrc==='alias'
+          ? ' <span class="muted" style="font-size:11px" title="это название уже приходило — подставлено по прошлым приходам">✓ запомнено</span>'
+          : ' <span class="muted" style="font-size:11px" title="угадано по названию — проверьте">≈ похоже</span>') : '')
+      +'</td>'
       +'<td class="num"><input class="xs" id="dq'+i+'" value="'+(p.qty!=null?p.qty:'')+'"></td>'
       +'<td><input class="xs" id="du'+i+'" value="'+esc(p.unit||'')+'"></td>'
       +'<td class="num"><input class="xs" id="dc'+i+'" value="'+(p.coef||1)+'"></td>'
