@@ -39,6 +39,13 @@
   .frm{ display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
   .frm input,.frm select{ padding:6px 8px; font-size:13px; }
   .frm input.s{ width:88px; } .frm input.xs{ width:60px; }
+  /* позиции накладной — карточками: в таблице название и материал уезжали за край */
+  .dcard{ border:1px solid var(--line); border-radius:12px; padding:10px; margin-bottom:8px; background:var(--card); }
+  .drow{ display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:6px; }
+  .dlbl{ font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; font-weight:700; }
+  .dcard input{ padding:7px 9px; font-size:13.5px; }
+  .dcard input.xs{ width:78px; } .dcard input.s{ width:110px; }
+  .dres{ font-size:13px; padding-top:4px; border-top:1px dashed var(--line); color:var(--fg); }
   /* панель выбранных — всегда под рукой, без прокрутки наверх */
   #selBar{ position:fixed; left:0; right:0; bottom:0; z-index:8; margin:0;
     background:var(--card); border-top:1px solid var(--line); box-shadow:0 -6px 18px rgba(20,25,50,.12);
@@ -551,26 +558,34 @@ function docRead(){ // считать текущие правки в DOCP
 function addRow(){ docRead(); window.DOCP.push({name:'',material:'',qty:'',unit:'',coef:1,sum:''}); renderDoc(window.DOCH, window.DOCP); }
 function renderDoc(h, pos){
   window.DOCH=h; window.DOCP=pos;
-  var rows=pos.map(function(p,i){
-    return '<tr><td><input id="dn'+i+'" value="'+esc(p.name||'')+'" style="width:150px" placeholder="строка документа"></td>'
-      +'<td><input list="matlist" id="dm'+i+'" value="'+esc(p.material||'')+'" style="width:150px" placeholder="наш материал">'
-      + (p.material ? (p.matSrc==='alias'
-          ? ' <span class="muted" style="font-size:11px" title="это название уже приходило — подставлено по прошлым приходам">✓ запомнено</span>'
-          : ' <span class="muted" style="font-size:11px" title="угадано по названию — проверьте">≈ похоже</span>') : '')
-      +'</td>'
-      +'<td class="num"><input class="xs" id="dq'+i+'" value="'+(p.qty!=null?p.qty:'')+'" oninput="docPreview('+i+')"></td>'
-      +'<td><input class="xs" id="du'+i+'" value="'+esc(p.unit||'')+'" oninput="docPreview('+i+')"></td>'
-      +'<td class="num"><input class="xs" id="dc'+i+'" value="'+(p.coef||1)+'"></td>'
-      +'<td class="num"><input class="s" id="ds'+i+'" value="'+(p.sum!=null?p.sum:'')+'" oninput="docPreview('+i+')"></td>'
-      +'<td class="muted" id="dp'+i+'" style="font-size:12px"></td></tr>';
+  // КАРТОЧКИ, а не таблица: в широкой таблице название позиции и выбранный материал
+  // уезжали за край, и что именно проводишь — было не видно
+  var cards=pos.map(function(p,i){
+    var badge = p.material ? (p.matSrc==='alias'
+      ? '<span class="pill" style="background:#e7f5ea;color:#137333" title="это название уже приходило">✓ запомнено</span>'
+      : '<span class="pill" style="background:#fff3cd;color:#8a6d1f" title="угадано по названию — проверьте">≈ похоже</span>') : '';
+    return '<div class="dcard">'
+      +'<div class="drow"><span class="dlbl">В документе</span>'
+        +'<input id="dn'+i+'" value="'+esc(p.name||'')+'" placeholder="строка документа" style="flex:1;min-width:180px"></div>'
+      +'<div class="drow"><span class="dlbl">Наш материал</span>'
+        +'<input list="matlist" id="dm'+i+'" value="'+esc(p.material||'')+'" placeholder="выберите или впишите" style="flex:1;min-width:180px" oninput="docPreview('+i+')"> '+badge+'</div>'
+      +'<div class="drow">'
+        +'<span class="dlbl">Кол-во</span><input class="xs" id="dq'+i+'" value="'+(p.qty!=null?p.qty:'')+'" oninput="docPreview('+i+')">'
+        +'<input class="xs" id="du'+i+'" value="'+esc(p.unit||'')+'" placeholder="ед" oninput="docPreview('+i+')">'
+        +'<span class="dlbl" title="сколько наших единиц в одной единице документа — подставляется сам">Коэф</span>'
+        +'<input class="xs" id="dc'+i+'" value="'+(p.coef||1)+'">'
+        +'<span class="dlbl">Сумма с НДС</span><input class="s" id="ds'+i+'" value="'+(p.sum!=null?p.sum:'')+'" oninput="docPreview('+i+')">'
+      +'</div>'
+      +'<div class="dres" id="dp'+i+'"></div>'
+    +'</div>';
   }).join('');
   $('ov').className='ov on';
   $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><h3>Позиции документа</h3>'
     +'<div class="muted">'+esc(h.supplier||'')+' · '+esc(h.docType||'')+' '+esc(h.docNo||'')+' · '+esc(h.date||'')+' · '+esc(h.currency||'BYN')+'</div>'
-    +'<div class="muted" style="font-size:11px;margin-top:4px">не сопоставилось — впиши новое имя материала (создастся), лишние строки оставь без «нашего материала». Сумма — <b>с НДС</b>; коэффициент и «Получится» считаются сами, когда заполнены материал и кол-во.</div>'
-    +'<div class="box" style="margin-top:8px"><table><thead><tr><th>В документе</th><th>Наш материал</th><th class="num">Кол-во</th><th>Ед</th><th class="num" title="сколько наших единиц в одной единице документа — подставляется сам">Коэф</th><th class="num" title="стоимость строки С НДС — так ведём закупки">Сумма с НДС</th><th title="что попадёт в журнал и на склад">Получится</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+    +'<div class="muted" style="font-size:11px;margin-top:4px">не сопоставилось — впишите наше имя (создастся); лишние строки оставьте без «нашего материала». Сумма — <b>с НДС</b>. Коэффициент и итог считаются сами.</div>'
+    +'<div style="margin-top:8px">'+cards+'</div>'
     +'<div style="margin-top:10px"><button class="gray sm" onclick="addRow()">＋ строка</button> <button class="green" onclick="commitDoc()">✓ Провести все в журнал</button> <span class="msg" id="d_msg"></span></div>';
-  for(var k=0;k<pos.length;k++) docPreview(k);   // сразу показать «0,52327 м³ = 15 листов по 40 ₽»
+  for(var k=0;k<pos.length;k++) docPreview(k);   // сразу показать «1 тыс.шт = 1000 шт по 0,1823 ₽»
 }
 // пересчёт единиц по строке накладной: подставляет коэффициент и показывает, что попадёт в журнал
 var DPT={};
@@ -590,8 +605,10 @@ function docPreview(i){
       var q=r.qtyRound||r.qtyW, pr=r.qtyRound?r.priceRound:r.priceW;
       var pp=window.DOCP[i]||{};
       var vat=(pp.sumNoVat&&Number(sEl.value)&&Math.abs(Number(sEl.value)-pp.sumNoVat)<0.01)
-        ? '<br><span style="color:#b7791f">это сумма без НДС</span>' : '';
-      out.innerHTML='<b>'+q+'</b> '+esc(r.ourUnit||'')+(pr?('<br>по '+money(pr)+' р'):'')+vat;
+        ? ' <span style="color:#b7791f">⚠ это сумма без НДС</span>' : '';
+      var pf=function(x){ return (x>=1? x.toFixed(2) : x.toFixed(4)).replace('.',','); };   // копеечные позиции — 4 знака
+      out.innerHTML='→ на склад <b>'+q+' '+esc(r.ourUnit||'')+'</b>'
+        +(pr?(', цена за 1 '+esc(r.ourUnit||'ед')+' — <b>'+pf(pr)+' р</b>'):'')+vat;
     }).catch(function(){ out.textContent=''; });
   },400);
 }
