@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Тигервуд — накладные</title>
+<style>
+  :root{ --bg:#f4f6fb; --card:#fff; --fg:#1b2333; --muted:#8a93a6; --line:#e6e9f2; --accent:#7c3aed; --green:#137333; --amber:#b7791f; --red:#c0392b; }
+  *{box-sizing:border-box;} html,body{margin:0;background:var(--bg);}
+  body{ font-family:-apple-system,Roboto,Segoe UI,Arial,sans-serif; color:var(--fg); padding:14px; max-width:1100px; margin:0 auto; font-size:14px; }
+  .hi{ font-size:19px; font-weight:800; }
+  .muted{ color:var(--muted); font-size:13px; }
+  .bar{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:12px 0; }
+  input,select{ padding:8px 10px; border:1px solid var(--line); border-radius:9px; font-size:14px; background:#fff; }
+  button{ padding:8px 13px; border:0; border-radius:9px; font-size:13px; font-weight:600; color:#fff; background:var(--accent); cursor:pointer; }
+  button.gray{ background:#eef1f8; color:#334; } button.green{ background:var(--green); } button.sm{ padding:5px 9px; font-size:12px; }
+  .chips{ display:flex; gap:6px; flex-wrap:wrap; }
+  .chip{ padding:5px 11px; border-radius:20px; font-size:12.5px; font-weight:600; background:#eef1f8; color:#556; border:1px solid var(--line); cursor:pointer; }
+  .chip.on{ background:var(--accent); color:#fff; border-color:var(--accent); }
+  .box{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:6px 12px; }
+  .msg{ font-size:13px; } .err{ color:var(--red); } .ok{ color:var(--green); }
+  .center{ text-align:center; padding:36px 16px; }
+  /* документ — карточкой: в таблице поставщик и номер уезжали за край */
+  .doc{ border:1px solid var(--line); border-radius:12px; background:var(--card); padding:10px 12px; margin-bottom:8px; cursor:pointer; }
+  .doc:hover{ border-color:var(--accent); }
+  .doc .top{ display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; }
+  .doc .sup{ font-weight:700; }
+  .doc .sub{ color:var(--muted); font-size:12.5px; margin-top:3px; display:flex; gap:10px; flex-wrap:wrap; }
+  .pill{ font-size:11.5px; padding:2px 9px; border-radius:20px; font-weight:700; white-space:nowrap; }
+  .p-wait{ background:#eef1f8; color:#66707f; } .p-todo{ background:#fff3cd; color:#8a6d1f; }
+  .p-done{ background:#e7f5ea; color:#137333; } .p-err{ background:#fdecea; color:#c0392b; }
+  .sum{ margin-left:auto; font-weight:700; font-variant-numeric:tabular-nums; }
+  /* модалка позиций */
+  .ov{ position:fixed; inset:0; background:rgba(20,25,50,.45); display:none; align-items:flex-start; justify-content:center; padding:20px 10px; overflow:auto; z-index:9; }
+  .ov.on{ display:flex; }
+  .modal{ background:#fff; border-radius:16px; max-width:860px; width:100%; padding:18px; }
+  .modal h3{ margin:0 0 4px; font-size:17px; } .modal .x{ float:right; background:#eef1f8; color:#334; }
+  .lbl{ font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; margin:14px 0 6px; font-weight:700; }
+  .pcard{ border:1px solid var(--line); border-radius:12px; padding:10px; margin-bottom:8px; }
+  .pcard.done{ background:#f6fbf7; border-color:#cfe8d6; }
+  .prow{ display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:6px; }
+  .plbl{ font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; font-weight:700; }
+  .pcard input,.pcard select{ padding:7px 9px; font-size:13.5px; }
+  .pcard input.xs{ width:82px; } .pcard input.s{ width:120px; }
+  .pres{ font-size:13px; padding-top:5px; border-top:1px dashed var(--line); }
+</style>
+</head>
+<body>
+<style>html.emb>body>.hi{display:none}</style><script>if(/[?&]embed=1/.test(location.search))document.documentElement.classList.add('emb');</script>
+<div class="hi">📑 Накладные поставщиков</div>
+<div class="muted" id="cnt">загрузка…</div>
+
+<div class="bar">
+  <span class="muted">с</span><input type="date" id="from" onchange="load()">
+  <span class="muted">по</span><input type="date" id="to" onchange="load()">
+  <input class="search" id="q" placeholder="поставщик или № документа…" oninput="draw()" style="min-width:180px">
+  <button class="gray" onclick="load()">↻ Обновить</button>
+  <button class="gray" onclick="scanNow()" title="распознать ближайшие документы прямо сейчас, не дожидаясь фонового прогона">⚡ Распознать сейчас</button>
+  <span class="msg" id="smsg"></span>
+</div>
+<div class="chips" id="filters"></div>
+<div style="height:10px"></div>
+<div id="list"><div class="center muted">Загрузка…</div></div>
+
+<div class="ov" id="ov"><div class="modal" id="modal"></div></div>
+<datalist id="matlist"></datalist>
+
+<script>
+var BASE='https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';
+var APP='tw7prod';
+function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
+var TGID=qp('tgid')||(function(){try{return localStorage.getItem('tw_tgid')||'';}catch(e){return '';}})();
+try{ if(window.Telegram&&Telegram.WebApp){ var u0=Telegram.WebApp.initDataUnsafe&&Telegram.WebApp.initDataUnsafe.user; if(u0) TGID=String(u0.id); } }catch(e){}
+if(TGID){ try{localStorage.setItem('tw_tgid',TGID);}catch(e){} }
+function api(p){ p.app=APP; if(TGID&&!p.tgid) p.tgid=TGID; var q=Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]==null?'':p[k]);}).join('&'); return fetch(BASE+'?'+q).then(function(r){return r.json();}); }
+function apiPost(p){ p.app=APP; if(TGID&&!p.tgid) p.tgid=TGID; var b=Object.keys(p).map(function(k){return encodeURIComponent(k)+'='+encodeURIComponent(p[k]==null?'':p[k]);}).join('&'); return fetch(BASE,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body:b}).then(function(r){return r.json();}); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function $(id){ return document.getElementById(id); }
+function money(n){ n=Number(n)||0; return n.toFixed(2).replace('.',','); }
+function num(x){ return Number(String(x==null?'':x).replace(',','.'))||0; }
+
+var ROWS=[], STAT={}, CLASSES=[], CLASSMAP={}, FILT='';
+
+function load(){
+  $('list').innerHTML='<div class="center muted">Загрузка…</div>';
+  var p={vapi:'docsregistry'};
+  var f=$('from').value, t=$('to').value;
+  if(f) p.from=f.split('-').reverse().join('.');     // экран даёт ISO, сервер ждёт дд.мм.гггг
+  if(t) p.to=t.split('-').reverse().join('.');
+  api(p).then(function(r){
+    if(!r||!r.ok){ $('list').innerHTML='<div class="center err">'+esc((r&&r.error)||'нет прав')+'</div>'; return; }
+    ROWS=r.rows||[]; STAT=r.stat||{}; CLASSES=r.classes||[]; CLASSMAP=r.classMap||{};
+    $('filters').innerHTML=[['','все'],['todo','разнести — '+(STAT.todo||0)],['done','разнесённые — '+(STAT.done||0)],['wait','ждут распознавания — '+(STAT.noscan||0)]]
+      .map(function(f){ return '<span class="chip'+(FILT===f[0]?' on':'')+'" onclick="setFilt(\''+f[0]+'\')">'+esc(f[1])+'</span>'; }).join('');
+    draw();
+  }).catch(function(e){ $('list').innerHTML='<div class="center err">Связь оборвалась: '+esc(e.message||e)+'</div>'; });
+}
+function setFilt(f){ FILT=f; load(); }
+
+function statePill(r){
+  if(r.state==='разнесено') return '<span class="pill p-done">✓ разнесено</span>';
+  if(r.state==='разнести') return '<span class="pill p-todo">⚠ разнести '+(r.positions-r.placed)+' из '+r.positions+'</span>';
+  if(r.state==='не распозналось') return '<span class="pill p-err">✗ не распозналось</span>';
+  if(r.state==='нет позиций') return '<span class="pill p-err">нет позиций</span>';
+  return '<span class="pill p-wait">⏳ ждёт распознавания</span>';
+}
+function draw(){
+  var q=$('q').value.trim().toLowerCase();
+  var list=ROWS.filter(function(r){
+    if(FILT==='todo'&&r.state!=='разнести') return false;
+    if(FILT==='done'&&r.state!=='разнесено') return false;
+    if(FILT==='wait'&&r.state!=='ждёт распознавания'&&r.state!=='не распозналось') return false;
+    if(q&&(r.sup+' '+r.docNo).toLowerCase().indexOf(q)<0) return false;
+    return true;
+  });
+  $('cnt').textContent=list.length+' из '+ROWS.length+' документов · разнести: '+(STAT.todo||0)+' · ждут распознавания: '+(STAT.noscan||0);
+  $('list').innerHTML=list.map(function(r){
+    var diff=r.diff? ' <span class="pill p-err" title="сумма позиций не сходится с суммой документа">Δ '+money(r.diff)+'</span>' : '';
+    return '<div class="doc" onclick="openDoc(\''+r.fileId+'\')">'
+      +'<div class="top"><span class="sup">'+esc(r.sup||'без поставщика')+'</span>'
+        +statePill(r)+diff
+        +(r.exported?'<span class="pill p-done" title="выгружен в 1С '+esc(r.exported)+'">1С ✓</span>':'')
+        +'<span class="sum">'+money(r.sum)+' '+esc(r.cur)+'</span></div>'
+      +'<div class="sub"><span>'+esc(r.type)+' '+esc(r.docNo)+'</span><span>'+esc(r.date)+'</span>'
+        +(r.unp?'<span>УНП '+esc(r.unp)+'</span>':'')
+        +(r.positions?'<span>позиций: '+r.positions+'</span>':'')+'</div>'
+    +'</div>';
+  }).join('')||'<div class="center muted">ничего не найдено</div>';
+}
+
+function scanNow(){
+  var m=$('smsg'); m.className='msg'; m.textContent='Распознаю…';
+  api({vapi:'docscan', limit:2}).then(function(r){
+    if(r&&r.ok){ m.className='msg ok'; m.textContent='✓ разобрано '+r.scanned+', осталось '+r.left; load(); }
+    else { m.className='msg err'; m.textContent=(r&&r.error)||'ошибка'; }
+  }).catch(function(){ m.className='msg err'; m.textContent='Долгий ответ — распознавание идёт фоном, обновите через минуту'; });
+}
+
+// ─────────── карточка документа ───────────
+var DOC=null, POS=[], MATS=[];
+function closeOv(){ $('ov').className='ov'; }
+function openDoc(fileId){
+  $('ov').className='ov on'; $('modal').innerHTML='<div class="center muted">Загрузка документа…</div>';
+  api({vapi:'docpositions', file:fileId}).then(function(r){
+    if(!r||!r.ok){ $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><div class="err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
+    DOC=r.header||{fileId:fileId}; DOC.fileId=fileId; POS=r.positions||[]; MATS=r.mats||[];
+    CLASSES=r.classes||CLASSES; CLASSMAP=r.classMap||CLASSMAP;
+    $('matlist').innerHTML=MATS.map(function(m){ return '<option value="'+esc(m.name)+'">'; }).join('');
+    renderDoc();
+  });
+}
+function matByName(name){ var k=String(name||'').trim().toLowerCase();
+  for(var i=0;i<MATS.length;i++) if(MATS[i].name.toLowerCase()===k) return MATS[i]; return null; }
+function renderDoc(){
+  var h=DOC||{}, done=POS.filter(function(p){return p.status!=='новая';}).length;
+  var cards=POS.map(function(p,i){ return posCard(p,i); }).join('');
+  $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button>'
+    +'<h3>'+esc(h.sup||'')+'</h3>'
+    +'<div class="muted">'+esc(h.type||'')+' '+esc(h.docNo||'')+' · '+esc(h.date?fmtD(h.date):'')+' · '+esc(h.cur||'BYN')
+      +(h.unp?(' · УНП '+esc(h.unp)):'')+(h.dogovor?(' · '+esc(h.dogovor)):'')+'</div>'
+    +'<div class="muted" style="font-size:12px;margin-top:4px">Реквизиты пойдут в 1С — если распознались неверно, поправьте: '
+      +'<a href="javascript:void(0)" onclick="editHead()">✎ изменить шапку</a> · '
+      +'<a href="'+esc(h.file||'')+'" target="_blank">открыть файл</a></div>'
+    +'<div class="lbl">Позиции — '+POS.length+', разнесено '+done+'</div>'
+    +cards
+    +'<div style="margin-top:12px"><button class="green" onclick="commitDoc()">✓ Провести документ</button> '
+      +'<span class="msg" id="dmsg"></span></div>';
+  for(var k=0;k<POS.length;k++) recalcPos(k);
+}
+function fmtD(d){ var s=String(d); if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10).split('-').reverse().join('.'); return s; }
+function posCard(p,i){
+  var opts=['<option value="">— класс не выбран —</option>'].concat(CLASSES.map(function(c){
+    return '<option value="'+esc(c)+'"'+(p.cls===c?' selected':'')+'>'+esc(c)+'</option>'; })).join('');
+  var isMat=(p.cls==='материал'||p.cls==='расходник');
+  return '<div class="pcard'+(p.status!=='новая'?' done':'')+'" id="pc'+i+'">'
+    +'<div class="prow"><b style="flex:1;min-width:200px">'+esc(p.name)+'</b>'
+      +(p.status!=='новая'?'<span class="pill p-done">'+esc(p.status)+'</span>':'')+'</div>'
+    +'<div class="prow"><span class="plbl">Кол-во</span><input class="xs" id="pq'+i+'" value="'+p.qty+'" oninput="recalcPos('+i+')">'
+      +'<span>'+esc(p.unit||'')+'</span>'
+      +'<span class="plbl">Цена без НДС</span><span>'+money(p.priceNet)+'</span>'
+      +'<span class="plbl">НДС</span><span>'+(p.vatPct||0)+'% = '+money(p.vatSum)+'</span>'
+      +'<span class="plbl">Сумма с НДС</span><b>'+money(p.sumGross)+'</b></div>'
+    +'<div class="prow"><span class="plbl">Что это</span>'
+      +'<select id="pc_cls'+i+'" onchange="setCls('+i+')">'+opts+'</select>'
+      +'<span class="plbl" id="plm'+i+'" style="'+(isMat?'':'display:none')+'">Наш материал</span>'
+      +'<input list="matlist" id="pm'+i+'" value="'+esc(p.mat||'')+'" placeholder="выберите" style="min-width:200px;'+(isMat?'':'display:none')+'" oninput="recalcPos('+i+')">'
+      +'<span class="plbl" id="plc'+i+'" style="'+(isMat?'':'display:none')+'">Коэф</span>'
+      +'<input class="xs" id="pk'+i+'" value="'+(p.coef||'')+'" style="'+(isMat?'':'display:none')+'" oninput="recalcPos('+i+')"></div>'
+    +'<div class="pres" id="pr'+i+'"></div>'
+  +'</div>';
+}
+function setCls(i){
+  var cls=$('pc_cls'+i).value; POS[i].cls=cls;
+  var isMat=(cls==='материал'||cls==='расходник');
+  ['plm','pm','plc','pk'].forEach(function(pre){ var el=$(pre+i); if(el) el.style.display=isMat?'':'none'; });
+  var m=CLASSMAP[cls.toLowerCase()]; if(m){ POS[i].statya=m.statya; POS[i].acct=m.acct; }
+  recalcPos(i);
+}
+// коэффициент и итог считаем на месте: сервер за этим дёргать нельзя, каждый вызов ~3 с
+function coefLocal(m, unitDoc){
+  if(!m) return 0;
+  var u=String(unitDoc||'').trim().toLowerCase().replace(/\./g,''), our=String(m.unit||'').trim().toLowerCase();
+  if(!u||!our) return 0;
+  var mult=1, mm=u.match(/^(тыс|тысяч[аи]?|тысячи)\s*(.*)$/);
+  if(mm){ mult=1000; u=(mm[2]||'').trim(); }
+  else if(u==='т'||u==='тн'||u==='тонн'||u==='тонна'){ mult=1000; u='кг'; }
+  if(!u) u=our;
+  var same=function(a,b){ return a.replace(/[³²3 2]/g,'')===b.replace(/[³²3 2]/g,''); };
+  if(same(u,our)||u==='шт') return mult;
+  if(our.indexOf('лист')<0) return 0;
+  var sz=String(m.size||'').match(/(\d{3,4})\s*[xх*]\s*(\d{3,4})/);
+  var area=sz? Number(sz[1])*Number(sz[2])/1000000 : 0; if(!(area>0)) return 0;
+  if(u==='м3'||u==='м³'||u==='куб'){ var t=Number(m.thick)||0; if(!(t>0)) return 0; return Math.round(mult/(area*t/1000)*1000)/1000; }
+  if(u==='м2'||u==='м²') return Math.round(mult/area*1000)/1000;
+  return 0;
+}
+function recalcPos(i){
+  var p=POS[i], out=$('pr'+i); if(!out) return;
+  var cls=($('pc_cls'+i)||{}).value||p.cls||'';
+  p.qty=num(($('pq'+i)||{}).value)||p.qty;
+  if(!cls){ out.innerHTML='<span class="muted">выберите, что это — от этого зависит статья расхода и счёт учёта</span>'; return; }
+  if(cls==='не связано'){
+    out.innerHTML='<span class="muted">в реестр материалов не попадёт. Статья: <b>'+esc(p.statya||'выберите в финансах')+'</b> · счёт '+esc(p.acct||'—')+'</span>';
+    return;
+  }
+  var name=(($('pm'+i)||{}).value||'').trim(); p.mat=name;
+  if(!name){ out.innerHTML='<span class="muted">укажите наш материал</span>'; return; }
+  var m=matByName(name);
+  if(!m){ out.innerHTML='<span class="muted">нового материала нет в реестре — создастся при проведении</span>'; return; }
+  var kEl=$('pk'+i), sug=coefLocal(m,p.unit);
+  if(kEl&&sug&&!num(kEl.value)) kEl.value=sug;
+  var coef=num((kEl||{}).value)||sug||1; p.coef=coef;
+  var qtyW=Math.round(p.qty*coef*1000)/1000;
+  var whole=Math.round(qtyW), round=(whole>0&&Math.abs(qtyW-whole)/whole<0.02)?whole:0;
+  var q=round||qtyW; p.qtyW=q;
+  var price=q>0? p.sumGross/q : 0;
+  var pf=function(x){ return (x>=1? x.toFixed(2) : x.toFixed(4)).replace('.',','); };
+  out.innerHTML='→ на склад <b>'+q+' '+esc(m.unit||'')+'</b>, цена за 1 '+esc(m.unit||'ед')+' — <b>'+pf(price)+' р</b>'
+    +' <span class="muted">· статья: '+esc(p.statya||'—')+' · счёт '+esc(p.acct||'—')+'</span>';
+}
+function editHead(){
+  var h=DOC||{};
+  var no=prompt('№ документа (как на бланке):', h.docNo||''); if(no===null) return;
+  var unp=prompt('УНП поставщика:', h.unp||''); if(unp===null) return;
+  var dt=prompt('Дата документа, дд.мм.гггг:', fmtD(h.date||'')); if(dt===null) return;
+  api({vapi:'docsethead', file:h.fileId, patch:JSON.stringify({docNo:no, unp:unp, date:dt})}).then(function(r){
+    if(r&&r.ok) openDoc(h.fileId); else alert((r&&r.error)||'не сохранилось');
+  });
+}
+function commitDoc(){
+  var m=$('dmsg'); m.className='msg';
+  var lines=POS.map(function(p,i){
+    return { id:p.id, cls:($('pc_cls'+i)||{}).value||'', mat:(($('pm'+i)||{}).value||'').trim(),
+             coef:num(($('pk'+i)||{}).value), qty:num(($('pq'+i)||{}).value)||p.qty, qtyW:p.qtyW||0 };
+  });
+  var noCls=lines.filter(function(l){ return !l.cls; }).length;
+  if(noCls){ m.className='msg err'; m.textContent='Не выбран класс у позиций: '+noCls; return; }
+  if(!confirm('Провести документ?\n\nМатериалы и расходники попадут в журнал закупок и на склад, «не связано» — только в статью расхода.')) return;
+  m.textContent='Провожу…';
+  apiPost({vapi:'doccommit', file:DOC.fileId, lines:JSON.stringify(lines)}).then(function(r){
+    if(r&&r.ok){
+      m.className='msg ok';
+      m.textContent='✓ проведено позиций: '+r.placed+(r.failed&&r.failed.length?(', не прошло '+r.failed.length):'');
+      if(r.failed&&r.failed.length) m.innerHTML+='<br>'+r.failed.map(function(f){ return '• '+esc(f.name)+' — '+esc(f.error); }).join('<br>');
+      else setTimeout(function(){ closeOv(); load(); },900);
+    } else { m.className='msg err'; m.textContent='Ошибка: '+((r&&r.error)||'?'); }
+  }).catch(function(e){ m.className='msg err'; m.textContent='Связь оборвалась'; });
+}
+
+// период по умолчанию — последние 90 дней
+(function(){
+  var t=new Date(), f=new Date(t.getTime()-90*86400000);
+  var iso=function(d){ return d.toISOString().slice(0,10); };
+  $('from').value=iso(f); $('to').value=iso(t);
+})();
+load();
+window.addEventListener('message',function(e){ if(e&&e.data&&e.data.tw==='refresh') load(); });
+</script>
+</body>
+</html>
