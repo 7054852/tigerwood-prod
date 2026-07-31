@@ -63,7 +63,7 @@
 <div id="newBox" class="box" style="display:none;margin-bottom:10px;padding:10px">
   <div class="bar" style="flex-wrap:wrap">
     <input id="nName" placeholder="Название, напр. Фанера 18мм 1250х2500" style="min-width:260px;flex:1">
-    <select id="nUnit" style="width:110px"><option value="лист">лист</option><option value="шт">шт</option><option value="кг">кг</option><option value="м">м</option><option value="л">л</option><option value="м²">м²</option></select>
+    <select id="nUnit" style="width:110px" onchange="nSheetToggle()"><option value="лист">лист</option><option value="шт">шт</option><option value="кг">кг</option><option value="м">м</option><option value="л">л</option><option value="м²">м²</option></select>
     <select id="nRole" style="width:170px"></select>
   </div>
   <div class="bar" style="flex-wrap:wrap">
@@ -317,9 +317,13 @@ function save(i,field,val){
   });
 }
 // ── добавление и удаление материалов ──
+function nSheetToggle(){   // толщина и размер — только для листовых
+  var el=$('nSheetFields'); if(el) el.style.display=/лист/i.test($('nUnit').value)?'':'none';
+}
 function toggleNew(){
   var b=$('newBox'), open=(b.style.display==='none');
   b.style.display=open?'':'none'; $('newBtn').textContent=open?'✕ Свернуть':'➕ Новый материал';
+  nSheetToggle();
   if(open){
     var rs=((typeof ROLES!=='undefined'&&ROLES.length)?ROLES:['перерабатываемый','покрытие','крепёж','упаковка','инструкция','заготовка','прочее']);
     $('nRole').innerHTML=rs.map(function(r){ return '<option'+(r==='перерабатываемый'?' selected':'')+'>'+esc(r)+'</option>'; }).join('');
