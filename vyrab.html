@@ -209,6 +209,16 @@ function showTab(t){
   if(t==='j') loadJournal();
 }
 function load(){
+  SCREEN=null;   // обновление экрана — данные перечитываем, а не берём прошлый ответ
+  // ДВА запроса параллельно вместо цепочки из пяти: форма появляется сразу,
+  // журнал/наряды/архив/смены приходят одним ответом и дорисовываются
+  api({vapi:'vyrabscreen', nodata:1}).then(function(sc){
+    if(!sc||!sc.ok) return;
+    SCREEN=sc;
+    try{ if(sc.journal) renderMySummary(sc.journal); }catch(e){}
+    try{ if(sc.pending) renderPending(sc.pending); }catch(e){}
+    try{ if(sc.rejected){ REJ=(sc.rejected.reports)||[]; renderRejected(); } }catch(e){}
+  }).catch(function(){});
   api({vapi:'data',tgid:TGID}).then(function(d){
     DATA=d||DATA;
     MODE = (WANT_CHECK && DATA.canCheck) ? 'master' : 'my';   // роль пришла с сервера
@@ -384,6 +394,7 @@ function restoreDraft(){
 // Telegram при сворачивании может перезагрузить страницу, а оболочка шлёт «обновись» —
 // раньше от этого слетал выбранный сотрудник (и наряд уходил на мастера) и терялась корзина.
 // Держим набранное в памяти телефона: за кого, дата, смена, операции и листы.
+var SCREEN=null;   // ответ агрегирующего роута: журнал, наряды, архив, смены — одним запросом
 var DRAFT={};
 function draftKey(){ return 'tw_draft_'+TGID; }
 function saveDraft(){
@@ -505,21 +516,30 @@ function myDel(id){
 function loadMySummary(){
   var worker=DATA.worker||'', box=document.getElementById('mysum'); if(!box) return;
   if(!worker){ box.innerHTML=''; return; }
+  if(SCREEN&&SCREEN.journal){ renderMySummary(SCREEN.journal); return; }   // уже пришло одним запросом
   var n=new Date(), m=pad2(n.getMonth()+1);
   var fromRu='01.'+m+'.'+n.getFullYear(), toRu=pad2(n.getDate())+'.'+m+'.'+n.getFullYear();
-  api({vapi:'journal',from:fromRu,to:toRu,worker:worker}).then(function(r){
+  api({vapi:'journal',from:fromRu,to:toRu,worker:worker}).then(renderMySummary);
+}
+function renderMySummary(r){
+  var box=document.getElementById('mysum'); if(!box) return;
+  (function(){
     var items=(r&&r.items)||[], pr=(r&&r.payroll)||[], zp=pr.length?pr[0].sum:0;
     var recent=items.slice(0,5).map(function(it){ return '<div class="row"><span class="muted">'+esc(it.date)+' · '+esc(it.op)+' · '+it.qty+'шт</span><span class="'+(it.status==='подтверждено'?'ok':(it.status==='отклонено'?'err':'muted'))+'">'+it.sum+'р · '+esc(it.status)+'</span></div>'; }).join('');
     box.innerHTML='<div class="card"><div class="row"><b>💰 Ваша ЗП за месяц (подтв.)</b><b class="ok">'+zp+' руб.</b></div>'
       +(recent?'<div class="muted" style="margin-top:6px">Последние отчёты:</div>'+recent:'<div class="muted" style="margin-top:6px">пока нет отчётов</div>')+'</div>';
-  }).catch(function(){});
+  })();
 }
 function loadPending(){
   var el=document.getElementById('mlist'); el.textContent='Загрузка…';
   loadRejected();
+  if(SCREEN&&SCREEN.pending){ renderPending(SCREEN.pending); return; }   // уже пришло одним запросом
+  api({vapi:'pending'}).then(renderPending);   // рабочему сервер отдаёт ТОЛЬКО его наряды
+}
+function renderPending(r){
+  var el=document.getElementById('mlist'); if(!el) return;
   var master=isMaster();
-  var p={vapi:'pending'};   // рабочему сервер отдаёт ТОЛЬКО его наряды
-  api(p).then(function(r){
+  (function(){
     var reps=(r&&r.reports)||[];
     if(!reps.length){ el.innerHTML='<div class="muted">'+(master?'Нет нарядов на проверке.':'У вас нет нарядов на проверке — всё обработано.')+'</div>'; return; }
     el.innerHTML=reps.map(function(rp){
@@ -575,7 +595,7 @@ function loadPending(){
         +'<div class="muted">'+(rp.single?'одиночная запись':'наряд')+': '+rp.lines.length+' оп.'+(rp.submitted?' · подан '+esc(rp.submitted):'')+'</div>'
         +ctrls+lines+bonusBlockHtml(rp.breakdown||{})+footer+'</div>';
     }).join('');
-  });
+  })();
 }
 // мастер ставит коэффициент на строку → сумма пересчитывается вверх/вниз
 function setKoef(id,cur){
@@ -683,6 +703,7 @@ function sendBonus(rid,where){
 var REJ=[], REJOPEN=false;
 function loadRejected(){
   var el=document.getElementById('rejlist'); if(!el||!isMaster()) return;
+  if(SCREEN&&SCREEN.rejected){ REJ=(SCREEN.rejected.reports)||[]; renderRejected(); return; }
   api({vapi:'rejected',days:3}).then(function(r){
     REJ=(r&&r.reports)||[]; renderRejected();
   }).catch(function(){});
