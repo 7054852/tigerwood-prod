@@ -121,7 +121,7 @@ window.onerror=function(msg,src,line){
 <script>
 var BASE='https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';
 var APP='tw7prod', TGID='', ME=null, ROLE='', app=document.getElementById('app');
-var VER='20260731j';   // бамп при изменении встраиваемых stat-страниц — сбивает кеш GitHub Pages в iframe
+var VER='20260731k';   // бамп при изменении встраиваемых stat-страниц — сбивает кеш GitHub Pages в iframe
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
 function api(p){ p.app=APP; var q=Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]);}).join('&'); return fetch(BASE+'?'+q).then(function(r){return r.json();}); }
@@ -339,7 +339,7 @@ function renderUsers(box,r){
   var ulist=(r.users||[]).slice().sort(function(a,b){   // сначала те, кто ждёт подтверждения
     return (isPendingJs(b.active)?1:0)-(isPendingJs(a.active)?1:0); });
   var nPend=ulist.filter(function(u){ return isPendingJs(u.active); }).length;
-  var rows=ulist.map(function(u,i){
+  function rowHtml(u,i){
     var archived=!isActiveJs(u.active), pending=isPendingJs(u.active);
     var self=!!u.tgId && String(u.tgId)===myTg;
     var canManage=canEdit||(isMaster&&u.master===me.name);
@@ -368,7 +368,20 @@ function renderUsers(box,r){
       :(u.tgId?'<span class="pill" style="background:#e7f5ea;color:#137333">в системе</span>':'<span class="pill" style="background:#fdeee7;color:#b9770e">без Telegram</span>');
     var codeCell=u.tgId?'<br><span class="muted" style="font-size:12px">🔑 код: <b>'+esc(u.code||'—')+'</b></span>':'';
     return '<tr'+(archived?' style="opacity:.6"':'')+'><td><b>'+esc(u.name)+'</b><br><span class="muted" style="font-size:11px">'+esc(u.tgId||'')+'</span>'+codeCell+'</td><td>'+roleCell+'</td><td>'+masterCell+'</td><td>'+cutCell+'</td><td>'+reg+'</td><td><span class="msg" id="um'+i+'"></span> '+acts+'</td></tr>';
-  }).join('');
+  }
+  // архивные — из общего списка вон, отдельным свёрнутым блоком внизу.
+  // ⚠ индекс i сквозной по ulist: на нём завязаны id полей (ro/ma/cu/um) и saveUser(i,…)
+  var rows='', archRows='', nArch=0;
+  ulist.forEach(function(u,i){
+    if(!isActiveJs(u.active) && !isPendingJs(u.active)){ archRows+=rowHtml(u,i); nArch++; }
+    else rows+=rowHtml(u,i);
+  });
+  var head='<thead><tr><th>Сотрудник</th><th>Роль</th><th>Мастер/участок</th><th title="доступ к вкладке «Раскрой»">Раскрой</th><th>Статус</th><th></th></tr></thead>';
+  var archBlock=nArch?('<div class="box" style="margin-top:12px;padding:0">'
+      +'<div id="uarchhead" onclick="toggleUArch()" style="cursor:pointer;padding:10px 12px;font-weight:700">🗄 Архив: '+nArch
+      +' <span class="muted" style="font-weight:normal">— доступа нет, история ЗП сохранена</span> <span id="uarchcar" class="muted">▸</span></div>'
+      +'<div id="uarch" style="display:none;padding:0 12px 10px;overflow-x:auto"><table>'+head+'<tbody>'+archRows+'</tbody></table></div>'
+    +'</div>'):'';
   var alert_=nPend?('<div class="box" style="margin-bottom:12px;background:#fff8e6;border-color:#f0d9a0">'
       +'<b>⏳ Ждут подтверждения: '+nPend+'</b><div class="muted">Люди зарегистрировались через бота сами. Доступа у них нет, пока вы не нажмёте «Подтвердить».</div></div>'):'';
   var invite='';
@@ -394,7 +407,13 @@ function renderUsers(box,r){
   }
   var intro=canEdit?'Все, кто зарегистрировался через бота. Приглашайте по ссылке (сразу под ролью) или правьте роль существующим — сохраняйте 💾.'
     :(isMaster?'Ваши рабочие. Пригласите нового по ссылке — он сразу попадёт к вам в бригаду.':'Все, кто зарегистрировался через бота.');
-  box.innerHTML='<div class="pad"><div class="hi">'+pageTitle+'</div><p class="muted">'+intro+'</p>'+alert_+invite+'<div class="box" style="overflow-x:auto"><table><thead><tr><th>Сотрудник</th><th>Роль</th><th>Мастер/участок</th><th title="доступ к вкладке «Раскрой»">Раскрой</th><th>Статус</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan=6 class="muted">пусто</td></tr>')+'</tbody></table></div></div>';
+  box.innerHTML='<div class="pad"><div class="hi">'+pageTitle+'</div><p class="muted">'+intro+'</p>'+alert_+invite
+    +'<div class="box" style="overflow-x:auto"><table>'+head+'<tbody>'+(rows||'<tr><td colspan=6 class="muted">пусто</td></tr>')+'</tbody></table></div>'
+    +archBlock+'</div>';
+}
+function toggleUArch(){
+  var b=document.getElementById('uarch'), c=document.getElementById('uarchcar'); if(!b) return;
+  var open=(b.style.display==='none'); b.style.display=open?'':'none'; if(c) c.textContent=open?'▾':'▸';
 }
 function makeInvite(fixedRole,fixedMaster){
   var role=fixedRole||((document.getElementById('invRole')||{}).value), master=(fixedMaster!=null)?fixedMaster:((document.getElementById('invMaster')||{}).value||''), out=document.getElementById('invOut');
