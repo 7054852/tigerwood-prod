@@ -56,6 +56,7 @@
   <input class="search" id="q" placeholder="поставщик или № документа…" oninput="draw()" style="min-width:180px">
   <button class="gray" onclick="load()">↻ Обновить</button>
   <button class="gray" onclick="scanNow()" title="распознать ближайшие документы прямо сейчас, не дожидаясь фонового прогона">⚡ Распознать сейчас</button>
+  <button class="gray" onclick="exportDocs()" title="файл со всеми реквизитами — бухгалтеру останется загрузить его в 1С">⬇️ Выгрузить для 1С</button>
   <span class="msg" id="smsg"></span>
 </div>
 <div class="chips" id="filters"></div>
@@ -134,6 +135,23 @@ function scanNow(){
     if(r&&r.ok){ m.className='msg ok'; m.textContent='✓ разобрано '+r.scanned+', осталось '+r.left; load(); }
     else { m.className='msg err'; m.textContent=(r&&r.error)||'ошибка'; }
   }).catch(function(){ m.className='msg err'; m.textContent='Долгий ответ — распознавание идёт фоном, обновите через минуту'; });
+}
+
+function exportDocs(){
+  var m=$('smsg'); m.className='msg';
+  var all=confirm('Выгрузить для 1С разнесённые документы за период.\n\nОК — включая уже выгруженные ранее,\nОтмена — только новые.');
+  m.textContent='Готовлю файл…';
+  var p={vapi:'docexport'};
+  var f=$('from').value, t=$('to').value;
+  if(f) p.from=f.split('-').reverse().join('.');
+  if(t) p.to=t.split('-').reverse().join('.');
+  if(all) p.all=1;
+  api(p).then(function(r){
+    if(r&&r.ok){ m.className='msg ok';
+      m.innerHTML='✓ документов '+r.docs+', строк '+r.rows+' — <a href="'+esc(r.url)+'" target="_blank">скачать '+esc(r.name)+'</a>';
+      load();
+    } else { m.className='msg err'; m.textContent=(r&&r.error)||'ошибка'; }
+  }).catch(function(){ m.className='msg err'; m.textContent='Связь оборвалась'; });
 }
 
 // ─────────── карточка документа ───────────
