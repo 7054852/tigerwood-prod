@@ -558,26 +558,65 @@ function renderDoc(h, pos){
           ? ' <span class="muted" style="font-size:11px" title="это название уже приходило — подставлено по прошлым приходам">✓ запомнено</span>'
           : ' <span class="muted" style="font-size:11px" title="угадано по названию — проверьте">≈ похоже</span>') : '')
       +'</td>'
-      +'<td class="num"><input class="xs" id="dq'+i+'" value="'+(p.qty!=null?p.qty:'')+'"></td>'
-      +'<td><input class="xs" id="du'+i+'" value="'+esc(p.unit||'')+'"></td>'
+      +'<td class="num"><input class="xs" id="dq'+i+'" value="'+(p.qty!=null?p.qty:'')+'" oninput="docPreview('+i+')"></td>'
+      +'<td><input class="xs" id="du'+i+'" value="'+esc(p.unit||'')+'" oninput="docPreview('+i+')"></td>'
       +'<td class="num"><input class="xs" id="dc'+i+'" value="'+(p.coef||1)+'"></td>'
-      +'<td class="num"><input class="s" id="ds'+i+'" value="'+(p.sum!=null?p.sum:'')+'"></td></tr>';
+      +'<td class="num"><input class="s" id="ds'+i+'" value="'+(p.sum!=null?p.sum:'')+'" oninput="docPreview('+i+')"></td>'
+      +'<td class="muted" id="dp'+i+'" style="font-size:12px"></td></tr>';
   }).join('');
   $('ov').className='ov on';
   $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><h3>Позиции документа</h3>'
     +'<div class="muted">'+esc(h.supplier||'')+' · '+esc(h.docType||'')+' '+esc(h.docNo||'')+' · '+esc(h.date||'')+' · '+esc(h.currency||'BYN')+'</div>'
     +'<div class="muted" style="font-size:11px;margin-top:4px">не сопоставилось — впиши новое имя материала (создастся), лишние строки оставь без «нашего материала»</div>'
-    +'<div class="box" style="margin-top:8px"><table><thead><tr><th>В документе</th><th>Наш материал</th><th class="num">Кол-во</th><th>Ед</th><th class="num">Коэф</th><th class="num">Сумма</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+    +'<div class="box" style="margin-top:8px"><table><thead><tr><th>В документе</th><th>Наш материал</th><th class="num">Кол-во</th><th>Ед</th><th class="num" title="сколько наших единиц в одной единице документа — подставляется сам">Коэф</th><th class="num">Сумма</th><th title="что попадёт в журнал и на склад">Получится</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
     +'<div style="margin-top:10px"><button class="gray sm" onclick="addRow()">＋ строка</button> <button class="green" onclick="commitDoc()">✓ Провести все в журнал</button> <span class="msg" id="d_msg"></span></div>';
+  for(var k=0;k<pos.length;k++) docPreview(k);   // сразу показать «0,52327 м³ = 15 листов по 40 ₽»
+}
+// пересчёт единиц по строке накладной: подставляет коэффициент и показывает, что попадёт в журнал
+var DPT={};
+function docPreview(i){
+  if(DPT[i]) clearTimeout(DPT[i]);
+  DPT[i]=setTimeout(function(){
+    var mEl=$('dm'+i), qEl=$('dq'+i), uEl=$('du'+i), sEl=$('ds'+i), out=$('dp'+i);
+    if(!mEl||!out) return;
+    var mat=mEl.value.trim();
+    if(!mat||!Number(qEl&&qEl.value)){ out.textContent=''; return; }
+    out.textContent='…';
+    api({vapi:'buypreview', name:mat, unit:(uEl&&uEl.value)||'', qty:qEl.value, sum:(sEl&&sEl.value)||0}).then(function(r){
+      if(!r||!r.ok){ out.textContent=''; return; }
+      window.DOCP[i]=window.DOCP[i]||{}; window.DOCP[i]._prev=r;
+      var c=$('dc'+i);
+      if(c&&r.suggest&&Number(c.value)===1) c.value=r.suggest;         // коэффициент подставляем сами
+      var q=r.qtyRound||r.qtyW, pr=r.qtyRound?r.priceRound:r.priceW;
+      out.innerHTML='<b>'+q+'</b> '+esc(r.ourUnit||'')+(pr?('<br>по '+money(pr)+' р'):'');
+    }).catch(function(){ out.textContent=''; });
+  },400);
 }
 function commitDoc(){
   docRead(); var h=window.DOCH||{}, pos=window.DOCP||[], m=$('d_msg'); m.className='msg'; m.textContent='Провожу…';
-  var tasks=pos.filter(function(p){ return String(p.material||'').trim(); }).map(function(p){
-    return api({vapi:'addpurchase', data:JSON.stringify({ material:String(p.material).trim(), supplier:h.supplier, docType:h.docType, docNo:h.docNo, date:h.date,
-      qtyDoc:p.qty, unitDoc:p.unit, coef:p.coef||1, sum:p.sum, cur:h.currency||'BYN', rate:1, docName:p.name })});
+  var use=pos.filter(function(p){ return String(p.material||'').trim(); });
+  if(!use.length){ m.className='msg err'; m.textContent='Нет сопоставленных позиций (укажи «наш материал»)'; return; }
+  var tasks=use.map(function(p){
+    var f={ material:String(p.material).trim(), supplier:h.supplier, docType:h.docType, docNo:h.docNo, date:h.date,
+      qtyDoc:p.qty, unitDoc:p.unit, coef:p.coef||1, sum:p.sum, cur:h.currency||'BYN', rate:1, docName:p.name };
+    // приходуем ровно столько наших единиц, сколько показал пересчёт (15 листов, а не 15,0001)
+    if(p._prev&&p._prev.qtyRound) f.qtyW=p._prev.qtyRound;
+    return api({vapi:'addpurchase', data:JSON.stringify(f)}).then(function(r){ return {r:r, p:p}; });
   });
-  if(!tasks.length){ m.className='msg err'; m.textContent='Нет сопоставленных позиций (укажи «наш материал»)'; return; }
-  Promise.all(tasks).then(function(rs){ var ok=rs.filter(function(x){return x&&x.ok;}).length; m.className='msg ok'; m.textContent='✓ Проведено '+ok+' из '+tasks.length; load(); setTimeout(closeOv,1400); });
+  Promise.all(tasks).then(function(rs){
+    var ok=rs.filter(function(x){return x.r&&x.r.ok;}).length;
+    var bad=rs.filter(function(x){return !(x.r&&x.r.ok);});
+    if(!bad.length){ m.className='msg ok'; m.textContent='✓ Проведено '+ok+' из '+tasks.length; load(); setTimeout(closeOv,1400); return; }
+    // раньше здесь молча писалось «Проведено 0 из 1» — теперь видно, что именно не так
+    m.className='msg err';
+    m.innerHTML='Проведено '+ok+' из '+tasks.length+'. Не прошло:<br>'
+      + bad.map(function(x){ return '• <b>'+esc(x.p.material)+'</b> — '+esc((x.r&&x.r.error)||'ошибка'); }).join('<br>')
+      + (bad.some(function(x){ return x.r&&x.r.needCoef; }) ? '<br><span class="muted">Коэффициент подставлен в таблицу — проверьте и нажмите «Провести» ещё раз.</span>' : '');
+    bad.forEach(function(x){
+      if(x.r&&x.r.needCoef){ var i=window.DOCP.indexOf(x.p), c=(i>=0)?$('dc'+i):null; if(c) c.value=x.r.suggest; }
+    });
+    load();
+  }).catch(function(e){ m.className='msg err'; m.textContent='Связь оборвалась: '+(e.message||e); });
 }
 function refreshSnabCount(){
   api({vapi:'supplydocs'}).then(function(r){
