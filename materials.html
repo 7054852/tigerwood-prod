@@ -132,7 +132,11 @@ function draw(){
     var dyn='';
     if(m.hasBuys&&m.prevPrice){ var d=m.lastPrice-m.prevPrice; if(Math.abs(d)>=0.005) dyn=' <span class="'+(d>0?'up':'down')+'">'+(d>0?'▲':'▼')+money(Math.abs(d))+'</span>'; }
     var price=m.hasBuys?('<b>'+money(m.lastPrice)+'</b>'+dyn):('<span class="muted">'+money(m.calcPrice)+'</span>');
-    var forCost=(Number(m.priceForCost)||0)>0?('<b>'+Math.round(m.priceForCost)+'</b>'):'<span class="muted">—</span>';
+    // ⚠ было Math.round — крепёж по 0,20 ₽ показывался как «0»
+    var pfc=Number(m.priceForCost)||0;
+    var forCost=pfc>0?('<b>'+(pfc>=1?money(pfc):pfc.toFixed(4).replace('.',','))+'</b>'):'<span class="muted">—</span>';
+    if(m.from&&m.yield>0) forCost+='<br><span class="muted" style="font-size:11px" title="цена «'+esc(m.from)+'» ÷ '+m.yield+'">из большого листа</span>';
+    else if((m.children||[]).length) forCost+='<br><span class="muted" style="font-size:11px">закупочный формат</span>';
     return '<tr>'
       +'<td><input type="checkbox" class="mchk" value="'+esc(m.name)+'"'+(SEL[m.name]?' checked':'')+' onclick="selOne(this)"></td>'
       +'<td><span class="nm" onclick="openCard(\''+esc(m.name).replace(/\x27/g,"\\x27")+'\')">'+esc(m.name)+'</span></td>'
@@ -501,14 +505,43 @@ function doMerge(gi){
     else { m.className='msg err'; m.textContent='Ошибка: '+((r&&r.error)||'?'); }
   });
 }
-function addBuy(name){
+// то же, что и в накладной: считаем на месте, коэффициент подставляем сам
+var PREVQ=0;
+function buyPreview(name){
+  var out=$('p_prev'), cEl=$('p_coef'); if(!out) return;
+  var m=matByName(name);
+  var q=Number(String(($('p_qty')||{}).value||'').replace(',','.'))||0;
+  var sum=Number(String(($('p_sum')||{}).value||'').replace(',','.'))||0;
+  PREVQ=0;
+  if(!m||!q){ out.textContent=''; return; }
+  var sug=coefLocal(m, ($('p_unit')||{}).value||'');
+  if(cEl&&sug&&Number(cEl.value)===1) cEl.value=sug;
+  var coef=Number(String((cEl&&cEl.value)||'').replace(',','.'))||1;
+  var qtyW=Math.round(q*coef*1000)/1000;
+  var whole=Math.round(qtyW), round=(whole>0&&Math.abs(qtyW-whole)/whole<0.02)?whole:0;
+  PREVQ=round||0;
+  var qOut=round||qtyW, price=qOut>0? sum/qOut : 0;
+  var pf=function(x){ return (x>=1? x.toFixed(2) : x.toFixed(4)).replace('.',','); };
+  out.innerHTML='→ на склад <b>'+qOut+' '+esc(m.unit||'')+'</b>'
+    +(sum?(', цена за 1 '+esc(m.unit||'ед')+' — <b>'+pf(price)+' р</b>'):'');
+}
+function addBuy(name, force, coefOverride){
   var f={ material:name, supplier:$('p_sup').value, docNo:$('p_doc').value, docType:'Накладная', date:$('p_date').value,
-    qtyDoc:$('p_qty').value, unitDoc:$('p_unit').value, coef:$('p_coef').value||1, sum:$('p_sum').value, cur:'BYN', rate:1, docName:$('p_sup').value?name:'' };
+    qtyDoc:$('p_qty').value, unitDoc:$('p_unit').value, coef:coefOverride||$('p_coef').value||1,
+    sum:$('p_sum').value, cur:'BYN', rate:1, docName:$('p_sup').value?name:'' };
+  if(PREVQ) f.qtyW=PREVQ;              // приходуем целое число единиц, а не 18,993
+  if(force) f.force=1;
   var m=$('p_msg'); m.className='msg'; m.textContent='…';
   api({vapi:'addpurchase', data:JSON.stringify(f)}).then(function(r){
-    if(r&&r.ok){ m.className='msg ok'; m.textContent='✓ цена/ед '+money(r.priceW); openCard(name); load(); }
+    if(r&&r.needCoef){
+      m.textContent='';
+      if(confirm(r.error+'\n\nОК — пересчитать, Отмена — записать как есть.')) addBuy(name, 0, r.suggest);
+      else addBuy(name, 1);
+      return;
+    }
+    if(r&&r.ok){ m.className='msg ok'; m.textContent='✓ '+r.qtyW+' — цена за ед '+money(r.priceW); openCard(name); load(); }
     else { m.className='msg err'; m.textContent='Ошибка: '+((r&&r.error)||'?'); }
-  });
+  }).catch(function(e){ m.className='msg err'; m.textContent='Связь оборвалась'; });
 }
 
 function delBuy(name,docNo,supplier){
