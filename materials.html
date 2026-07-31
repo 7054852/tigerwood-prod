@@ -567,8 +567,8 @@ function renderDoc(h, pos){
   $('ov').className='ov on';
   $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><h3>Позиции документа</h3>'
     +'<div class="muted">'+esc(h.supplier||'')+' · '+esc(h.docType||'')+' '+esc(h.docNo||'')+' · '+esc(h.date||'')+' · '+esc(h.currency||'BYN')+'</div>'
-    +'<div class="muted" style="font-size:11px;margin-top:4px">не сопоставилось — впиши новое имя материала (создастся), лишние строки оставь без «нашего материала»</div>'
-    +'<div class="box" style="margin-top:8px"><table><thead><tr><th>В документе</th><th>Наш материал</th><th class="num">Кол-во</th><th>Ед</th><th class="num" title="сколько наших единиц в одной единице документа — подставляется сам">Коэф</th><th class="num">Сумма</th><th title="что попадёт в журнал и на склад">Получится</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+    +'<div class="muted" style="font-size:11px;margin-top:4px">не сопоставилось — впиши новое имя материала (создастся), лишние строки оставь без «нашего материала». Сумма — <b>с НДС</b>; коэффициент и «Получится» считаются сами, когда заполнены материал и кол-во.</div>'
+    +'<div class="box" style="margin-top:8px"><table><thead><tr><th>В документе</th><th>Наш материал</th><th class="num">Кол-во</th><th>Ед</th><th class="num" title="сколько наших единиц в одной единице документа — подставляется сам">Коэф</th><th class="num" title="стоимость строки С НДС — так ведём закупки">Сумма с НДС</th><th title="что попадёт в журнал и на склад">Получится</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
     +'<div style="margin-top:10px"><button class="gray sm" onclick="addRow()">＋ строка</button> <button class="green" onclick="commitDoc()">✓ Провести все в журнал</button> <span class="msg" id="d_msg"></span></div>';
   for(var k=0;k<pos.length;k++) docPreview(k);   // сразу показать «0,52327 м³ = 15 листов по 40 ₽»
 }
@@ -588,7 +588,10 @@ function docPreview(i){
       var c=$('dc'+i);
       if(c&&r.suggest&&Number(c.value)===1) c.value=r.suggest;         // коэффициент подставляем сами
       var q=r.qtyRound||r.qtyW, pr=r.qtyRound?r.priceRound:r.priceW;
-      out.innerHTML='<b>'+q+'</b> '+esc(r.ourUnit||'')+(pr?('<br>по '+money(pr)+' р'):'');
+      var pp=window.DOCP[i]||{};
+      var vat=(pp.sumNoVat&&Number(sEl.value)&&Math.abs(Number(sEl.value)-pp.sumNoVat)<0.01)
+        ? '<br><span style="color:#b7791f">это сумма без НДС</span>' : '';
+      out.innerHTML='<b>'+q+'</b> '+esc(r.ourUnit||'')+(pr?('<br>по '+money(pr)+' р'):'')+vat;
     }).catch(function(){ out.textContent=''; });
   },400);
 }
