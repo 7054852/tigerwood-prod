@@ -374,6 +374,8 @@ function renderCard(name, r){
   var buyRows=buys.map(function(b){ return '<tr><td>'+esc(b.date)+'</td><td>'+esc(b.supplier)+'</td><td class="muted">'+esc(b.docNo)+'</td><td class="num">'+b.qtyW+'</td><td class="num"><b>'+money(b.priceW)+'</b></td><td class="num">'+money(b.sum)+' '+esc(b.cur)+'</td><td><button class="gray sm" title="удалить запись" onclick="delBuy(\''+qn(name)+'\',\''+qn(b.docNo)+'\',\''+qn(b.supplier)+'\')">🗑</button></td></tr>'; }).join('')||'<tr><td colspan=7 class="muted">закупок нет</td></tr>';
   $('modal').innerHTML=
     '<button class="x sm" onclick="closeOv()">✕</button><h3>'+esc(name)+'</h3>'
+    +'<div class="lbl">Формат закупки</div>'
+    +'<div class="box" id="linkBox"><div class="muted">Загрузка…</div></div>'
     +'<div class="lbl">Как называют поставщики <span class="muted" style="font-weight:normal">— любое из этих названий в накладной система сама переведёт в «'+esc(name)+'»</span></div>'
     +'<div class="box" id="alBox"><div class="muted">Загрузка…</div></div>'
     +'<div class="frm" style="margin-top:6px"><input class="s" id="al_new" placeholder="название в накладной" style="min-width:240px"><input class="s" id="al_sup" placeholder="поставщик (необязательно)"><button class="green sm" onclick="addAlias(\''+qn(name)+'\')">＋ запомнить</button><span class="msg" id="al_msg"></span></div>'
@@ -383,15 +385,51 @@ function renderCard(name, r){
       +'<input class="s" id="p_sup" placeholder="поставщик">'
       +'<input class="s" id="p_doc" placeholder="№ док">'
       +'<input class="xs" id="p_date" placeholder="дд.мм.гггг">'
-      +'<input class="xs" id="p_qty" placeholder="кол-во">'
-      +'<input class="xs" id="p_unit" placeholder="ед">'
+      +'<input class="xs" id="p_qty" placeholder="кол-во" oninput="buyPreview(\''+esc(name).replace(/\x27/g,"\\x27")+'\')">'
+      +'<input class="xs" id="p_unit" placeholder="ед" oninput="buyPreview(\''+esc(name).replace(/\x27/g,"\\x27")+'\')">'
       +'<input class="xs" id="p_coef" placeholder="коэф" value="1">'
-      +'<input class="s" id="p_sum" placeholder="сумма BYN">'
+      +'<input class="s" id="p_sum" placeholder="сумма BYN" oninput="buyPreview(\''+esc(name).replace(/\x27/g,"\\x27")+'\')">'
       +'<button class="green sm" onclick="addBuy(\''+esc(name).replace(/\x27/g,"\\x27")+'\')">＋ провести</button>'
-    +'</div><div class="muted" style="margin-top:4px">коэф = сколько рабочих ед в 1 ед. документа (пачка→листы). Цена за лист = сумма ÷ (кол-во × коэф).</div>'
+    +'</div><div id="p_prev" class="muted" style="margin-top:6px"></div>'
+    +'<div class="muted" style="margin-top:4px">коэф = сколько рабочих ед в 1 ед. документа (кубы→листы, пачка→листы). Подставляется сам по толщине и размеру листа.</div>'
     +'<div class="msg" id="p_msg"></div>'
     +'<div class="lbl">Журнал закупок</div><div class="box"><table><thead><tr><th>Дата</th><th>Поставщик</th><th>№</th><th class="num">Кол-во (раб.)</th><th class="num">Цена/ед</th><th class="num">Сумма</th><th></th></tr></thead><tbody>'+buyRows+'</tbody></table></div>';
   loadAliases(name);
+  renderLink(name);
+}
+
+// ── «покупаем большой лист — кроим маленький» ──
+// У производной позиции цена не своя: она вытекает из цены закупочной, поделённой на выход.
+function renderLink(name){
+  var box=$('linkBox'); if(!box) return;
+  var m=null; for(var i=0;i<ROWS.length;i++) if(ROWS[i].name===name) m=ROWS[i];
+  if(!m){ box.innerHTML='<div class="muted">—</div>'; return; }
+  var qn=function(x){ return esc(String(x)).replace(/\x27/g,"\\x27"); };
+  var kids=m.children||[];
+  var h='';
+  if(kids.length){
+    h+='<div><b>Это закупочный формат.</b> Из него режут: '
+      +kids.map(function(k){ return '<b>'+esc(k.name)+'</b> — '+k.yield+' шт из одного'; }).join(', ')+'</div>'
+      +'<div class="muted" style="margin-top:4px">Приход и контроль цены — по этой позиции. На ЧПУ она не предлагается.</div>';
+  } else {
+    var pr=m.from? ('<div class="muted" style="margin-top:4px">Цена считается сама: цена «'+esc(m.from)+'» ÷ '+(m.yield||0)+'. Руками её не правьте.</div>') : '';
+    h+='<div class="frm">'
+      +'<span class="muted">Получается из</span>'
+      +'<input list="matlist" id="lk_from" value="'+esc(m.from||'')+'" placeholder="закупочная позиция" style="min-width:230px">'
+      +'<span class="muted">выход, шт</span><input class="xs" id="lk_yield" value="'+(m.yield||'')+'" placeholder="4">'
+      +'<button class="green sm" onclick="saveLink(\''+qn(name)+'\')">Сохранить</button>'
+      +'<span class="msg" id="lk_msg"></span></div>'+pr
+      +'<div class="muted" style="margin-top:4px;font-size:12px">Заполняйте, если поставщик режет покупной лист на несколько наших (например 2800x2070 → 4 шт 1395x1030). Пусто — обычная позиция.</div>';
+  }
+  box.innerHTML=h;
+}
+function saveLink(name){
+  var f={name:name, from:$('lk_from').value.trim(), yield:$('lk_yield').value.trim()||0};
+  var msg=$('lk_msg'); msg.className='msg'; msg.textContent='…';
+  api({vapi:'savematerial', data:JSON.stringify(f)}).then(function(r){
+    if(r&&r.ok){ msg.className='msg ok'; msg.textContent='✓'; load(); setTimeout(function(){ openCard(name); },600); }
+    else { msg.className='msg err'; msg.textContent=(r&&r.error)||'ошибка'; }
+  }).catch(function(e){ msg.className='msg err'; msg.textContent='Связь оборвалась'; });
 }
 
 // ── названия поставщиков (алиасы) ──
