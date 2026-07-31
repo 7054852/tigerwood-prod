@@ -186,6 +186,9 @@ function posCard(p,i){
       +'<input list="matlist" id="pm'+i+'" value="'+esc(p.mat||'')+'" placeholder="выберите" style="min-width:200px;'+(isMat?'':'display:none')+'" oninput="recalcPos('+i+')">'
       +'<span class="plbl" id="plc'+i+'" style="'+(isMat?'':'display:none')+'">Коэф</span>'
       +'<input class="xs" id="pk'+i+'" value="'+(p.coef||'')+'" style="'+(isMat?'':'display:none')+'" oninput="recalcPos('+i+')"></div>'
+    +'<div class="prow"><span class="plbl">Статья расхода</span>'
+      +'<input class="s" id="ps'+i+'" value="'+esc(p.statya||'')+'" placeholder="как в финансах" style="min-width:220px" oninput="POS['+i+'].statya=this.value;recalcPos('+i+')">'
+      +'<span class="plbl">Счёт учёта</span><input class="xs" id="pa'+i+'" value="'+esc(p.acct||'')+'" placeholder="10.01" oninput="POS['+i+'].acct=this.value;recalcPos('+i+')"></div>'
     +'<div class="pres" id="pr'+i+'"></div>'
   +'</div>';
 }
@@ -193,7 +196,9 @@ function setCls(i){
   var cls=$('pc_cls'+i).value; POS[i].cls=cls;
   var isMat=(cls==='материал'||cls==='расходник');
   ['plm','pm','plc','pk'].forEach(function(pre){ var el=$(pre+i); if(el) el.style.display=isMat?'':'none'; });
-  var m=CLASSMAP[cls.toLowerCase()]; if(m){ POS[i].statya=m.statya; POS[i].acct=m.acct; }
+  var m=CLASSMAP[cls.toLowerCase()];
+  if(m){ POS[i].statya=m.statya||POS[i].statya||''; POS[i].acct=m.acct||POS[i].acct||'';
+    var se=$('ps'+i), ae=$('pa'+i); if(se) se.value=POS[i].statya; if(ae) ae.value=POS[i].acct; }
   recalcPos(i);
 }
 // коэффициент и итог считаем на месте: сервер за этим дёргать нельзя, каждый вызов ~3 с
@@ -220,7 +225,10 @@ function recalcPos(i){
   p.qty=num(($('pq'+i)||{}).value)||p.qty;
   if(!cls){ out.innerHTML='<span class="muted">выберите, что это — от этого зависит статья расхода и счёт учёта</span>'; return; }
   if(cls==='не связано'){
-    out.innerHTML='<span class="muted">в реестр материалов не попадёт. Статья: <b>'+esc(p.statya||'выберите в финансах')+'</b> · счёт '+esc(p.acct||'—')+'</span>';
+    var st=(($('ps'+i)||{}).value||'').trim();
+    out.innerHTML='<span class="muted">в реестр материалов не попадёт — только в расходы. </span>'
+      +(st?('<span class="muted">Статья: <b>'+esc(st)+'</b> · счёт '+esc((($('pa'+i)||{}).value||'').trim()||'—')+'</span>')
+          :'<span style="color:#b7791f">укажите статью расхода — иначе бухгалтерия не разнесёт</span>');
     return;
   }
   var name=(($('pm'+i)||{}).value||'').trim(); p.mat=name;
@@ -251,7 +259,8 @@ function commitDoc(){
   var m=$('dmsg'); m.className='msg';
   var lines=POS.map(function(p,i){
     return { id:p.id, cls:($('pc_cls'+i)||{}).value||'', mat:(($('pm'+i)||{}).value||'').trim(),
-             coef:num(($('pk'+i)||{}).value), qty:num(($('pq'+i)||{}).value)||p.qty, qtyW:p.qtyW||0 };
+             coef:num(($('pk'+i)||{}).value), qty:num(($('pq'+i)||{}).value)||p.qty, qtyW:p.qtyW||0,
+             statya:(($('ps'+i)||{}).value||'').trim(), acct:(($('pa'+i)||{}).value||'').trim() };
   });
   var noCls=lines.filter(function(l){ return !l.cls; }).length;
   if(noCls){ m.className='msg err'; m.textContent='Не выбран класс у позиций: '+noCls; return; }
