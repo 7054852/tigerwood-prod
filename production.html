@@ -228,8 +228,24 @@ function riskBadge(b){
   return '';
 }
 function setDeadline(id,cur){
-  var d=prompt('Срок (дедлайн) заказа, дд.мм.гггг:', cur||''); if(d===null) return; d=d.trim();
-  api({vapi:'renamebatch', batch:id, plan:d}).then(function(r){ if(r&&r.ok) load(); else alert((r&&r.error)||'не сохранилось'); });
+  var d=prompt('Срок отгрузки заказа, дд.мм.гггг:\n(пусто — снять срок)', cur||''); if(d===null) return; d=d.trim();
+  var why='';
+  if(cur && d!==cur){ why=prompt('Почему сдвигаем срок?\n(попадёт в историю; можно оставить пустым)',''); if(why===null) return; }
+  api({vapi:'setdeadline', batch:id, plan:d, reason:why||''}).then(function(r){
+    if(r&&r.ok){ if(VIEW==='detail') reloadDetail(); else load(); }
+    else alert((r&&r.error)||'не сохранилось');
+  }).catch(function(e){ alert('Связь оборвалась: '+(e.message||e)); });
+}
+// история сроков: видно, сколько раз двигали и по какой причине
+function deadlineLog(id){
+  api({vapi:'deadlinelog', batch:id}).then(function(r){
+    var lg=(r&&r.log)||[];
+    if(!lg.length){ alert('Срок ещё не меняли.'); return; }
+    var txt=lg.map(function(x){
+      return x.when+' — '+(x.was||'—')+' → '+(x.now||'—')+(x.who?('  ('+x.who+')'):'')+(x.reason?('\n    причина: '+x.reason):'');
+    }).join('\n');
+    alert('История сроков заказа (сверху — свежее):\n\n'+txt);
+  });
 }
 // ── СПИСОК: компактные карточки-обзор ──
 function renderList(){
@@ -256,7 +272,8 @@ function renderList(){
       +'</div>'
       +'<div class="row" style="gap:12px;font-size:12.5px;margin:4px 0 6px;flex-wrap:wrap;align-items:center">'
         + riskBadge(b)
-        +'<span class="muted">Срок: '+(b.deadline?('<b>'+esc(b.deadline)+'</b>'):'—')+' <a href="javascript:void(0)" onclick="event.stopPropagation();setDeadline(\''+b.id+'\',\''+esc(b.deadline||'')+'\')" title="задать/изменить срок" style="text-decoration:none">✎</a></span>'
+        +'<span class="muted">Срок: '+(b.deadline?('<b>'+esc(b.deadline)+'</b>'):'—')+' <a href="javascript:void(0)" onclick="event.stopPropagation();setDeadline(\''+b.id+'\',\''+esc(b.deadline||'')+'\')" title="задать/изменить срок" style="text-decoration:none">✎</a> '
+          +'<a href="javascript:void(0)" onclick="event.stopPropagation();deadlineLog(\''+b.id+'\')" title="история изменений срока" style="text-decoration:none">🕘</a></span>'
         +'<span class="muted">темп: <b>'+(b.velocity?money(b.velocity)+' ₽/дн':'—')+'</b></span>'
         +'<span class="muted">осталось: <b>'+money(b.leftRub||0)+' ₽</b> труда</span>'
       +'</div>'
@@ -311,7 +328,9 @@ function renderDetail(){
       +'<span class="pill" style="background:#f0edfb;color:'+costCol+'">собрано '+costSum+' · труд '+money(b.labor||0)+' р</span>'
       +(b.opsCount?'<span class="pill" style="background:#eaf1fd;color:#2b7de9">по труду '+(b.pctLabor||0)+'%</span>':'')
       +(b.overflow?'<span class="pill" style="background:#fdecea;color:#c0392b" title="есть перевыполненные операции">⚠ перевыполнено</span>':'')
-      +(b.plan?'<span class="muted">план '+esc(b.plan)+'</span>':'')
+      +'<span class="muted">срок отгрузки: '+(b.plan?('<b>'+esc(b.plan)+'</b>'):'—')
+        +' <a href="javascript:void(0)" onclick="setDeadline(\''+b.id+'\',\''+esc(b.plan||'')+'\')" title="изменить срок" style="text-decoration:none">✎</a>'
+        +' <a href="javascript:void(0)" onclick="deadlineLog(\''+b.id+'\')" title="история изменений срока" style="text-decoration:none">🕘</a></span>'
       +'<button class="gray sm" title="пересобрать операции из актуального состава/расценок (остатки и выработка сохранятся)" onclick="recalcOps(\''+b.id+'\')">↻ Пересчитать расценки</button>'
       +'<button class="gray sm" onclick="ship(\''+b.id+'\')">📦 Отгрузить</button>'
       +'<button class="gray sm" title="удалить заказ" onclick="delBatch(\''+b.id+'\')">🗑</button>'
