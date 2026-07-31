@@ -439,7 +439,16 @@ function apiPost(p){   // смешанный наряд длинный — GET-�
   return fetch(BASE,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body}).then(function(r){return r.json();});
 }
 // ОДНА отправка на весь наряд: и обычные операции, и раскрой попадают в один наряд мастеру
+var SENDING=false;                       // ответ идёт ~3с — без этого второе нажатие дублирует наряд
+function sendLock(on){
+  SENDING=on;
+  var b=document.getElementById('worksend'); if(!b) return;
+  b.disabled=on; b.style.opacity=on?'.55':''; b.style.pointerEvents=on?'none':'';
+  if(on){ b.setAttribute('data-t', b.textContent); b.textContent='⏳ Отправляю…'; }
+  else if(b.getAttribute('data-t')){ b.textContent=b.getAttribute('data-t'); }
+}
 function sendWork(){
+  if(SENDING) return;                    // уже отправляем — повторное нажатие игнорируем
   var worker=curWorker();
   if(!worker){ wmsg('<span class="err">Не выбран рабочий</span>'); return; }
   var items=CART.map(function(x){ return {equip:x.equip,detail:x.detail,op:x.op,qty:x.qty,batch:x.batch||''}; });
@@ -458,11 +467,16 @@ function sendWork(){
   }
   if(!items.length && !sheets.length){ wmsg('<span class="err">Наряд пуст</span>'); return; }
   var wd=(document.getElementById('wdate')||{}).value||'';
-  wmsg(ADDTO?'Добавляю в наряд…':'Отправляю наряд…');
+  wmsg(ADDTO?'Добавляю в наряд…':'Отправляю наряд…'); sendLock(true);
   var p={vapi:'submitwork',worker:worker,date:(wd?wd.split('-').reverse().join('.'):''),shift:SHIFT,
          items:JSON.stringify(items), sheets:JSON.stringify(sheets)};
   if(ADDTO) p.addto=ADDTO;
   apiPost(p).then(function(r){
+    sendLock(false);
+    if(r&&r.dup){ wmsg('<span class="ok">✅ Этот наряд уже отправлен — повтор пропущен</span>');
+      CART=[]; SHEETS=[]; CUTTOTAL=0; ADDTO=''; clearDraft();
+      if(CUT) addSheet(); else renderCut();
+      renderAddBanner(); renderCart(); try{ loadPending(); }catch(e){} return; }
     if(r&&r.ok){
       var parts=[]; if(r.ops) parts.push(r.ops+' оп.'); if(r.sheets) parts.push(r.sheets+' лист(ов)'); if(r.details) parts.push(r.details+' дет.');
       var w=(r.warnings&&r.warnings.length)?('<br><span class="muted">'+r.warnings.map(esc).join('<br>')+'</span>'):'';
@@ -473,7 +487,7 @@ function sendWork(){
       try{ loadPending(); }catch(e){}
     }
     else wmsg('<span class="err">⚠️ '+esc((r&&r.error)||'ошибка')+'</span>');
-  }).catch(function(){ wmsg('<span class="err">Ошибка отправки</span>'); });
+  }).catch(function(){ sendLock(false); wmsg('<span class="err">Ошибка отправки — проверьте связь и нажмите ещё раз</span>'); });
 }
 function myEdit(id,cur){
   var v=prompt('Новое количество:', cur); if(v===null) return;
