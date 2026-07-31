@@ -573,7 +573,7 @@ function renderDoc(h, pos){
         +'<span class="dlbl">Кол-во</span><input class="xs" id="dq'+i+'" value="'+(p.qty!=null?p.qty:'')+'" oninput="docPreview('+i+')">'
         +'<input class="xs" id="du'+i+'" value="'+esc(p.unit||'')+'" placeholder="ед" oninput="docPreview('+i+')">'
         +'<span class="dlbl" title="сколько наших единиц в одной единице документа — подставляется сам">Коэф</span>'
-        +'<input class="xs" id="dc'+i+'" value="'+(p.coef||1)+'">'
+        +'<input class="xs" id="dc'+i+'" value="'+(p.coef||1)+'" oninput="docPreview('+i+')">'
         +'<span class="dlbl">Сумма с НДС</span><input class="s" id="ds'+i+'" value="'+(p.sum!=null?p.sum:'')+'" oninput="docPreview('+i+')">'
       +'</div>'
       +'<div class="dres" id="dp'+i+'"></div>'
@@ -587,30 +587,58 @@ function renderDoc(h, pos){
     +'<div style="margin-top:10px"><button class="gray sm" onclick="addRow()">＋ строка</button> <button class="green" onclick="commitDoc()">✓ Провести все в журнал</button> <span class="msg" id="d_msg"></span></div>';
   for(var k=0;k<pos.length;k++) docPreview(k);   // сразу показать «1 тыс.шт = 1000 шт по 0,1823 ₽»
 }
-// пересчёт единиц по строке накладной: подставляет коэффициент и показывает, что попадёт в журнал
-var DPT={};
+// пересчёт единиц по строке накладной — СЧИТАЕМ НА МЕСТЕ, без обращения к серверу:
+// раньше на каждую строку уходил запрос (3–7 с), и окно «думало» после каждого символа.
+// Всё нужное уже есть в ROWS: единица, толщина, размер листа.
+function matByName(name){
+  var k=String(name||'').trim().toLowerCase();
+  for(var i=0;i<ROWS.length;i++) if(ROWS[i].name.toLowerCase()===k) return ROWS[i];
+  return null;
+}
+function areaOf(size){
+  var m=String(size||'').match(/(\d{3,4})\s*[xх*]\s*(\d{3,4})/);
+  return m? (Number(m[1])*Number(m[2])/1000000) : 0;
+}
+// сколько наших единиц в одной единице документа (0 = не знаем, решает человек)
+function coefLocal(m, unitDoc){
+  if(!m) return 0;
+  var u=String(unitDoc||'').trim().toLowerCase().replace(/\./g,''), our=String(m.unit||'').trim().toLowerCase();
+  if(!u||!our) return 0;
+  var mult=1, mm=u.match(/^(тыс|тысяч[аи]?|тысячи)\s*(.*)$/);
+  if(mm){ mult=1000; u=(mm[2]||'').trim(); }
+  else if(u==='т'||u==='тн'||u==='тонн'||u==='тонна'){ mult=1000; u='кг'; }
+  if(!u) u=our;
+  var same=function(a,b){ return a.replace(/[³²3 2]/g,'')===b.replace(/[³²3 2]/g,''); };
+  if(same(u,our)||u==='шт') return mult;
+  if(our.indexOf('лист')<0) return 0;                       // пересчёт умеем только для листовых
+  var area=areaOf(m.size); if(!(area>0)) return 0;
+  if(u==='м3'||u==='м³'||u==='куб'||u==='кубм'){ var t=Number(m.thick)||0; if(!(t>0)) return 0;
+    return Math.round(mult/(area*t/1000)*1000)/1000; }
+  if(u==='м2'||u==='м²'||u==='кв м'||u==='квм') return Math.round(mult/area*1000)/1000;
+  return 0;
+}
 function docPreview(i){
-  if(DPT[i]) clearTimeout(DPT[i]);
-  DPT[i]=setTimeout(function(){
-    var mEl=$('dm'+i), qEl=$('dq'+i), uEl=$('du'+i), sEl=$('ds'+i), out=$('dp'+i);
-    if(!mEl||!out) return;
-    var mat=mEl.value.trim();
-    if(!mat||!Number(qEl&&qEl.value)){ out.textContent=''; return; }
-    out.textContent='…';
-    api({vapi:'buypreview', name:mat, unit:(uEl&&uEl.value)||'', qty:qEl.value, sum:(sEl&&sEl.value)||0}).then(function(r){
-      if(!r||!r.ok){ out.textContent=''; return; }
-      window.DOCP[i]=window.DOCP[i]||{}; window.DOCP[i]._prev=r;
-      var c=$('dc'+i);
-      if(c&&r.suggest&&Number(c.value)===1) c.value=r.suggest;         // коэффициент подставляем сами
-      var q=r.qtyRound||r.qtyW, pr=r.qtyRound?r.priceRound:r.priceW;
-      var pp=window.DOCP[i]||{};
-      var vat=(pp.sumNoVat&&Number(sEl.value)&&Math.abs(Number(sEl.value)-pp.sumNoVat)<0.01)
-        ? ' <span style="color:#b7791f">⚠ это сумма без НДС</span>' : '';
-      var pf=function(x){ return (x>=1? x.toFixed(2) : x.toFixed(4)).replace('.',','); };   // копеечные позиции — 4 знака
-      out.innerHTML='→ на склад <b>'+q+' '+esc(r.ourUnit||'')+'</b>'
-        +(pr?(', цена за 1 '+esc(r.ourUnit||'ед')+' — <b>'+pf(pr)+' р</b>'):'')+vat;
-    }).catch(function(){ out.textContent=''; });
-  },400);
+  var mEl=$('dm'+i), qEl=$('dq'+i), uEl=$('du'+i), sEl=$('ds'+i), cEl=$('dc'+i), out=$('dp'+i);
+  if(!mEl||!out) return;
+  var name=mEl.value.trim(), q=Number(String((qEl&&qEl.value)||'').replace(',','.'))||0,
+      sum=Number(String((sEl&&sEl.value)||'').replace(',','.'))||0;
+  if(!name){ out.innerHTML='<span class="muted">укажите наш материал</span>'; return; }
+  var m=matByName(name);
+  if(!m){ out.innerHTML='<span class="muted">новый материал — создастся при проведении</span>'; return; }
+  if(!q){ out.innerHTML='<span class="muted">укажите количество</span>'; return; }
+  var sug=coefLocal(m,(uEl&&uEl.value)||'');
+  if(cEl&&sug&&Number(cEl.value)===1) cEl.value=sug;          // коэффициент подставляем сам
+  var coef=Number(String((cEl&&cEl.value)||'').replace(',','.'))||1;
+  var qtyW=Math.round(q*coef*1000)/1000;
+  var whole=Math.round(qtyW), round=(whole>0&&Math.abs(qtyW-whole)/whole<0.02)?whole:0;
+  var qOut=round||qtyW, price=qOut>0? sum/qOut : 0;
+  var pf=function(x){ return (x>=1? x.toFixed(2) : x.toFixed(4)).replace('.',','); };   // копеечные позиции — 4 знака
+  var pp=window.DOCP[i]||{}; pp._qtyW=round||0;
+  var vat=(pp.sumNoVat&&sum&&Math.abs(sum-pp.sumNoVat)<0.01)? ' <span style="color:#b7791f">⚠ это сумма без НДС</span>' : '';
+  var warn=(!sug&&String((uEl&&uEl.value)||'').trim().toLowerCase()!==String(m.unit||'').toLowerCase())
+    ? ' <span style="color:#b7791f">— проверьте коэффициент вручную</span>' : '';
+  out.innerHTML='→ на склад <b>'+qOut+' '+esc(m.unit||'')+'</b>'
+    +(sum?(', цена за 1 '+esc(m.unit||'ед')+' — <b>'+pf(price)+' р</b>'):'')+vat+warn;
 }
 function commitDoc(){
   docRead(); var h=window.DOCH||{}, pos=window.DOCP||[], m=$('d_msg'); m.className='msg'; m.textContent='Провожу…';
@@ -620,7 +648,7 @@ function commitDoc(){
     var f={ material:String(p.material).trim(), supplier:h.supplier, docType:h.docType, docNo:h.docNo, date:h.date,
       qtyDoc:p.qty, unitDoc:p.unit, coef:p.coef||1, sum:p.sum, cur:h.currency||'BYN', rate:1, docName:p.name };
     // приходуем ровно столько наших единиц, сколько показал пересчёт (15 листов, а не 15,0001)
-    if(p._prev&&p._prev.qtyRound) f.qtyW=p._prev.qtyRound;
+    if(p._qtyW) f.qtyW=p._qtyW;
     return api({vapi:'addpurchase', data:JSON.stringify(f)}).then(function(r){ return {r:r, p:p}; });
   });
   Promise.all(tasks).then(function(rs){
