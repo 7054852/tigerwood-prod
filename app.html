@@ -121,7 +121,8 @@ window.onerror=function(msg,src,line){
 <script>
 var BASE='https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';
 var APP='tw7prod', TGID='', ME=null, ROLE='', app=document.getElementById('app');
-var VER='20260731k';   // бамп при изменении встраиваемых stat-страниц — сбивает кеш GitHub Pages в iframe
+var VER='20260731t';
+var RUN=String(Date.now());   // одна метка на загрузку оболочки — сбивает кеш встроенных страниц   // бамп при изменении встраиваемых stat-страниц — сбивает кеш GitHub Pages в iframe
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
 function api(p){ p.app=APP; var q=Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]);}).join('&'); return fetch(BASE+'?'+q).then(function(r){return r.json();}); }
@@ -294,7 +295,9 @@ function showView(id){
   }
   var url=withTid(ITEMS[id].url);
   url += (url.indexOf('?')>=0?'&':'?')+'embed=1';
-  if(url.indexOf('7054852.github.io')>=0) url += '&v='+VER;   // версия только для наших stat-страниц (не для GAS)
+  // версия только для наших stat-страниц (не для GAS). RUN добавляем, чтобы перезагрузка сервиса
+  // ВСЕГДА тянула свежую страницу: бамп VER легко забыть, и человек часами видит старый экран из кеша
+  if(url.indexOf('7054852.github.io')>=0) url += '&v='+VER+'&r='+RUN;
   url += '&twsec='+encodeURIComponent(id);   // раздел знает своё имя → рукопожатие для авто-обновления
   var focus=null;
   if(FOCUS && FOCUS.id===id){ focus=FOCUS.params; Object.keys(focus).forEach(function(k){ url += '&'+k+'='+encodeURIComponent(focus[k]); }); FOCUS=null; }
