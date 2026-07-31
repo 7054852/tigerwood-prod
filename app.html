@@ -121,7 +121,7 @@ window.onerror=function(msg,src,line){
 <script>
 var BASE='https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';
 var APP='tw7prod', TGID='', ME=null, ROLE='', app=document.getElementById('app');
-var VER='20260731i';   // бамп при изменении встраиваемых stat-страниц — сбивает кеш GitHub Pages в iframe
+var VER='20260731j';   // бамп при изменении встраиваемых stat-страниц — сбивает кеш GitHub Pages в iframe
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
 function api(p){ p.app=APP; var q=Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]);}).join('&'); return fetch(BASE+'?'+q).then(function(r){return r.json();}); }
@@ -178,7 +178,11 @@ function load(){
     if(!m.registered) return register();
     if(m.tgId){ TGID=String(m.tgId); try{localStorage.setItem('tw_tgid',TGID);}catch(e){} }   // код опознал сотрудника → его tgId для встроенных панелей
     if(CODE){ try{localStorage.setItem('tw_code',CODE);}catch(e){} }
-    if(m.blocked){ app.innerHTML='<div class="plain"><div class="box"><div class="hi">⛔ Доступ приостановлен</div><p class="muted">Ваша учётная запись в архиве. Обратитесь к администратору или мастеру.</p></div></div>'; return; }
+    if(m.blocked){
+      app.innerHTML = m.pending
+        ? '<div class="plain"><div class="box"><div class="hi">⏳ Заявка отправлена</div><p class="muted">Вы зарегистрировались как <b>'+esc(m.name||'')+'</b>. Доступ откроется, когда руководитель подтвердит вас в списке сотрудников.</p></div></div>'
+        : '<div class="plain"><div class="box"><div class="hi">⛔ Доступ приостановлен</div><p class="muted">Ваша учётная запись в архиве. Обратитесь к администратору или мастеру.</p></div></div>';
+      return; }
     ROLE=m.role||'';
     shell();
   }).catch(function(e){ app.innerHTML='<div class="center err">Ошибка загрузки</div>'; });
@@ -332,8 +336,11 @@ function renderUsers(box,r){
   function masterOpts(cur){ cur=String(cur||''); var list=masters.slice(); if(cur&&list.indexOf(cur)<0) list.unshift(cur);
     return '<option value=""'+(cur===''?' selected':'')+'>—</option>'+list.map(function(nm){ return '<option'+(nm===cur?' selected':'')+'>'+esc(nm)+'</option>'; }).join(''); }
   var myTg=String(me.tgId||'');
-  var rows=(r.users||[]).map(function(u,i){
-    var archived=!isActiveJs(u.active);
+  var ulist=(r.users||[]).slice().sort(function(a,b){   // сначала те, кто ждёт подтверждения
+    return (isPendingJs(b.active)?1:0)-(isPendingJs(a.active)?1:0); });
+  var nPend=ulist.filter(function(u){ return isPendingJs(u.active); }).length;
+  var rows=ulist.map(function(u,i){
+    var archived=!isActiveJs(u.active), pending=isPendingJs(u.active);
     var self=!!u.tgId && String(u.tgId)===myTg;
     var canManage=canEdit||(isMaster&&u.master===me.name);
     var nm=String(u.name).replace(/[\\']/g,''), tg=String(u.tgId||'');
@@ -349,15 +356,21 @@ function renderUsers(box,r){
     if(canManage) acts+='<button class="sm" title="переименовать (Фамилия Имя)" onclick="renameWorker(\''+tg+'\',\''+nm+'\')">✎</button> ';
     if(canManage&&u.tgId) acts+='<button class="sm" title="сменить код входа" onclick="setCode(\''+tg+'\',\''+esc(u.code||'')+'\')">🔑</button> ';
     if(canEdit&&!self) acts+='<button class="sm" title="сохранить роль/участок" onclick="saveUser('+i+',\''+esc(tg)+'\')">💾</button> ';
-    if(canManage&&!self){ acts+= archived
+    if(canManage&&!self){ acts+= pending
+      ? '<button class="sm" style="background:#137333;color:#fff" title="открыть доступ этому человеку" onclick="restoreWorker(\''+tg+'\',\''+nm+'\')">✅ Подтвердить</button> '
+        +'<button class="sm" title="отклонить — доступа не будет" onclick="archiveWorker(\''+tg+'\',\''+nm+'\')">🚫</button> '
+      : archived
       ? '<button class="sm" title="вернуть из архива" onclick="restoreWorker(\''+tg+'\',\''+nm+'\')">↩</button> '
       : '<button class="sm" title="в архив — доступ пропадёт, история ЗП сохранится" onclick="archiveWorker(\''+tg+'\',\''+nm+'\')">🗄</button> '; }
     if(canEdit&&!self) acts+='<button class="sm" style="color:#c0392b" title="удалить (только без выработки)" onclick="deleteWorker(\''+tg+'\',\''+nm+'\')">🗑</button>';
-    var reg=archived?'<span class="pill" style="background:#eceff4;color:#77808f">в архиве</span>'
+    var reg=pending?'<span class="pill" style="background:#fff3cd;color:#8a6d1f">⏳ ждёт подтверждения</span>'
+      :archived?'<span class="pill" style="background:#eceff4;color:#77808f">в архиве</span>'
       :(u.tgId?'<span class="pill" style="background:#e7f5ea;color:#137333">в системе</span>':'<span class="pill" style="background:#fdeee7;color:#b9770e">без Telegram</span>');
     var codeCell=u.tgId?'<br><span class="muted" style="font-size:12px">🔑 код: <b>'+esc(u.code||'—')+'</b></span>':'';
     return '<tr'+(archived?' style="opacity:.6"':'')+'><td><b>'+esc(u.name)+'</b><br><span class="muted" style="font-size:11px">'+esc(u.tgId||'')+'</span>'+codeCell+'</td><td>'+roleCell+'</td><td>'+masterCell+'</td><td>'+cutCell+'</td><td>'+reg+'</td><td><span class="msg" id="um'+i+'"></span> '+acts+'</td></tr>';
   }).join('');
+  var alert_=nPend?('<div class="box" style="margin-bottom:12px;background:#fff8e6;border-color:#f0d9a0">'
+      +'<b>⏳ Ждут подтверждения: '+nPend+'</b><div class="muted">Люди зарегистрировались через бота сами. Доступа у них нет, пока вы не нажмёте «Подтвердить».</div></div>'):'';
   var invite='';
   if(canEdit){
     var ropts=roles.map(function(x){ return '<option value="'+x+'">'+esc(r.roleTitles[x]||x)+'</option>'; }).join('');
@@ -381,7 +394,7 @@ function renderUsers(box,r){
   }
   var intro=canEdit?'Все, кто зарегистрировался через бота. Приглашайте по ссылке (сразу под ролью) или правьте роль существующим — сохраняйте 💾.'
     :(isMaster?'Ваши рабочие. Пригласите нового по ссылке — он сразу попадёт к вам в бригаду.':'Все, кто зарегистрировался через бота.');
-  box.innerHTML='<div class="pad"><div class="hi">'+pageTitle+'</div><p class="muted">'+intro+'</p>'+invite+'<div class="box" style="overflow-x:auto"><table><thead><tr><th>Сотрудник</th><th>Роль</th><th>Мастер/участок</th><th title="доступ к вкладке «Раскрой»">Раскрой</th><th>Статус</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan=6 class="muted">пусто</td></tr>')+'</tbody></table></div></div>';
+  box.innerHTML='<div class="pad"><div class="hi">'+pageTitle+'</div><p class="muted">'+intro+'</p>'+alert_+invite+'<div class="box" style="overflow-x:auto"><table><thead><tr><th>Сотрудник</th><th>Роль</th><th>Мастер/участок</th><th title="доступ к вкладке «Раскрой»">Раскрой</th><th>Статус</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan=6 class="muted">пусто</td></tr>')+'</tbody></table></div></div>';
 }
 function makeInvite(fixedRole,fixedMaster){
   var role=fixedRole||((document.getElementById('invRole')||{}).value), master=(fixedMaster!=null)?fixedMaster:((document.getElementById('invMaster')||{}).value||''), out=document.getElementById('invOut');
@@ -409,7 +422,8 @@ function saveUser(i,tgid){
   if(cb) p.cut=cb.checked?'1':'0';   // доступ к раскрою
   api(p).then(function(r){ m.innerHTML=(r&&r.ok)?'<span class="ok">✅</span>':'<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; }).catch(function(e){ m.innerHTML='<span class="err">ошибка</span>'; });
 }
-function isActiveJs(v){ var s=String(v==null?'':v).trim().toLowerCase(); return !(s==='нет'||s==='архив'||s==='no'||s==='false'||s==='0'||s==='off'); }
+function isActiveJs(v){ var s=String(v==null?'':v).trim().toLowerCase(); return !(s==='нет'||s==='архив'||s==='ожидает'||s==='no'||s==='false'||s==='0'||s==='off'); }
+function isPendingJs(v){ return String(v==null?'':v).trim().toLowerCase()==='ожидает'; }
 function reloadUsers(){ var box=document.getElementById('view'); if(box) usersView(box); }
 
 // ─── «Компания и настройки» (админ/директор): реквизиты юрлиц = единый источник для всех документов ───
