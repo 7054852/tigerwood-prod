@@ -67,8 +67,8 @@
     <select id="nRole" style="width:170px"></select>
   </div>
   <div class="bar" style="flex-wrap:wrap">
-    <input id="nThick" placeholder="толщина, мм" style="width:130px">
-    <input id="nSize" placeholder="размер листа 1525x1525" style="width:200px">
+    <span id="nSheetFields"><input id="nThick" placeholder="толщина, мм" style="width:130px">
+    <input id="nSize" placeholder="размер листа 1525x1525" style="width:200px"></span>
     <button onclick="addMat()">Добавить</button>
     <button class="gray" onclick="toggleNew()">Отмена</button>
     <span class="msg" id="nmsg"></span>
@@ -131,8 +131,12 @@ function draw(){
       +'<td><span class="nm" onclick="openCard(\''+esc(m.name).replace(/\x27/g,"\\x27")+'\')">'+esc(m.name)+'</span></td>'
       +'<td><input class="u" value="'+esc(m.unit)+'" onchange="save('+idx+',\'unit\',this.value)"></td>'
       +'<td>'+roleSel+'</td>'
-      +'<td class="num"><input class="u" style="width:60px" value="'+(m.thick||'')+'" onchange="save('+idx+',\'thick\',this.value)"></td>'
-      +'<td><input class="u" style="width:110px" value="'+esc(m.size||'')+'" placeholder="1525x1525" onchange="save('+idx+',\'size\',this.value)"></td>'
+      // толщина и размер нужны только листовым (из них считается расценка за раскрой);
+      // у остальных пустые поля читались как «размер стоит везде»
+      +(isSheet(m)
+        ? '<td class="num"><input class="u" style="width:60px" value="'+(m.thick||'')+'" onchange="save('+idx+',\'thick\',this.value)"></td>'
+          +'<td><input class="u" style="width:110px" value="'+esc(m.size||'')+'" placeholder="1525x1525" onchange="save('+idx+',\'size\',this.value)"></td>'
+        : '<td class="num muted">—</td><td class="muted">—</td>')
       +'<td class="num">'+price+'</td>'
       +'<td class="num" title="средняя поставок + 10%, округл.">'+forCost+'</td>'
       +'<td class="muted">'+esc(m.note||'')+'</td>'
@@ -301,10 +305,14 @@ function tplName(m){
   if(!base) return '';
   return base+' '+String(t).replace('.',',')+'мм '+sz.replace(/\s*[xх*]\s*/,'x');
 }
+function isSheet(m){ return /лист/i.test(String(m.unit||'')); }
 function save(i,field,val){
   var m=ROWS[i], f={name:m.name}; f[field]=val; var el=$('m'+i); if(el) el.textContent='…';
   api({vapi:'savematerial', data:JSON.stringify(f)}).then(function(r){
-    if(r&&r.ok){ m[field]=val; if(el){el.innerHTML='<span class="ok">✓</span>'; setTimeout(function(){el.innerHTML='';},900);} }
+    if(r&&r.ok){ m[field]=val;
+      if(el){el.innerHTML='<span class="ok">✓</span>'; setTimeout(function(){el.innerHTML='';},900);}
+      if(field==='unit') draw();          // стал листовым (или перестал) — показать/убрать толщину и размер
+    }
     else if(el) el.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>';
   });
 }
