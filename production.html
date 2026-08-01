@@ -383,7 +383,8 @@ function renderOps(id,r){
       MV[o.id]={detail:o.detail,op:o.op};
       var fl=flags[o.id]?' <span class="chk '+flags[o.id]+'" onclick="showOpIssues(\''+id+'\',\''+esc(o.id)+'\')" title="нажми — показать замечание">⚠</span>':'';
       var mv=o.over>0?' <span class="mvbtn" onclick="openMove(\''+id+'\',\''+esc(o.id)+'\')" title="перенести перевыполнение на другое изделие">↔ перенести</span>':'';
-      return '<tr data-op="'+esc(o.id)+'"><td>'+esc(o.detail)+fl+'</td><td>'+esc(o.op)+'</td>'
+      var shb=o.shared?' <span class="pill" style="background:#eef1f8;color:#66707f" title="до этой операции деталь одинакова во всех цветах — вариант у неё не спрашиваем">общая</span>':'';
+      return '<tr data-op="'+esc(o.id)+'"><td>'+esc(o.detail)+fl+'</td><td>'+esc(o.op)+shb+'</td>'
         +'<td class="num">'+o.need+'</td>'
         +'<td class="num"><input class="q c-stock" value="'+(o.stock||0)+'" inputmode="numeric" title="начальные остатки — работа уже выполнена (не важно кем)"'
         +' onchange="setStock(\''+id+'\',\''+esc(o.id)+'\',this.value,this)" onkeydown="stockKey(event,this)"></td>'
@@ -523,7 +524,13 @@ function opsDashHtml(id,dash){
   return cards;
 }
 function opLeftCss(o){ return o.left>0?'color:#c0392b':'color:#137333'; }
-function opLeftHtml(o){ return o.left+(o.over>0?' <span class="pill" style="background:#fdecea;color:#c0392b">+'+o.over+'</span>':''); }
+function opLeftHtml(o){
+  // Излишек ОБЩЕЙ операции (деталь до покраски одинакова) не относится ни к одному цвету —
+  // показываем его один раз, на уровне детали, а не разбрасываем по вариантам.
+  var ov=(o.over>0)?' <span class="pill" style="background:#fdecea;color:#c0392b">+'+o.over+'</span>':'';
+  var sh=(o.sharedOver>0)?' <span class="pill" style="background:#fdecea;color:#c0392b" title="сделано сверх потребности по этой детали целиком, во всех цветах">+'+o.sharedOver+' по детали</span>':'';
+  return o.left+ov+sh;
+}
 // ── перенос перевыполненных деталей на другое изделие (наряды детали+операции + цели) ──
 var MOVEMAP={};   // id заказа → { opId: {detail,op} }
 function openMove(orderId,opId){
