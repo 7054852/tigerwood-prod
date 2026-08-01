@@ -145,6 +145,8 @@
   button[disabled]{ opacity:.5; pointer-events:none; }
   a[href^="javascript"]{ -webkit-tap-highlight-color:rgba(124,58,237,.15); }
   /* тонкая полоска сверху — «идёт обмен с сервером» */
+  .zcap{ font-size:12px; padding:4px 0; border-bottom:1px dashed var(--line); margin-bottom:4px; }
+  .capbox input{ width:78px; padding:5px 7px; font-size:13px; }
   #twload{ position:fixed; left:0; top:0; height:3px; width:100%; z-index:60; display:none; overflow:hidden; }
   #twload>i{ display:block; height:100%; width:38%; background:var(--accent); animation:twslide 1.1s ease-in-out infinite; }
   @keyframes twslide{ 0%{ margin-left:-38% } 100%{ margin-left:100% } }
@@ -403,6 +405,16 @@ function renderBoard(){
     else if(!contrib) foot='осталось <b>'+money(left)+' ₽</b>'+(av>0?(' · можно делать сейчас <b>'+money(av)+' ₽</b>'):' · <b>фронт работ пуст</b> — ждёт предыдущий участок')+' — никто не назначен';
     else foot='завтра <b>~'+money(contrib)+' ₽</b>'+((cD>0&&cN>0)?' <span class="muted">(☀️ '+money(cD)+' + 🌙 '+money(cN)+')</span>':'')
       +' · закроем <b>'+fill+'%</b> доступного фронта · весь остаток (<b>'+money(left)+' ₽</b>) ~<b>'+days+'</b> дн';
+    // МОЩНОСТЬ участка: без неё «узкое место» означало просто «самый объёмный этап»
+    var capLine='';
+    if(tot){
+      var cs=(g.capSrc==='расстановка')?'по расставленным людям'
+            :(g.capSrc==='нет данных'?'<span style="color:#b7791f">мощность неизвестна — задайте</span>':'по '+esc(g.capSrc));
+      capLine='<div class="zcap">⚙ мощность <b>'+money(g.capRub||0)+' ₽/день</b> <span class="muted">('+cs
+        +(g.capShift?(', '+money(g.capShift)+' ₽/смену на бойца'):'')+')</span>'
+        +(g.daysAll!=null?(' · работы на <b>'+g.daysAll+' дн</b>'):' · <span class="muted">дней не посчитать</span>')
+        +(g.daysAvail!=null?(' <span class="muted">(обеспечено заделом '+g.daysAvail+' дн)</span>'):'')+'</div>';
+    }
     var warn='';
     if(contrib>0&&tot>0){
       if(av<=0) warn='<div class="warnbar">⚠ на участке нет фронта работ — детали ещё не прошли предыдущий этап. Люди простоят.</div>';
@@ -422,7 +434,9 @@ function renderBoard(){
       +' ondragover="event.preventDefault();this.classList.add(\'target\')" ondragleave="this.classList.remove(\'target\')"'
       +' ondrop="dropChip(event,\''+esc(g.group)+'\')" onclick="zoneTap(\''+esc(g.group)+'\')">'
       +'<div class="zh"><span>'+(ZICON[g.group]||'')+'</span><span class="zn">'+esc(g.group)+'</span>'
-      +(g.bottleneck?'<span class="pill" style="background:#fdecea;color:#c0392b">узкое место — сюда в первую очередь</span>':'')
+      +(g.bottleneck?'<span class="pill" style="background:#fdecea;color:#c0392b">🎯 узкое место'+(g.daysAll?(' · '+g.daysAll+' дн'):'')+'</span>':'')
+      +(g.starving?'<span class="pill" style="background:#fdecea;color:#c0392b" title="детали ещё не прошли предыдущий этап">⛔ встанет</span>':'')
+      +(g.idle&&!g.bottleneck?'<span class="pill" style="background:#eef1f8;color:#66707f" title="работы меньше, чем людей">💤 простой</span>':'')
       +'<span style="flex:1"></span><span class="muted" style="font-weight:600;font-size:12px">'
         +(pd.length?'☀️'+pd.length:'')+(pd.length&&pn.length?' · ':'')+(pn.length?'🌙'+pn.length:'')+(!ppl.length?'0 чел':'')+'</span></div>'
       +(tot?'<div class="zbar">'
@@ -435,12 +449,38 @@ function renderBoard(){
       +warn
       +'<div class="zbody">'+body+'</div>'
       +(op?opsPanelHtml(op,g):'')
-      +'<div class="zfoot">'+foot+'</div></div>';
+      +'<div class="zfoot">'+capLine+foot+'</div></div>';
   }).join('');
   var wave=r.waveTitle?'<div class="muted" style="margin:0 2px 8px">Работа из волны «'+esc(r.waveTitle)+'»; ⚡ — ожидаемый вклад бойца в ₽/день</div>'
     :'<div class="muted" style="margin:0 2px 8px">Выберите заказ с планом волн — появится остаток по участкам.</div>';
   var empty=r.people.length?'':'<div class="box muted">На эту дату никто не отмечен в табеле — начните с вкладки «Табель».</div>';
-  $('pane').innerHTML=head+kpi+benchBox+wave+zones+empty;
+  $('pane').innerHTML=head+kpi+benchBox+wave+zones+empty+capBoxHtml(r);
+}
+// МОЩНОСТЬ УЧАСТКОВ. Считается по факту (₽ на человеко-смену за 14 дней), но начальник знает
+// про завтра то, чего нет в истории: взял человека, сломался станок. Поэтому — ручная поправка.
+function capBoxHtml(r){
+  var cap=r.cap||{}, rows=(r.groups||[]).map(function(g){
+    var c=cap[g.group]||{};
+    var src=(c.src==='ручная')?'<span class="pill" style="background:#ede9fe;color:#5b21b6">задано вручную</span>'
+           :(c.src==='факт'?('<span class="muted">по факту: '+c.manShifts+' смен за '+r.capWindow+' дн</span>')
+           :'<span style="color:#b7791f">нет данных за 14 дней</span>');
+    return '<div class="zrow" style="flex-wrap:wrap">'
+      +'<b style="min-width:110px">'+esc(g.group)+'</b>'
+      +'<span class="muted" style="min-width:120px">факт '+money(c.rubShift||0)+' ₽/смену</span>'
+      +'<span class="k" style="font-size:11px">своё ₽/смену</span><input id="cap_r_'+esc(g.group)+'" value="'+(c.manual||'')+'" inputmode="decimal" placeholder="'+Math.round(c.rubShift||0)+'">'
+      +'<span class="k" style="font-size:11px">людей</span><input id="cap_p_'+esc(g.group)+'" value="'+(c.peopleExpected||'')+'" inputmode="numeric" placeholder="'+(c.peopleAvg||0)+'">'
+      +'<button class="sec" onclick="saveCap(\''+esc(g.group)+'\')">💾</button>'
+      +'<span style="margin-left:auto">'+src+'</span></div>';
+  }).join('');
+  return '<div class="box capbox" style="margin-top:10px"><details><summary style="cursor:pointer;font-weight:700">⚙ Мощность участков</summary>'
+    +'<div class="muted" style="margin:6px 0">Сколько участок вытягивает за смену на одного бойца. По умолчанию берём из выработки за '
+    +(r.capWindow||14)+' дней; впишите своё, если знаете, что завтра будет иначе. Из этой цифры считается «работы на N дней» и узкое место.</div>'
+    +rows+'</details></div>';
+}
+function saveCap(g){
+  var rub=($('cap_r_'+g)||{}).value||'', ppl=($('cap_p_'+g)||{}).value||'';
+  bgSaveP({vapi:'setcap',group:g,rub:rub,people:ppl,tgid:TGID});
+  setTimeout(function(){ PLANCACHE={}; loadPlan(); },600);
 }
 /* взаимодействия доски */
 function tapChip(i){ var p=BOARD.people[i]; SELCHIP=(SELCHIP===p.name)?'':p.name; OPSOPEN=''; renderBoard(); }
