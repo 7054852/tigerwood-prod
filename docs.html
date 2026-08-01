@@ -170,7 +170,8 @@ function openDoc(fileId){
 function matByName(name){ var k=String(name||'').trim().toLowerCase();
   for(var i=0;i<MATS.length;i++) if(MATS[i].name.toLowerCase()===k) return MATS[i]; return null; }
 function renderDoc(){
-  var h=DOC||{}, done=POS.filter(function(p){return p.status!=='новая';}).length;
+  var h=DOC||{}, act=POS.filter(function(p){return p.status!=='пропущена';});
+  var done=act.filter(function(p){return p.status==='разнесена';}).length, skipped=POS.length-act.length;
   var cards=POS.map(function(p,i){ return posCard(p,i); }).join('');
   $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button>'
     +'<h3>'+esc(h.sup||'')+'</h3>'
@@ -180,7 +181,7 @@ function renderDoc(){
       +'<a href="javascript:void(0)" onclick="editHead()">✎ изменить шапку</a> · '
       +'<a href="'+esc(h.file||'')+'" target="_blank">открыть файл</a></div>'
     +sumCheckHtml()
-    +'<div class="lbl">Позиции — '+POS.length+', разнесено '+done+'</div>'
+    +'<div class="lbl">Позиции — '+act.length+', разнесено '+done+(skipped?(' · убрано '+skipped):'')+'</div>'
     +cards
     +'<div style="margin-top:12px"><button class="green" onclick="commitDoc()">✓ Провести документ</button> '
       +'<span class="msg" id="dmsg"></span></div>';
