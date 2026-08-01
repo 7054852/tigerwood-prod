@@ -434,6 +434,12 @@ function renderHorizon(){
       +'<div style="font-weight:800;font-size:15px;color:var(--red)">🎯 Узкое место: '+esc(bn.group)+' — работы на '+bn.days+' дн</div>'
       +'<div class="muted" style="margin-top:4px">'+m0(bn.rub)+' ₽ при мощности '+m0(bn.capRub)+' ₽/день. Этот участок и определяет срок заказа — остальные его ждут.</div>'
       +(free?('<div style="margin-top:6px">💡 «'+esc(free.group)+'» разгребёт своё за '+free.days+' дн — оттуда можно перебросить людей.</div>'):'')
+      // главное следствие: успеваем ли к сроку. Раньше срок и узкое место жили на экране порознь.
+      +((o.dlDays!=null&&bn.days!=null&&bn.days>o.dlDays)
+        ? ('<div style="margin-top:6px;font-weight:700;color:var(--red)">⚠ К сроку не успеваем: узкому месту нужно '
+           +bn.days+' дн, а до '+esc(o.plan||'срока')+' осталось '+o.dlDays+'. Не хватает '
+           +Math.ceil(bn.days-o.dlDays)+' дн — нужны люди на «'+esc(bn.group)+'» или перенос срока.</div>')
+        : ((o.dlDays!=null&&bn.days!=null)?('<div style="margin-top:6px" class="ok">✓ К сроку укладываемся: узкому месту нужно '+bn.days+' дн, до срока '+o.dlDays+'.</div>'):''))
       +'</div>';
   }
   $('pane').innerHTML=kpi+advice+(R.waves||[]).map(waveCard).join('')
@@ -456,7 +462,8 @@ function waveCard(w){
     +'<span class="pill p-mut">'+m0(w.totalRub)+' ₽</span>'
     +(w.bottleneckGroup?('<span class="pill p-red">узкое: '+esc(w.bottleneckGroup)+(w.bottleneckDays?(' · '+w.bottleneckDays+' дн'):'')+'</span>'):'')+'</div>'
     +'<div class="flow">'+flow+'</div>'
-    +((w.shared&&w.shared.length)?('<div class="muted" style="margin-top:6px">🧩 общие детали (делать сразу на всю волну): '+w.shared.map(esc).join(', ')+'</div>'):'')
+    +((w.shared&&w.shared.length)?('<div class="muted" style="margin-top:6px">🧩 общие детали (делать сразу на всю волну): '
+        +w.shared.slice(0,8).map(esc).join(', ')+(w.shared.length>8?(' <span title="'+esc(w.shared.slice(8).join(', '))+'">и ещё '+(w.shared.length-8)+'</span>'):'')+'</div>'):'')
     +'</div>';
 }
 /* редактор волн — вторичный инструмент, поэтому свёрнут */
