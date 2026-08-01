@@ -533,8 +533,29 @@ function renderMySummary(r){
 function loadPending(){
   var el=document.getElementById('mlist'); el.textContent='Загрузка…';
   loadRejected();
-  if(SCREEN&&SCREEN.pending){ renderPending(SCREEN.pending); return; }   // уже пришло одним запросом
-  api({vapi:'pending'}).then(renderPending);   // рабочему сервер отдаёт ТОЛЬКО его наряды
+  // ⚠ ответ общего запроса используем РОВНО ОДИН раз. Раньше он оставался в SCREEN навсегда,
+  // и после одобрения/отклонения список рисовался из старого ответа — наряд оставался на месте.
+  // Со стороны это выглядело как «кнопки не работают, то одобряет то нет».
+  if(SCREEN&&SCREEN.pending){ var p0=SCREEN.pending; SCREEN.pending=null; renderPending(p0); return; }
+  api({vapi:'pending'}).then(renderPending)
+    .catch(function(){ el.innerHTML='<div class="err">Связь оборвалась. <a href="javascript:void(0)" onclick="loadPending()">Повторить</a></div>'; });
+}
+// ДЕЙСТВИЯ МАСТЕРА идут через одну обёртку: без неё ошибка сети уходила в никуда
+// (ноль реакции), а повторное нажатие слало второй такой же запрос.
+var BUSYACT=0;
+function act(p, msg, done){
+  if(BUSYACT){ if(msg) msg.innerHTML='<span class="muted">подождите — предыдущее действие ещё идёт</span>'; return; }
+  BUSYACT=1; if(msg) msg.textContent='…';
+  api(p).then(function(r){
+    BUSYACT=0;
+    if(r&&r.ok){ if(msg) msg.textContent=''; (done||loadPending)(r); return; }
+    var e=(r&&r.error)||'не вышло';
+    if(msg) msg.innerHTML='<span class="err">'+esc(e)+'</span>'; else alert(e);
+  }).catch(function(){
+    BUSYACT=0;
+    var t='связь оборвалась — действие могло пройти, обновите список';
+    if(msg) msg.innerHTML='<span class="err">'+t+' <a href="javascript:void(0)" onclick="loadPending()">↻</a></span>'; else alert(t);
+  });
 }
 function renderPending(r){
   var el=document.getElementById('mlist'); if(!el) return;
@@ -601,25 +622,24 @@ function renderPending(r){
 function setKoef(id,cur){
   var k=prompt('Коэффициент к сумме этой операции:\n1 = без изменений, 1.2 = +20%, 0.8 = −20%', cur||1);
   if(k===null) return; k=Number(String(k).replace(',','.')); if(isNaN(k)||k<0){ alert('Введите число ≥ 0'); return; }
-  api({vapi:'setoutputkoef',id:id,koef:k,master:DATA.worker||'мастер'}).then(function(r){
-    if(r&&r.ok){ loadPending(); loadJournal&&(document.getElementById('pane-j').style.display!=='none')&&loadJournal(); }
-    else alert((r&&r.error)||'ошибка');
+  act({vapi:'setoutputkoef',id:id,koef:k,master:DATA.worker||'мастер'}, null, function(){
+    loadPending(); try{ if(document.getElementById('pane-j').style.display!=='none') loadJournal(); }catch(e){}
   });
 }
 function setRepShift(rid,sh){
-  api({vapi:'setreportshift',report:rid,shift:sh,master:DATA.worker||'мастер'}).then(function(r){ if(r&&r.ok) loadPending(); });
+  act({vapi:'setreportshift',report:rid,shift:sh,master:DATA.worker||'мастер'}, document.getElementById('rm-'+rid));
 }
 // коэффициент на весь наряд (при проверке/одобрении)
 function setRepKoef(rid,cur){
   var k=prompt('Коэффициент на весь наряд:\n1 = без изменений, 1.2 = +20%, 0.8 = −20%', cur||1);
   if(k===null) return; k=Number(String(k).replace(',','.')); if(isNaN(k)||k<0){ alert('Введите число ≥ 0'); return; }
-  api({vapi:'setreportkoef',report:rid,koef:k,master:DATA.worker||'мастер'}).then(function(r){ if(r&&r.ok) loadPending(); else alert((r&&r.error)||'ошибка'); });
+  act({vapi:'setreportkoef',report:rid,koef:k,master:DATA.worker||'мастер'}, document.getElementById('rm-'+rid));
 }
 function apprRep(rid,ok){
   var m=document.getElementById('rm-'+rid); if(m) m.textContent='…';
   var single=rid.charAt(0)==='_';
   var p=single?{vapi:'approve',id:rid.slice(1),master:DATA.worker||'мастер',ok:ok?1:0}:{vapi:'approvereport',report:rid,master:DATA.worker||'мастер',ok:ok?1:0};
-  api(p).then(function(r){ if(r&&r.ok){ loadPending(); } else if(m) m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; });
+  act(p, m);
 }
 // мастер указывает изделие/цвет для строки выработки (привязка к варианту); пусто = распределить по заказу
 function setOutModel(id,model,sel){
@@ -628,17 +648,17 @@ function setOutModel(id,model,sel){
 }
 // мастер вручную закрепляет выработку за изделием (+вариантом), напр. перенести перевыполнение на другое изделие; пусто = авто
 function setOutTarget(id,target,sel){
-  api({vapi:'setoutputtarget',id:id,target:target,master:DATA.worker||'мастер'}).then(function(r){ if(r&&r.ok){ loadPending(); } else alert((r&&r.error)||'ошибка'); });
+  act({vapi:'setoutputtarget',id:id,target:target,master:DATA.worker||'мастер'}, null);
 }
 // правка строки внутри наряда (кол-во сохраняется, статус не меняется)
 function editOut(id,cur){
   var q=prompt('Изменить количество (было '+cur+'):', cur);
   if(q===null) return; q=Number(q); if(!(q>0)){ alert('Кол-во должно быть > 0'); return; }
-  api({vapi:'updoutput',id:id,qty:q}).then(function(r){ if(r&&r.ok){ loadPending(); } else alert((r&&r.error)||'ошибка'); });
+  act({vapi:'updoutput',id:id,qty:q}, null);
 }
 // убрать/отклонить одну строку
 function appr(id,ok){
-  api({vapi:'approve',id:id,master:DATA.worker||'мастер',ok:ok?1:0}).then(function(r){ if(r&&r.ok){ loadPending(); } else alert('ошибка'); });
+  act({vapi:'approve',id:id,master:DATA.worker||'мастер',ok:ok?1:0}, null);
 }
 function editJournal(id,curQty,curDate){
   var q=prompt('Количество (было '+curQty+'):', curQty);
@@ -702,11 +722,10 @@ function sendBonus(rid,where){
 // разворачивается по нажатию (нужен, когда наряд отклонили по ошибке)
 var REJ=[], REJOPEN=false;
 function loadRejected(){
-  var el=document.getElementById('rejlist'); if(!el||!isMaster()) return;
-  if(SCREEN&&SCREEN.rejected){ REJ=(SCREEN.rejected.reports)||[]; renderRejected(); return; }
-  api({vapi:'rejected',days:3}).then(function(r){
-    REJ=(r&&r.reports)||[]; renderRejected();
-  }).catch(function(){});
+  var box=document.getElementById('rejbox'); if(!box) return;
+  // тот же приём: кэш общего запроса используем один раз, дальше — свежие данные
+  if(SCREEN&&SCREEN.rejected){ var r0=SCREEN.rejected; SCREEN.rejected=null; REJ=(r0.reports)||[]; renderRejected(); return; }
+  api({vapi:'rejected',days:30}).then(function(r){ REJ=(r&&r.reports)||[]; renderRejected(); }).catch(function(){});
 }
 function toggleRej(){ REJOPEN=!REJOPEN; renderRejected(); }
 function renderRejected(){
@@ -718,17 +737,15 @@ function renderRejected(){
   if(REJOPEN){
     body='<div class="muted" style="margin:6px 0">Если наряд отклонили по ошибке — верните его на проверку.</div>'
       +REJ.map(function(g){
-        return '<div class="card" style="opacity:.85"><div class="row"><span><b>'+esc(g.worker)+'</b> <span class="muted">'+esc(g.date)+' · '+g.lines+' оп. · '+g.sum+' р.</span></span>'
+        return '<div class="card" style="opacity:.85"><div class="row"><span><b>'+esc(g.worker)+'</b> <span class="muted">'+esc(g.date)+' · '+g.lines+' оп. · '+g.sum+' р. · '+esc(g.report)+'</span></span>'
           +'<button class="sm gray" onclick="restoreRep(\''+esc(g.report)+'\')">↩ вернуть на проверку</button></div></div>';
       }).join('');
   }
   el.innerHTML=head+body;
 }
 function restoreRep(rid){
-  api({vapi:'restorereport',report:rid}).then(function(r){
-    if(r&&r.ok){ REJOPEN=true; loadPending(); }
-    else alert((r&&r.error)||'ошибка');
-  }).catch(function(){ alert('Ошибка сети'); });
+  REJOPEN=true;
+  act({vapi:'restorereport',report:rid}, null);
 }
 // отклонение — необратимое для рабочего действие, поэтому спрашиваем явно и называем, что именно отклоняем
 function rejectRep(rid,worker,sum,cnt){
