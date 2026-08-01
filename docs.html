@@ -97,7 +97,7 @@ function load(){
   api(p).then(function(r){
     if(!r||!r.ok){ $('list').innerHTML='<div class="center err">'+esc((r&&r.error)||'нет прав')+'</div>'; return; }
     ROWS=r.rows||[]; STAT=r.stat||{}; CLASSES=r.classes||[]; CLASSMAP=r.classMap||{};
-    $('filters').innerHTML=[['','все'],['todo','разнести — '+(STAT.todo||0)],['done','разнесённые — '+(STAT.done||0)],['wait','ждут распознавания — '+(STAT.noscan||0)]]
+    $('filters').innerHTML=[['','все'],['check','🔔 на проверке — '+(STAT.check||0)],['todo','разнести — '+(STAT.todo||0)],['done','разнесённые — '+(STAT.done||0)],['wait','ждут распознавания — '+(STAT.noscan||0)]]
       .map(function(f){ return '<span class="chip'+(FILT===f[0]?' on':'')+'" onclick="setFilt(\''+f[0]+'\')">'+esc(f[1])+'</span>'; }).join('');
     draw();
   }).catch(function(e){ $('list').innerHTML='<div class="center err">Связь оборвалась: '+esc(e.message||e)+'</div>'; });
@@ -114,14 +114,25 @@ function statePill(r){
 function draw(){
   var q=$('q').value.trim().toLowerCase();
   var list=ROWS.filter(function(r){
+    if(FILT==='check'&&!r.needCheck) return false;
     if(FILT==='todo'&&r.state!=='разнести') return false;
     if(FILT==='done'&&r.state!=='разнесено') return false;
     if(FILT==='wait'&&r.state!=='ждёт распознавания'&&r.state!=='не распозналось') return false;
     if(q&&(r.sup+' '+r.docNo).toLowerCase().indexOf(q)<0) return false;
     return true;
   });
-  $('cnt').textContent=list.length+' из '+ROWS.length+' документов · разнести: '+(STAT.todo||0)+' · ждут распознавания: '+(STAT.noscan||0);
-  $('list').innerHTML=list.map(function(r){
+  $('cnt').textContent=list.length+' из '+ROWS.length+' документов · на проверке: '+(STAT.check||0)+' · разнести: '+(STAT.todo||0)+' · ждут распознавания: '+(STAT.noscan||0);
+  var need=list.filter(function(r){ return r.needCheck; }), rest=list.filter(function(r){ return !r.needCheck; });
+  $('list').innerHTML=
+    (need.length? '<div class="lbl" style="margin:4px 0 8px">🔔 На проверке — '+need.length
+        +' <span class="muted" style="font-weight:normal;text-transform:none">проверьте реквизиты и нажмите «Подтвердить», после этого документ уйдёт в общий список</span></div>'
+      +need.map(docCard).join('')
+      +(rest.length?'<div class="lbl" style="margin:16px 0 8px">Все документы — '+rest.length+'</div>':'') : '')
+    +rest.map(docCard).join('')
+    || '<div class="center muted">ничего не найдено</div>';
+}
+function docCard(r){
+  return (function(r){
     var diff=r.diff? ' <span class="pill p-err" title="сумма позиций не сходится с суммой документа">Δ '+money(r.diff)+'</span>' : '';
     return '<div class="doc" onclick="openDoc(\''+r.fileId+'\')">'
       +'<div class="top"><span class="dt">'+esc(r.date||'—')+'</span>'
@@ -133,9 +144,16 @@ function draw(){
       +'<div class="sub"><span>'+esc(r.type)+' '+esc(r.docNo)+'</span>'
         +(r.unp?'<span>УНП '+esc(r.unp)+'</span>':'')
         +(r.positions?'<span>позиций: '+r.positions+'</span>':'')
-        +'<span style="margin-left:auto"><a href="javascript:void(0)" onclick="event.stopPropagation();delDoc(\''+r.fileId+'\',\''+esc(r.sup||'').replace(/\x27/g,'')+'\')" title="удалить документ">🗑</a></span></div>'
+        +'<span style="margin-left:auto">'
+          +(r.needCheck?'<a href="javascript:void(0)" onclick="event.stopPropagation();confirmDoc(\''+r.fileId+'\')" title="реквизиты верны — убрать из проверки" style="font-weight:700;color:var(--green)">✓ подтвердить</a> · ':'')
+          +'<a href="javascript:void(0)" onclick="event.stopPropagation();delDoc(\''+r.fileId+'\',\''+esc(r.sup||'').replace(/\x27/g,'')+'\')" title="удалить документ">🗑</a></span></div>'
     +'</div>';
-  }).join('')||'<div class="center muted">ничего не найдено</div>';
+  })(r);
+}
+function confirmDoc(fileId){
+  api({vapi:'docconfirm', file:fileId}).then(function(r){
+    if(r&&r.ok) load(); else alert((r&&r.error)||'не вышло');
+  }).catch(function(){ alert('связь оборвалась'); });
 }
 
 // ─────────── ЗАГРУЗКА ПАЧКОЙ ───────────
@@ -252,7 +270,10 @@ function renderDoc(){
     +sumCheckHtml()
     +'<div class="lbl">Позиции — '+act.length+', разнесено '+done+(skipped?(' · убрано '+skipped):'')+'</div>'
     +cards
-    +'<div style="margin-top:12px"><button class="green" onclick="commitDoc()">✓ Провести документ</button> '
+    +'<div style="margin-top:12px">'
+      +((h.status&&h.status!=='подтверждён'&&h.status!=='разнесён')
+        ? '<button onclick="confirmFromCard()" title="реквизиты проверены — документ уйдёт из «на проверке» в общий список">✓ Реквизиты верны</button> ' : '')
+      +'<button class="green" onclick="commitDoc()">✓ Провести документ</button> '
       +'<span class="msg" id="dmsg"></span></div>';
   for(var k=0;k<POS.length;k++) recalcPos(k);
 }
@@ -363,6 +384,11 @@ function editHead(){
   var dt=prompt('Дата документа, дд.мм.гггг:', fmtD(h.date||'')); if(dt===null) return;
   api({vapi:'docsethead', file:h.fileId, patch:JSON.stringify({docNo:no, unp:unp, date:dt})}).then(function(r){
     if(r&&r.ok) openDoc(h.fileId); else alert((r&&r.error)||'не сохранилось');
+  });
+}
+function confirmFromCard(){
+  api({vapi:'docconfirm', file:DOC.fileId}).then(function(r){
+    if(r&&r.ok){ DOC.status=r.status; renderDoc(); load(); } else alert((r&&r.error)||'не вышло');
   });
 }
 function commitDoc(){
