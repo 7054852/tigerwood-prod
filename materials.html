@@ -40,12 +40,6 @@
   .frm input,.frm select{ padding:6px 8px; font-size:13px; }
   .frm input.s{ width:88px; } .frm input.xs{ width:60px; }
   /* позиции накладной — карточками: в таблице название и материал уезжали за край */
-  .dcard{ border:1px solid var(--line); border-radius:12px; padding:10px; margin-bottom:8px; background:var(--card); }
-  .drow{ display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:6px; }
-  .dlbl{ font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; font-weight:700; }
-  .dcard input{ padding:7px 9px; font-size:13.5px; }
-  .dcard input.xs{ width:78px; } .dcard input.s{ width:110px; }
-  .dres{ font-size:13px; padding-top:4px; border-top:1px dashed var(--line); color:var(--fg); }
   /* панель выбранных — всегда под рукой, без прокрутки наверх */
   #selBar{ position:fixed; left:0; right:0; bottom:0; z-index:8; margin:0;
     background:var(--card); border-top:1px solid var(--line); box-shadow:0 -6px 18px rgba(20,25,50,.12);
@@ -58,9 +52,12 @@
 <style>html.emb>body>.hi{display:none}</style><script>if(/[?&]embed=1/.test(location.search))document.documentElement.classList.add('emb');</script>
 <div class="hi">🧱 Материалы</div>
 <div class="muted" id="cnt">загрузка…</div>
+<!-- документы живут в своём разделе: здесь остаётся справочник материалов и ручной приход.
+     Раньше накладную можно было разнести из двух мест, и каждое открытие заново оплачивало распознавание. -->
+<div class="muted" style="margin-top:6px">Накладные и акты поставщиков — в разделе
+  <a href="javascript:void(0)" onclick="goDocs()"><b>📑 Входящие документы</b></a>: там загрузка, распознавание и разнесение по материалам.</div>
 <div class="bar">
   <input class="search" id="q" placeholder="поиск…" oninput="draw()">
-  <button class="gray" id="snabBtn" onclick="openSupplyDocs()">📥 Накладные из Снаба</button>
   <button class="gray sm" onclick="doImport()">⬇︎ Импорт из файла</button>
   <button class="gray sm" onclick="openSimilar()" title="найти позиции, которые различаются только сортом или написанием">🔀 Похожие позиции</button>
   <button class="gray sm" onclick="openStd()" title="единый вид названий: регистр, размеры, опечатки">🧹 Навести порядок</button>
@@ -118,7 +115,6 @@ function load(){
     }).join('');
     $('matlist').innerHTML=ROWS.map(function(m){return '<option value="'+esc(m.name)+'">';}).join('');
     draw();
-    refreshSnabCount();
   }).catch(function(e){ $('tb').innerHTML='<tr><td colspan=10 class="center err">Ошибка: '+esc(e.message||e)+'</td></tr>'; });
 }
 function setRole(r){ FROLE=r; load(); }
@@ -553,76 +549,8 @@ function delSup(name,supplier){
   api({vapi:'delsupplier', name:name, supplier:supplier}).then(function(){ openCard(name); load(); });
 }
 
-// ── накладные из Снаба (уже загружены ботом) → распознать позиции → журнал ──
-function openSupplyDocs(){
-  $('ov').className='ov on'; $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><h3>Накладные из Снаба</h3><div class="center muted">Загрузка…</div>';
-  api({vapi:'supplydocs'}).then(function(r){
-    if(!r||!r.ok){ $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><div class="err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
-    window.SDOCS=r.docs||[];
-    var rows=window.SDOCS.map(function(d,i){
-      return '<tr><td>'+esc(d.type)+'</td><td>'+esc(d.contr)+'</td><td class="muted">'+esc(d.docNo)+'</td><td class="num">'+money(d.sum)+' '+esc(d.cur)+'</td><td>'+(d.done?'<span class="muted">разнесён</span>':'<button class="sm" onclick="pickDoc('+i+')">распознать</button>')+'</td></tr>';
-    }).join('');
-    $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><h3>Накладные из Снаба</h3><div class="muted">загружены ботом @SnabTW_bot — повторно грузить не нужно</div><div class="box" style="margin-top:8px"><table><thead><tr><th>Тип</th><th>Поставщик</th><th>№</th><th class="num">Сумма</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan=5 class="muted">нет документов с файлом</td></tr>')+'</tbody></table></div>';
-  }).catch(function(e){ $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><div class="err">'+esc(e.message||e)+'</div>'; });
-}
-function docHeadFrom(d){ return { supplier:d.contr, docType:d.type, docNo:d.docNo, date:d.date, currency:d.cur }; }
-function pickDoc(i){
-  var d=window.SDOCS[i]; $('modal').innerHTML='<div class="center muted">Распознаю позиции документа…<br><span class="muted">'+esc(d.contr)+' · '+esc(d.docNo)+'</span></div>';
-  api({vapi:'supplydocpos', fileId:d.fileId}).then(function(r){
-    if(!r||!r.ok||!(r.positions&&r.positions.length)){
-      var why=(r&&r.ok)?'в документе не найдено товарных позиций':((r&&r.error)||'ошибка распознавания');
-      $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><h3>Не распозналось</h3><div class="err" style="margin-top:6px">⚠️ '+esc(why)+'</div>'
-        +'<div class="muted" style="margin-top:6px">'+esc(d.contr)+' · '+esc(d.type)+' '+esc(d.docNo)+'</div>'
-        +'<div style="margin-top:12px"><button class="gray" onclick="pickDoc('+i+')">↻ Повторить</button> <button onclick="manualDoc('+i+')">✍️ Ввести вручную</button></div>';
-      return;
-    }
-    r.header=Object.assign(docHeadFrom(d), {date:(r.header&&r.header.date)||d.date, supplier:(r.header&&r.header.supplier)||d.contr});
-    renderDoc(r.header, r.positions);
-  }).catch(function(e){ $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><h3>Ошибка</h3><div class="err">'+esc(e.message||e)+'</div><div style="margin-top:12px"><button class="gray" onclick="pickDoc('+i+')">↻ Повторить</button> <button onclick="manualDoc('+i+')">✍️ Ввести вручную</button></div>'; });
-}
-function manualDoc(i){ var d=window.SDOCS[i]; renderDoc(docHeadFrom(d), [{name:'',qty:'',unit:'',sum:'',material:''},{name:'',qty:'',unit:'',sum:'',material:''}]); }
-function docRead(){ // считать текущие правки в DOCP
-  window.DOCP=(window.DOCP||[]).map(function(p,i){ return {
-    name:$('dn'+i)?$('dn'+i).value:p.name, material:$('dm'+i)?$('dm'+i).value:(p.material||''),
-    qty:$('dq'+i)?$('dq'+i).value:p.qty, unit:$('du'+i)?$('du'+i).value:p.unit,
-    coef:$('dc'+i)?$('dc'+i).value:(p.coef||1), sum:$('ds'+i)?$('ds'+i).value:p.sum,
-    matSrc:($('dm'+i)&&$('dm'+i).value!==(p.material||''))?'':(p.matSrc||'') }; });   // правил руками — метка распознавания снимается
-}
-function addRow(){ docRead(); window.DOCP.push({name:'',material:'',qty:'',unit:'',coef:1,sum:''}); renderDoc(window.DOCH, window.DOCP); }
-function renderDoc(h, pos){
-  window.DOCH=h; window.DOCP=pos;
-  // КАРТОЧКИ, а не таблица: в широкой таблице название позиции и выбранный материал
-  // уезжали за край, и что именно проводишь — было не видно
-  var cards=pos.map(function(p,i){
-    var badge = p.material ? (p.matSrc==='alias'
-      ? '<span class="pill" style="background:#e7f5ea;color:#137333" title="это название уже приходило">✓ запомнено</span>'
-      : '<span class="pill" style="background:#fff3cd;color:#8a6d1f" title="угадано по названию — проверьте">≈ похоже</span>') : '';
-    return '<div class="dcard">'
-      +'<div class="drow"><span class="dlbl">В документе</span>'
-        +'<input id="dn'+i+'" value="'+esc(p.name||'')+'" placeholder="строка документа" style="flex:1;min-width:180px"></div>'
-      +'<div class="drow"><span class="dlbl">Наш материал</span>'
-        +'<input list="matlist" id="dm'+i+'" value="'+esc(p.material||'')+'" placeholder="выберите или впишите" style="flex:1;min-width:180px" oninput="docPreview('+i+')"> '+badge+'</div>'
-      +'<div class="drow">'
-        +'<span class="dlbl">Кол-во</span><input class="xs" id="dq'+i+'" value="'+(p.qty!=null?p.qty:'')+'" oninput="docPreview('+i+')">'
-        +'<input class="xs" id="du'+i+'" value="'+esc(p.unit||'')+'" placeholder="ед" oninput="docPreview('+i+')">'
-        +'<span class="dlbl" title="сколько наших единиц в одной единице документа — подставляется сам">Коэф</span>'
-        +'<input class="xs" id="dc'+i+'" value="'+(p.coef||1)+'" oninput="docPreview('+i+')">'
-        +'<span class="dlbl">Сумма с НДС</span><input class="s" id="ds'+i+'" value="'+(p.sum!=null?p.sum:'')+'" oninput="docPreview('+i+')">'
-      +'</div>'
-      +'<div class="dres" id="dp'+i+'"></div>'
-    +'</div>';
-  }).join('');
-  $('ov').className='ov on';
-  $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><h3>Позиции документа</h3>'
-    +'<div class="muted">'+esc(h.supplier||'')+' · '+esc(h.docType||'')+' '+esc(h.docNo||'')+' · '+esc(h.date||'')+' · '+esc(h.currency||'BYN')+'</div>'
-    +'<div class="muted" style="font-size:11px;margin-top:4px">не сопоставилось — впишите наше имя (создастся); лишние строки оставьте без «нашего материала». Сумма — <b>с НДС</b>. Коэффициент и итог считаются сами.</div>'
-    +'<div style="margin-top:8px">'+cards+'</div>'
-    +'<div style="margin-top:10px"><button class="gray sm" onclick="addRow()">＋ строка</button> <button class="green" onclick="commitDoc()">✓ Провести все в журнал</button> <span class="msg" id="d_msg"></span></div>';
-  for(var k=0;k<pos.length;k++) docPreview(k);   // сразу показать «1 тыс.шт = 1000 шт по 0,1823 ₽»
-}
-// пересчёт единиц по строке накладной — СЧИТАЕМ НА МЕСТЕ, без обращения к серверу:
-// раньше на каждую строку уходил запрос (3–7 с), и окно «думало» после каждого символа.
-// Всё нужное уже есть в ROWS: единица, толщина, размер листа.
+// пересчёт единиц — СЧИТАЕМ НА МЕСТЕ, без обращения к серверу: раньше на каждую строку
+// уходил запрос (3–7 с), и форма «думала» после каждого символа. Всё нужное уже есть в ROWS.
 function matByName(name){
   var k=String(name||'').trim().toLowerCase();
   for(var i=0;i<ROWS.length;i++) if(ROWS[i].name.toLowerCase()===k) return ROWS[i];
@@ -650,62 +578,9 @@ function coefLocal(m, unitDoc){
   if(u==='м2'||u==='м²'||u==='кв м'||u==='квм') return Math.round(mult/area*1000)/1000;
   return 0;
 }
-function docPreview(i){
-  var mEl=$('dm'+i), qEl=$('dq'+i), uEl=$('du'+i), sEl=$('ds'+i), cEl=$('dc'+i), out=$('dp'+i);
-  if(!mEl||!out) return;
-  var name=mEl.value.trim(), q=Number(String((qEl&&qEl.value)||'').replace(',','.'))||0,
-      sum=Number(String((sEl&&sEl.value)||'').replace(',','.'))||0;
-  if(!name){ out.innerHTML='<span class="muted">укажите наш материал</span>'; return; }
-  var m=matByName(name);
-  if(!m){ out.innerHTML='<span class="muted">новый материал — создастся при проведении</span>'; return; }
-  if(!q){ out.innerHTML='<span class="muted">укажите количество</span>'; return; }
-  var sug=coefLocal(m,(uEl&&uEl.value)||'');
-  if(cEl&&sug&&Number(cEl.value)===1) cEl.value=sug;          // коэффициент подставляем сам
-  var coef=Number(String((cEl&&cEl.value)||'').replace(',','.'))||1;
-  var qtyW=Math.round(q*coef*1000)/1000;
-  var whole=Math.round(qtyW), round=(whole>0&&Math.abs(qtyW-whole)/whole<0.02)?whole:0;
-  var qOut=round||qtyW, price=qOut>0? sum/qOut : 0;
-  var pf=function(x){ return (x>=1? x.toFixed(2) : x.toFixed(4)).replace('.',','); };   // копеечные позиции — 4 знака
-  var pp=window.DOCP[i]||{}; pp._qtyW=round||0;
-  var vat=(pp.sumNoVat&&sum&&Math.abs(sum-pp.sumNoVat)<0.01)? ' <span style="color:#b7791f">⚠ это сумма без НДС</span>' : '';
-  var warn=(!sug&&String((uEl&&uEl.value)||'').trim().toLowerCase()!==String(m.unit||'').toLowerCase())
-    ? ' <span style="color:#b7791f">— проверьте коэффициент вручную</span>' : '';
-  out.innerHTML='→ на склад <b>'+qOut+' '+esc(m.unit||'')+'</b>'
-    +(sum?(', цена за 1 '+esc(m.unit||'ед')+' — <b>'+pf(price)+' р</b>'):'')+vat+warn;
-}
-function commitDoc(){
-  docRead(); var h=window.DOCH||{}, pos=window.DOCP||[], m=$('d_msg'); m.className='msg'; m.textContent='Провожу…';
-  var use=pos.filter(function(p){ return String(p.material||'').trim(); });
-  if(!use.length){ m.className='msg err'; m.textContent='Нет сопоставленных позиций (укажи «наш материал»)'; return; }
-  var tasks=use.map(function(p){
-    var f={ material:String(p.material).trim(), supplier:h.supplier, docType:h.docType, docNo:h.docNo, date:h.date,
-      qtyDoc:p.qty, unitDoc:p.unit, coef:p.coef||1, sum:p.sum, cur:h.currency||'BYN', rate:1, docName:p.name };
-    // приходуем ровно столько наших единиц, сколько показал пересчёт (15 листов, а не 15,0001)
-    if(p._qtyW) f.qtyW=p._qtyW;
-    return api({vapi:'addpurchase', data:JSON.stringify(f)}).then(function(r){ return {r:r, p:p}; });
-  });
-  Promise.all(tasks).then(function(rs){
-    var ok=rs.filter(function(x){return x.r&&x.r.ok;}).length;
-    var bad=rs.filter(function(x){return !(x.r&&x.r.ok);});
-    if(!bad.length){ m.className='msg ok'; m.textContent='✓ Проведено '+ok+' из '+tasks.length; load(); setTimeout(closeOv,1400); return; }
-    // раньше здесь молча писалось «Проведено 0 из 1» — теперь видно, что именно не так
-    m.className='msg err';
-    m.innerHTML='Проведено '+ok+' из '+tasks.length+'. Не прошло:<br>'
-      + bad.map(function(x){ return '• <b>'+esc(x.p.material)+'</b> — '+esc((x.r&&x.r.error)||'ошибка'); }).join('<br>')
-      + (bad.some(function(x){ return x.r&&x.r.needCoef; }) ? '<br><span class="muted">Коэффициент подставлен в таблицу — проверьте и нажмите «Провести» ещё раз.</span>' : '');
-    bad.forEach(function(x){
-      if(x.r&&x.r.needCoef){ var i=window.DOCP.indexOf(x.p), c=(i>=0)?$('dc'+i):null; if(c) c.value=x.r.suggest; }
-    });
-    load();
-  }).catch(function(e){ m.className='msg err'; m.textContent='Связь оборвалась: '+(e.message||e); });
-}
-function refreshSnabCount(){
-  api({vapi:'supplydocs'}).then(function(r){
-    if(!r||!r.ok) return; window.SDOCS=r.docs||[];
-    var nw=window.SDOCS.filter(function(d){return !d.done;}).length, btn=$('snabBtn'); if(!btn) return;
-    btn.textContent='📥 Накладные из Снаба'+(nw?(' · '+nw+' новых'):'');
-    if(nw){ btn.style.background='var(--accent)'; btn.style.color='#fff'; } else { btn.style.background='#eef1f8'; btn.style.color='#334'; }
-  }).catch(function(){});
+function goDocs(){
+  try{ window.top.postMessage({tw:'go',id:'indocs'},'*'); }catch(e){}
+  if(window.top===window) location.href='docs.html'+(location.search||'');
 }
 load();
 

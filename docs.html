@@ -62,6 +62,7 @@
   <input type="file" id="upl" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.doc,.docx,.xls,.xlsx" style="display:none" onchange="uploadPicked(this.files)">
   <button class="gray" onclick="scanNow()" title="распознать ближайшие документы прямо сейчас, не дожидаясь фонового прогона">⚡ Распознать сейчас</button>
   <button class="gray" onclick="exportDocs()" title="файл со всеми реквизитами — бухгалтеру останется загрузить его в 1С">⬇️ Выгрузить для 1С</button>
+  <button class="gray" onclick="showFixes()" title="что бухгалтер чаще всего исправляет за распознаванием — по этому списку уточняется промпт">📊 Что чаще правят</button>
   <span class="msg" id="smsg"></span>
 </div>
 <div id="uplbox" class="box" style="display:none;margin-bottom:10px"></div>
@@ -86,7 +87,7 @@ function $(id){ return document.getElementById(id); }
 function money(n){ n=Number(n)||0; return n.toFixed(2).replace('.',','); }
 function num(x){ return Number(String(x==null?'':x).replace(',','.'))||0; }
 
-var ROWS=[], STAT={}, CLASSES=[], CLASSMAP={}, FILT='';
+var ROWS=[], STAT={}, CLASSES=[], CLASSMAP={}, SERVICES=[], TYPES=[], FILT='';
 
 function load(){
   $('list').innerHTML='<div class="center muted">Загрузка…</div>';
@@ -97,6 +98,7 @@ function load(){
   api(p).then(function(r){
     if(!r||!r.ok){ $('list').innerHTML='<div class="center err">'+esc((r&&r.error)||'нет прав')+'</div>'; return; }
     ROWS=r.rows||[]; STAT=r.stat||{}; CLASSES=r.classes||[]; CLASSMAP=r.classMap||{};
+    SERVICES=r.services||SERVICES; TYPES=r.types||TYPES;
     $('filters').innerHTML=[['','все'],['check','🔔 на проверке — '+(STAT.check||0)],['todo','разнести — '+(STAT.todo||0)],['done','разнесённые — '+(STAT.done||0)],['wait','ждут распознавания — '+(STAT.noscan||0)]]
       .map(function(f){ return '<span class="chip'+(FILT===f[0]?' on':'')+'" onclick="setFilt(\''+f[0]+'\')">'+esc(f[1])+'</span>'; }).join('');
     draw();
@@ -250,6 +252,7 @@ function openDoc(fileId){
     if(!r||!r.ok){ $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><div class="err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
     DOC=r.header||{fileId:fileId}; DOC.fileId=fileId; POS=r.positions||[]; MATS=r.mats||[];
     CLASSES=r.classes||CLASSES; CLASSMAP=r.classMap||CLASSMAP;
+    SERVICES=r.services||SERVICES; TYPES=r.types||TYPES;
     $('matlist').innerHTML=MATS.map(function(m){ return '<option value="'+esc(m.name)+'">'; }).join('');
     renderDoc();
   });
@@ -294,6 +297,9 @@ function posCard(p,i){
   var opts=['<option value="">— класс не выбран —</option>'].concat(CLASSES.map(function(c){
     return '<option value="'+esc(c)+'"'+(p.cls===c?' selected':'')+'>'+esc(c)+'</option>'; })).join('');
   var isMat=(p.cls==='материал'||p.cls==='расходник');
+  var isSvc=(p.cls==='услуга');
+  var svcOpts=['<option value="">— выберите вид услуги —</option>'].concat(SERVICES.map(function(sv){
+    return '<option value="'+esc(sv.name)+'"'+(p.statya&&p.statya===sv.statya?' selected':'')+'>'+esc(sv.name)+'</option>'; })).join('');
   return '<div class="pcard'+(p.status!=='новая'?' done':'')+'" id="pc'+i+'">'
     +'<div class="prow"><b style="flex:1;min-width:200px">'+esc(p.name)+'</b>'
       +(p.status!=='новая'?'<span class="pill '+(p.status==='пропущена'?'p-wait':'p-done')+'">'+esc(p.status)+'</span>':'')
@@ -309,7 +315,9 @@ function posCard(p,i){
       +'<span class="plbl" id="plm'+i+'" style="'+(isMat?'':'display:none')+'">Наш материал</span>'
       +'<input list="matlist" id="pm'+i+'" value="'+esc(p.mat||'')+'" placeholder="выберите" style="min-width:200px;'+(isMat?'':'display:none')+'" oninput="recalcPos('+i+')">'
       +'<span class="plbl" id="plc'+i+'" style="'+(isMat?'':'display:none')+'">Коэф</span>'
-      +'<input class="xs" id="pk'+i+'" value="'+(p.coef||'')+'" style="'+(isMat?'':'display:none')+'" oninput="recalcPos('+i+')"></div>'
+      +'<input class="xs" id="pk'+i+'" value="'+(p.coef||'')+'" style="'+(isMat?'':'display:none')+'" oninput="recalcPos('+i+')">'
+      +'<span class="plbl" id="pls'+i+'" style="'+(isSvc?'':'display:none')+'">Вид услуги</span>'
+      +'<select id="pv'+i+'" style="'+(isSvc?'':'display:none')+'" onchange="setSvc('+i+')">'+svcOpts+'</select></div>'
     +'<div class="prow"><span class="plbl">Статья расхода</span>'
       +'<input class="s" id="ps'+i+'" value="'+esc(p.statya||'')+'" placeholder="как в финансах" style="min-width:220px" oninput="POS['+i+'].statya=this.value;recalcPos('+i+')">'
       +'<span class="plbl">Счёт учёта</span><input class="xs" id="pa'+i+'" value="'+esc(p.acct||'')+'" placeholder="10.01" oninput="POS['+i+'].acct=this.value;recalcPos('+i+')"></div>'
@@ -327,9 +335,19 @@ function setCls(i){
   var cls=$('pc_cls'+i).value; POS[i].cls=cls;
   var isMat=(cls==='материал'||cls==='расходник');
   ['plm','pm','plc','pk'].forEach(function(pre){ var el=$(pre+i); if(el) el.style.display=isMat?'':'none'; });
+  ['pls','pv'].forEach(function(pre){ var el=$(pre+i); if(el) el.style.display=(cls==='услуга')?'':'none'; });
   var m=CLASSMAP[cls.toLowerCase()];
   if(m){ POS[i].statya=m.statya||POS[i].statya||''; POS[i].acct=m.acct||POS[i].acct||'';
     var se=$('ps'+i), ae=$('pa'+i); if(se) se.value=POS[i].statya; if(ae) ae.value=POS[i].acct; }
+  recalcPos(i);
+}
+// вид услуги сам проставляет статью и счёт: бухгалтеру не надо держать классификатор в голове
+function setSvc(i){
+  var nm=$('pv'+i).value, sv=null;
+  for(var k=0;k<SERVICES.length;k++) if(SERVICES[k].name===nm) sv=SERVICES[k];
+  if(!sv) return;
+  POS[i].statya=sv.statya; POS[i].acct=sv.acct;
+  var se=$('ps'+i), ae=$('pa'+i); if(se) se.value=sv.statya; if(ae) ae.value=sv.acct;
   recalcPos(i);
 }
 // коэффициент и итог считаем на месте: сервер за этим дёргать нельзя, каждый вызов ~3 с
@@ -355,9 +373,9 @@ function recalcPos(i){
   var cls=($('pc_cls'+i)||{}).value||p.cls||'';
   p.qty=num(($('pq'+i)||{}).value)||p.qty;
   if(!cls){ out.innerHTML='<span class="muted">выберите, что это — от этого зависит статья расхода и счёт учёта</span>'; return; }
-  if(cls==='не связано'){
+  if(cls==='не связано'||cls==='услуга'){
     var st=(($('ps'+i)||{}).value||'').trim();
-    out.innerHTML='<span class="muted">в реестр материалов не попадёт — только в расходы. </span>'
+    out.innerHTML='<span class="muted">'+(cls==='услуга'?'услуга — на склад не приходуется, идёт в расходы и в 1С. ':'в реестр материалов не попадёт — только в расходы. ')+'</span>'
       +(st?('<span class="muted">Статья: <b>'+esc(st)+'</b> · счёт '+esc((($('pa'+i)||{}).value||'').trim()||'—')+'</span>')
           :'<span style="color:#b7791f">укажите статью расхода — иначе бухгалтерия не разнесёт</span>');
     return;
@@ -377,14 +395,55 @@ function recalcPos(i){
   out.innerHTML='→ на склад <b>'+q+' '+esc(m.unit||'')+'</b>, цена за 1 '+esc(m.unit||'ед')+' — <b>'+pf(price)+' р</b>'
     +' <span class="muted">· статья: '+esc(p.statya||'—')+' · счёт '+esc(p.acct||'—')+'</span>';
 }
+// правка шапки — ФОРМОЙ, а не цепочкой prompt'ов: реквизиты идут в 1С,
+// и бухгалтер должен видеть их все сразу, а не вспоминать по одному
 function editHead(){
   var h=DOC||{};
-  var no=prompt('№ документа (как на бланке):', h.docNo||''); if(no===null) return;
-  var unp=prompt('УНП поставщика:', h.unp||''); if(unp===null) return;
-  var dt=prompt('Дата документа, дд.мм.гггг:', fmtD(h.date||'')); if(dt===null) return;
-  api({vapi:'docsethead', file:h.fileId, patch:JSON.stringify({docNo:no, unp:unp, date:dt})}).then(function(r){
-    if(r&&r.ok) openDoc(h.fileId); else alert((r&&r.error)||'не сохранилось');
-  });
+  var topts=(TYPES.length?TYPES:['ТН','ТТН','Акт','УПД','Инвойс','Счёт','Чек','Прочее']).map(function(t){
+    return '<option value="'+esc(t)+'"'+(h.type===t?' selected':'')+'>'+esc(t)+'</option>'; }).join('');
+  var f=function(id,lbl,val,w){ return '<div class="prow"><span class="plbl" style="min-width:120px">'+lbl+'</span>'
+    +'<input id="'+id+'" value="'+esc(val==null?'':val)+'" style="min-width:'+(w||220)+'px;flex:1"></div>'; };
+  $('modal').innerHTML='<button class="x sm" onclick="openDoc(\''+h.fileId+'\')">✕</button><h3>Реквизиты документа</h3>'
+    +'<div class="muted">Что поправите — уйдёт и в Фингений, и в выгрузку для 1С. '
+    +'Правка запоминается: повторное распознавание её не затрёт, а сама поправка попадёт в «Что чаще правят».</div>'
+    +'<div style="margin-top:10px">'
+    +f('eh_sup','Поставщик',h.sup)
+    +f('eh_unp','УНП',h.unp,140)
+    +'<div class="prow"><span class="plbl" style="min-width:120px">Тип документа</span><select id="eh_type">'+topts+'</select></div>'
+    +f('eh_no','№ документа',h.docNo,180)
+    +f('eh_date','Дата (дд.мм.гггг)',fmtD(h.date||''),140)
+    +f('eh_dog','Договор/основание',h.dogovor)
+    +f('eh_cur','Валюта',h.cur||'BYN',90)
+    +f('eh_sum','Сумма с НДС',h.sumGross,140)
+    +'</div>'
+    +'<div style="margin-top:12px"><button onclick="saveHead()">Сохранить</button> '
+    +'<button class="gray" onclick="openDoc(\''+h.fileId+'\')">Отмена</button> <span class="msg" id="ehmsg"></span></div>';
+}
+function saveHead(){
+  var h=DOC||{}, m=$('ehmsg'); m.className='msg'; m.textContent='Сохраняю…';
+  var patch={ sup:$('eh_sup').value, unp:$('eh_unp').value, type:$('eh_type').value, docNo:$('eh_no').value,
+              date:$('eh_date').value, dogovor:$('eh_dog').value, cur:$('eh_cur').value, sumGross:$('eh_sum').value };
+  apiPost({vapi:'docsethead', file:h.fileId, patch:JSON.stringify(patch)}).then(function(r){
+    if(r&&r.ok){ openDoc(h.fileId); load(); } else { m.className='msg err'; m.textContent=(r&&r.error)||'не сохранилось'; }
+  }).catch(function(){ m.className='msg err'; m.textContent='связь оборвалась'; });
+}
+// что чаще всего правят за распознаванием — это и есть список того, что надо уточнить в промпте
+function showFixes(){
+  $('ov').className='ov on'; $('modal').innerHTML='<div class="center muted">Считаю правки…</div>';
+  api({vapi:'docfixes', limit:40}).then(function(r){
+    if(!r||!r.ok){ $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><div class="err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
+    var top=(r.byField||[]).map(function(x){ return '<div class="uprow"><span style="flex:1">'+esc(x.field)+'</span><b>'+x.n+'</b></div>'; }).join('')
+      || '<div class="muted" style="padding:8px 0">правок пока нет — распознавание никто не исправлял</div>';
+    var last=(r.last||[]).map(function(x){
+      return '<div class="uprow"><span class="muted" style="min-width:88px">'+esc(x.when)+'</span>'
+        +'<span style="flex:1;min-width:150px"><b>'+esc(x.field)+'</b> <span class="muted">'+esc(x.scope)+'</span></span>'
+        +'<span style="flex:1;min-width:150px"><span class="muted">было:</span> '+esc(x.was||'—')+' → <b>'+esc(x.became||'—')+'</b></span></div>'; }).join('');
+    $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><h3>📊 Что чаще правят</h3>'
+      +'<div class="muted">Всего правок: '+r.total+'. Каждая — это место, где распознавание ошибается. '
+      +'По этому списку уточняется промпт, чтобы вручную править приходилось всё реже.</div>'
+      +'<div class="lbl">По полям</div><div class="box">'+top+'</div>'
+      +(last?('<div class="lbl">Последние правки</div><div class="box">'+last+'</div>'):'');
+  }).catch(function(){ $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><div class="err">связь оборвалась</div>'; });
 }
 function confirmFromCard(){
   api({vapi:'docconfirm', file:DOC.fileId}).then(function(r){
