@@ -551,15 +551,29 @@ function commitDoc(){
 // Полоска сверху — на любой запрос; заслонка «не нажимайте» — только на действие,
 // которое человек начал сам (нажал кнопку), чтобы фоновое обновление не мешало работать.
 var TWL=0, TWCLICK=0;
+var TWTMR=0;
 function twLoadOn(wait){
   TWL++;
   var b=document.getElementById('twload'); if(b) b.style.display='block';
-  if(wait){ var w=document.getElementById('twwait'); if(w) w.style.display='flex'; }
+  if(wait){
+    var w=document.getElementById('twwait'); if(w) w.style.display='flex';
+    // ПРЕДОХРАНИТЕЛЬ: если ответ не пришёл (сеть в цеху пропала), заслонка не должна
+    // запереть экран навсегда — через 30 с она превращается в понятное сообщение и снимается пальцем.
+    clearTimeout(TWTMR);
+    TWTMR=setTimeout(function(){
+      var h=document.getElementById('twwt'); if(h) h.textContent='Ответа всё нет';
+      var s=document.querySelector('#twwait .wh'); if(s) s.textContent='связь медленная — нажмите, чтобы закрыть и попробовать снова';
+      var ww=document.getElementById('twwait'); if(ww) ww.onclick=function(){ TWL=0; twLoadOff(); };
+    },30000);
+  }
 }
 function twLoadOff(){
   TWL=Math.max(0,TWL-1); if(TWL) return;
+  clearTimeout(TWTMR);
   var b=document.getElementById('twload'); if(b) b.style.display='none';
-  var w=document.getElementById('twwait'); if(w) w.style.display='none';
+  var w=document.getElementById('twwait');
+  if(w){ w.style.display='none'; w.onclick=null; }
+  var s=document.querySelector('#twwait .wh'); if(s) s.textContent='идёт обмен с сервером — не нажимайте';
 }
 function twSay(t){ var e=document.getElementById('twwt'); if(e&&t) e.textContent=t; }
 // нажатие человека «взводит» заслонку для ближайшего запроса (20 с — на случай prompt по дороге)
