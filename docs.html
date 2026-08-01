@@ -46,9 +46,33 @@
   .pcard input,.pcard select{ padding:7px 9px; font-size:13.5px; }
   .pcard input.xs{ width:82px; } .pcard input.s{ width:120px; }
   .pres{ font-size:13px; padding-top:5px; border-top:1px dashed var(--line); }
+
+  /* ── ВИДИМАЯ РЕАКЦИЯ. На телефоне нет наведения курсором: если кнопка не «продавливается»,
+     человек не понимает, нажал он или промахнулся, и жмёт ещё раз — отсюда дубли. ── */
+  button{ touch-action:manipulation; -webkit-tap-highlight-color:transparent;
+          transition:transform .06s ease, filter .12s ease, opacity .12s ease; }
+  button:active{ transform:scale(.94); filter:brightness(.86); }
+  button[disabled]{ opacity:.5; pointer-events:none; }
+  a[href^="javascript"]{ -webkit-tap-highlight-color:rgba(124,58,237,.15); }
+  /* тонкая полоска сверху — «идёт обмен с сервером» */
+  #twload{ position:fixed; left:0; top:0; height:3px; width:100%; z-index:60; display:none; overflow:hidden; }
+  #twload>i{ display:block; height:100%; width:38%; background:var(--accent); animation:twslide 1.1s ease-in-out infinite; }
+  @keyframes twslide{ 0%{ margin-left:-38% } 100%{ margin-left:100% } }
+  /* заслонка на время действия: и показывает, что идёт работа, и физически не даёт нажать второй раз */
+  #twwait{ position:fixed; inset:0; background:rgba(246,247,252,.78); z-index:70; display:none;
+           align-items:center; justify-content:center; }
+  #twwait .wb{ background:#fff; border-radius:16px; padding:18px 22px; text-align:center; min-width:190px;
+               box-shadow:0 12px 34px rgba(20,25,50,.18); }
+  #twwait .sp{ width:28px; height:28px; border:3px solid rgba(124,58,237,.22); border-top-color:var(--accent);
+               border-radius:50%; margin:0 auto 10px; animation:twspin .8s linear infinite; }
+  @keyframes twspin{ to{ transform:rotate(360deg) } }
+  #twwait .wt{ font-weight:700; font-size:15px; }
+  #twwait .wh{ font-size:12.5px; opacity:.6; margin-top:4px; }
 </style>
 </head>
 <body>
+<div id="twload"><i></i></div>
+<div id="twwait"><div class="wb"><div class="sp"></div><div class="wt" id="twwt">Отправляю…</div><div class="wh">идёт обмен с сервером — не нажимайте</div></div></div>
 <style>html.emb>body>.hi{display:none}</style><script>if(/[?&]embed=1/.test(location.search))document.documentElement.classList.add('emb');</script>
 <div class="hi">📑 Входящие документы</div>
 <div class="muted" id="cnt">загрузка…</div>
@@ -219,7 +243,7 @@ function delDoc(fileId, sup, force){
 }
 
 function scanNow(){
-  var m=$('smsg'); m.className='msg'; m.textContent='Распознаю…';
+  var m=$('smsg'); m.className='msg'; m.textContent='Распознаю…'; twSay('Распознаю документ — это до минуты…');
   api({vapi:'docscan', limit:2}).then(function(r){
     if(r&&r.ok){ m.className='msg ok'; m.textContent='✓ разобрано '+r.scanned+', осталось '+r.left; load(); }
     else { m.className='msg err'; m.textContent=(r&&r.error)||'ошибка'; }
@@ -346,7 +370,7 @@ function numEditHtml(p,i){
 function editNums(i){ EDIT[i]=1; renderDoc(); }
 function cancelNums(i){ delete EDIT[i]; renderDoc(); }
 function saveNums(i){
-  var p=POS[i], m=$('pnm'+i); m.className='msg'; m.textContent='Сохраняю…';
+  var p=POS[i], m=$('pnm'+i); m.className='msg'; m.textContent='Сохраняю…'; twSay('Сохраняю позицию…');
   var patch={ name:$('pn'+i).value, qty:$('pq'+i).value, unit:$('pu'+i).value,
               priceNet:$('ppn'+i).value, vatPct:$('pvp'+i).value, vatSum:$('pvs'+i).value, sumGross:$('psg'+i).value };
   apiPost({vapi:'docsetpos', id:p.id, patch:JSON.stringify(patch)}).then(function(r){
@@ -462,7 +486,7 @@ function editHead(){
     +'<button class="gray" onclick="openDoc(\''+h.fileId+'\')">Отмена</button> <span class="msg" id="ehmsg"></span></div>';
 }
 function saveHead(){
-  var h=DOC||{}, m=$('ehmsg'); m.className='msg'; m.textContent='Сохраняю…';
+  var h=DOC||{}, m=$('ehmsg'); m.className='msg'; m.textContent='Сохраняю…'; twSay('Сохраняю реквизиты…');
   var patch={ sup:$('eh_sup').value, unp:$('eh_unp').value, type:$('eh_type').value, docNo:$('eh_no').value,
               date:$('eh_date').value, dogovor:$('eh_dog').value, cur:$('eh_cur').value, sumGross:$('eh_sum').value };
   apiPost({vapi:'docsethead', file:h.fileId, patch:JSON.stringify(patch)}).then(function(r){
@@ -503,7 +527,7 @@ function commitDoc(){
   var noCls=lines.filter(function(l){ return !l.cls; }).length;
   if(noCls){ m.className='msg err'; m.textContent='Не выбран класс у позиций: '+noCls; return; }
   if(!confirm('Провести документ?\n\nМатериалы и расходники попадут в журнал закупок и на склад, «не связано» — только в статью расхода.')) return;
-  m.textContent='Провожу…';
+  m.textContent='Провожу…'; twSay('Провожу документ…');
   apiPost({vapi:'doccommit', file:DOC.fileId, lines:JSON.stringify(lines)}).then(function(r){
     if(r&&r.ok){
       m.className='msg ok';
@@ -520,8 +544,43 @@ function commitDoc(){
   var iso=function(d){ return d.toISOString().slice(0,10); };
   $('from').value=iso(f); $('to').value=iso(t);
 })();
+
+// ─────── ПОКАЗЫВАЕМ, ЧТО ИДЁТ РАБОТА ───────
+// Каждый вызов Apps Script — это 3-6 секунд. Без видимого признака человек считает, что
+// кнопка не сработала, и жмёт снова: так рождались дубли нарядов и «то одобряет, то нет».
+// Полоска сверху — на любой запрос; заслонка «не нажимайте» — только на действие,
+// которое человек начал сам (нажал кнопку), чтобы фоновое обновление не мешало работать.
+var TWL=0, TWCLICK=0;
+function twLoadOn(wait){
+  TWL++;
+  var b=document.getElementById('twload'); if(b) b.style.display='block';
+  if(wait){ var w=document.getElementById('twwait'); if(w) w.style.display='flex'; }
+}
+function twLoadOff(){
+  TWL=Math.max(0,TWL-1); if(TWL) return;
+  var b=document.getElementById('twload'); if(b) b.style.display='none';
+  var w=document.getElementById('twwait'); if(w) w.style.display='none';
+}
+function twSay(t){ var e=document.getElementById('twwt'); if(e&&t) e.textContent=t; }
+// нажатие человека «взводит» заслонку для ближайшего запроса (20 с — на случай prompt по дороге)
+document.addEventListener('click',function(e){
+  var n=e.target;
+  while(n&&n!==document.body){ if(n.tagName==='BUTTON'||n.tagName==='A'){ TWCLICK=Date.now(); return; } n=n.parentNode; }
+},true);
+(function(){
+  var _api=(typeof api==='function')?api:null, _post=(typeof apiPost==='function')?apiPost:null;
+  var wrap=function(fn){ return function(p){
+    var mine=(TWCLICK && (Date.now()-TWCLICK)<20000); if(mine) TWCLICK=0;
+    twLoadOn(mine);
+    return fn(p).then(function(r){ twLoadOff(); return r; }, function(e){ twLoadOff(); throw e; });
+  }; };
+  if(_api) api=wrap(_api);
+  if(_post) apiPost=wrap(_post);
+})();
+
 load();
-window.addEventListener('message',function(e){ if(e&&e.data&&e.data.tw==='refresh') load(); });
+window.addEventListener('message',function(e){ if(e&&e.data&&e.data.tw==='refresh') 
+load(); });
 </script>
 </body>
 </html>
