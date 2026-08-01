@@ -244,13 +244,13 @@ function exportDocs(){
 }
 
 // ─────────── карточка документа ───────────
-var DOC=null, POS=[], MATS=[];
+var DOC=null, POS=[], MATS=[], EDIT={};
 function closeOv(){ $('ov').className='ov'; }
 function openDoc(fileId){
   $('ov').className='ov on'; $('modal').innerHTML='<div class="center muted">Загрузка документа…</div>';
   api({vapi:'docpositions', file:fileId}).then(function(r){
     if(!r||!r.ok){ $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><div class="err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
-    DOC=r.header||{fileId:fileId}; DOC.fileId=fileId; POS=r.positions||[]; MATS=r.mats||[];
+    DOC=r.header||{fileId:fileId}; DOC.fileId=fileId; POS=r.positions||[]; MATS=r.mats||[]; EDIT={};
     CLASSES=r.classes||CLASSES; CLASSMAP=r.classMap||CLASSMAP;
     SERVICES=r.services||SERVICES; TYPES=r.types||TYPES;
     $('matlist').innerHTML=MATS.map(function(m){ return '<option value="'+esc(m.name)+'">'; }).join('');
@@ -305,11 +305,11 @@ function posCard(p,i){
       +(p.status!=='новая'?'<span class="pill '+(p.status==='пропущена'?'p-wait':'p-done')+'">'+esc(p.status)+'</span>':'')
       +'<button class="gray sm" title="'+(p.status==='пропущена'?'вернуть строку':'убрать лишнюю строку распознавания')+'" onclick="skipPos('+i+')">'
       +(p.status==='пропущена'?'↩':'✕')+'</button></div>'
-    +'<div class="prow"><span class="plbl">Кол-во</span><input class="xs" id="pq'+i+'" value="'+p.qty+'" oninput="recalcPos('+i+')">'
-      +'<span>'+esc(p.unit||'')+'</span>'
+    +(EDIT[i]? numEditHtml(p,i) : ('<div class="prow"><span class="plbl">Кол-во</span><span><b>'+esc(String(p.qty))+'</b> '+esc(p.unit||'')+'</span>'
       +'<span class="plbl">Цена без НДС</span><span>'+money(p.priceNet)+'</span>'
       +'<span class="plbl">НДС</span><span>'+(p.vatPct||0)+'% = '+money(p.vatSum)+'</span>'
-      +'<span class="plbl">Сумма с НДС</span><b>'+money(p.sumGross)+'</b></div>'
+      +'<span class="plbl">Сумма с НДС</span><b>'+money(p.sumGross)+'</b>'
+      +'<button class="gray sm" title="распозналось неверно — поправить цифры и наименование" onclick="editNums('+i+')">✎</button></div>'))
     +'<div class="prow"><span class="plbl">Что это</span>'
       +'<select id="pc_cls'+i+'" onchange="setCls('+i+')">'+opts+'</select>'
       +'<span class="plbl" id="plm'+i+'" style="'+(isMat?'':'display:none')+'">Наш материал</span>'
@@ -325,6 +325,36 @@ function posCard(p,i){
       +'<span class="plbl">Счёт учёта</span><input class="xs" id="pa'+i+'" value="'+esc(p.acct||'')+'" placeholder="10.01" oninput="POS['+i+'].acct=this.value;recalcPos('+i+')"></div>'
     +'<div class="pres" id="pr'+i+'"></div>'
   +'</div>';
+}
+// ЦИФРЫ ТОЖЕ РАСПОЗНАЮТСЯ С ОШИБКАМИ. Они идут в цену прихода и в 1С, поэтому правятся
+// здесь и сохраняются сразу — не «потом в журнале закупок», когда уже поздно.
+function numEditHtml(p,i){
+  var fld=function(id,lbl,val,w){ return '<span class="plbl">'+lbl+'</span>'
+    +'<input class="xs" id="'+id+i+'" value="'+esc(val==null?'':String(val))+'" style="width:'+(w||82)+'px">'; };
+  return '<div class="prow" style="background:#f8f7ff;border-radius:8px;padding:6px">'
+    +'<span class="plbl">Наименование</span><input id="pn'+i+'" value="'+esc(p.name||'')+'" style="flex:1;min-width:200px">'
+    +'</div><div class="prow" style="background:#f8f7ff;border-radius:8px;padding:6px">'
+    +fld('pq','Кол-во',p.qty)+fld('pu','Ед',p.unit,70)
+    +fld('ppn','Цена без НДС',p.priceNet,100)
+    +fld('pvp','НДС %',p.vatPct,60)
+    +fld('pvs','Сумма НДС',p.vatSum,100)
+    +fld('psg','Сумма с НДС',p.sumGross,110)
+    +'<button class="sm" onclick="saveNums('+i+')">Сохранить</button>'
+    +'<button class="gray sm" onclick="cancelNums('+i+')">Отмена</button>'
+    +'<span class="msg" id="pnm'+i+'"></span></div>';
+}
+function editNums(i){ EDIT[i]=1; renderDoc(); }
+function cancelNums(i){ delete EDIT[i]; renderDoc(); }
+function saveNums(i){
+  var p=POS[i], m=$('pnm'+i); m.className='msg'; m.textContent='Сохраняю…';
+  var patch={ name:$('pn'+i).value, qty:$('pq'+i).value, unit:$('pu'+i).value,
+              priceNet:$('ppn'+i).value, vatPct:$('pvp'+i).value, vatSum:$('pvs'+i).value, sumGross:$('psg'+i).value };
+  apiPost({vapi:'docsetpos', id:p.id, patch:JSON.stringify(patch)}).then(function(r){
+    if(!r||!r.ok){ m.className='msg err'; m.textContent=(r&&r.error)||'не сохранилось'; return; }
+    ['name','unit','qty','priceNet','vatPct','vatSum','sumGross','coef','qtyW','statya','acct'].forEach(function(k){
+      if(r[k]!==undefined&&r[k]!=='') POS[i][k]=r[k]; });
+    delete EDIT[i]; renderDoc();
+  }).catch(function(){ m.className='msg err'; m.textContent='связь оборвалась'; });
 }
 function skipPos(i){
   var p=POS[i], back=(p.status==='пропущена');
@@ -384,7 +414,6 @@ function coefLocal(m, unitDoc){
 function recalcPos(i){
   var p=POS[i], out=$('pr'+i); if(!out) return;
   var cls=($('pc_cls'+i)||{}).value||p.cls||'';
-  p.qty=num(($('pq'+i)||{}).value)||p.qty;
   if(!cls){ out.innerHTML='<span class="muted">выберите, что это — от этого зависит статья расхода и счёт учёта</span>'; return; }
   if(cls==='не связано'||cls==='услуга'){
     var st=(($('ps'+i)||{}).value||'').trim();
@@ -467,7 +496,7 @@ function commitDoc(){
   var m=$('dmsg'); m.className='msg';
   var lines=POS.map(function(p,i){
     return { id:p.id, cls:($('pc_cls'+i)||{}).value||'', mat:(($('pm'+i)||{}).value||'').trim(),
-             coef:num(($('pk'+i)||{}).value), qty:num(($('pq'+i)||{}).value)||p.qty, qtyW:p.qtyW||0,
+             coef:num(($('pk'+i)||{}).value), qty:p.qty, qtyW:p.qtyW||0,
              statya:(($('ps'+i)||{}).value||'').trim(), acct:(($('pa'+i)||{}).value||'').trim() };
   });
   lines=lines.filter(function(l,i){ return POS[i].status!=='пропущена'; });   // убранные строки не проводим
