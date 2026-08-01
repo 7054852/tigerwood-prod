@@ -317,7 +317,9 @@ function posCard(p,i){
       +'<span class="plbl" id="plc'+i+'" style="'+(isMat?'':'display:none')+'">Коэф</span>'
       +'<input class="xs" id="pk'+i+'" value="'+(p.coef||'')+'" style="'+(isMat?'':'display:none')+'" oninput="recalcPos('+i+')">'
       +'<span class="plbl" id="pls'+i+'" style="'+(isSvc?'':'display:none')+'">Вид услуги</span>'
-      +'<select id="pv'+i+'" style="'+(isSvc?'':'display:none')+'" onchange="setSvc('+i+')">'+svcOpts+'</select></div>'
+      +'<select id="pv'+i+'" style="'+(isSvc?'':'display:none')+'" onchange="setSvc('+i+')">'+svcOpts+'</select>'
+      +'<a href="javascript:void(0)" id="pall'+i+'" style="'+(isSvc?'':'display:none')+'" class="muted" '
+      +'title="в акте обычно все строки — про одну услугу" onclick="svcToAll('+i+')">→ ко всем строкам</a></div>'
     +'<div class="prow"><span class="plbl">Статья расхода</span>'
       +'<input class="s" id="ps'+i+'" value="'+esc(p.statya||'')+'" placeholder="как в финансах" style="min-width:220px" oninput="POS['+i+'].statya=this.value;recalcPos('+i+')">'
       +'<span class="plbl">Счёт учёта</span><input class="xs" id="pa'+i+'" value="'+esc(p.acct||'')+'" placeholder="10.01" oninput="POS['+i+'].acct=this.value;recalcPos('+i+')"></div>'
@@ -335,7 +337,7 @@ function setCls(i){
   var cls=$('pc_cls'+i).value; POS[i].cls=cls;
   var isMat=(cls==='материал'||cls==='расходник');
   ['plm','pm','plc','pk'].forEach(function(pre){ var el=$(pre+i); if(el) el.style.display=isMat?'':'none'; });
-  ['pls','pv'].forEach(function(pre){ var el=$(pre+i); if(el) el.style.display=(cls==='услуга')?'':'none'; });
+  ['pls','pv','pall'].forEach(function(pre){ var el=$(pre+i); if(el) el.style.display=(cls==='услуга')?'':'none'; });
   var m=CLASSMAP[cls.toLowerCase()];
   if(m){ POS[i].statya=m.statya||POS[i].statya||''; POS[i].acct=m.acct||POS[i].acct||'';
     var se=$('ps'+i), ae=$('pa'+i); if(se) se.value=POS[i].statya; if(ae) ae.value=POS[i].acct; }
@@ -349,6 +351,17 @@ function setSvc(i){
   POS[i].statya=sv.statya; POS[i].acct=sv.acct;
   var se=$('ps'+i), ae=$('pa'+i); if(se) se.value=sv.statya; if(ae) ae.value=sv.acct;
   recalcPos(i);
+}
+// акт мобильной связи — это десять строк про одну услугу: проставлять вид каждой отдельно бессмысленно
+function svcToAll(i){
+  var nm=$('pv'+i).value; if(!nm){ alert('Сначала выберите вид услуги'); return; }
+  for(var k=0;k<POS.length;k++){
+    if(POS[k].status==='пропущена'||POS[k].status==='разнесена') continue;
+    POS[k].cls='услуга';
+    var cs=$('pc_cls'+k); if(cs) cs.value='услуга';
+    setCls(k);
+    var vs=$('pv'+k); if(vs){ vs.value=nm; setSvc(k); }
+  }
 }
 // коэффициент и итог считаем на месте: сервер за этим дёргать нельзя, каждый вызов ~3 с
 function coefLocal(m, unitDoc){
