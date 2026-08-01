@@ -179,11 +179,24 @@ function renderDoc(){
     +'<div class="muted" style="font-size:12px;margin-top:4px">Реквизиты пойдут в 1С — если распознались неверно, поправьте: '
       +'<a href="javascript:void(0)" onclick="editHead()">✎ изменить шапку</a> · '
       +'<a href="'+esc(h.file||'')+'" target="_blank">открыть файл</a></div>'
+    +sumCheckHtml()
     +'<div class="lbl">Позиции — '+POS.length+', разнесено '+done+'</div>'
     +cards
     +'<div style="margin-top:12px"><button class="green" onclick="commitDoc()">✓ Провести документ</button> '
       +'<span class="msg" id="dmsg"></span></div>';
   for(var k=0;k<POS.length;k++) recalcPos(k);
+}
+// сумма позиций против суммы документа: расхождение почти всегда значит лишнюю или пропущенную строку
+function sumCheckHtml(){
+  var h=DOC||{}, act=POS.filter(function(p){ return p.status!=='пропущена'; });
+  var sum=0; act.forEach(function(p){ sum+=Number(p.sumGross)||0; });
+  sum=Math.round(sum*100)/100;
+  var doc=Number(h.sumGross)||0, d=Math.round((doc-sum)*100)/100;
+  if(!doc||Math.abs(d)<0.02) return '';
+  return '<div class="box" style="margin-top:8px;background:#fdecea;border-color:#f5c6c2">'
+    +'<b>⚠ Суммы не сходятся:</b> позиций на <b>'+money(sum)+'</b>, в документе <b>'+money(doc)+'</b> (разница '+money(d)+').'
+    +'<div class="muted">Проверьте: лишняя строка — уберите её «✕»; не хватает строки — распознайте документ заново; '
+    +'или сумма документа в реестре не та — поправьте «✎ изменить шапку».</div></div>';
 }
 function fmtD(d){ var s=String(d); if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10).split('-').reverse().join('.'); return s; }
 function posCard(p,i){
@@ -192,7 +205,9 @@ function posCard(p,i){
   var isMat=(p.cls==='материал'||p.cls==='расходник');
   return '<div class="pcard'+(p.status!=='новая'?' done':'')+'" id="pc'+i+'">'
     +'<div class="prow"><b style="flex:1;min-width:200px">'+esc(p.name)+'</b>'
-      +(p.status!=='новая'?'<span class="pill p-done">'+esc(p.status)+'</span>':'')+'</div>'
+      +(p.status!=='новая'?'<span class="pill '+(p.status==='пропущена'?'p-wait':'p-done')+'">'+esc(p.status)+'</span>':'')
+      +'<button class="gray sm" title="'+(p.status==='пропущена'?'вернуть строку':'убрать лишнюю строку распознавания')+'" onclick="skipPos('+i+')">'
+      +(p.status==='пропущена'?'↩':'✕')+'</button></div>'
     +'<div class="prow"><span class="plbl">Кол-во</span><input class="xs" id="pq'+i+'" value="'+p.qty+'" oninput="recalcPos('+i+')">'
       +'<span>'+esc(p.unit||'')+'</span>'
       +'<span class="plbl">Цена без НДС</span><span>'+money(p.priceNet)+'</span>'
@@ -209,6 +224,13 @@ function posCard(p,i){
       +'<span class="plbl">Счёт учёта</span><input class="xs" id="pa'+i+'" value="'+esc(p.acct||'')+'" placeholder="10.01" oninput="POS['+i+'].acct=this.value;recalcPos('+i+')"></div>'
     +'<div class="pres" id="pr'+i+'"></div>'
   +'</div>';
+}
+function skipPos(i){
+  var p=POS[i], back=(p.status==='пропущена');
+  if(!back && !confirm('Убрать строку «'+p.name+'» из документа?\n\nОна не пойдёт ни в материалы, ни в расходы, ни в выгрузку 1С.\nОбычно так поступают с лишней строкой, которую распознавание сделало из описательного текста.')) return;
+  api({vapi:'docskippos', id:p.id, back:back?1:''}).then(function(r){
+    if(r&&r.ok){ POS[i].status=r.status; renderDoc(); } else alert((r&&r.error)||'не вышло');
+  });
 }
 function setCls(i){
   var cls=$('pc_cls'+i).value; POS[i].cls=cls;
@@ -280,6 +302,7 @@ function commitDoc(){
              coef:num(($('pk'+i)||{}).value), qty:num(($('pq'+i)||{}).value)||p.qty, qtyW:p.qtyW||0,
              statya:(($('ps'+i)||{}).value||'').trim(), acct:(($('pa'+i)||{}).value||'').trim() };
   });
+  lines=lines.filter(function(l,i){ return POS[i].status!=='пропущена'; });   // убранные строки не проводим
   var noCls=lines.filter(function(l){ return !l.cls; }).length;
   if(noCls){ m.className='msg err'; m.textContent='Не выбран класс у позиций: '+noCls; return; }
   if(!confirm('Провести документ?\n\nМатериалы и расходники попадут в журнал закупок и на склад, «не связано» — только в статью расхода.')) return;
