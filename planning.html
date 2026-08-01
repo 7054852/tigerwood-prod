@@ -442,9 +442,63 @@ function renderHorizon(){
         : ((o.dlDays!=null&&bn.days!=null)?('<div style="margin-top:6px" class="ok">✓ К сроку укладываемся: узкому месту нужно '+bn.days+' дн, до срока '+o.dlDays+'.</div>'):''))
       +'</div>';
   }
-  $('pane').innerHTML=kpi+advice+(R.waves||[]).map(waveCard).join('')
+  $('pane').innerHTML=kpi+advice+heatBox()+(R.waves||[]).map(waveCard).join('')
     +((R.unplanned&&R.unplanned.totalRub>0)?('<div class="box"><b>Вне волн</b> <span class="muted">— '+m0(R.unplanned.totalRub)+' ₽ ещё не распределены</span></div>'):'')
     +editorHtml();
+}
+/* ── КАРТА НЕДЕЛИ: участок × день ──
+   Отвечает на вопрос, которого не было нигде: где будет провал и какой участок встанет.
+   Цвет = утилизация (сколько участок реально сделает от своей мощности), красная рамка = фронта нет. */
+function heatBox(){
+  var f=R.forecast; if(!f||!f.days||!f.days.length) return '';
+  var groups=['Механика','Шлифовка','Покрытие','Сборка'];
+  var CW=46, CH=34, LW=88, TH=18, BH=26;
+  var W=LW+CW*f.days.length, H=TH+CH*groups.length+BH;
+  var cells='', labels='', heads='';
+  f.days.forEach(function(d,di){
+    var p=d.date.split('-'), x=LW+di*CW;
+    var wd=['вс','пн','вт','ср','чт','пт','сб'][mkDate(d.date).getDay()];
+    var wknd=(wd==='сб'||wd==='вс');
+    heads+='<text x="'+(x+CW/2)+'" y="'+(TH-6)+'" text-anchor="middle" font-size="10" fill="'+(wknd?'#c0392b':'#8a93a6')+'">'+p[2]+'.'+p[1]+'</text>';
+    labels+='<text x="'+(x+CW/2)+'" y="'+(H-9)+'" text-anchor="middle" font-size="9.5" fill="'+(wknd?'#c0392b':'#8a93a6')+'">'+wd+'</text>';
+    if(d.estimated) labels+='<rect x="'+x+'" y="'+TH+'" width="'+CW+'" height="'+(CH*groups.length)+'" fill="none" stroke="#c9d0e0" stroke-dasharray="3 3"/>';
+    groups.forEach(function(g,gi){
+      var b=(d.byGroup||{})[g]||{}, y=TH+gi*CH;
+      var load=(b.cap>0)?Math.round((b.work||0)/b.cap*100):null;
+      var fill='#f2f4f9', txt='#8a93a6', note='';
+      if(b.starved){ fill='#fdecea'; txt='#c0392b'; note='фронта нет'; }
+      else if(load==null){ fill='#f7f8fb'; note='мощность неизвестна'; }
+      else if(load>=85){ fill='#cfe9d6'; txt='#12602c'; note='загружен'; }
+      else if(load>=40){ fill='#e6f2e9'; txt='#2f7a34'; note='загружен наполовину'; }
+      else if((b.left||0)>0.01){ fill='#eef1f8'; note='простой — работы мало'; }
+      else { fill='#f7f8fb'; note='всё сделано'; }
+      var val=(b.left||0)<=0.01 ? '✓' : (b.work>=1000?(Math.round(b.work/100)/10+'к'):m0(b.work));
+      cells+='<g><rect x="'+x+'" y="'+y+'" width="'+(CW-2)+'" height="'+(CH-2)+'" rx="5" fill="'+fill+'"'
+        +(b.starved?' stroke="#c0392b" stroke-width="1.5"':'')+'>'
+        +'<title>'+esc(g)+' · '+esc(d.date)+'\nсделает '+m0(b.work)+' из '+m0(b.cap)+' ₽ мощности'
+        +'\nдоступно работы '+m0(b.avail)+' ₽, всего осталось '+m0(b.left)+' ₽\n'+note+'</title></rect>'
+        +'<text x="'+(x+(CW-2)/2)+'" y="'+(y+CH/2+3)+'" text-anchor="middle" font-size="11" font-weight="700" fill="'+txt+'">'+val+'</text></g>';
+    });
+  });
+  groups.forEach(function(g,gi){
+    heads+='<text x="0" y="'+(TH+gi*CH+CH/2+4)+'" font-size="11.5" font-weight="700" fill="#1b2333">'+(ZICON[g]||'')+' '+esc(g)+'</text>';
+  });
+  var verdict;
+  if(f.finishDay) verdict='<b class="ok">Заказ закроется на '+f.finishDay+'-й день</b> — если мощности останутся такими.';
+  else { var last=f.days[f.days.length-1];
+    verdict='<b>За '+f.horizon+' дней заказ не закроется</b> — останется '+m0(last.leftRub)+' ₽ работы.'; }
+  var starve=f.starve?('<div style="margin-top:4px;color:var(--red)">⛔ «'+esc(f.starve.group)+'» встанет '+ruDate(f.starve.date)
+    +': фронта работ не будет — предыдущий участок не успеет дать задел.</div>'):'';
+  var est=f.days.some(function(d){ return d.estimated; })
+    ? '<div class="muted" style="margin-top:4px">Дни в пунктирной рамке — смены ещё не проставлены, численность взята по среднему. Проставьте смены во вкладке «🎯 День» — прогноз станет точным.</div>' : '';
+  return '<div class="box"><div class="row" style="margin-bottom:6px"><b>📅 Неделя вперёд</b>'
+    +'<span class="muted">— что каждый участок реально сделает за день</span></div>'
+    +'<div style="overflow-x:auto"><svg width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'" style="max-width:none">'
+    +heads+cells+labels+'</svg></div>'
+    +'<div class="zlegend" style="padding:6px 0 0"><span><i style="background:#cfe9d6"></i>загружен</span>'
+    +'<span><i style="background:#e6f2e9"></i>наполовину</span><span><i style="background:#eef1f8"></i>простой</span>'
+    +'<span><i style="background:#fdecea"></i>встал: фронта нет</span><span>✓ — всё сделано</span></div>'
+    +'<div style="margin-top:6px">'+verdict+starve+est+'</div></div>';
 }
 function waveCard(w){
   var maxD=0; (w.groups||[]).forEach(function(g){ if(g.days>maxD) maxD=g.days; });
@@ -460,7 +514,9 @@ function waveCard(w){
   }).join('');
   return '<div class="wave"><div class="row"><b style="font-size:15px">'+esc(w.title)+'</b>'
     +'<span class="pill p-mut">'+m0(w.totalRub)+' ₽</span>'
-    +(w.bottleneckGroup?('<span class="pill p-red">узкое: '+esc(w.bottleneckGroup)+(w.bottleneckDays?(' · '+w.bottleneckDays+' дн'):'')+'</span>'):'')+'</div>'
+    +(w.bottleneckGroup?('<span class="pill p-red">узкое: '+esc(w.bottleneckGroup)+(w.bottleneckDays?(' · '+w.bottleneckDays+' дн'):'')+'</span>'):'')
+    +(w.endDay!=null?('<span class="pill '+(w.late?'p-red':'p-gr')+'" title="волны идут встык: эта начинается там, где кончилась предыдущая">дни '
+        +(w.startDay||0)+'–'+w.endDay+(w.late?' · позже срока':'')+'</span>'):'')+'</div>'
     +'<div class="flow">'+flow+'</div>'
     +((w.shared&&w.shared.length)?('<div class="muted" style="margin-top:6px">🧩 общие детали (делать сразу на всю волну): '
         +w.shared.slice(0,8).map(esc).join(', ')+(w.shared.length>8?(' <span title="'+esc(w.shared.slice(8).join(', '))+'">и ещё '+(w.shared.length-8)+'</span>'):'')+'</div>'):'')
