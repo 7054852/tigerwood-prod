@@ -326,6 +326,8 @@ function addToCart(){
   if(!op){ wmsg('<span class="err">Выберите операцию</span>'); return; }
   if(!(qty>0)){ wmsg('<span class="err">Укажите количество</span>'); return; }
   var bs=document.getElementById('batch'), bv=bs.value, bn=bs.options[bs.selectedIndex]?bs.options[bs.selectedIndex].text:'';
+  // пустой селектор (заказы ещё грузятся) молча давал batch='' — операция уходила «вне заказа»
+  if(!bs.options.length){ wmsg('<span class="err">Список заказов ещё грузится — секунду</span>'); return; }
   CART.push({equip:equip,detail:detail,op:op,qty:qty,rate:rate,sum:Math.round(qty*rate*100)/100,
              batch:(bv===FREE?'':bv), batchName:(bv===FREE?'🧰 вне заказа':bn)});
   document.getElementById('qty').value=''; calc(); wmsg(''); renderCart(); saveDraft();
@@ -463,6 +465,15 @@ function sendWork(){
   var worker=curWorker();
   if(!worker){ wmsg('<span class="err">Не выбран рабочий</span>'); return; }
   var items=CART.map(function(x){ return {equip:x.equip,detail:x.detail,op:x.op,qty:x.qty,batch:x.batch||''}; });
+  // ⚠ Наряд, целиком ушедший «вне заказа», не двигает выполнение заказа — и это заметили
+  // только на проверке, через полдня. Спрашиваем прямо перед отправкой.
+  if(items.length && items.every(function(x){ return !x.batch; })){
+    var known=(DATA.batches||[]).length;
+    if(!known){ wmsg('<span class="err">Список заказов ещё не загрузился — подождите пару секунд и отправьте снова</span>'); return; }
+    if(!confirm('Все '+items.length+' операций записаны БЕЗ заказа (🧰 вне заказа).\n\n'
+      +'Так они попадут в зарплату, но не в выполнение заказа.\n'
+      +'Если работа шла по заказу — отмените и выберите заказ в списке.\n\nВсё равно отправить?')) return;
+  }
   var sheets=[];
   for(var i=0;i<SHEETS.length;i++){
     var sd=SHEETS[i]; if(!sd.mat||!(sd.qty>0)) continue;
@@ -567,6 +578,8 @@ function renderPending(r){
       var rid=rp.report;
       var lines=rp.lines.map(function(l){
         var koef=l.koef||1, kbadge=(koef!==1)?' <span class="muted" style="font-size:12px">×'+koef+'</span>':'';
+        // ⚠ дубль виден сразу: сверять наряды глазами мастер не должен
+        var dupb=l.dup?(' <span class="pill" style="background:#fdecea;color:#c0392b" title="'+esc(l.dup)+'">⚠ дубль</span>'):'';
         var acts='';
         if(master){
           acts=' <button class="sm gray" onclick="editOut(\''+esc(l.id)+'\','+l.qty+')" title="изменить кол-во">✏️</button>'
@@ -589,7 +602,7 @@ function renderPending(r){
             +'<span class="ok">+'+l.sum+' р.'+(master?(' <button class="sm gray" onclick="delJournal(\''+esc(l.id)+'\')" title="убрать премию">🗑</button><span id="jm-'+esc(l.id)+'" class="msg"></span>'):'')+'</span></div></div>';
         }
         return '<div style="border-top:1px solid #eee;padding-top:5px">'
-          +'<div class="row"><span>'+kindBadge(l)+esc(l.detail)+' · '+esc(l.op)+' · '+l.qty+' шт'+kbadge+'</span>'
+          +'<div class="row"><span>'+kindBadge(l)+esc(l.detail)+' · '+esc(l.op)+' · '+l.qty+' шт'+kbadge+dupb+'</span>'
           +'<span>'+l.sum+' р.'+acts+'</span></div>'
           +vsel+'</div>';
       }).join('');
