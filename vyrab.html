@@ -1093,9 +1093,48 @@ function loadMyShifts(){
       return '<span style="display:inline-block;background:'+(s.shift==='ночь'?'#e3e8ff':'#fff3d6')+';border-radius:14px;padding:3px 10px;margin:2px 4px 2px 0;font-size:12.5px;font-weight:600">'
         +(s.shift==='ночь'?'🌙':'☀️')+' '+lbl+st+(s.group?(' · '+esc(s.group)):'')+'</span>';
     }).join('');
-    el.innerHTML='<div class="card" style="margin-bottom:10px"><b>📅 Мои смены</b><div style="margin-top:5px">'+chips+'</div></div>';
+    // ЗАДАНИЕ. Мастер расставляет работу с вечера, но до сих пор рабочий этого не видел —
+    // расстановка оставалась заметкой в таблице. Теперь задание здесь, и его можно взять в наряд.
+    var task='';
+    for(var i=0;i<sh.length;i++){
+      var s=sh[i]; if(!s.tasks||!s.tasks.length) continue;
+      if(s.date<today) continue;                        // вчерашнее задание уже не выдаём
+      var p=s.date.split('-'), when=(s.date===today)?'сегодня':('на '+p[2]+'.'+p[1]);
+      MYTASK=s;
+      var rows=s.tasks.map(function(t,j){
+        var done=(t.factQty>0)?('<span class="ok" style="font-size:12px">сдал '+t.factQty+'</span> '):'';
+        return '<div class="row" style="align-items:center;gap:6px"><span style="flex:1;min-width:150px">'
+          +esc(t.op)+(t.detail?(' · <b>'+esc(t.detail)+'</b>'):'')+' — '+t.qty+' шт</span>'
+          +done+'<button class="sm gray" onclick="takeTask('+j+')">＋ в наряд</button></div>';
+      }).join('');
+      task='<div class="card" style="margin-bottom:10px;border:1px solid var(--accent)">'
+        +'<div class="row"><b>📋 Задание '+when+'</b>'
+        +'<span class="muted" style="margin-left:auto">'+(s.shift==='ночь'?'🌙 ночь':'☀️ день')+(s.group?(' · '+esc(s.group)):'')+'</span></div>'
+        +rows
+        +'<div class="row" style="margin-top:6px"><span class="muted" style="flex:1">примерно '+(s.planRub||0)+' р.'
+        +((s.factRub>0)?(' · сдано на '+s.factRub+' р.'):'')+'</span>'
+        +'<button class="sm" onclick="takeAllTasks()">Взять всё в наряд</button></div></div>';
+      break;
+    }
+    el.innerHTML=task+'<div class="card" style="margin-bottom:10px"><b>📅 Мои смены</b><div style="margin-top:5px">'+chips+'</div></div>';
   }).catch(function(){});
 }
+// задание → корзина наряда. Расценку и партию всё равно пересчитает сервер при подаче,
+// поэтому здесь достаточно оборудования, детали, операции и количества.
+var MYTASK=null;
+function takeTask(j){
+  if(!MYTASK||!MYTASK.tasks[j]) return;
+  var t=MYTASK.tasks[j];
+  var left=(t.factQty>0)?Math.max(0,t.qty-t.factQty):t.qty;
+  if(!(left>0)){ wmsg('<span class="muted">по этой работе задание уже сдано</span>'); return; }
+  var eq=t.eq||'', bsel=document.getElementById('batch');
+  CART.push({equip:eq, detail:t.detail, op:t.op, qty:left, rate:0, sum:0,
+             batch:t.order||'', batchName:t.order?'':'🧰 вне заказа', fromTask:1});
+  renderCart(); saveDraft();
+  wmsg('<span class="ok">Добавлено в наряд: '+esc(t.op)+' · '+left+' шт</span>');
+  if(!eq) wmsg('<span class="err">Проверьте изделие у строки — в задании оно не указано</span>');
+}
+function takeAllTasks(){ if(!MYTASK) return; for(var j=0;j<MYTASK.tasks.length;j++) takeTask(j); }
 MODE = (WANT_CHECK && DATA.canCheck) ? 'master' : 'my';   // из кэша прошлого входа
 applyMode();
 if(WANT_CHECK && DATA.canCheck){ TABSET=1; showTab('m'); }   // мастеру сразу «Проверка», без перескока
