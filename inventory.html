@@ -41,7 +41,6 @@
   .sh{ font-size:10px; color:#8a5a00; font-weight:700; }
   .foot{ margin-top:10px; font-size:12px; color:#4a5468; display:flex; gap:24px; flex-wrap:wrap; }
 
-  @page{ size:A4 landscape; margin:10mm; }
   @media print{
     body{ background:#fff; }
     .wrap{ max-width:none; padding:0; }
@@ -49,9 +48,21 @@
     .sheet{ border:0; border-radius:0; padding:0; }
     th,td{ font-size:11px; }
     td.det,td.cell{ height:24px; }
+    /* книжная: колонок столько же, поэтому ужимаем шрифт и высоту строки */
+    body.port th,body.port td{ font-size:9.5px; padding:0 3px; }
+    body.port td.det,body.port td.cell{ height:21px; }
+    body.port th{ font-size:9px; padding:3px 2px; }
+    body.port .stitle{ font-size:16px; }
+    body.port .legend,body.port .sline{ font-size:10px; }
+    body.port .gt{ font-size:12.5px; }
+    body.port td.n{ width:34px; }
+    body.port th.det{ width:32%; }
+    body.port td.cell{ width:8.6%; }
+    body.port .foot{ font-size:10.5px; }
   }
 </style>
 
+<style id="pagecss">@page{ size:A4 portrait; margin:9mm; }</style>
 <div class="wrap">
   <div class="bar noprint">
     <b>📋 Ведомость переучёта</b>
@@ -59,6 +70,10 @@
     <select id="mode" onchange="load()">
       <option value="prod">по изделиям</option>
       <option value="detail">свод по деталям</option>
+    </select>
+    <select id="orient" onchange="setOrient(this.value)" title="ориентация листа при печати">
+      <option value="portrait">книжная</option>
+      <option value="landscape">альбомная</option>
     </select>
     <label class="chk"><input type="checkbox" id="showAcc" onchange="draw()"> показать цифры программы</label>
     <button class="pri" onclick="window.print()">🖨 Печать</button>
@@ -79,6 +94,19 @@ function api(p){
   p.app=APP; if(TGID) p.tgid=TGID;
   var q=Object.keys(p).map(function(k){ return k+'='+encodeURIComponent(p[k]); }).join('&');
   return fetch(BASE+'?'+q).then(function(r){ return r.json(); });
+}
+// ориентацию печати меняем подменой правила @page — иначе браузер печатает как задано в CSS.
+// В книжной те же 8 колонок, поэтому вместе с @page включаем более плотную вёрстку (body.port).
+function setOrient(v){
+  v=(v==='landscape')?'landscape':'portrait';
+  document.getElementById('pagecss').textContent='@page{ size:A4 '+v+'; margin:'+(v==='portrait'?'9mm':'10mm')+'; }';
+  document.body.className=(v==='portrait')?'port':'land';
+  try{ localStorage.setItem('tw_inv_orient',v); }catch(e){}
+}
+function initOrient(){
+  var v='portrait';
+  try{ v=localStorage.getItem('tw_inv_orient')||'portrait'; }catch(e){}
+  document.getElementById('orient').value=v; setOrient(v);
 }
 function today(){ var d=new Date(), p=function(n){ return (n<10?'0':'')+n; }; return p(d.getDate())+'.'+p(d.getMonth()+1)+'.'+d.getFullYear(); }
 
@@ -139,5 +167,5 @@ function draw(){
     +'<span>Проверил (мастер): ______________________ / ______________</span></div>'
     +'</div>';
 }
-boot();
+initOrient(); boot();
 </script>
