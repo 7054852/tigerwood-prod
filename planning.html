@@ -56,6 +56,10 @@
   .capmark:after{ content:'мощность'; position:absolute; top:-13px; left:-20px; font-size:9px; opacity:.65; white-space:nowrap; }
   .zlegend{ display:flex; gap:12px; flex-wrap:wrap; padding:6px 12px 0; font-size:11.5px; color:var(--muted); }
   .zlegend i{ display:inline-block; width:9px; height:9px; border-radius:3px; margin-right:4px; vertical-align:-1px; }
+  .tgl{ border:1px solid var(--line); background:#fff; color:var(--muted); font-size:12px; font-weight:600;
+        padding:4px 10px; border-radius:8px; cursor:pointer; }
+  .tgl+.tgl{ margin-left:4px; }
+  .tgl.on{ background:var(--accent); border-color:var(--accent); color:#fff; }
   .zcap{ font-size:12px; padding:5px 12px; background:#fafbff; border-top:1px dashed var(--line); }
   .zfoot{ font-size:12.5px; padding:6px 12px 10px; }
   .warnbar{ margin:6px 12px 0; padding:6px 9px; border-radius:9px; background:#fdf3ec; color:#a35b12; font-size:12.5px; font-weight:600; }
@@ -449,8 +453,11 @@ function renderHorizon(){
 /* ── КАРТА НЕДЕЛИ: участок × день ──
    Отвечает на вопрос, которого не было нигде: где будет провал и какой участок встанет.
    Цвет = утилизация (сколько участок реально сделает от своей мощности), красная рамка = фронта нет. */
+var HEATMODE='fc';   // 'fc' — что успеем при нынешнем составе; 'req' — что НУЖНО, чтобы успеть к сроку
+function setHeat(m){ HEATMODE=m; render(); }
 function heatBox(){
-  var f=R.forecast; if(!f||!f.days||!f.days.length) return '';
+  var req=(HEATMODE==='req');
+  var f=req?R.required:R.forecast; if(!f||!f.days||!f.days.length) return req?heatBoxNoDl():'';
   var groups=['Механика','Шлифовка','Покрытие','Сборка'];
   var CW=46, CH=34, LW=88, TH=18, BH=26;
   var W=LW+CW*f.days.length, H=TH+CH*groups.length+BH;
@@ -464,41 +471,79 @@ function heatBox(){
     if(d.estimated) labels+='<rect x="'+x+'" y="'+TH+'" width="'+CW+'" height="'+(CH*groups.length)+'" fill="none" stroke="#c9d0e0" stroke-dasharray="3 3"/>';
     groups.forEach(function(g,gi){
       var b=(d.byGroup||{})[g]||{}, y=TH+gi*CH;
-      var load=(b.cap>0)?Math.round((b.work||0)/b.cap*100):null;
-      var fill='#f2f4f9', txt='#8a93a6', note='';
-      if(b.starved){ fill='#fdecea'; txt='#c0392b'; note='фронта нет'; }
-      else if(load==null){ fill='#f7f8fb'; note='мощность неизвестна'; }
-      else if(load>=85){ fill='#cfe9d6'; txt='#12602c'; note='загружен'; }
-      else if(load>=40){ fill='#e6f2e9'; txt='#2f7a34'; note='загружен наполовину'; }
-      else if((b.left||0)>0.01){ fill='#eef1f8'; note='простой — работы мало'; }
-      else { fill='#f7f8fb'; note='всё сделано'; }
-      var val=(b.left||0)<=0.01 ? '✓' : (b.work>=1000?(Math.round(b.work/100)/10+'к'):m0(b.work));
+      var fill='#f2f4f9', txt='#8a93a6', note='', stroke='', num=0;
+      if(req){
+        // здесь цифра — не прогноз, а НОРМА: столько участок обязан выдать в этот день, чтобы заказ ушёл в срок
+        num=b.req||0;
+        if((b.left||0)<=0.01){ fill='#f7f8fb'; note='всё сделано'; }
+        else if(b.short){ fill='#fdf1dc'; txt='#8a5a00'; stroke='#e0a83a'; note='нужный темп выше мощности — не хватает людей'; }
+        else if(b.blocked){ fill='#eef1f8'; txt='#5a6480'; note='задела нет — участок ждёт предыдущий этап, нагонять придётся позже'; }
+        else { fill='#cfe9d6'; txt='#12602c'; note='нынешним составом успеваем'; }
+      } else {
+        num=b.work||0;
+        var load=(b.cap>0)?Math.round((b.work||0)/b.cap*100):null;
+        if(b.starved){ fill='#fdecea'; txt='#c0392b'; stroke='#c0392b'; note='фронта нет'; }
+        else if(load==null){ fill='#f7f8fb'; note='мощность неизвестна'; }
+        else if(load>=85){ fill='#cfe9d6'; txt='#12602c'; note='загружен'; }
+        else if(load>=40){ fill='#e6f2e9'; txt='#2f7a34'; note='загружен наполовину'; }
+        else if((b.left||0)>0.01){ fill='#eef1f8'; note='простой — работы мало'; }
+        else { fill='#f7f8fb'; note='всё сделано'; }
+      }
+      var val=(b.left||0)<=0.01 ? '✓' : (num>=1000?(Math.round(num/100)/10+'к'):m0(num));
+      var tip=req
+        ? (esc(g)+' · '+esc(d.date)+'\nнужно сделать '+m0(b.req)+' ₽, мощность участка '+m0(b.cap)+' ₽/день'
+           +'\nзадел позволяет '+m0(b.avail)+' ₽, всего осталось '+m0(b.left)+' ₽\n'+note)
+        : (esc(g)+' · '+esc(d.date)+'\nсделает '+m0(b.work)+' из '+m0(b.cap)+' ₽ мощности'
+           +'\nдоступно работы '+m0(b.avail)+' ₽, всего осталось '+m0(b.left)+' ₽\n'+note);
       cells+='<g><rect x="'+x+'" y="'+y+'" width="'+(CW-2)+'" height="'+(CH-2)+'" rx="5" fill="'+fill+'"'
-        +(b.starved?' stroke="#c0392b" stroke-width="1.5"':'')+'>'
-        +'<title>'+esc(g)+' · '+esc(d.date)+'\nсделает '+m0(b.work)+' из '+m0(b.cap)+' ₽ мощности'
-        +'\nдоступно работы '+m0(b.avail)+' ₽, всего осталось '+m0(b.left)+' ₽\n'+note+'</title></rect>'
+        +(stroke?(' stroke="'+stroke+'" stroke-width="1.5"'):'')+'>'
+        +'<title>'+tip+'</title></rect>'
         +'<text x="'+(x+(CW-2)/2)+'" y="'+(y+CH/2+3)+'" text-anchor="middle" font-size="11" font-weight="700" fill="'+txt+'">'+val+'</text></g>';
     });
   });
   groups.forEach(function(g,gi){
     heads+='<text x="0" y="'+(TH+gi*CH+CH/2+4)+'" font-size="11.5" font-weight="700" fill="#1b2333">'+(ZICON[g]||'')+' '+esc(g)+'</text>';
   });
-  var verdict;
-  if(f.finishDay) verdict='<b class="ok">Заказ закроется на '+f.finishDay+'-й день</b> — если мощности останутся такими.';
-  else { var last=f.days[f.days.length-1];
-    verdict='<b>За '+f.horizon+' дней заказ не закроется</b> — останется '+m0(last.leftRub)+' ₽ работы.'; }
-  var starve=f.starve?('<div style="margin-top:4px;color:var(--red)">⛔ «'+esc(f.starve.group)+'» встанет '+ruDate(f.starve.date)
-    +': фронта работ не будет — предыдущий участок не успеет дать задел.</div>'):'';
+  var verdict, legend;
+  if(req){
+    var gaps=(f.gaps||[]).filter(function(g){ return g.short>0.01; });
+    verdict = '<b>Чтобы сдать к '+ruDate(R.order&&R.order.plan||'')+'</b> — осталось '+f.daysToDl+' дн на '+m0(f.totalLeft)+' ₽ работы.';
+    verdict += gaps.length
+      ? ('<div style="margin-top:4px;color:var(--red)">⚠ Нынешним составом не выходит: '
+         + gaps.map(function(g){ return '<b>'+esc(g.group)+'</b> нужно '+m0(g.req)+' ₽/день при мощности '+m0(g.cap)
+             +' — не хватает '+m0(g.short)+' ₽/день'+(g.people?(' ≈ +'+g.people+' чел'):''); }).join('; ')+'.</div>')
+      : '<div style="margin-top:4px" class="ok">✓ Нынешним составом норма выполнима — держите этот темп.</div>';
+    legend='<span><i style="background:#cfe9d6"></i>успеваем составом</span>'
+      +'<span><i style="background:#fdf1dc;outline:1px solid #e0a83a"></i>нужны люди</span>'
+      +'<span><i style="background:#eef1f8"></i>ждёт задел</span><span>✓ — всё сделано</span>';
+  } else {
+    if(f.finishDay) verdict='<b class="ok">Заказ закроется на '+f.finishDay+'-й день</b> — если мощности останутся такими.';
+    else { var last=f.days[f.days.length-1];
+      verdict='<b>За '+f.horizon+' дней заказ не закроется</b> — останется '+m0(last.leftRub)+' ₽ работы.'; }
+    if(f.starve) verdict+='<div style="margin-top:4px;color:var(--red)">⛔ «'+esc(f.starve.group)+'» встанет '+ruDate(f.starve.date)
+      +': фронта работ не будет — предыдущий участок не успеет дать задел.</div>';
+    legend='<span><i style="background:#cfe9d6"></i>загружен</span>'
+      +'<span><i style="background:#e6f2e9"></i>наполовину</span><span><i style="background:#eef1f8"></i>простой</span>'
+      +'<span><i style="background:#fdecea"></i>встал: фронта нет</span><span>✓ — всё сделано</span>';
+  }
   var est=f.days.some(function(d){ return d.estimated; })
-    ? '<div class="muted" style="margin-top:4px">Дни в пунктирной рамке — смены ещё не проставлены, численность взята по среднему. Проставьте смены во вкладке «🎯 День» — прогноз станет точным.</div>' : '';
-  return '<div class="box"><div class="row" style="margin-bottom:6px"><b>📅 Неделя вперёд</b>'
-    +'<span class="muted">— что каждый участок реально сделает за день</span></div>'
+    ? '<div class="muted" style="margin-top:4px">Дни в пунктирной рамке — смены ещё не проставлены, численность взята по среднему. Проставьте смены во вкладке «🎯 День» — расчёт станет точным.</div>' : '';
+  return '<div class="box"><div class="row" style="margin-bottom:6px"><b>📅 '+(req?'Норма на день':'Неделя вперёд')+'</b>'
+    +'<span class="muted">— '+(req?'сколько участок обязан выдать, чтобы сдать в срок':'что каждый участок реально сделает за день')+'</span>'
+    +'<span style="margin-left:auto"><button class="tgl'+(req?'':' on')+'" onclick="setHeat(\'fc\')">что успеем</button>'
+    +'<button class="tgl'+(req?' on':'')+'" onclick="setHeat(\'req\')">что нужно</button></span></div>'
     +'<div style="overflow-x:auto"><svg width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'" style="max-width:none">'
     +heads+cells+labels+'</svg></div>'
-    +'<div class="zlegend" style="padding:6px 0 0"><span><i style="background:#cfe9d6"></i>загружен</span>'
-    +'<span><i style="background:#e6f2e9"></i>наполовину</span><span><i style="background:#eef1f8"></i>простой</span>'
-    +'<span><i style="background:#fdecea"></i>встал: фронта нет</span><span>✓ — всё сделано</span></div>'
-    +'<div style="margin-top:6px">'+verdict+starve+est+'</div></div>';
+    +'<div class="zlegend" style="padding:6px 0 0">'+legend+'</div>'
+    +'<div style="margin-top:6px">'+verdict+est+'</div></div>';
+}
+// режим «что нужно» без срока считать не из чего — говорим об этом прямо, а не показываем пустую сетку
+function heatBoxNoDl(){
+  return '<div class="box"><div class="row" style="margin-bottom:6px"><b>📅 Норма на день</b>'
+    +'<span style="margin-left:auto"><button class="tgl" onclick="setHeat(\'fc\')">что успеем</button>'
+    +'<button class="tgl on" onclick="setHeat(\'req\')">что нужно</button></span></div>'
+    +'<div class="muted">У заказа не задан срок (или он уже прошёл) — не от чего считать норму. '
+    +'Поставьте «Дата план» в карточке заказа.</div></div>';
 }
 function waveCard(w){
   var maxD=0; (w.groups||[]).forEach(function(g){ if(g.days>maxD) maxD=g.days; });
