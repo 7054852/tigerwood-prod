@@ -42,6 +42,10 @@
   td.acc{ text-align:center; color:#8a93a6; font-size:11px; }
   tr:nth-child(even) td.det, tr:nth-child(even) td.n{ background:#fafbfd; }
   .sh{ font-size:10px; color:#8a5a00; font-weight:700; }
+  td.vd{ padding-left:16px; font-weight:600; color:#4a5468; font-size:11.5px; }
+  tr.hasv td.det{ border-bottom:0; }
+  td.down,td.up{ background:#f2f4f8; text-align:center; color:#aeb6c6; font-size:10px; }
+  tr.vrow td{ background:#fcfdff; }
   .foot{ margin-top:10px; font-size:12px; color:#4a5468; display:flex; gap:24px; flex-wrap:wrap; }
 
   @media print{
@@ -139,7 +143,11 @@ function draw(){
   var ST=R.stages;
   var legend='<div class="legend">'+ST.map(function(s){ return '<b>'+esc(s)+'</b> — '+esc(R.hints[s]||''); }).join(' · ')
     +'<br>Пишите, сколько деталей <b>сейчас физически лежит</b> в этом состоянии — каждую деталь считаем один раз, в самой поздней пройденной стадии. '
-    +'Заштрихованная клетка — такой операции у детали нет. Пустая клетка = ноль.</div>';
+    +'Заштрихованная клетка — такой операции у детали нет. Пустая клетка = ноль.'
+    +(R.mode==='detail'?('<br>До покраски деталь одна на все цвета — её считаем в строке детали. '
+      +'С покраски она расходится по вариантам, поэтому ниже идут строки по каждому цвету: '
+      +'<b>↓</b> — считать в строках ниже, <b>↑</b> — уже посчитано в строке детали.'):'')
+    +'</div>';
   var head='<tr><th class="det">Деталь</th><th>Нужно<br>по заказу</th>'
     +ST.map(function(s){ return '<th>'+esc(s)+'</th>'; }).join('')+'<th>Заметка</th></tr>';
 
@@ -147,13 +155,27 @@ function draw(){
     var title=(R.mode==='detail') ? 'Все детали заказа (свод)'
       : (esc(p.eq)+' · '+esc(p.model)+' <span class="qty">×'+p.ordered+'</span>');
     var rows=p.details.map(function(d){
+      var vars=d.variants||[];
       var cells=ST.map(function(s){
         var st=d.stages[s];
         if(!st||!st.has) return '<td class="cell no"></td>';
+        // клетка отдана цветам: писать в неё нельзя, считаем в строках ниже
+        if(st.split) return '<td class="cell down">↓</td>';
         return '<td class="cell'+(acc?' acc':'')+'">'+(acc?st.ready:'')+'</td>';
       }).join('');
-      return '<tr><td class="det">'+esc(d.detail)+(d.shared?' <span class="sh">общая</span>':'')+'</td>'
+      var head='<tr'+(vars.length?' class="hasv"':'')+'><td class="det">'+esc(d.detail)
+        +(d.shared?' <span class="sh">общая</span>':'')+'</td>'
         +'<td class="n">'+d.need+'</td>'+cells+'<td class="cell"></td></tr>';
+      if(!vars.length) return head;
+      return head+vars.map(function(v){
+        var vc=ST.map(function(s){
+          var st=v.stages[s];
+          if(!st||!st.has) return '<td class="cell up">↑</td>';   // до покраски считается в строке детали
+          return '<td class="cell'+(acc?' acc':'')+'">'+(acc?st.ready:'')+'</td>';
+        }).join('');
+        return '<tr class="vrow"><td class="det vd">└ '+esc(v.model)+'</td>'
+          +'<td class="n">'+v.need+'</td>'+vc+'<td class="cell"></td></tr>';
+      }).join('');
     }).join('');
     return '<div class="grp'+(p.details.length>22?' big':'')+'"><div class="gt">'+title+'</div>'
       +'<table><thead>'+head+'</thead><tbody>'+rows+'</tbody></table></div>';
