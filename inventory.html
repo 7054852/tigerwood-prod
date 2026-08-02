@@ -140,7 +140,7 @@ function load(){
 function draw(){
   if(!R) return;
   var acc=document.getElementById('showAcc').checked;
-  var ST=R.stages;
+  var ST=R.stages, SPLIT=ST.indexOf('Покрашено');   // с этой стадии деталь расходится по цветам
   var legend='<div class="legend">'+ST.map(function(s){ return '<b>'+esc(s)+'</b> — '+esc(R.hints[s]||''); }).join(' · ')
     +'<br>Пишите, сколько деталей <b>сейчас физически лежит</b> в этом состоянии — каждую деталь считаем один раз, в самой поздней пройденной стадии. '
     +'Заштрихованная клетка — такой операции у детали нет. Пустая клетка = ноль.'
@@ -168,9 +168,10 @@ function draw(){
         +'<td class="n">'+d.need+'</td>'+cells+'<td class="cell"></td></tr>';
       if(!vars.length) return head;
       return head+vars.map(function(v){
-        var vc=ST.map(function(s){
+        var vc=ST.map(function(s,si){
           var st=v.stages[s];
-          if(!st||!st.has) return '<td class="cell up">↑</td>';   // до покраски считается в строке детали
+          // до покраски деталь общая → «↑»; после покраски пусто = такой операции у детали нет → штриховка
+          if(!st||!st.has) return (si<SPLIT) ? '<td class="cell up">↑</td>' : '<td class="cell no"></td>';
           return '<td class="cell'+(acc?' acc':'')+'">'+(acc?st.ready:'')+'</td>';
         }).join('');
         return '<tr class="vrow"><td class="det vd">└ '+esc(v.model)+'</td>'
