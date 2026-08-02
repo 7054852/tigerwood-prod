@@ -121,7 +121,7 @@ window.onerror=function(msg,src,line){
 <script>
 var BASE='https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';
 var APP='tw7prod', TGID='', ME=null, ROLE='', app=document.getElementById('app');
-var VER='20260801v';
+var VER='20260802a';
 var RUN=String(Date.now());   // одна метка на загрузку оболочки — сбивает кеш встроенных страниц   // бамп при изменении встраиваемых stat-страниц — сбивает кеш GitHub Pages в iframe
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
@@ -283,7 +283,7 @@ function nativeBox(){
   return n;
 }
 function hideAllViews(){
-  Object.keys(FRAMES).forEach(function(k){ FRAMES[k].style.display='none'; });
+  Object.keys(FRAMES).forEach(function(k){ try{ FRAMES[k].style.display='none'; }catch(e){} });
   var n=document.getElementById('nativeview'); if(n) n.style.display='none';
 }
 function showView(id){
@@ -301,10 +301,11 @@ function showView(id){
   url += '&twsec='+encodeURIComponent(id);   // раздел знает своё имя → рукопожатие для авто-обновления
   var focus=null;
   if(FOCUS && FOCUS.id===id){ focus=FOCUS.params; Object.keys(focus).forEach(function(k){ url += '&'+k+'='+encodeURIComponent(focus[k]); }); FOCUS=null; }
-  var f=FRAMES[id];
+  var f=FRAMES[id], vbox=document.getElementById('view');
+  if(f && f.parentNode!==vbox) vbox.appendChild(f);   // страховка: iframe выпал из DOM (перерисовали контейнер) — вернуть, иначе раздел не откроется
   if(!f){
     f=document.createElement('iframe'); f.setAttribute('loading','eager'); f.src=url;
-    document.getElementById('view').appendChild(f); FRAMES[id]=f;
+    vbox.appendChild(f); FRAMES[id]=f;
   } else if(focus){
     f.src=url;   // переход с фокусом (например, из статистики к расценкам) — грузим заново с параметрами
   } else {
@@ -454,7 +455,7 @@ function saveUser(i,tgid){
 }
 function isActiveJs(v){ var s=String(v==null?'':v).trim().toLowerCase(); return !(s==='нет'||s==='архив'||s==='ожидает'||s==='no'||s==='false'||s==='0'||s==='off'); }
 function isPendingJs(v){ return String(v==null?'':v).trim().toLowerCase()==='ожидает'; }
-function reloadUsers(){ var box=document.getElementById('view'); if(box) usersView(box); }
+function reloadUsers(){ usersView(nativeBox()); }   // ⚠ только nativeBox(): #view держит ещё и iframe разделов
 
 // ─── «Компания и настройки» (админ/директор): реквизиты юрлиц = единый источник для всех документов ───
 function companyView(box){
@@ -618,13 +619,13 @@ function renderAccess(box){
     +'<div style="margin:8px 0"><button class="gray sm" onclick="resetAcc()">↩ по умолчанию для роли</button> <span class="msg" id="accMsg"></span></div>'
     +'<div class="box">'+(groups||'<span class="muted">нет разделов</span>')+'</div></div>';
 }
-function pickAccRole(role){ ACCROLE=role; renderAccess(document.getElementById('view')); }
+function pickAccRole(role){ ACCROLE=role; renderAccess(nativeBox()); }
 function toggleAcc(id,on){
   var list=(ACCESS.access[ACCROLE]||[]).slice(), i=list.indexOf(id);
   if(on&&i<0) list.push(id); if(!on&&i>=0) list.splice(i,1);
   ACCESS.access[ACCROLE]=list; saveAcc(list);
 }
-function resetAcc(){ var d=(ACCESS.defaults[ACCROLE]||[]).slice(); ACCESS.access[ACCROLE]=d; saveAcc(d); renderAccess(document.getElementById('view')); }
+function resetAcc(){ var d=(ACCESS.defaults[ACCROLE]||[]).slice(); ACCESS.access[ACCROLE]=d; saveAcc(d); renderAccess(nativeBox()); }
 function saveAcc(list){
   var m=document.getElementById('accMsg'); if(m) m.textContent='…';
   api({vapi:'setrolesections',tgid:TGID,role:ACCROLE,sections:list.join(',')}).then(function(r){
