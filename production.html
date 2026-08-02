@@ -360,7 +360,7 @@ function renderDetail(){
       +'<span class="muted">срок отгрузки: '+(b.plan?('<b>'+esc(b.plan)+'</b>'):'—')
         +' <a href="javascript:void(0)" onclick="setDeadline(\''+b.id+'\',\''+esc(b.plan||'')+'\')" title="изменить срок" style="text-decoration:none">✎</a>'
         +' <a href="javascript:void(0)" onclick="deadlineLog(\''+b.id+'\')" title="история изменений срока" style="text-decoration:none">🕘</a></span>'
-      +'<button class="gray sm" title="пересобрать операции из актуального состава/расценок (остатки и выработка сохранятся)" onclick="recalcOps(\''+b.id+'\')">↻ Пересчитать расценки</button>'
+      +'<button class="gray sm" title="обычно это происходит само при открытии заказа; кнопка — если нужно прямо сейчас" onclick="recalcOps(\''+b.id+'\')">↻ Пересобрать сейчас</button>'
       +'<button class="gray sm" title="печатный лист: пойти в цех и пересчитать детали по стадиям" onclick="inventSheet(\''+b.id+'\')">📋 Ведомость переучёта</button>'
       +'<button class="gray sm" onclick="ship(\''+b.id+'\')">📦 Отгрузить</button>'
       +'<button class="gray sm" title="удалить заказ" onclick="delBatch(\''+b.id+'\')">🗑</button>'
@@ -370,7 +370,7 @@ function renderDetail(){
       +'<div class="row" style="margin-top:8px"><input list="modlist" id="am_'+b.id+'" placeholder="модель из каталога…" style="min-width:240px"><input class="q" id="aq_'+b.id+'" placeholder="кол-во"><button class="green sm" onclick="addItem(\''+b.id+'\')">＋ добавить модель</button></div>'
     +'</div>'
     +'<div class="sect">Операции заказа</div>'
-    +'<div class="box"><div id="ops_'+b.id+'"><div class="muted">Загрузка операций…</div></div></div>';
+    +'<div class="box"><div id="ops_'+b.id+'"><div class="muted">Загрузка операций… <span class="muted" style="font-size:12px">сверяю с каталогом изделий и расценками</span></div></div></div>';
   loadOps(id);
 }
 
@@ -380,6 +380,8 @@ function loadOps(id){
 }
 function renderOps(id,r){
   var box=$('ops_'+id), k=r.kpi||{};
+  // каталог правили после того, как заказ был создан → операции пересобрались сами, человеку надо это сказать
+  var reb = r.rebuilt ? '<div class="pill" style="background:#e8f2ff;color:#1a56b8;display:inline-block;margin-bottom:8px">↻ операции пересобраны по актуальному каталогу — начальные остатки и выработка сохранены</div>' : '';
   var warn = (r.notAssembled&&r.notAssembled.length) ? '<div class="pill" style="background:#fbf1de;color:#b7791f;display:inline-block;margin-bottom:8px">⚠ не подтверждены директором как «собрано»: '+r.notAssembled.map(esc).join(', ')+'</div>' : '';
   var kpi=opsKpiHtml(k);
   var flags=(r.checks&&r.checks.opFlags)||{};
@@ -414,7 +416,7 @@ function renderOps(id,r){
       +'</div></div>';
   }).join('');
   var dash=r.dash||{}, nG=(dash.groups||[]).length, nO=(dash.ops||[]).length, nP=(r.products||[]).length;
-  box.innerHTML=warn+'<div id="opskpi_'+id+'">'+kpi+'</div>'
+  box.innerHTML=reb+warn+'<div id="opskpi_'+id+'">'+kpi+'</div>'
     +'<div id="opschecks_'+id+'">'+opsChecksHtml(id,r.checks||{})+'</div>'
     +trayHtml('Участки работ', nG?plural(nG,'участок','участка','участков'):'', 'нажми на участок — разбивка по типам операций',
               '<div id="opsdash_'+id+'">'+opsDashHtml(id,dash)+'</div>')
