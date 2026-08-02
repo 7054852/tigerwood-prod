@@ -1,0 +1,143 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Тигервуд — ведомость переучёта</title>
+<style>
+  :root{ --ink:#1b2333; --muted:#8a93a6; --line:#dfe3ec; --accent:#2b6ef6; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif; color:var(--ink); background:#f5f6fa; }
+  .wrap{ max-width:1180px; margin:0 auto; padding:14px; }
+  .bar{ background:#fff; border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:14px;
+        display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  select,button{ font:inherit; }
+  select{ padding:6px 9px; border:1px solid var(--line); border-radius:9px; background:#fff; min-width:180px; }
+  button{ padding:7px 13px; border:1px solid var(--line); border-radius:9px; background:#fff; cursor:pointer; font-weight:600; }
+  button.pri{ background:var(--accent); border-color:var(--accent); color:#fff; }
+  label.chk{ display:inline-flex; align-items:center; gap:6px; font-size:13px; color:#4a5468; cursor:pointer; }
+  .muted{ color:var(--muted); }
+  .msg{ font-size:13px; }
+  .err{ color:#c0392b; }
+
+  /* ── сам лист ── */
+  .sheet{ background:#fff; border:1px solid var(--line); border-radius:12px; padding:16px; }
+  .shead{ display:flex; gap:16px; flex-wrap:wrap; align-items:flex-end; border-bottom:2px solid var(--ink); padding-bottom:8px; margin-bottom:10px; }
+  .stitle{ font-size:19px; font-weight:800; }
+  .sline{ font-size:12.5px; color:#4a5468; }
+  .fill{ display:inline-block; min-width:150px; border-bottom:1px solid #9aa3b5; }
+  .legend{ font-size:11.5px; color:#4a5468; margin-bottom:10px; }
+  .legend b{ color:var(--ink); }
+  .grp{ margin-bottom:12px; page-break-inside:avoid; }
+  .gt{ font-size:14.5px; font-weight:800; padding:5px 0 4px; border-bottom:1px solid var(--ink); }
+  .gt .qty{ font-weight:600; color:#4a5468; }
+  table{ width:100%; border-collapse:collapse; }
+  th,td{ border:1px solid #b9c0cf; padding:0 5px; font-size:12.5px; }
+  th{ background:#eef1f7; font-size:11.5px; font-weight:700; text-align:center; padding:5px 3px; line-height:1.2; }
+  th.det{ text-align:left; width:38%; }
+  td.det{ height:26px; font-weight:600; }
+  td.n{ text-align:center; width:52px; color:#4a5468; }
+  td.cell{ width:9.2%; height:26px; }
+  td.no{ background:repeating-linear-gradient(135deg,#f2f4f8,#f2f4f8 4px,#e6eaf2 4px,#e6eaf2 8px); }
+  td.acc{ text-align:center; color:#8a93a6; font-size:11px; }
+  tr:nth-child(even) td.det, tr:nth-child(even) td.n{ background:#fafbfd; }
+  .sh{ font-size:10px; color:#8a5a00; font-weight:700; }
+  .foot{ margin-top:10px; font-size:12px; color:#4a5468; display:flex; gap:24px; flex-wrap:wrap; }
+
+  @page{ size:A4 landscape; margin:10mm; }
+  @media print{
+    body{ background:#fff; }
+    .wrap{ max-width:none; padding:0; }
+    .noprint{ display:none !important; }
+    .sheet{ border:0; border-radius:0; padding:0; }
+    th,td{ font-size:11px; }
+    td.det,td.cell{ height:24px; }
+  }
+</style>
+
+<div class="wrap">
+  <div class="bar noprint">
+    <b>📋 Ведомость переучёта</b>
+    <select id="ord" onchange="load()"></select>
+    <select id="mode" onchange="load()">
+      <option value="prod">по изделиям</option>
+      <option value="detail">свод по деталям</option>
+    </select>
+    <label class="chk"><input type="checkbox" id="showAcc" onchange="draw()"> показать цифры программы</label>
+    <button class="pri" onclick="window.print()">🖨 Печать</button>
+    <span class="msg" id="msg"></span>
+  </div>
+  <div id="out"></div>
+</div>
+
+<script>
+var BASE='https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';
+var APP='tw7prod', R=null, TGID='';
+function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]*)').exec(location.search); return m?decodeURIComponent(m[1].replace(/\+/g,' ')):''; }
+TGID=qp('tgid')||'';
+try{ if(window.Telegram&&Telegram.WebApp){ var u=Telegram.WebApp.initDataUnsafe&&Telegram.WebApp.initDataUnsafe.user; if(u) TGID=String(u.id); } }catch(e){}
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function msg(t,err){ var m=document.getElementById('msg'); m.className='msg'+(err?' err':''); m.textContent=t||''; }
+function api(p){
+  p.app=APP; if(TGID) p.tgid=TGID;
+  var q=Object.keys(p).map(function(k){ return k+'='+encodeURIComponent(p[k]); }).join('&');
+  return fetch(BASE+'?'+q).then(function(r){ return r.json(); });
+}
+function today(){ var d=new Date(), p=function(n){ return (n<10?'0':'')+n; }; return p(d.getDate())+'.'+p(d.getMonth()+1)+'.'+d.getFullYear(); }
+
+function boot(){
+  msg('загрузка заказов…');
+  api({vapi:'batches'}).then(function(r){
+    var list=((r&&r.batches)||[]).filter(function(b){ return b.status==='новая'||b.status==='в работе'; });
+    if(!list.length){ msg('нет активных заказов', true); return; }
+    var pre=qp('batch');
+    document.getElementById('ord').innerHTML=list.map(function(b){
+      return '<option value="'+esc(b.id)+'"'+(b.id===pre?' selected':'')+'>'+esc(b.num)+(b.name?(' · '+esc(b.name)):'')+'</option>'; }).join('');
+    load();
+  }).catch(function(){ msg('сеть недоступна', true); });
+}
+function load(){
+  var id=document.getElementById('ord').value; if(!id) return;
+  msg('строю ведомость…'); document.getElementById('out').innerHTML='';
+  api({vapi:'inventsheet',batch:id,mode:document.getElementById('mode').value}).then(function(r){
+    if(!r||!r.ok){ msg((r&&r.error)||'ошибка', true); return; }
+    R=r; msg(''); draw();
+  }).catch(function(){ msg('сеть недоступна', true); });
+}
+
+function draw(){
+  if(!R) return;
+  var acc=document.getElementById('showAcc').checked;
+  var ST=R.stages;
+  var legend='<div class="legend">'+ST.map(function(s){ return '<b>'+esc(s)+'</b> — '+esc(R.hints[s]||''); }).join(' · ')
+    +'<br>Пишите, сколько деталей <b>сейчас физически лежит</b> в этом состоянии — каждую деталь считаем один раз, в самой поздней пройденной стадии. '
+    +'Заштрихованная клетка — такой операции у детали нет. Пустая клетка = ноль.</div>';
+  var head='<tr><th class="det">Деталь</th><th>Нужно<br>по заказу</th>'
+    +ST.map(function(s){ return '<th>'+esc(s)+'</th>'; }).join('')+'<th>Заметка</th></tr>';
+
+  var groups=R.products.map(function(p){
+    var title=(R.mode==='detail') ? 'Все детали заказа (свод)'
+      : (esc(p.eq)+' · '+esc(p.model)+' <span class="qty">×'+p.ordered+'</span>');
+    var rows=p.details.map(function(d){
+      var cells=ST.map(function(s){
+        var st=d.stages[s];
+        if(!st||!st.has) return '<td class="cell no"></td>';
+        return '<td class="cell'+(acc?' acc':'')+'">'+(acc?st.ready:'')+'</td>';
+      }).join('');
+      return '<tr><td class="det">'+esc(d.detail)+(d.shared?' <span class="sh">общая</span>':'')+'</td>'
+        +'<td class="n">'+d.need+'</td>'+cells+'<td class="cell"></td></tr>';
+    }).join('');
+    return '<div class="grp"><div class="gt">'+title+'</div>'
+      +'<table><thead>'+head+'</thead><tbody>'+rows+'</tbody></table></div>';
+  }).join('');
+
+  document.getElementById('out').innerHTML='<div class="sheet">'
+    +'<div class="shead"><div><div class="stitle">Ведомость переучёта деталей</div>'
+      +'<div class="sline">заказ <b>'+esc(R.order.num)+'</b>'+(R.order.name?(' · '+esc(R.order.name)):'')
+      +(R.order.plan?(' · срок '+esc(R.order.plan)):'')+' · изделий '+R.count.products+', строк '+R.count.details+'</div></div>'
+      +'<div class="sline" style="margin-left:auto">дата пересчёта <span class="fill">&nbsp;'+today()+'</span><br>'
+      +'считал <span class="fill">&nbsp;</span> · подпись <span class="fill">&nbsp;</span></div></div>'
+    +legend+groups
+    +'<div class="foot"><span>Пересчёт провёл: ______________________ / ______________</span>'
+    +'<span>Проверил (мастер): ______________________ / ______________</span></div>'
+    +'</div>';
+}
+boot();
+</script>
