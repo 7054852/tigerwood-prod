@@ -43,6 +43,18 @@
   tr:nth-child(even) td.det, tr:nth-child(even) td.n{ background:#fafbfd; }
   .sh{ font-size:10px; color:#8a5a00; font-weight:700; }
   .refs{ font-size:11.5px; color:#4a5468; padding:5px 4px 0; }
+  .hide{ display:none !important; }
+  .tb{ font-size:13px; }
+  .tb.on{ background:var(--accent); border-color:var(--accent); color:#fff; }
+  .card{ background:#fff; border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:12px; }
+  .rowline{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:7px 0; border-top:1px solid #eef1f7; font-size:13px; }
+  .rowline:first-child{ border-top:0; }
+  .flag{ font-size:11px; font-weight:700; padding:1px 6px; border-radius:6px; background:#fdf1dc; color:#8a5a00; }
+  .flag.bad{ background:#fdecea; color:#c0392b; }
+  .flag.ok{ background:#e6f4ea; color:#137333; }
+  .qin{ width:70px; padding:4px 6px; border:1px solid var(--line); border-radius:7px; font:inherit; text-align:center; }
+  .mini{ font-size:11.5px; color:var(--muted); }
+  .stat{ display:flex; gap:14px; flex-wrap:wrap; font-size:13px; font-weight:600; margin-bottom:8px; }
   .pb{ font-size:10px; color:#2b6ef6; font-weight:700; }
   td.vd{ padding-left:16px; font-weight:600; color:#4a5468; font-size:11.5px; }
   tr.hasv td.det{ border-bottom:0; }
@@ -74,7 +86,12 @@
 <style id="pagecss">@page{ size:A4 portrait; margin:9mm; }</style>
 <div class="wrap">
   <div class="bar noprint">
-    <b>📋 Ведомость переучёта</b>
+    <b>📋 Переучёт</b>
+    <button class="tb on" id="tb_print" onclick="tab('print')">🖨 Печать листа</button>
+    <button class="tb" id="tb_load" onclick="tab('load')">📷 Загрузка и сверка</button>
+    <button class="tb" id="tb_hist" onclick="tab('hist')">🕘 История</button>
+  </div>
+  <div class="bar noprint" id="bar_print">
     <select id="ord" onchange="load()"></select>
     <select id="mode" onchange="load()">
       <option value="prod">по изделиям</option>
@@ -89,6 +106,8 @@
     <span class="msg" id="msg"></span>
   </div>
   <div id="out"></div>
+  <div id="pane_load" class="hide noprint"></div>
+  <div id="pane_hist" class="hide noprint"></div>
 </div>
 
 <script>
@@ -145,7 +164,8 @@ function draw(){
   var ST=R.stages, SPLIT=ST.indexOf('Покрашено');   // с этой стадии деталь расходится по цветам
   var legend='<div class="legend">'+ST.map(function(s){ return '<b>'+esc(s)+'</b> — '+esc(R.hints[s]||''); }).join(' · ')
     +'<br>Пишите, сколько деталей <b>сейчас физически лежит</b> в этом состоянии — каждую деталь считаем один раз, в самой поздней пройденной стадии. '
-    +'Заштрихованная клетка — такой операции у детали нет. Пустая клетка = ноль.'
+    +'Заштрихованная клетка — такой операции у детали нет, писать в неё не нужно. '
+    +'<b>Пустая клетка — не считали</b>: в программе останется как есть. Если реально ноль — так и напишите цифру 0.'
     +' Строка с пометкой <b>изделие</b> — само собранное изделие: его не пилят и не красят, физически считают только упакованные коробки.'
     +(R.mode==='detail'?('<br>До покраски деталь одна на все цвета — её считаем в строке детали. '
       +'С покраски она расходится по вариантам, поэтому ниже идут строки по каждому цвету: '
@@ -202,6 +222,172 @@ function draw(){
     +'<div class="foot"><span>Пересчёт провёл: ______________________ / ______________</span>'
     +'<span>Проверил (мастер): ______________________ / ______________</span></div>'
     +'</div>';
+}
+
+/* ═══ ВКЛАДКИ ═══ */
+var TAB='print', INV='', DRAFT=null, UPQ=[];
+function tab(t){
+  TAB=t;
+  ['print','load','hist'].forEach(function(x){ var b=document.getElementById('tb_'+x); if(b) b.className='tb'+(x===t?' on':''); });
+  document.getElementById('bar_print').className='bar noprint'+(t==='print'?'':' hide');
+  document.getElementById('out').className=(t==='print'?'':'hide');
+  document.getElementById('pane_load').className='noprint'+(t==='load'?'':' hide');
+  document.getElementById('pane_hist').className='noprint'+(t==='hist'?'':' hide');
+  if(t==='load') startInv();
+  if(t==='hist') loadHist();
+}
+
+/* ═══ ЗАГРУЗКА И СВЕРКА ═══ */
+function curOrder(){ return document.getElementById('ord').value; }
+function startInv(){
+  var box=document.getElementById('pane_load');
+  box.innerHTML='<div class="card"><div class="center muted">Готовлю переучёт…</div></div>';
+  api({vapi:'invstart',batch:curOrder(),date:today()}).then(function(r){
+    if(!r||!r.ok){ box.innerHTML='<div class="card err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
+    INV=r.invId; loadDraft();
+  }).catch(function(){ box.innerHTML='<div class="card err">сеть недоступна</div>'; });
+}
+function loadDraft(){
+  api({vapi:'invdraft',inv:INV}).then(function(r){
+    if(!r||!r.ok){ document.getElementById('pane_load').innerHTML='<div class="card err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
+    DRAFT=r; drawLoad();
+  }).catch(function(){});
+}
+function drawLoad(){
+  var box=document.getElementById('pane_load'), d=DRAFT;
+  var st=d.stat||{};
+  var upl='<div class="card"><div class="row" style="margin-bottom:6px"><b>📷 Страницы переучёта</b>'
+    +'<span class="muted">заказ '+esc(d.head.num?('№'+d.head.num):'')+' · загружено файлов: '+(d.head.files||0)+'</span></div>'
+    +'<input type="file" id="pages" accept="image/*,application/pdf" multiple onchange="pickPages(this.files)">'
+    +'<div class="mini" style="margin-top:5px">Фотографируйте страницы целиком, можно по одной и в любом порядке. '
+    +'Незаполненные строки программа пропускает сама.</div>'
+    +'<div id="uplbox"></div></div>';
+  var rows=(d.rows||[]);
+  var body='';
+  if(!rows.length) body='<div class="card muted">Пока ничего не распознано — загрузите страницы.</div>';
+  else{
+    var byBlock={}, order=[];
+    rows.forEach(function(x){ var k=x.eq||'—'; if(!byBlock[k]){ byBlock[k]=[]; order.push(k); } byBlock[k].push(x); });
+    body='<div class="card"><div class="stat">'
+      +'<span class="flag ok">применится: '+(st.apply||0)+'</span>'
+      +'<span class="flag">требует решения: '+(st.ask||0)+'</span>'
+      +'<span class="muted">изменит остатки: '+(st.diffs||0)+' из '+(st.total||0)+'</span>'
+      +'</div>'
+      +'<button class="pri" onclick="applyInv()">✅ Применить переучёт</button> '
+      +'<span class="msg" id="apmsg"></span></div>';
+    body+=order.map(function(k){
+      return '<div class="card"><div style="font-weight:800;margin-bottom:4px">'+esc(k)+'</div>'
+        +byBlock[k].map(rowHtml).join('')+'</div>';
+    }).join('');
+  }
+  box.innerHTML=upl+body;
+}
+function rowHtml(x){
+  var flags=(x.flags||[]).map(function(f){ return '<span class="flag'+(/недостача|меньше|порядок/.test(f)?' bad':'')+'">'+esc(f)+'</span>'; }).join(' ');
+  var was=(x.items||[]).map(function(i){ return i.stockWas; }).join('/');
+  var now=(x.items||[]).map(function(i){ return i.stockNew; }).join('/');
+  var mode='<select class="qin" style="width:120px" onchange="setRow(\''+esc(x.key)+'\',null,this.value,null)">'
+    +'<option value="накопительно"'+(x.mode==='накопительно'?' selected':'')+'>всего прошло</option>'
+    +'<option value="факт"'+(x.mode==='факт'?' selected':'')+'>лежит сейчас</option></select>';
+  var skip=(x.status==='пропущена');
+  return '<div class="rowline">'
+    +'<span style="min-width:210px"><b>'+esc(x.detail)+'</b>'+(x.model?(' <span class="mini">'+esc(x.model)+'</span>'):'')+'</span>'
+    +'<span style="min-width:96px" class="mini">'+esc(x.stage)+'</span>'
+    +'<input class="qin" value="'+(x.qty)+'" onchange="setRow(\''+esc(x.key)+'\',this.value,null,null)">'
+    +'<span class="mini">из '+(x.need||0)+' нужно</span>'
+    +mode
+    +'<span class="mini">остаток '+was+' → <b>'+now+'</b></span>'
+    +flags
+    +'<button class="tb" onclick="setRow(\''+esc(x.key)+'\',null,null,'+(skip?'0':'1')+')">'+(skip?'вернуть':'пропустить')+'</button>'
+    +'</div>';
+}
+function setRow(key,qty,mode,skip){
+  var p={vapi:'invsetrow',inv:INV,key:key};
+  if(qty!=null) p.qty=qty;
+  if(mode!=null) p.mode=mode;
+  if(skip!=null) p.skip=skip;
+  api(p).then(function(r){ if(r&&r.ok){ DRAFT=r; drawLoad(); } });
+}
+function pickPages(files){
+  if(!files||!files.length) return;
+  for(var i=0;i<files.length;i++) UPQ.push({name:files[i].name, file:files[i], state:'ждёт'});
+  drawUpl(); sendNext(0);
+  document.getElementById('pages').value='';
+}
+function drawUpl(){
+  var b=document.getElementById('uplbox'); if(!b) return;
+  b.innerHTML=UPQ.map(function(u){
+    return '<div class="rowline"><span style="min-width:200px">'+esc(u.name)+'</span>'
+      +'<span class="mini">'+esc(u.state)+(u.note?(' — '+esc(u.note)):'')+'</span></div>';
+  }).join('');
+}
+// страницы шлём строго по одной: распознавание занимает ~20-40 с, пачкой упрёмся в лимит Apps Script
+function sendNext(i){
+  if(i>=UPQ.length){ loadDraft(); return; }
+  var u=UPQ[i];
+  if(u.state==='готово'||u.state==='ошибка'){ sendNext(i+1); return; }
+  u.state='отправляю'; drawUpl();
+  var fr=new FileReader();
+  fr.onload=function(){
+    var b64=String(fr.result).split(',')[1]||'';
+    apiPost({vapi:'invupload',inv:INV,b64:b64,name:u.name,mime:u.file.type||'image/jpeg'}).then(function(r){
+      if(!r||!r.ok){ u.state='ошибка'; u.note=(r&&r.error)||'не сохранился'; drawUpl(); sendNext(i+1); return; }
+      u.state='распознаётся'; drawUpl();
+      api({vapi:'invrecognize',inv:INV,file:r.fileId}).then(function(q){
+        if(q&&q.ok){ u.state='готово'; u.note='клеток '+(q.saved||0)+(q.unknown?(', не найдено строк '+q.unknown):''); }
+        else { u.state='ошибка'; u.note=(q&&q.error)||'не распозналось'; }
+        drawUpl(); sendNext(i+1);
+      }).catch(function(){ u.state='ошибка'; u.note='связь оборвалась'; drawUpl(); sendNext(i+1); });
+    }).catch(function(){ u.state='ошибка'; u.note='связь оборвалась'; drawUpl(); sendNext(i+1); });
+  };
+  fr.onerror=function(){ u.state='ошибка'; u.note='файл не прочитался'; drawUpl(); sendNext(i+1); };
+  fr.readAsDataURL(u.file);
+}
+function applyInv(){
+  if(!confirm('Применить переучёт?\n\nИзменятся только начальные остатки заказа. Принятые наряды и ЗП не трогаются.')) return;
+  var m=document.getElementById('apmsg'); if(m) m.textContent='применяю…';
+  api({vapi:'invapply',inv:INV}).then(function(r){
+    if(!r||!r.ok){ if(m) m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; return; }
+    var b=r.before||{}, a=r.after||{};
+    if(m) m.innerHTML='<span style="color:#137333">✓ применено строк '+r.applied+'</span>';
+    alert('Переучёт применён.\n\n% труда: '+(b.pct||0)+' → '+(a.pct||0)
+      +'\nосталось: '+(b.leftRub||0)+' → '+(a.leftRub||0)+' р.'
+      +(r.ask?('\n\nОсталось без решения строк: '+r.ask):''));
+    INV=''; UPQ=[]; DRAFT=null; startInv();
+  }).catch(function(){ if(m) m.innerHTML='<span class="err">сеть</span>'; });
+}
+
+/* ═══ ИСТОРИЯ ═══ */
+function loadHist(){
+  var box=document.getElementById('pane_hist');
+  box.innerHTML='<div class="card"><div class="center muted">Загрузка…</div></div>';
+  api({vapi:'invhistory',batch:curOrder()}).then(function(r){
+    if(!r||!r.ok){ box.innerHTML='<div class="card err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
+    var l=r.list||[];
+    if(!l.length){ box.innerHTML='<div class="card muted">По этому заказу переучётов ещё не было.</div>'; return; }
+    box.innerHTML='<div class="card"><div style="font-weight:800;margin-bottom:6px">🕘 Переучёты заказа</div>'
+      +l.map(function(x){
+        return '<div class="rowline"><span style="min-width:130px"><b>№'+x.num+'</b> '+esc(x.date||x.created)+'</span>'
+          +'<span style="min-width:150px" class="mini">считал '+esc(x.counter||'—')+'</span>'
+          +'<span class="flag'+(x.status==='применён'?' ok':(x.status==='отменён'?' bad':''))+'">'+esc(x.status)+'</span>'
+          +'<span class="mini">строк '+x.rows+' · применено '+x.applied+' · изменило остатки '+x.diffs+'</span>'
+          +(x.applier?('<span class="mini">применил '+esc(x.applier)+'</span>'):'')
+          +(x.status==='применён'?('<button class="tb" onclick="undoInv(\''+esc(x.id)+'\')">↩ откатить</button>'):'')
+          +'</div>';
+      }).join('')+'</div>';
+  }).catch(function(){ box.innerHTML='<div class="card err">сеть недоступна</div>'; });
+}
+function undoInv(id){
+  if(!confirm('Откатить этот переучёт?\n\nНачальные остатки вернутся к тому, что было до него.')) return;
+  api({vapi:'invundo',inv:id}).then(function(r){
+    if(!r||!r.ok){ alert((r&&r.error)||'ошибка'); return; }
+    alert('Откачено. Возвращено операций: '+r.restored); loadHist();
+  });
+}
+function apiPost(p){
+  p.app=APP; if(TGID&&!p.tgid) p.tgid=TGID;
+  var b=Object.keys(p).map(function(k){ return encodeURIComponent(k)+'='+encodeURIComponent(p[k]==null?'':p[k]); }).join('&');
+  return fetch(BASE,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body:b}).then(function(r){ return r.json(); });
 }
 initOrient(); boot();
 </script>
