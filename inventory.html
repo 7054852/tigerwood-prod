@@ -277,17 +277,20 @@ function drawLoad(){
     +ST.map(function(x){ return '<th>'+esc(x)+'</th>'; }).join('')+'</tr>';
 
   function cellHtml(det,mod,stage,stg,isVar){
-    if(!stg||!stg.has) return '<td class="cell no"></td>';
-    if(stg.split) return '<td class="cell down">↓</td>';
     var k=ikey(det,mod,stage), c=C[k];
+    // ⚠ цифра, вписанная в заштрихованную клетку, должна быть ВИДНА — иначе непонятно,
+    // почему она «не применится». Штриховку рисуем только когда данных нет.
+    if(!c&&(!stg||!stg.has)) return '<td class="cell no"></td>';
+    if(!c&&stg&&stg.split) return '<td class="cell down">↓</td>';
     var cls='g cell', mark='', tip='';
+    var noop=(!stg||!stg.has);
     if(!c){ cls+=' empty'; tip='не заполнено в листе — остаток не меняем'; }
     else{
       var fl=(c.flags||[]).join(', ');
-      if(c.status==='требует решения'||c.status==='пропущена'){ cls+=' badc'; mark='!'; }
+      if(c.status==='требует решения'||c.status==='пропущена'||noop){ cls+=' badc'; mark='!'; }
       else if(fl){ cls+=' warnc'; }
       else cls+=' ok';
-      tip=(c.status==='пропущена'?'НЕ ПРИМЕНИТСЯ: такой операции у детали нет. ':'')
+      tip=((c.status==='пропущена'||noop)?'НЕ ПРИМЕНИТСЯ: у этой детали нет такой операции — скорее всего цифра относится к изделию. ':'')
         +(c.status==='требует решения'?'ТРЕБУЕТ РЕШЕНИЯ. ':'')
         +(fl?(fl+'. '):'')
         +'прочитано как «'+(c.mode==='факт'?'лежит сейчас':'всего прошло')+'», в заказ ляжет '+c.target
