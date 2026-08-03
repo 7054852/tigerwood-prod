@@ -225,7 +225,7 @@ function draw(){
 }
 
 /* ═══ ВКЛАДКИ ═══ */
-var TAB='print', INV='', DRAFT=null, UPQ=[];
+var TAB='print', INV='', DRAFT=null, UPQ=[], ALLROWS=false;
 function tab(t){
   TAB=t;
   ['print','load','hist'].forEach(function(x){ var b=document.getElementById('tb_'+x); if(b) b.className='tb'+(x===t?' on':''); });
@@ -266,19 +266,37 @@ function drawLoad(){
   var body='';
   if(!rows.length) body='<div class="card muted">Пока ничего не распознано — загрузите страницы.</div>';
   else{
-    var byBlock={}, order=[];
-    rows.forEach(function(x){ var k=x.eq||'—'; if(!byBlock[k]){ byBlock[k]=[]; order.push(k); } byBlock[k].push(x); });
+    var bad=rows.filter(function(x){ return x.status==='требует решения'; });
+    var skip=rows.filter(function(x){ return x.status==='пропущена'; });
+    var note=rows.filter(function(x){ return x.status!=='требует решения'&&x.status!=='пропущена'&&(x.flags||[]).length; });
     body='<div class="card"><div class="stat">'
       +'<span class="flag ok">применится: '+(st.apply||0)+'</span>'
-      +'<span class="flag">требует решения: '+(st.ask||0)+'</span>'
-      +'<span class="muted">изменит остатки: '+(st.diffs||0)+' из '+(st.total||0)+'</span>'
-      +'</div>'
+      +(bad.length?('<span class="flag bad">разобраться: '+bad.length+'</span>'):'')
+      +(skip.length?('<span class="flag">не применится: '+skip.length+'</span>'):'')
+      +'<span class="muted">изменит остатки: '+(st.diffs||0)+' из '+(st.total||0)
+      +' · прочитано как «'+esc(d.mode==='факт'?'лежит сейчас':'всего прошло')+'»</span></div>'
       +'<button class="pri" onclick="applyInv()">✅ Применить переучёт</button> '
+      +'<button class="tb" onclick="ALLROWS=!ALLROWS;drawLoad()">'+(ALLROWS?'скрыть все строки':'показать все '+rows.length+' строк')+'</button> '
       +'<span class="msg" id="apmsg"></span></div>';
-    body+=order.map(function(k){
-      return '<div class="card"><div style="font-weight:800;margin-bottom:4px">'+esc(k)+'</div>'
-        +byBlock[k].map(rowHtml).join('')+'</div>';
-    }).join('');
+    // показываем ТОЛЬКО то, где программа сама решить не может; остальное применяется молча
+    if(bad.length) body+='<div class="card"><div style="font-weight:800;color:#c0392b;margin-bottom:4px">⚠ Разобраться</div>'
+      +bad.map(rowHtml).join('')+'</div>';
+    if(skip.length) body+='<div class="card"><div style="font-weight:800;margin-bottom:4px">Не применится — такой операции у детали нет</div>'
+      +'<div class="mini" style="margin-bottom:4px">Скорее всего цифра относится к изделию, а не к детали. Программа её не трогает.</div>'
+      +skip.map(function(x){ return '<div class="rowline"><span style="min-width:230px"><b>'+esc(x.detail)+'</b>'
+        +(x.model?(' <span class="mini">'+esc(x.model)+'</span>'):'')+'</span>'
+        +'<span class="mini" style="min-width:96px">'+esc(x.stage)+'</span><b>'+x.qty+'</b></div>'; }).join('')+'</div>';
+    if(note.length) body+='<div class="card"><div style="font-weight:800;margin-bottom:4px">На заметку — применится, но стоит глянуть ('+note.length+')</div>'
+      +'<div class="mini">'+note.slice(0,40).map(function(x){ return esc(x.detail)+(x.model?(' · '+esc(x.model)):'')+' · '+esc(x.stage)+' '+x.qty+' <span class="flag">'+esc((x.flags||[]).join(', '))+'</span>'; }).join('<br>')
+      +(note.length>40?('<br>…и ещё '+(note.length-40)):'')+'</div></div>';
+    if(ALLROWS){
+      var byBlock={}, order=[];
+      rows.forEach(function(x){ var k=x.eq||'—'; if(!byBlock[k]){ byBlock[k]=[]; order.push(k); } byBlock[k].push(x); });
+      body+=order.map(function(k){
+        return '<div class="card"><div style="font-weight:800;margin-bottom:4px">'+esc(k)+'</div>'
+          +byBlock[k].map(rowHtml).join('')+'</div>';
+      }).join('');
+    }
   }
   box.innerHTML=upl+body;
 }
