@@ -55,6 +55,17 @@
   .qin{ width:70px; padding:4px 6px; border:1px solid var(--line); border-radius:7px; font:inherit; text-align:center; }
   .mini{ font-size:11.5px; color:var(--muted); }
   .stat{ display:flex; gap:14px; flex-wrap:wrap; font-size:13px; font-weight:600; margin-bottom:8px; }
+  /* сверка: та же таблица, что на бумаге, только заполненная */
+  td.g input{ width:100%; border:0; background:transparent; font:inherit; text-align:center; padding:3px 0; color:inherit; }
+  td.g input:focus{ outline:2px solid var(--accent); border-radius:4px; }
+  td.ok{ background:#d6f0dc; }                       /* распозналось и применится */
+  td.empty{ background:#f2faf4; }                    /* пусто — проверено, ничего не меняем */
+  td.warnc{ background:#fdf1dc; }                    /* применится, но стоит глянуть */
+  td.badc{ background:#fbdedb; }                     /* вопрос: не применится или требует решения */
+  td.g{ position:relative; }
+  td.g b.mk{ position:absolute; top:1px; right:3px; font-size:9px; font-weight:800; color:#c0392b; }
+  .lgnd{ display:flex; gap:14px; flex-wrap:wrap; font-size:12px; color:#4a5468; margin:6px 0 2px; }
+  .lgnd i{ display:inline-block; width:11px; height:11px; border-radius:3px; margin-right:5px; vertical-align:-1px; border:1px solid rgba(0,0,0,.08); }
   .pb{ font-size:10px; color:#2b6ef6; font-weight:700; }
   td.vd{ padding-left:16px; font-weight:600; color:#4a5468; font-size:11.5px; }
   tr.hasv td.det{ border-bottom:0; }
@@ -93,10 +104,7 @@
   </div>
   <div class="bar noprint" id="bar_print">
     <select id="ord" onchange="load()"></select>
-    <select id="mode" onchange="load()">
-      <option value="prod">по изделиям</option>
-      <option value="detail">свод по деталям</option>
-    </select>
+    <select id="mode" onchange="load()" style="display:none"><option value="detail" selected>свод по деталям</option></select>
     <select id="orient" onchange="setOrient(this.value)" title="ориентация листа при печати">
       <option value="portrait">книжная</option>
       <option value="landscape">альбомная</option>
@@ -248,83 +256,87 @@ function startInv(){
   }).catch(function(){ box.innerHTML='<div class="card err">сеть недоступна</div>'; });
 }
 function loadDraft(){
-  api({vapi:'invdraft',inv:INV}).then(function(r){
+  api({vapi:'invgrid',inv:INV}).then(function(r){
     if(!r||!r.ok){ document.getElementById('pane_load').innerHTML='<div class="card err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
     DRAFT=r; drawLoad();
   }).catch(function(){});
 }
+function ikey(det,mod,st){ return nrm(det)+'|'+nrm(mod)+'|'+st; }
+function nrm(x){ return String(x==null?'':x).toLowerCase().replace(/ё/g,'е').replace(/x/g,'х').replace(/[«»"'`]/g,'').replace(/\s+/g,' ').trim(); }
+
 function drawLoad(){
   var box=document.getElementById('pane_load'), d=DRAFT;
-  var st=d.stat||{};
+  var st=d.stat||{}, ST=d.stages||[], SPLIT=ST.indexOf('Покрашено'), C=d.cells||{};
   var upl='<div class="card"><div class="row" style="margin-bottom:6px"><b>📷 Страницы переучёта</b>'
-    +'<span class="muted">заказ '+esc(d.head.num?('№'+d.head.num):'')+' · загружено файлов: '+(d.head.files||0)+'</span></div>'
+    +'<span class="muted">загружено файлов: '+(d.head.files||0)+'</span></div>'
     +'<input type="file" id="pages" accept="image/*,application/pdf" multiple onchange="pickPages(this.files)">'
-    +'<div class="mini" style="margin-top:5px">Фотографируйте страницы целиком, можно по одной и в любом порядке. '
-    +'Незаполненные строки программа пропускает сама.</div>'
+    +'<div class="mini" style="margin-top:5px">Можно по одной странице и в любом порядке. Незаполненные клетки программа пропускает сама.</div>'
     +'<div id="uplbox"></div></div>';
-  var rows=(d.rows||[]);
-  var body='';
-  if(!rows.length) body='<div class="card muted">Пока ничего не распознано — загрузите страницы.</div>';
-  else{
-    var bad=rows.filter(function(x){ return x.status==='требует решения'; });
-    var skip=rows.filter(function(x){ return x.status==='пропущена'; });
-    var note=rows.filter(function(x){ return x.status!=='требует решения'&&x.status!=='пропущена'&&(x.flags||[]).length; });
-    body='<div class="card"><div class="stat">'
-      +'<span class="flag ok">применится: '+(st.apply||0)+'</span>'
-      +(bad.length?('<span class="flag bad">разобраться: '+bad.length+'</span>'):'')
-      +(skip.length?('<span class="flag">не применится: '+skip.length+'</span>'):'')
-      +'<span class="muted">изменит остатки: '+(st.diffs||0)+' из '+(st.total||0)
-      +' · прочитано как «'+esc(d.mode==='факт'?'лежит сейчас':'всего прошло')+'»</span></div>'
-      +'<button class="pri" onclick="applyInv()">✅ Применить переучёт</button> '
-      +'<button class="tb" onclick="ALLROWS=!ALLROWS;drawLoad()">'+(ALLROWS?'скрыть все строки':'показать все '+rows.length+' строк')+'</button> '
-      +'<span class="msg" id="apmsg"></span></div>';
-    // показываем ТОЛЬКО то, где программа сама решить не может; остальное применяется молча
-    if(bad.length) body+='<div class="card"><div style="font-weight:800;color:#c0392b;margin-bottom:4px">⚠ Разобраться</div>'
-      +bad.map(rowHtml).join('')+'</div>';
-    if(skip.length) body+='<div class="card"><div style="font-weight:800;margin-bottom:4px">Не применится — такой операции у детали нет</div>'
-      +'<div class="mini" style="margin-bottom:4px">Скорее всего цифра относится к изделию, а не к детали. Программа её не трогает.</div>'
-      +skip.map(function(x){ return '<div class="rowline"><span style="min-width:230px"><b>'+esc(x.detail)+'</b>'
-        +(x.model?(' <span class="mini">'+esc(x.model)+'</span>'):'')+'</span>'
-        +'<span class="mini" style="min-width:96px">'+esc(x.stage)+'</span><b>'+x.qty+'</b></div>'; }).join('')+'</div>';
-    if(note.length) body+='<div class="card"><div style="font-weight:800;margin-bottom:4px">На заметку — применится, но стоит глянуть ('+note.length+')</div>'
-      +'<div class="mini">'+note.slice(0,40).map(function(x){ return esc(x.detail)+(x.model?(' · '+esc(x.model)):'')+' · '+esc(x.stage)+' '+x.qty+' <span class="flag">'+esc((x.flags||[]).join(', '))+'</span>'; }).join('<br>')
-      +(note.length>40?('<br>…и ещё '+(note.length-40)):'')+'</div></div>';
-    if(ALLROWS){
-      var byBlock={}, order=[];
-      rows.forEach(function(x){ var k=x.eq||'—'; if(!byBlock[k]){ byBlock[k]=[]; order.push(k); } byBlock[k].push(x); });
-      body+=order.map(function(k){
-        return '<div class="card"><div style="font-weight:800;margin-bottom:4px">'+esc(k)+'</div>'
-          +byBlock[k].map(rowHtml).join('')+'</div>';
-      }).join('');
+
+  var head='<tr><th class="det">Деталь</th><th>Нужно<br>по заказу</th>'
+    +ST.map(function(x){ return '<th>'+esc(x)+'</th>'; }).join('')+'</tr>';
+
+  function cellHtml(det,mod,stage,stg,isVar){
+    if(!stg||!stg.has) return '<td class="cell no"></td>';
+    if(stg.split) return '<td class="cell down">↓</td>';
+    var k=ikey(det,mod,stage), c=C[k];
+    var cls='g cell', mark='', tip='';
+    if(!c){ cls+=' empty'; tip='не заполнено в листе — остаток не меняем'; }
+    else{
+      var fl=(c.flags||[]).join(', ');
+      if(c.status==='требует решения'||c.status==='пропущена'){ cls+=' badc'; mark='!'; }
+      else if(fl){ cls+=' warnc'; }
+      else cls+=' ok';
+      tip=(c.status==='пропущена'?'НЕ ПРИМЕНИТСЯ: такой операции у детали нет. ':'')
+        +(c.status==='требует решения'?'ТРЕБУЕТ РЕШЕНИЯ. ':'')
+        +(fl?(fl+'. '):'')
+        +'прочитано как «'+(c.mode==='факт'?'лежит сейчас':'всего прошло')+'», в заказ ляжет '+c.target
+        +'; остаток '+c.was+' → '+c.now+'; по нарядам '+c.done;
     }
+    return '<td class="'+cls+'" title="'+esc(tip)+'">'+(mark?('<b class="mk">'+mark+'</b>'):'')
+      +'<input value="'+(c?c.qty:'')+'" inputmode="numeric" onchange="setCell(\''+esc(k)+'\',this.value)"></td>';
   }
-  box.innerHTML=upl+body;
+
+  var grid=(d.products||[]).map(function(p){
+    var title=esc(p.title||p.eq||'Детали заказа');
+    var rows=(p.details||[]).map(function(x){
+      var vars=x.variants||[];
+      var cells=ST.map(function(sname){ return cellHtml(x.detail,'',sname,x.stages[sname],false); }).join('');
+      var out='<tr'+(vars.length?' class="hasv"':'')+'><td class="det">'+esc(x.detail)
+        +(x.isProduct?' <span class="pb">изделие</span>':'')+(x.shared?' <span class="sh">общая</span>':'')+'</td>'
+        +'<td class="n">'+x.need+'</td>'+cells+'</tr>';
+      vars.forEach(function(v){
+        var vc=ST.map(function(sname,si){
+          var stg=v.stages[sname];
+          if((!stg||!stg.has)&&si<SPLIT) return '<td class="cell up">↑</td>';
+          return cellHtml(x.detail,v.model,sname,stg,true);
+        }).join('');
+        out+='<tr class="vrow"><td class="det vd">└ '+esc(v.model)+'</td><td class="n">'+v.need+'</td>'+vc+'</tr>';
+      });
+      return out;
+    }).join('');
+    var refs=(p.refs||[]).length?('<div class="refs">🧩 общие детали — в блоке «Общие детали» в конце: '
+      +p.refs.map(function(y){ return '<b>'+esc(y.detail)+'</b> ('+y.need+')'; }).join(', ')+'</div>'):'';
+    return '<div class="grp"><div class="gt">'+title+'</div>'
+      +(rows?('<table><thead>'+head+'</thead><tbody>'+rows+'</tbody></table>'):'')+refs+'</div>';
+  }).join('');
+
+  var bar='<div class="card"><div class="stat">'
+    +'<span class="flag ok">применится: '+(st.apply||0)+'</span>'
+    +((st.ask||0)?('<span class="flag bad">разобраться: '+st.ask+'</span>'):'')
+    +((st.skip||0)?('<span class="flag bad">не применится: '+st.skip+'</span>'):'')
+    +'<span class="muted">изменит остатки: '+(st.diffs||0)+' · прочитано как «'+esc(d.mode==='факт'?'лежит сейчас':'всего прошло')+'»</span></div>'
+    +'<div class="lgnd"><span><i style="background:#d6f0dc"></i>распозналось, применится</span>'
+    +'<span><i style="background:#f2faf4"></i>пусто — проверено, не меняем</span>'
+    +'<span><i style="background:#fdf1dc"></i>применится, но есть замечание</span>'
+    +'<span><i style="background:#fbdedb"></i>вопрос — наведите, чтобы увидеть</span></div>'
+    +'<div class="mini" style="margin-bottom:6px">Цифру в любой клетке можно поправить руками — сверяйтесь с бумажным листом.</div>'
+    +'<button class="pri" onclick="applyInv()">✅ Провести переучёт</button> <span class="msg" id="apmsg"></span></div>';
+
+  box.innerHTML=upl+((d.products||[]).length?(bar+'<div class="sheet">'+grid+'</div>'):'<div class="card muted">Загрузите страницы — здесь появится эта же ведомость с цифрами.</div>');
 }
-function rowHtml(x){
-  var flags=(x.flags||[]).map(function(f){ return '<span class="flag'+(/недостача|меньше|порядок/.test(f)?' bad':'')+'">'+esc(f)+'</span>'; }).join(' ');
-  var was=(x.items||[]).map(function(i){ return i.stockWas; }).join('/');
-  var now=(x.items||[]).map(function(i){ return i.stockNew; }).join('/');
-  var mode='<select class="qin" style="width:120px" onchange="setRow(\''+esc(x.key)+'\',null,this.value,null)">'
-    +'<option value="накопительно"'+(x.mode==='накопительно'?' selected':'')+'>всего прошло</option>'
-    +'<option value="факт"'+(x.mode==='факт'?' selected':'')+'>лежит сейчас</option></select>';
-  var skip=(x.status==='пропущена');
-  return '<div class="rowline">'
-    +'<span style="min-width:210px"><b>'+esc(x.detail)+'</b>'+(x.model?(' <span class="mini">'+esc(x.model)+'</span>'):'')+'</span>'
-    +'<span style="min-width:96px" class="mini">'+esc(x.stage)+'</span>'
-    +'<input class="qin" value="'+(x.qty)+'" onchange="setRow(\''+esc(x.key)+'\',this.value,null,null)">'
-    +'<span class="mini">из '+(x.need||0)+' нужно</span>'
-    +mode
-    +'<span class="mini">остаток '+was+' → <b>'+now+'</b></span>'
-    +flags
-    +'<button class="tb" onclick="setRow(\''+esc(x.key)+'\',null,null,'+(skip?'0':'1')+')">'+(skip?'вернуть':'пропустить')+'</button>'
-    +'</div>';
-}
-function setRow(key,qty,mode,skip){
-  var p={vapi:'invsetrow',inv:INV,key:key};
-  if(qty!=null) p.qty=qty;
-  if(mode!=null) p.mode=mode;
-  if(skip!=null) p.skip=skip;
-  api(p).then(function(r){ if(r&&r.ok){ DRAFT=r; drawLoad(); } });
+function setCell(key,val){
+  api({vapi:'invsetrow',inv:INV,key:key,qty:val}).then(function(r){ if(r&&r.ok){ DRAFT=r; drawLoad(); } });
 }
 function pickPages(files){
   if(!files||!files.length) return;
