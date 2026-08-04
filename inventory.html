@@ -386,10 +386,9 @@ function applyInv(){
     if(!r||!r.ok){ if(m) m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; return; }
     var b=r.before||{}, a=r.after||{};
     if(m) m.innerHTML='<span style="color:#137333">✓ применено строк '+r.applied+'</span>';
-    alert('Переучёт применён.\n\n% труда: '+(b.pct||0)+' → '+(a.pct||0)
-      +'\nосталось: '+(b.leftRub||0)+' → '+(a.leftRub||0)+' р.'
-      +(r.ask?('\n\nОсталось без решения строк: '+r.ask):''));
-    INV=''; UPQ=[]; DRAFT=null; startInv();
+    var done=r.invId||INV;
+    INV=''; UPQ=[]; DRAFT=null;
+    tab('hist'); showReport(done);
   }).catch(function(){ if(m) m.innerHTML='<span class="err">сеть</span>'; });
 }
 
@@ -407,10 +406,44 @@ function loadHist(){
           +'<span style="min-width:150px" class="mini">считал '+esc(x.counter||'—')+'</span>'
           +'<span class="flag'+(x.status==='применён'?' ok':(x.status==='отменён'?' bad':''))+'">'+esc(x.status)+'</span>'
           +'<span class="mini">строк '+x.rows+' · применено '+x.applied+' · изменило остатки '+x.diffs+'</span>'
+          +((x.status==='применён'&&x.pctWas)?('<span class="flag">% труда '+x.pctWas+' → '+x.pctNew+' · осталось '+x.leftWas+' → '+x.leftNew+' р.</span>'):'')
           +(x.applier?('<span class="mini">применил '+esc(x.applier)+'</span>'):'')
+          +(x.status!=='черновик'?('<button class="tb" onclick="showReport(\''+esc(x.id)+'\')">📊 что изменилось</button>'):'')
           +(x.status==='применён'?('<button class="tb" onclick="undoInv(\''+esc(x.id)+'\')">↩ откатить</button>'):'')
           +'</div>';
       }).join('')+'</div>';
+  }).catch(function(){ box.innerHTML='<div class="card err">сеть недоступна</div>'; });
+}
+function showReport(id){
+  var box=document.getElementById('pane_hist');
+  box.innerHTML='<div class="card"><div class="center muted">Считаю, что изменилось…</div></div>';
+  api({vapi:'invreport',inv:id}).then(function(r){
+    if(!r||!r.ok){ box.innerHTML='<div class="card err">'+esc((r&&r.error)||'ошибка')+'</div>'; loadHist(); return; }
+    var k=r.kpi||{}, t=r.totals||{};
+    var dPct=Math.round(((k.pctNew||0)-(k.pctWas||0))*10)/10;
+    var dLeft=Math.round(((k.leftNew||0)-(k.leftWas||0))*100)/100;
+    var rows=(r.rows||[]).map(function(x){
+      var up=x.delta>0;
+      return '<div class="rowline"><span style="min-width:230px"><b>'+esc(x.detail)+'</b>'
+        +(x.model?(' <span class="mini">'+esc(x.model)+'</span>'):'')+'</span>'
+        +'<span class="mini" style="min-width:150px">'+esc(x.stage)+' · '+esc(x.op)+'</span>'
+        +'<span style="min-width:120px">остаток '+x.was+' → <b>'+x.now+'</b></span>'
+        +'<span class="flag '+(up?'ok':'bad')+'">'+(up?'+':'')+Math.round(x.delta)+' шт</span>'
+        +'<span class="mini">'+(up?'+':'')+x.rub+' р. труда</span>'
+        +(x.note?('<span class="flag bad">'+esc(x.note)+'</span>'):'')+'</div>';
+    }).join('');
+    box.innerHTML='<div class="card"><div class="row" style="margin-bottom:6px">'
+      +'<b>📊 Что изменил переучёт №'+(r.head.num||'')+'</b>'
+      +'<button class="tb" onclick="loadHist()">← к списку</button></div>'
+      +'<div class="stat">'
+      +'<span class="flag '+(dPct>=0?'ok':'bad')+'">% труда: '+(k.pctWas||0)+' → '+(k.pctNew||0)+' ('+(dPct>0?'+':'')+dPct+')</span>'
+      +'<span class="flag '+(dLeft<=0?'ok':'bad')+'">осталось: '+(k.leftWas||0)+' → '+(k.leftNew||0)+' р. ('+(dLeft>0?'+':'')+dLeft+')</span>'
+      +'</div>'
+      +'<div class="mini">Изменено операций: <b>'+(t.changed||0)+'</b> — остаток вырос у '+(t.up||0)
+      +' (на '+(t.qtyUp||0)+' шт, +'+(t.rubUp||0)+' р.), упал у '+(t.down||0)+' (на '+(t.qtyDown||0)+' шт, −'+(t.rubDown||0)+' р.).'
+      +'<br>Начальные остатки — это то, что было сделано ДО программы. Наряды рабочих не менялись.</div></div>'
+      +(rows?('<div class="card"><div style="font-weight:800;margin-bottom:4px">Сдвиги, начиная с самых крупных</div>'+rows+'</div>')
+            :'<div class="card muted">Остатки не изменились.</div>');
   }).catch(function(){ box.innerHTML='<div class="card err">сеть недоступна</div>'; });
 }
 function undoInv(id){
