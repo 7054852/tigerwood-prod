@@ -289,7 +289,9 @@ function startInv(){
   box.innerHTML='<div class="card"><div class="center muted">Готовлю переучёт…</div></div>';
   api({vapi:'invstart',batch:curOrder(),date:today()}).then(function(r){
     if(!r||!r.ok){ box.innerHTML='<div class="card err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
-    INV=r.invId; loadDraft();
+    // ⚠ незакрытый черновик у заказа один: программа продолжает начатый, а не заводит второй.
+    // Об этом надо сказать вслух — иначе загруженные страницы лягут поверх чужой работы незаметно.
+    INV=r.invId; RESUMED=!!r.resumed; loadDraft();
   }).catch(function(){ box.innerHTML='<div class="card err">сеть недоступна</div>'; });
 }
 function loadDraft(){
@@ -301,6 +303,7 @@ function loadDraft(){
 function ikey(det,mod,st){ return nrm(det)+'|'+nrm(mod)+'|'+st; }
 function nrm(x){ return String(x==null?'':x).toLowerCase().replace(/ё/g,'е').replace(/x/g,'х').replace(/[«»"'`]/g,'').replace(/\s+/g,' ').trim(); }
 
+var RESUMED=false;
 function drawLoad(){
   var box=document.getElementById('pane_load'), d=DRAFT;
   var st=d.stat||{}, ST=d.stages||[], SPLIT=ST.indexOf('Покрашено'), C=d.cells||{}, INFO=d.info||{};
@@ -308,7 +311,10 @@ function drawLoad(){
     +'<span class="muted">загружено файлов: '+(d.head.files||0)+'</span></div>'
     +'<input type="file" id="pages" accept="image/*,application/pdf" multiple onchange="pickPages(this.files)">'
     +'<div class="mini" style="margin-top:5px">Можно по одной странице и в любом порядке. Незаполненные клетки программа пропускает сама.</div>'
-    +'<div id="uplbox"></div></div>';
+    +'<div id="uplbox"></div>'
+    +(RESUMED?('<div class="mini" style="margin-top:6px;color:#8a5a00"><b>Это уже начатый переучёт</b> — по заказу может быть только один незакрытый черновик. '
+      +'Загруженные страницы лягут поверх того, что здесь уже есть. Чтобы считать с нуля, удалите черновик кнопкой ниже.</div>'):'')
+    +'</div>';
 
   var head='<tr><th class="det">Деталь</th><th>Нужно<br>по заказу</th>'
     +ST.map(function(x){ return '<th>'+esc(x)+'</th>'; }).join('')+'</tr>';
