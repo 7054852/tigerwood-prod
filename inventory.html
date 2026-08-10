@@ -54,6 +54,8 @@
   .flag.ok{ background:#e6f4ea; color:#137333; }
   .qin{ width:70px; padding:4px 6px; border:1px solid var(--line); border-radius:7px; font:inherit; text-align:center; }
   .mini{ font-size:11.5px; color:var(--muted); }
+  /* ⚠ без min-width:0 элемент внутри flex не сжимается ниже своего текста и ломает строку */
+  .grow{ flex:1; min-width:0; }
   .stat{ display:flex; gap:14px; flex-wrap:wrap; font-size:13px; font-weight:600; margin-bottom:8px; }
   /* сверка: та же таблица, что на бумаге, только заполненная */
   td.g input{ width:100%; border:0; background:transparent; font:inherit; text-align:center; padding:3px 0; color:inherit; }
@@ -122,6 +124,7 @@
     </select>
     <label class="chk"><input type="checkbox" id="showAcc" onchange="draw()"> показать цифры программы</label>
     <button class="pri" onclick="window.print()">🖨 Печать</button>
+    <button onclick="checkOrder()" title="проверить, что переучёт по этому заказу посчитает верно">🔍 Проверить заказ</button>
     <span class="msg" id="msg"></span>
   </div>
   <div id="out"></div>
@@ -142,6 +145,33 @@ function api(p){
   var q=Object.keys(p).map(function(k){ return k+'='+encodeURIComponent(p[k]); }).join('&');
   return fetch(BASE+'?'+q).then(function(r){ return r.json(); });
 }
+// Проверка заказа ПЕРЕД переучётом: сходится ли состав заказа с ведомостью и известен ли
+// расход деталей на изделие. Дешевле нажать кнопку, чем пересчитать цех и получить кривой итог.
+function checkOrder(){
+  var ord=document.getElementById('ord').value; if(!ord){ return; }
+  var box=document.getElementById('chk'); if(!box){ box=document.createElement('div'); box.id='chk'; box.className='card noprint';
+    document.getElementById('out').parentNode.insertBefore(box, document.getElementById('out')); }
+  box.innerHTML='<span class="muted">проверяю заказ…</span>';
+  api({vapi:'invcheck',batch:ord}).then(function(d){
+    if(!d.ok){ box.innerHTML='<span class="err">'+esc(d.error||'ошибка')+'</span>'; return; }
+    var st=d.stat||{}, ps=d.problems||[];
+    var head='<div class="stat"><b>🔍 Проверка заказа</b>'
+      +'<span class="flag '+(st.stop?'bad':'ok')+'">'+(st.stop?('мешает переучёту: '+st.stop):'препятствий нет')+'</span>'
+      +(st.warn?('<span class="flag">стоит поправить: '+st.warn+'</span>'):'')
+      +'<span class="mini">деталей '+st.details+' · изделий '+st.products+' · операций '+st.ops+'</span></div>';
+    if(!ps.length){ box.innerHTML=head+'<div class="mini">Состав заказа сходится с ведомостью, расход деталей на изделие известен везде. '
+      +'Переучёт по упакованным изделиям посчитает все стадии.</div>'; return; }
+    var grp={}, ord2=[];
+    ps.forEach(function(x){ var k=x.level+'|'+x.msg; if(!grp[k]){ grp[k]={level:x.level,msg:x.msg,items:[]}; ord2.push(k); } grp[k].items.push(x); });
+    box.innerHTML=head+ord2.map(function(k){ var g=grp[k];
+      return '<div class="rowline"><span class="flag '+(g.level==='стоп'?'bad':'')+'">'+esc(g.level)+'</span>'
+        +'<span class="grow"><b>'+esc(g.msg)+'</b><div class="mini">'
+        +g.items.slice(0,8).map(function(x){ return esc([x.detail,x.stage,x.model].filter(Boolean).join(' · ')); }).join('<br>')
+        +(g.items.length>8?('<br>… ещё '+(g.items.length-8)):'')+'</div></span></div>';
+    }).join('');
+  })['catch'](function(e){ box.innerHTML='<span class="err">'+esc(String(e))+'</span>'; });
+}
+
 // ориентацию печати меняем подменой правила @page — иначе браузер печатает как задано в CSS.
 // В книжной те же 8 колонок, поэтому вместе с @page включаем более плотную вёрстку (body.port).
 function setOrient(v){
