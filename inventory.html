@@ -71,6 +71,10 @@
   td.checked{ background:#eef0f4; }
   td.checked::after{ content:'✓'; position:absolute; top:0; right:2px; font-size:9px; color:#9aa3b5; }
   td.derived input{ color:#1a4fa0; font-style:italic; }
+  /* клетка закрыта на бумаге (писать туда нельзя), но работа за ней есть — подписываем операцию */
+  td.derived .opn{ display:block; font-size:8.5px; line-height:1.1; color:#4a7fd4; text-align:center;
+                   overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:-2px; }
+  td.closedop{ height:34px; }
   td.derived::after{ content:'ƒ'; position:absolute; top:0; right:2px; font-size:9px; color:#4a7fd4; }
   td.cell{ position:relative; }
   td.badc input{ font-weight:800; color:#8b1d13; }
@@ -343,16 +347,21 @@ function drawLoad(){
         +((c.status==='пропущена'||(noop&&!c.fromProduct))?'НЕ ПРИМЕНИТСЯ: у этой детали нет такой операции — скорее всего цифра относится к изделию. ':'')
         +(c.status==='требует решения'?'ТРЕБУЕТ РЕШЕНИЯ. ':'')
         +(fl?(fl+'. '):'')
+        +((c.ops&&c.ops.length)?('операции: '+c.ops.join(', ')+'\n'):'')
         +'прочитано как «'+(c.mode==='факт'?'лежит сейчас':'всего прошло')+'»\n'
         +'ИТОГО станет '+c.target+' из '+c.need+' нужных — цифра с листа это ИТОГ, а не добавка.\n'
         +'по нарядам уже принято '+c.done+' (не трогаем), поэтому начальный остаток '+c.was+' → '+c.now;
     }
+    // у изделия «Готово» на листе закрыто (изделие либо упаковано, либо нет), но операция сборки
+    // коробки живёт именно там. Цифру показываем и ПОДПИСЫВАЕМ, иначе она берётся ниоткуда.
+    var opn=(c&&c.derived&&noop&&(c.ops||[]).length)?('<span class="opn">'+esc(c.ops.join(', '))+'</span>'):'';
+    if(opn) cls+=' closedop';
     return '<td class="'+cls+'" title="'+esc(tip)+'">'+(mark?('<b class="mk">'+mark+'</b>'):'')
       // ⚠ c.qty бывает null (клетка распозналась, но число не прочиталось) — без проверки
       // в поле подставлялось слово «null», и было непонятно, что там на самом деле пусто
       // у выведенной клетки в листе цифры нет (qty пустой) — показываем то, что вывела программа,
       // иначе на экране цветное пустое место и непонятно, что вообще применится
-      +'<input value="'+((c&&c.qty!==null&&c.qty!==undefined&&c.qty!=='')?c.qty:((c&&c.derived&&c.target)?c.target:''))+'" inputmode="numeric" onchange="setCell(\''+esc(k)+'\',this.value)"></td>';
+      +'<input value="'+((c&&c.qty!==null&&c.qty!==undefined&&c.qty!=='')?c.qty:((c&&c.derived&&c.target)?c.target:''))+'" inputmode="numeric" onchange="setCell(\''+esc(k)+'\',this.value)">'+opn+'</td>';
   }
 
   var grid=(d.products||[]).map(function(p){
