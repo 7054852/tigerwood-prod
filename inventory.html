@@ -124,7 +124,6 @@
     </select>
     <label class="chk"><input type="checkbox" id="showAcc" onchange="draw()"> показать цифры программы</label>
     <button class="pri" onclick="window.print()">🖨 Печать</button>
-    <button onclick="checkOrder()" title="проверить, что переучёт по этому заказу посчитает верно">🔍 Проверить заказ</button>
     <span class="msg" id="msg"></span>
   </div>
   <div id="out"></div>
@@ -147,29 +146,25 @@ function api(p){
 }
 // Проверка заказа ПЕРЕД переучётом: сходится ли состав заказа с ведомостью и известен ли
 // расход деталей на изделие. Дешевле нажать кнопку, чем пересчитать цех и получить кривой итог.
-function checkOrder(){
-  var ord=document.getElementById('ord').value; if(!ord){ return; }
-  var box=document.getElementById('chk'); if(!box){ box=document.createElement('div'); box.id='chk'; box.className='card noprint';
-    document.getElementById('out').parentNode.insertBefore(box, document.getElementById('out')); }
-  box.innerHTML='<span class="muted">проверяю заказ…</span>';
-  api({vapi:'invcheck',batch:ord}).then(function(d){
-    if(!d.ok){ box.innerHTML='<span class="err">'+esc(d.error||'ошибка')+'</span>'; return; }
-    var st=d.stat||{}, ps=d.problems||[];
-    var head='<div class="stat"><b>🔍 Проверка заказа</b>'
-      +'<span class="flag '+(st.stop?'bad':'ok')+'">'+(st.stop?('мешает переучёту: '+st.stop):'препятствий нет')+'</span>'
-      +(st.warn?('<span class="flag">стоит поправить: '+st.warn+'</span>'):'')
-      +'<span class="mini">деталей '+st.details+' · изделий '+st.products+' · операций '+st.ops+'</span></div>';
-    if(!ps.length){ box.innerHTML=head+'<div class="mini">Состав заказа сходится с ведомостью, расход деталей на изделие известен везде. '
-      +'Переучёт по упакованным изделиям посчитает все стадии.</div>'; return; }
-    var grp={}, ord2=[];
-    ps.forEach(function(x){ var k=x.level+'|'+x.msg; if(!grp[k]){ grp[k]={level:x.level,msg:x.msg,items:[]}; ord2.push(k); } grp[k].items.push(x); });
-    box.innerHTML=head+ord2.map(function(k){ var g=grp[k];
+// Проверка приходит ВМЕСТЕ с ведомостью, считать её отдельно не нужно. Полоса появляется,
+// только если есть о чём сказать: молчание = заказ посчитается верно.
+function checksHtml(c, lost){
+  if(!c) return '';
+  var ps=(c.problems||[]).slice(), st=c.stat||{};
+  if(lost&&lost.length) ps.push({level:'стоп',detail:'',stage:'',model:'',
+    msg:'Часть работы по упакованным изделиям записать некуда — в ведомости нет клетки. Не применено: '+lost.length+' шт.'});
+  if(!ps.length) return '';
+  var grp={}, ord=[];
+  ps.forEach(function(x){ var k=x.level+'|'+x.msg; if(!grp[k]){ grp[k]={level:x.level,msg:x.msg,items:[]}; ord.push(k); } grp[k].items.push(x); });
+  return '<div class="card noprint"><div class="stat"><b>⚠️ Заказ посчитается не полностью</b>'
+    +(st.stop?('<span class="flag bad">мешает переучёту: '+st.stop+'</span>'):'')
+    +(st.warn?('<span class="flag">стоит поправить: '+st.warn+'</span>'):'')+'</div>'
+    +ord.map(function(k){ var g=grp[k];
       return '<div class="rowline"><span class="flag '+(g.level==='стоп'?'bad':'')+'">'+esc(g.level)+'</span>'
         +'<span class="grow"><b>'+esc(g.msg)+'</b><div class="mini">'
-        +g.items.slice(0,8).map(function(x){ return esc([x.detail,x.stage,x.model].filter(Boolean).join(' · ')); }).join('<br>')
-        +(g.items.length>8?('<br>… ещё '+(g.items.length-8)):'')+'</div></span></div>';
-    }).join('');
-  })['catch'](function(e){ box.innerHTML='<span class="err">'+esc(String(e))+'</span>'; });
+        +g.items.filter(function(x){return x.detail;}).slice(0,8).map(function(x){
+            return esc([x.detail,x.stage,x.model].filter(Boolean).join(' · ')); }).join('<br>')
+        +'</div></span></div>'; }).join('')+'</div>';
 }
 
 // ориентацию печати меняем подменой правила @page — иначе браузер печатает как задано в CSS.
@@ -209,6 +204,7 @@ function load(){
 
 function draw(){
   if(!R) return;
+  var warn=checksHtml(R.checks, null);
   var acc=document.getElementById('showAcc').checked;
   var ST=R.stages, SPLIT=ST.indexOf('Покрашено');   // с этой стадии деталь расходится по цветам
   var legend='<div class="legend">'+ST.map(function(s){ return '<b>'+esc(s)+'</b> — '+esc(R.hints[s]||''); }).join(' · ')
@@ -261,7 +257,7 @@ function draw(){
       +(rows?('<table><thead>'+head+'</thead><tbody>'+rows+'</tbody></table>'):'')+refs+'</div>';
   }).join('');
 
-  document.getElementById('out').innerHTML='<div class="sheet">'
+  document.getElementById('out').innerHTML=warn+'<div class="sheet">'
     +'<div class="shead"><div><div class="stitle">Ведомость переучёта деталей</div>'
       +'<div class="sline">заказ <b>'+esc(R.order.num)+'</b>'+(R.order.name?(' · '+esc(R.order.name)):'')
       +(R.order.plan?(' · срок '+esc(R.order.plan)):'')+' · изделий '+R.count.products+', строк '+R.count.details+'</div></div>'
@@ -390,7 +386,8 @@ function drawLoad(){
     +'<div class="mini" style="margin-bottom:6px">Цифру в любой клетке можно поправить руками — сверяйтесь с бумажным листом.</div>'
     +'<button class="pri" onclick="applyInv()">✅ Провести переучёт</button> <span class="msg" id="apmsg"></span></div>';
 
-  box.innerHTML=upl+((d.products||[]).length?(bar+'<div class="sheet">'+grid+'</div>'):'<div class="card muted">Загрузите страницы — здесь появится эта же ведомость с цифрами.</div>');
+  box.innerHTML=checksHtml(d.checks, d.lost)+upl
+    +((d.products||[]).length?(bar+'<div class="sheet">'+grid+'</div>'):'<div class="card muted">Загрузите страницы — здесь появится эта же ведомость с цифрами.</div>');
 }
 function setCell(key,val){
   api({vapi:'invsetrow',inv:INV,key:key,qty:val}).then(function(r){ if(r&&r.ok){ DRAFT=r; drawLoad(); } });
