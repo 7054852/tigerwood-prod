@@ -65,6 +65,9 @@
   /* выведено программой (цепочка стадий или разворот упаковки), а не вписано в лист:
      синий пунктир + курсив, чтобы происхождение цифры было видно с одного взгляда */
   td.derived:not(.badc){ background:#e8f0fe; box-shadow:inset 0 0 0 1px #a8c7fa; }
+  /* стадию программа посчитала, но в цеху уже столько же или больше — трогать нечего */
+  td.checked{ background:#eef0f4; }
+  td.checked::after{ content:'✓'; position:absolute; top:0; right:2px; font-size:9px; color:#9aa3b5; }
   td.derived input{ color:#1a4fa0; font-style:italic; }
   td.derived::after{ content:'ƒ'; position:absolute; top:0; right:2px; font-size:9px; color:#4a7fd4; }
   td.cell{ position:relative; }
@@ -274,7 +277,7 @@ function nrm(x){ return String(x==null?'':x).toLowerCase().replace(/ё/g,'е').r
 
 function drawLoad(){
   var box=document.getElementById('pane_load'), d=DRAFT;
-  var st=d.stat||{}, ST=d.stages||[], SPLIT=ST.indexOf('Покрашено'), C=d.cells||{};
+  var st=d.stat||{}, ST=d.stages||[], SPLIT=ST.indexOf('Покрашено'), C=d.cells||{}, INFO=d.info||{};
   var upl='<div class="card"><div class="row" style="margin-bottom:6px"><b>📷 Страницы переучёта</b>'
     +'<span class="muted">загружено файлов: '+(d.head.files||0)+'</span></div>'
     +'<input type="file" id="pages" accept="image/*,application/pdf" multiple onchange="pickPages(this.files)">'
@@ -285,10 +288,12 @@ function drawLoad(){
     +ST.map(function(x){ return '<th>'+esc(x)+'</th>'; }).join('')+'</tr>';
 
   function cellHtml(det,mod,stage,stg,isVar){
-    var k=ikey(det,mod,stage), c=C[k];
+    var k=ikey(det,mod,stage), c=C[k], nf=(!c&&INFO[k])?INFO[k]:null;
     // ⚠ цифра, вписанная в заштрихованную клетку, должна быть ВИДНА — иначе непонятно,
     // почему она «не применится». Штриховку рисуем только когда данных нет.
     if(!c&&(!stg||!stg.has)) return '<td class="cell no"></td>';
+    if(nf) return '<td class="cell checked" title="'+esc('ПРОВЕРЕНО, НЕ МЕНЯЕМ: по упаковке изделий на эту стадию выходит '
+        +nf.target+' шт, а в цеху уже '+nf.ready+'. Вверх поднимать нечего, вниз переучёт не опускает.')+'"></td>';
     if(!c&&stg&&stg.split) return '<td class="cell down">↓</td>';
     var cls='g cell', mark='', tip='';
     var noop=(!stg||!stg.has);
@@ -300,7 +305,7 @@ function drawLoad(){
       else if(fl){ cls+=' warnc'; }
       else cls+=' ok';
       tip=(c.derived?(c.fromProduct
-              ? 'ВЫВЕДЕНО ПРОГРАММОЙ из упаковки изделия: раз изделия упакованы, деталь на них прошла эту стадию. Поднимаем, но не опускаем. '
+              ? 'ВЫВЕДЕНО ПРОГРАММОЙ из упаковки изделия: раз изделия упакованы, деталь на них прошла эту стадию.\nКАЖДАЯ стадия считается отдельно, так что более ранние программа пересчитала так же — если они не подсвечены, там уже сделано столько же или больше. Поднимаем, но не опускаем. '
               : 'ВЫВЕДЕНО ПРОГРАММОЙ по цепочке стадий: раз пройдена более поздняя стадия, эта тоже пройдена. ') : '')
         +((c.status==='пропущена'||noop)?'НЕ ПРИМЕНИТСЯ: у этой детали нет такой операции — скорее всего цифра относится к изделию. ':'')
         +(c.status==='требует решения'?'ТРЕБУЕТ РЕШЕНИЯ. ':'')
@@ -349,6 +354,7 @@ function drawLoad(){
     +'<div class="lgnd"><span><i style="background:#cdeed6"></i>распозналось, применится</span>'
     +'<span><i style="background:#e9f5ed"></i>пусто — проверено, не меняем</span>'
     +'<span><i style="background:#e8f0fe;box-shadow:inset 0 0 0 1px #a8c7fa"></i>ƒ вывела программа (только вверх)</span>'
+    +'<span><i style="background:#eef0f4"></i>✓ посчитано — в цеху уже столько же</span>'
     +'<span><i style="background:#fce9c8"></i>применится, но есть замечание</span>'
     +'<span><i style="background:#f7c3bd;outline:2px solid #c0392b"></i>вопрос — наведите, чтобы увидеть</span></div>'
     +'<div class="mini" style="margin-bottom:6px">Цифру в любой клетке можно поправить руками — сверяйтесь с бумажным листом.</div>'
