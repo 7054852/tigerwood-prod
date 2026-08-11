@@ -731,7 +731,28 @@ function rmItem(itemId){
   var b=DETAIL; if(!b||!b.items) return;
   for(var j=0;j<b.items.length;j++) if(b.items[j].id===itemId){ b.items.splice(j,1); renderItems(b.id); (function(bid){ api({vapi:'rmitem', item:itemId}).then(function(){ scheduleOpsRefresh(bid); }); })(b.id); return; }
 }
-function ship(id){ var m=$('bm_'+id); m.textContent='…'; api({vapi:'shipbatch', batch:id}).then(function(r){ m.innerHTML=(r&&r.ok)?'<span class="ok">отгружено '+(r.shipped||0)+'</span>':'<span class="err">ошибка</span>'; setTimeout(reloadDetail,700); }); }
+// Отгрузка необратима, поэтому сначала показываем, ЧТО останется в цеху: изделия уедут,
+// а недоделанные детали уйдут на склад деталей — оттуда их возьмёт следующая партия.
+function ship(id){
+  var m=$('bm_'+id); m.textContent='считаю остаток…';
+  api({vapi:'wiptake', batch:id, dry:1}).then(function(w){
+    var txt='Отгрузить партию?';
+    if(w&&w.ok&&w.stat&&w.stat.rows){
+      var top=(w.items||[]).slice(0,8).map(function(x){
+        return '• '+x.detail+(x.model?(' · '+x.model):'')+' · '+x.stage+' — '+x.qty+' шт'; }).join('\n');
+      txt='Отгрузить партию?\n\nВ цеху останется '+w.stat.qty+' деталей ('+w.stat.rows+' позиций) — они уйдут на склад деталей:\n'
+         +top+((w.items||[]).length>8?('\n… ещё '+((w.items||[]).length-8)+' позиций'):'');
+    } else if(w&&w.ok){ txt='Отгрузить партию?\n\nНезавершённых деталей в цеху не осталось.'; }
+    m.textContent='';
+    if(!confirm(txt)) return;
+    m.textContent='…';
+    api({vapi:'shipbatch', batch:id}).then(function(r){
+      var wip=(r&&r.wip&&r.wip.ok&&r.wip.stat)?(' · на склад деталей '+r.wip.stat.qty+' шт'):'';
+      m.innerHTML=(r&&r.ok)?('<span class="ok">отгружено '+(r.shipped||0)+wip+'</span>'):'<span class="err">ошибка</span>';
+      setTimeout(reloadDetail,700);
+    });
+  });
+}
 
 load();
 
