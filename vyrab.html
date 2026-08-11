@@ -598,6 +598,14 @@ function act(p, msg, done){
   api(p).then(function(r){
     BUSYACT=0;
     if(r&&r.ok){ if(msg) msg.textContent=''; (done||loadPending)(r); return; }
+    // работа опережает техпорядок — мастер решает сам: цифры показываем, но не запрещаем.
+    // Порядок одобрения нарядов в цеху часто обратный (шлифовщика приняли раньше раскройщика).
+    if(r&&r.seq&&r.msg){
+      if(msg) msg.textContent='';
+      if(confirm(r.msg)){ p.force=1; act(p,msg,done); }
+      else if(msg) msg.innerHTML='<span class="muted">не одобрено</span>';
+      return;
+    }
     var e=(r&&r.error)||'не вышло';
     if(msg) msg.innerHTML='<span class="err">'+esc(e)+'</span>'; else alert(e);
   }).catch(function(){

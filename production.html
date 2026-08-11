@@ -405,7 +405,7 @@ function renderOps(id,r){
         +'<td class="num"><input class="q c-stock" value="'+(o.stock||0)+'" inputmode="numeric" title="начальные остатки — работа уже выполнена (не важно кем)"'
         +' onchange="setStock(\''+id+'\',\''+esc(o.id)+'\',this.value,this)" onkeydown="stockKey(event,this)"></td>'
         +'<td class="num c-done">'+o.done+'</td>'
-        +'<td class="num c-left" style="'+opLeftCss(o)+'">'+opLeftHtml(o)+mv+'</td></tr>';
+        +'<td class="num c-left" style="'+opLeftCss(o)+'">'+opLeftHtml(o)+chainHtml(o)+mv+'</td></tr>';
     }).join('');
     var pct=Math.min(100,p.pct||0);
     // изделие свёрнуто по умолчанию: видно список изделий с % — сразу открываешь нужное, не листая всё
@@ -585,6 +585,16 @@ function doMove(orderId,outId,target){
 }
 // ⚠ процент считается по ТРУДУ в рублях. Дешёвые операции могут висеть незакрытыми при 99 %,
 // и это выглядело как противоречие. Поэтому рядом — сколько операций и штук реально осталось.
+// «обеспечено» — сколько деталей реально прошло предыдущую стадию. Если наряды её опередили,
+// показываем обе цифры: процент заказа при этом не меняется (решение владельца).
+function chainHtml(o){
+  if(!(Number(o.ahead)>0.01)) return '';
+  return ' <span class="pill" style="background:#f7efdb;color:#b7791f" title="'
+    +esc('принято по нарядам '+r1(o.ready)+', а предыдущая стадия закрыта только на '+r1(o.chainCap)
+        +'. Обработать больше, чем прошло предыдущий этап, нельзя — либо наряд по нему ещё не одобрен, либо приёмка завышена.')
+    +'">обеспечено '+r1(o.chainCap)+'</span>';
+}
+function r1(x){ return Math.round((Number(x)||0)*10)/10; }
 function opProdStat(p){
   var nOp=0, qty=0;
   (p.ops||[]).forEach(function(o){ var l=Number(o.left)||0; if(l>0){ nOp++; qty+=l; } });
