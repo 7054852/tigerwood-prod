@@ -43,6 +43,11 @@
   tr:nth-child(even) td.det, tr:nth-child(even) td.n{ background:#fafbfd; }
   .sh{ font-size:10px; color:#8a5a00; font-weight:700; }
   .refs{ font-size:11.5px; color:#4a5468; padding:5px 4px 0; }
+  /* деталь входит сразу в несколько изделий — в блоке изделия она видна, но считается один раз
+     в блоке «Общие детали»: иначе кажется, что у изделия деталей нет вовсе */
+  tr.refrow td{ background:#f7f8fb; color:#8a93a6; }
+  tr.refrow td.det{ font-weight:600; }
+  tr.refrow .rn{ font-size:10px; font-weight:600; color:#8a5a00; white-space:nowrap; }
   .hide{ display:none !important; }
   .tb{ font-size:13px; }
   .tb.on{ background:var(--accent); border-color:var(--accent); color:#fff; }
@@ -253,12 +258,13 @@ function draw(){
     }).join('');
     // общие детали изделия физически считаются в блоке «Общие детали» — здесь только отсылка,
     // иначе кажется, что у изделия деталей нет вовсе
-    var refs=(p.refs||[]).length
-      ? ('<div class="refs">🧩 общие детали этого изделия — считать в блоке «Общие детали» в конце: '
-         +p.refs.map(function(x){ return '<b>'+esc(x.detail)+'</b> ('+x.need+' шт)'; }).join(', ')+'</div>')
-      : '';
+    var refRows=(p.refs||[]).map(function(x){
+      return '<tr class="refrow"><td class="det">🧩 '+esc(x.detail)
+        +' <span class="rn">общая — считать в блоке «Общие детали»</span></td>'
+        +'<td class="n">'+x.need+'</td><td class="cell no" colspan="'+(ST.length+1)+'"></td></tr>';
+    }).join('');
     return '<div class="grp'+(p.details.length>22?' big':'')+'"><div class="gt">'+title+'</div>'
-      +(rows?('<table><thead>'+head+'</thead><tbody>'+rows+'</tbody></table>'):'')+refs+'</div>';
+      +((rows||refRows)?('<table><thead>'+head+'</thead><tbody>'+rows+refRows+'</tbody></table>'):'')+'</div>';
   }).join('');
 
   document.getElementById('out').innerHTML=warn+'<div class="sheet">'
@@ -382,10 +388,13 @@ function drawLoad(){
       });
       return out;
     }).join('');
-    var refs=(p.refs||[]).length?('<div class="refs">🧩 общие детали — в блоке «Общие детали» в конце: '
-      +p.refs.map(function(y){ return '<b>'+esc(y.detail)+'</b> ('+y.need+')'; }).join(', ')+'</div>'):'';
+    var refRows=(p.refs||[]).map(function(y){
+      return '<tr class="refrow"><td class="det">🧩 '+esc(y.detail)
+        +' <span class="rn">общая — считать в блоке «Общие детали»</span></td>'
+        +'<td class="n">'+y.need+'</td><td class="cell no" colspan="'+ST.length+'"></td></tr>';
+    }).join('');
     return '<div class="grp"><div class="gt">'+title+'</div>'
-      +(rows?('<table><thead>'+head+'</thead><tbody>'+rows+'</tbody></table>'):'')+refs+'</div>';
+      +((rows||refRows)?('<table><thead>'+head+'</thead><tbody>'+rows+refRows+'</tbody></table>'):'')+'</div>';
   }).join('');
 
   var bar='<div class="card"><div class="stat">'
