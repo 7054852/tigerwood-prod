@@ -130,6 +130,7 @@ window.onerror=function(msg,src,line){
   <div id="freenote" style="margin-top:6px"></div>
   <label>Оборудование</label><select id="equip" onchange="fillDetails()"></select>
   <label>Деталь</label><select id="detail" onchange="fillOps()"></select>
+  <div id="varbox" style="display:none"><label>Какой товар</label><select id="pvar" onchange="fillOps()"></select></div>
   <label>Операция</label><select id="op" onchange="calc()"></select>
   <label>Количество</label><input id="qty" type="number" min="0" inputmode="numeric" oninput="calc()" placeholder="сколько сделано">
   <div class="sum" id="sum">—</div>
@@ -283,19 +284,19 @@ function onBatchChange(){
   var bid=document.getElementById('batch').value;
   var note=document.getElementById('freenote');
   if(bid===FREE){                       // вне заказа — весь каталог деталей/операций (расценки те же)
-    COMP=DATA.comp||{}; EQUIPS=DATA.equipments||[];
+    COMP=DATA.comp||{}; PROD=DATA.prod||{}; EQUIPS=DATA.equipments||[];
     if(note) note.innerHTML='<div class="card" style="background:#f2f7ff;border-color:#cddffa;padding:8px 10px">'
       +'🧰 <b>Работа вне заказа</b><div class="muted" style="margin-top:2px">Задел на будущее, переделка, помощь другому участку. '
       +'Оплата — по обычным расценкам, войдёт в вашу зарплату. На выполнение заказов такая работа не влияет.</div></div>';
     refillEquip(); return;
   }
   if(note) note.innerHTML='';
-  if(!bid){ COMP={}; EQUIPS=[]; refillEquip(); return; }
+  if(!bid){ COMP={}; PROD={}; EQUIPS=[]; refillEquip(); return; }
   document.getElementById('equip').innerHTML=opt('','загрузка…');
   api({vapi:'ordercomp',batch:bid}).then(function(r){
-    COMP=(r&&r.byEquip)||{}; EQUIPS=(r&&r.equipments)||[];
+    COMP=(r&&r.byEquip)||{}; PROD=(r&&r.byProduct)||{}; EQUIPS=(r&&r.equipments)||[];
     refillEquip();
-  }).catch(function(){ COMP={}; EQUIPS=[]; refillEquip(); });
+  }).catch(function(){ COMP={}; PROD={}; EQUIPS=[]; refillEquip(); });
 }
 function refillEquip(){
   document.getElementById('equip').innerHTML=EQUIPS.map(function(e){return opt(e);}).join('')
@@ -303,12 +304,45 @@ function refillEquip(){
   fillDetails();
 }
 function curProd(){ return (COMP||{})[document.getElementById('equip').value]||{details:{},order:[]}; }
-function fillDetails(){ var p=curProd(); document.getElementById('detail').innerHTML=(p.order||[]).map(function(n){return opt(n);}).join('')||opt('','нет деталей'); fillOps(); }
-function fillOps(){ var p=curProd(), name=document.getElementById('detail').value; var ops=(p.details||{})[name]||[];
+// ── УПАКОВКА ТОВАРА выбирается как ТОВАР, а не как выдуманная деталь с его именем.
+// Раньше рабочий сдавал «деталь Турник · Упаковка», цвет оставался пустым, и мастер
+// раскидывал упаковку по цветам вручную — оттуда и брались упаковки на некрашеном чёрном.
+var PROD={}, PITEM='__prod__';
+function curPB(){ return (PROD||{})[document.getElementById('equip').value]||null; }
+function isProdMode(){ return document.getElementById('detail').value===PITEM; }
+function curPModel(){ var pb=curPB(); if(!pb) return null; return pb.models[(document.getElementById('pvar')||{}).value]||null; }
+function fillDetails(){
+  var p=curProd(), pb=curPB();
+  var head=pb?opt(PITEM,'📦 Изделие целиком (упаковка)'):'';
+  document.getElementById('detail').innerHTML=head+(p.order||[]).map(function(n){return opt(n);}).join('')
+    ||opt('','нет деталей');
+  fillVars(); fillOps();
+}
+function fillVars(){
+  var box=document.getElementById('varbox'), sel=document.getElementById('pvar'), pb=curPB();
+  if(!box||!sel) return;
+  if(!isProdMode()||!pb){ box.style.display='none'; sel.innerHTML=''; return; }
+  var keep=sel.value;
+  sel.innerHTML=(pb.order||[]).map(function(m){ return opt(m, m||'(без варианта)'); }).join('');
+  if(keep&&pb.models[keep]) sel.value=keep;
+  // один вариант — выбирать нечего, не отнимаем у рабочего лишний тап
+  box.style.display=(pb.order||[]).length>1?'':'none';
+}
+function fillOps(){
+  fillVars();
+  if(isProdMode()){
+    var mm=curPModel(), ops=(mm&&mm.ops)||[];
+    document.getElementById('op').innerHTML=ops.map(function(o){ return opt(o.op, o.op+' — '+o.rate+' р.'); }).join('')
+      ||opt('','нет операций упаковки');
+    calc(); return;
+  }
+  var p=curProd(), name=document.getElementById('detail').value; var ops=(p.details||{})[name]||[];
   document.getElementById('op').innerHTML=ops.map(function(o){ return opt(o.op, o.op+' — '+(opPaid(o)?(o.rate+' р.'):'оплата за лист')); }).join(''); calc(); }
 // «только ЧПУ» = деталь режет станок, человеку платит строка листа. Расценка остаётся (это трудоёмкость), ЗП — нет.
 function opPaid(o){ return !o || String(o.pay||'').toLowerCase()!=='только чпу'; }
-function curOp(){ var p=curProd(), name=document.getElementById('detail').value, op=document.getElementById('op').value; return ((p.details||{})[name]||[]).filter(function(y){return y.op===op;})[0]||null; }
+function curOp(){ var op=document.getElementById('op').value;
+  if(isProdMode()){ var mm=curPModel(); return ((mm&&mm.ops)||[]).filter(function(y){return y.op===op;})[0]||null; }
+  var p=curProd(), name=document.getElementById('detail').value; return ((p.details||{})[name]||[]).filter(function(y){return y.op===op;})[0]||null; }
 function curRate(){ var o=curOp(); return o?o.rate:0; }
 function curPaid(){ return opPaid(curOp()); }
 function calc(){ var q=Number(document.getElementById('qty').value)||0, r=curRate(), pd=curPaid();
@@ -362,6 +396,14 @@ function addToCart(){
   // пустой селектор (заказы ещё грузятся) молча давал batch='' — операция уходила «вне заказа»
   if(!bs.options.length){ wmsg('<span class="err">Список заказов ещё грузится — секунду</span>'); return; }
   var pd=curPaid();
+  if(isProdMode()){
+    var mm=curPModel();
+    if(!mm){ wmsg('<span class="err">Выберите товар</span>'); return; }
+    CART.push({equip:equip,detail:mm.detail,op:op,qty:qty,rate:rate,paid:true,sum:Math.round(qty*rate*100)/100,
+               level:'изделие',model:mm.model,label:'📦 '+(mm.model||equip),
+               batch:(bv===FREE?'':bv), batchName:(bv===FREE?'🧰 вне заказа':bn)});
+    document.getElementById('qty').value=''; calc(); wmsg(''); renderCart(); saveDraft(); return;
+  }
   CART.push({equip:equip,detail:detail,op:op,qty:qty,rate:rate,paid:pd,sum:pd?(Math.round(qty*rate*100)/100):0,
              batch:(bv===FREE?'':bv), batchName:(bv===FREE?'🧰 вне заказа':bn)});
   document.getElementById('qty').value=''; calc(); wmsg(''); renderCart(); saveDraft();
@@ -371,7 +413,7 @@ function renderCart(){
   var c=document.getElementById('cart');
   if(!CART.length){ c.innerHTML=''; renderTotals(); return; }
   c.innerHTML='<div class="card"><div class="row"><b>Операции: '+CART.length+'</b><span class="muted">'+esc(SHIFT==='ночь'?'🌙 ночь':'☀️ день')+'</span></div>'
-    +CART.map(function(x,i){ return '<div class="row" style="border-top:1px solid #eee;padding-top:5px"><span>'+esc(x.detail)+' · '+esc(x.op)+' · '+x.qty+' шт → '+(x.paid===false?'<span class="muted">0 р. · оплачено листом</span>':(x.sum+' р.'))
+    +CART.map(function(x,i){ return '<div class="row" style="border-top:1px solid #eee;padding-top:5px"><span>'+esc(x.label||x.detail)+' · '+esc(x.op)+' · '+x.qty+' шт → '+(x.paid===false?'<span class="muted">0 р. · оплачено листом</span>':(x.sum+' р.'))
       +' <span class="muted" style="font-size:11px">'+esc(x.batchName||'')+'</span></span><button class="sm gray" onclick="rmCart('+i+')">✕</button></div>'; }).join('')
     +'</div>';
   renderTotals();
@@ -499,7 +541,7 @@ function sendWork(){
   twSay('Отправляю наряд мастеру…');
   var worker=curWorker();
   if(!worker){ wmsg('<span class="err">Не выбран рабочий</span>'); return; }
-  var items=CART.map(function(x){ return {equip:x.equip,detail:x.detail,op:x.op,qty:x.qty,batch:x.batch||''}; });
+  var items=CART.map(function(x){ return {equip:x.equip,detail:x.detail,op:x.op,qty:x.qty,batch:x.batch||'',level:x.level||'',model:x.model||''}; });
   // ⚠ Наряд, целиком ушедший «вне заказа», не двигает выполнение заказа — и это заметили
   // только на проверке, через полдня. Спрашиваем прямо перед отправкой.
   if(items.length && items.every(function(x){ return !x.batch; })){
