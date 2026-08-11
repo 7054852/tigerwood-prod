@@ -23,12 +23,13 @@
   input.q{ width:64px; text-align:right; font-variant-numeric:tabular-nums; }
   .pill{ font-size:11px; padding:2px 9px; border-radius:20px; font-weight:700; }
   /* компактная отметка «собрано»: иконка, надпись выезжает по наведению (не двигает соседние колонки) */
-  .asm{ position:relative; display:inline-flex; align-items:center; justify-content:center; width:22px; height:20px; border-radius:20px; font-size:12px; font-weight:700; text-decoration:none; vertical-align:middle; }
+  /* ⚠ это отметка «состав изделия подтверждён в каталоге», а НЕ «работа завершена».
+     Голая зелёная галочка рядом с процентом читалась как «готово» — поэтому подпись видна всегда. */
+  .asm{ position:relative; display:inline-flex; align-items:center; gap:4px; padding:0 9px; height:20px;
+        border-radius:20px; font-size:11px; font-weight:700; text-decoration:none; vertical-align:middle; white-space:nowrap; }
   .asm.ok{ background:#e7f5ea; color:#137333; }
   .asm.no{ background:#fbf1de; color:#b7791f; cursor:pointer; }
-  .asm .t{ position:absolute; left:100%; top:0; margin-left:4px; height:20px; line-height:20px; padding:0 9px; white-space:nowrap; border-radius:20px; max-width:0; overflow:hidden; opacity:0; transition:max-width .18s ease, opacity .18s ease; pointer-events:none; box-shadow:0 1px 6px rgba(20,30,60,.14); z-index:5; }
-  .asm.ok .t{ background:#e7f5ea; color:#137333; } .asm.no .t{ background:#fbf1de; color:#b7791f; }
-  .asm:hover .t{ max-width:150px; opacity:1; }
+  .asm .t{ font-weight:600; }
   .p-need{ background:#fdeee7; color:var(--amber); } .p-ok{ background:#e7f5ea; color:var(--green); }
   .prio{ cursor:pointer; }
   .prio.on{ background:#fdecea; color:var(--red); } .prio.off{ background:#eef1f8; color:#556; }
@@ -115,7 +116,14 @@
   .ppct{ font-variant-numeric:tabular-nums; font-weight:700; min-width:44px; text-align:right; }
   .pcar{ color:var(--muted); font-size:12px; width:12px; transition:transform .15s ease; }
   .pcard.open .pcar{ transform:rotate(90deg); }
-  .pbody{ display:none; padding:0 12px 12px; overflow-x:auto; } .pcard.open .pbody{ display:block; }
+  .pbody{ display:none; padding:0 12px 12px; } .pcard.open .pbody{ display:block; }
+  /* ⚠ у всех ячеек стоит white-space:nowrap — из-за длинных названий деталей таблица уезжала
+     за край карточки и её приходилось скроллить вбок. Здесь фиксируем колонки и разрешаем перенос. */
+  .pbody table{ table-layout:fixed; }
+  .pbody th,.pbody td{ white-space:normal; overflow-wrap:anywhere; }
+  .pbody col.c-det{ width:23%; } .pbody col.c-op{ width:21%; }
+  .pbody col.c-need{ width:8%; } .pbody col.c-stock{ width:13%; }
+  .pbody col.c-done{ width:9%; } .pbody col.c-rest{ width:26%; }
 
   /* ── ВИДИМАЯ РЕАКЦИЯ. На телефоне нет наведения курсором: если кнопка не «продавливается»,
      человек не понимает, нажал он или промахнулся, и жмёт ещё раз — отсюда дубли. ── */
@@ -408,11 +416,13 @@ function renderOps(id,r){
         +'<span class="bar" style="max-width:110px"><i id="pbar_'+id+'_'+pi+'" style="width:'+pct+'%'+(pct>=100?';background:#137333':'')+'"></i></span>'
         +'<span class="ppct" id="ppct_'+id+'_'+pi+'">'+(p.pct||0)+'%</span>'
         +'<a href="'+catUrl(p.sku||p.model)+'" target="_blank" onclick="event.stopPropagation()" class="asm '+(p.assembled?'ok':'no')+'" title="открыть изделие в каталоге">'
-          +(p.assembled?'✔':'⚠')+'<span class="t">'+(p.assembled?'собрано':'не подтверждено — проверить')+'</span></a>'
+          +(p.assembled?'✔':'⚠')+'<span class="t">'+(p.assembled?'состав':'состав не подтверждён')+'</span></a>'
       +'</div>'
       +'<div class="pbody">'
         +'<div class="muted" style="margin-bottom:6px" id="opsp_'+id+'_'+pi+'">'+opProdStat(p)+'</div>'
-        +'<table><thead><tr><th>Деталь</th><th>Операция</th><th class="num">Нужно</th><th class="num">Нач. остатки</th><th class="num">Сделано</th><th class="num">Осталось</th></tr></thead><tbody>'+rows+'</tbody></table>'
+        +'<table><colgroup><col class="c-det"><col class="c-op"><col class="c-need">'
+        +'<col class="c-stock"><col class="c-done"><col class="c-rest"></colgroup>'
+        +'<thead><tr><th>Деталь</th><th>Операция</th><th class="num">Нужно</th><th class="num">Нач. остатки</th><th class="num">Сделано</th><th class="num">Осталось</th></tr></thead><tbody>'+rows+'</tbody></table>'
       +'</div></div>';
   }).join('');
   var dash=r.dash||{}, nG=(dash.groups||[]).length, nO=(dash.ops||[]).length, nP=(r.products||[]).length;
@@ -573,7 +583,15 @@ function doMove(orderId,outId,target){
     closeMove(); loadOps(orderId);   // пересчитать заказ
   });
 }
-function opProdStat(p){ return (p.pct||0)+'% · осталось '+money(p.leftRub)+' р'; }
+// ⚠ процент считается по ТРУДУ в рублях. Дешёвые операции могут висеть незакрытыми при 99 %,
+// и это выглядело как противоречие. Поэтому рядом — сколько операций и штук реально осталось.
+function opProdStat(p){
+  var nOp=0, qty=0;
+  (p.ops||[]).forEach(function(o){ var l=Number(o.left)||0; if(l>0){ nOp++; qty+=l; } });
+  return (p.pct||0)+'% · осталось '+money(p.leftRub)+' р'
+    +(nOp?(' · <b style="color:#b7791f">не закрыто '+nOp+' '+plural(nOp,'операция','операции','операций')
+           +' на '+Math.round(qty)+' шт</b>'):' · <b style="color:#137333">все операции закрыты</b>');
+}
 function opsKpiHtml(k){
   return '<div class="row" style="gap:14px;margin-bottom:8px;font-weight:700">'
     +'<span>Готовность по труду: <span style="color:#2b7de9">'+(k.pct||0)+'%</span></span>'
