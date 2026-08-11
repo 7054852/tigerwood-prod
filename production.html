@@ -731,33 +731,48 @@ function rmItem(itemId){
   var b=DETAIL; if(!b||!b.items) return;
   for(var j=0;j<b.items.length;j++) if(b.items[j].id===itemId){ b.items.splice(j,1); renderItems(b.id); (function(bid){ api({vapi:'rmitem', item:itemId}).then(function(){ scheduleOpsRefresh(bid); }); })(b.id); return; }
 }
-// Отгрузка необратима, поэтому сначала показываем, ЧТО останется в цеху: изделия уедут,
-// а недоделанные детали уйдут на склад деталей — оттуда их возьмёт следующая партия.
+// Отгрузка необратима, поэтому подтверждаем в два шага.
+// ⚠ Порядок важен: СНАЧАЛА «что отгружаем» — это главное решение, и оно строится из уже
+// загруженных данных, то есть появляется мгновенно. Остатки в цеху требуют счёта на сервере
+// и показываются вторым шагом, чтобы не заставлять ждать перед главным вопросом.
+function shipPlan(){
+  var out=[], pk=0, ord=0, part=[];
+  (DETAIL&&DETAIL.products||[]).forEach(function(p){
+    var q=null;
+    (p.ops||[]).forEach(function(o){ if(o.op.indexOf('паковка')>=0) q=(q===null?o.ready:Math.min(q,o.ready)); });
+    if(q===null) q=p.ordered;
+    q=Math.min(Math.round(q), p.ordered);
+    pk+=q; ord+=p.ordered;
+    if(q>0) out.push({name:(p.eq+' · '+p.model), qty:q, ordered:p.ordered});
+    if(q<p.ordered) part.push('• '+p.model+' — упаковано '+q+' из '+p.ordered);
+  });
+  out.sort(function(a,b){ return b.qty-a.qty; });
+  return {lines:out, packed:pk, ordered:ord, part:part};
+}
 function ship(id){
-  var m=$('bm_'+id); m.textContent='считаю остаток…';
+  var m=$('bm_'+id), pl=shipPlan();
+  if(!pl.packed){ alert('Отгружать нечего: ни одно изделие не упаковано.'); return; }
+  // ШАГ 1 — что уезжает
+  var t1='ОТГРУЖАЕМ '+pl.packed+' изделий'+(pl.ordered?(' из '+pl.ordered+' заказанных'):'')+':\n\n'
+    +pl.lines.slice(0,14).map(function(x){ return '• '+x.name+' — '+x.qty+' шт'+(x.qty<x.ordered?(' (из '+x.ordered+')'):''); }).join('\n')
+    +(pl.lines.length>14?('\n… ещё '+(pl.lines.length-14)+' позиций'):'')
+    +'\n\nОтгружается только упакованное. Продолжить?';
+  if(!confirm(t1)) return;
+  // ШАГ 2 — что останется в цеху
+  m.textContent='считаю остаток…';
   api({vapi:'wiptake', batch:id, dry:1}).then(function(w){
-    // сколько реально упаковано — показываем ДО отгрузки: отгружается только собранное
-    var pk=0, ord=0, part=[];
-    try{
-      (DETAIL&&DETAIL.products||[]).forEach(function(p){
-        var q=null;
-        (p.ops||[]).forEach(function(o){ if(o.op.indexOf('паковка')>=0) q=(q===null?o.ready:Math.min(q,o.ready)); });
-        if(q===null) q=p.ordered;
-        pk+=q; ord+=p.ordered;
-        if(q<p.ordered) part.push('• '+p.model+' — упаковано '+q+' из '+p.ordered);
-      });
-    }catch(e){}
-    var txt='Отгрузить партию?';
-    if(ord) txt+='\n\nОтгрузится '+pk+' изделий из '+ord+' заказанных — только упакованные.'
-              +(part.length?('\nНе собрано полностью:\n'+part.slice(0,8).join('\n')+(part.length>8?('\n… ещё '+(part.length-8)):'')):'');
-    if(w&&w.ok&&w.stat&&w.stat.rows){
-      var top=(w.items||[]).slice(0,8).map(function(x){
-        return '• '+x.detail+(x.model?(' · '+x.model):'')+' · '+x.stage+' — '+x.qty+' шт'; }).join('\n');
-      txt+='\n\nВ цеху останется '+w.stat.qty+' деталей ('+w.stat.rows+' позиций) — они уйдут на склад деталей:\n'
-         +top+((w.items||[]).length>8?('\n… ещё '+((w.items||[]).length-8)+' позиций'):'');
-    } else if(w&&w.ok){ txt+='\n\nНезавершённых деталей в цеху не осталось.'; }
     m.textContent='';
-    if(!confirm(txt)) return;
+    var t2='';
+    if(pl.part.length) t2+='Не собрано полностью — эти изделия не поедут:\n'
+      +pl.part.slice(0,10).join('\n')+(pl.part.length>10?('\n… ещё '+(pl.part.length-10)):'')+'\n\n';
+    if(w&&w.ok&&w.stat&&w.stat.rows){
+      t2+='В цеху останется '+w.stat.qty+' деталей ('+w.stat.rows+' позиций) — уйдут на склад деталей:\n'
+        +(w.items||[]).slice(0,8).map(function(x){
+            return '• '+x.detail+(x.model?(' · '+x.model):'')+' · '+x.stage+' — '+x.qty+' шт'; }).join('\n')
+        +((w.items||[]).length>8?('\n… ещё '+((w.items||[]).length-8)+' позиций'):'');
+    } else t2+='Незавершённых деталей в цеху не осталось.';
+    t2+='\n\nПартия будет закрыта. Отгружаем?';
+    if(!confirm(t2)) return;
     m.textContent='…';
     api({vapi:'shipbatch', batch:id}).then(function(r){
       var wip=(r&&r.wip&&r.wip.ok&&r.wip.stat)?(' · на склад деталей '+r.wip.stat.qty+' шт'):'';
