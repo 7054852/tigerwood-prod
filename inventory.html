@@ -34,6 +34,10 @@
   table{ width:100%; border-collapse:collapse; }
   th,td{ border:1px solid #b9c0cf; padding:0 5px; font-size:12.5px; }
   th{ background:#eef1f7; font-size:11.5px; font-weight:700; text-align:center; padding:5px 3px; line-height:1.2; }
+  /* пояснение стадии живёт В ШАПКЕ КОЛОНКИ: считающий видит его прямо над клетками, которые
+     заполняет, и на каждой странице печати (thead повторяется), а не один раз в легенде сверху */
+  th .hint{ display:block; font-weight:500; font-size:9px; line-height:1.15; color:#5a6478;
+            margin-top:3px; white-space:normal; }
   th.det{ text-align:left; width:38%; }
   td.det{ height:26px; font-weight:600; }
   td.n{ text-align:center; width:52px; color:#4a5468; }
@@ -111,6 +115,7 @@
     body.port th,body.port td{ font-size:9.5px; padding:0 3px; }
     body.port td.det,body.port td.cell{ height:21px; }
     body.port th{ font-size:9px; padding:3px 2px; }
+    body.port th .hint{ font-size:7.5px; line-height:1.1; margin-top:2px; }
     body.port .stitle{ font-size:16px; }
     body.port .legend,body.port .sline{ font-size:10px; }
     body.port .gt{ font-size:12.5px; }
@@ -221,8 +226,8 @@ function draw(){
   var warn=checksHtml(R.checks, null);
   var acc=document.getElementById('showAcc').checked;
   var ST=R.stages, SPLIT=ST.indexOf('Покрашено');   // с этой стадии деталь расходится по цветам
-  var legend='<div class="legend">'+ST.map(function(s){ return '<b>'+esc(s)+'</b> — '+esc(R.hints[s]||''); }).join(' · ')
-    +'<br>Пишите, сколько деталей <b>сейчас физически лежит</b> в этом состоянии — каждую деталь считаем один раз, в самой поздней пройденной стадии. '
+  var legend='<div class="legend">'
+    +'Пишите, сколько деталей <b>сейчас физически лежит</b> в этом состоянии — каждую деталь считаем один раз, в самой поздней пройденной стадии. '
     +'Заштрихованная клетка — такой операции у детали нет, писать в неё не нужно. '
     +'<b>Пустая клетка — не считали</b>: в программе останется как есть. Если реально ноль — так и напишите цифру 0.'
     +' Строка с пометкой <b>изделие</b> — само собранное изделие: его не пилят и не красят, физически считают только упакованные коробки.'
@@ -230,8 +235,11 @@ function draw(){
       +'С покраски она расходится по вариантам, поэтому ниже идут строки по каждому цвету: '
       +'<b>↓</b> — считать в строках ниже, <b>↑</b> — уже посчитано в строке детали.'):'')
     +'</div>';
-  var head='<tr><th class="det">Деталь</th><th>Нужно<br>по заказу</th>'
-    +ST.map(function(s){ return '<th>'+esc(s)+'</th>'; }).join('')+'<th>Заметка</th></tr>';
+  // в колонке — короткое пояснение (шире не влезет), полное — в подсказке при наведении
+  function th_(s){ var h=R.hints[s]||'', sh=(R.hintsShort||{})[s]||h;
+    return '<th title="'+esc(s+' — '+h)+'">'+esc(s)+(sh?('<span class="hint">'+esc(sh)+'</span>'):'')+'</th>'; }
+  var head='<tr><th class="det">Деталь</th><th>Нужно<br>по заказу<span class="hint">справочно — не исправлять</span></th>'
+    +ST.map(th_).join('')+'<th>Заметка</th></tr>';
 
   var groups=R.products.map(function(p){
     var title=(R.mode==='detail') ? esc(p.title||p.eq||'Детали заказа')
@@ -331,8 +339,10 @@ function drawLoad(){
       +'Загруженные страницы лягут поверх того, что здесь уже есть. Чтобы считать с нуля, удалите черновик кнопкой ниже.</div>'):'')
     +'</div>';
 
+  var hints=d.hints||{}, hshort=d.hintsShort||{};
   var head='<tr><th class="det">Деталь</th><th>Нужно<br>по заказу</th>'
-    +ST.map(function(x){ return '<th>'+esc(x)+'</th>'; }).join('')+'</tr>';
+    +ST.map(function(x){ var h=hints[x]||'', sh=hshort[x]||h;
+      return '<th title="'+esc(x+' — '+h)+'">'+esc(x)+(sh?('<span class="hint">'+esc(sh)+'</span>'):'')+'</th>'; }).join('')+'</tr>';
 
   function cellHtml(det,mod,stage,stg,isVar){
     var k=ikey(det,mod,stage), c=C[k], nf=(!c&&INFO[k])?INFO[k]:null;
