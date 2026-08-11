@@ -38,10 +38,10 @@
      заполняет, и на каждой странице печати (thead повторяется), а не один раз в легенде сверху */
   th .hint{ display:block; font-weight:500; font-size:9px; line-height:1.15; color:#5a6478;
             margin-top:3px; white-space:normal; }
-  th.det{ text-align:left; width:38%; }
+  th.det{ text-align:left; width:32%; }
   td.det{ height:26px; font-weight:600; }
   td.n{ text-align:center; width:52px; color:#4a5468; }
-  td.cell{ width:9.2%; height:26px; }
+  td.cell{ width:8.4%; height:26px; }
   td.no{ background:repeating-linear-gradient(135deg,#f2f4f8,#f2f4f8 4px,#e6eaf2 4px,#e6eaf2 8px); }
   td.acc{ text-align:center; color:#8a93a6; font-size:11px; }
   tr:nth-child(even) td.det, tr:nth-child(even) td.n{ background:#fafbfd; }
@@ -120,8 +120,8 @@
     body.port .legend,body.port .sline{ font-size:10px; }
     body.port .gt{ font-size:12.5px; }
     body.port td.n{ width:34px; }
-    body.port th.det{ width:32%; }
-    body.port td.cell{ width:8.6%; }
+    body.port th.det{ width:27%; }
+    body.port td.cell{ width:7.8%; }
     body.port .foot{ font-size:10.5px; }
   }
 </style>
@@ -225,14 +225,16 @@ function draw(){
   if(!R) return;
   var warn=checksHtml(R.checks, null);
   var acc=document.getElementById('showAcc').checked;
-  var ST=R.stages, SPLIT=ST.indexOf('Покрашено');   // с этой стадии деталь расходится по цветам
+  // ⚠ где деталь расходится по цветам — решает сервер (INV_SPLIT_AT). Раньше здесь стояло
+  // имя стадии, и добавление «Грунтовано» молча сдвинуло бы стрелки ↑ на чужую колонку.
+  var ST=R.stages, SPLIT=(R.splitAt!=null?R.splitAt:ST.indexOf('Покрашено'));
   var legend='<div class="legend">'
     +'Пишите, сколько деталей <b>сейчас физически лежит</b> в этом состоянии — каждую деталь считаем один раз, в самой поздней пройденной стадии. '
     +'Заштрихованная клетка — такой операции у детали нет, писать в неё не нужно. '
     +'<b>Пустая клетка — не считали</b>: в программе останется как есть. Если реально ноль — так и напишите цифру 0.'
     +' Строка с пометкой <b>изделие</b> — само собранное изделие: его не пилят и не красят, физически считают только упакованные коробки.'
-    +(R.mode==='detail'?('<br>До покраски деталь одна на все цвета — её считаем в строке детали. '
-      +'С покраски она расходится по вариантам, поэтому ниже идут строки по каждому цвету: '
+    +(R.mode==='detail'?('<br>До грунтовки деталь одна на все цвета — её считаем в строке детали. '
+      +'С грунта она расходится по вариантам (грунт под лак и под цвет разный), поэтому ниже идут строки по каждому цвету: '
       +'<b>↓</b> — считать в строках ниже, <b>↑</b> — уже посчитано в строке детали.'):'')
     +'</div>';
   // в колонке — короткое пояснение (шире не влезет), полное — в подсказке при наведении
@@ -329,7 +331,8 @@ function nrm(x){ return String(x==null?'':x).toLowerCase().replace(/ё/g,'е').r
 var RESUMED=false;
 function drawLoad(){
   var box=document.getElementById('pane_load'), d=DRAFT;
-  var st=d.stat||{}, ST=d.stages||[], SPLIT=ST.indexOf('Покрашено'), C=d.cells||{}, INFO=d.info||{};
+  var st=d.stat||{}, ST=d.stages||[], C=d.cells||{}, INFO=d.info||{};
+  var SPLIT=(d.splitAt!=null?d.splitAt:ST.indexOf('Покрашено'));
   var upl='<div class="card"><div class="row" style="margin-bottom:6px"><b>📷 Страницы переучёта</b>'
     +'<span class="muted">загружено файлов: '+(d.head.files||0)+'</span></div>'
     +'<input type="file" id="pages" accept="image/*,application/pdf" multiple onchange="pickPages(this.files)">'
