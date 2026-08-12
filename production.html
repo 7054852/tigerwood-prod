@@ -753,15 +753,20 @@ function rmItem(itemId){
 function shipPlan(){
   var out=[], pk=0, ord=0, part=[];
   (DETAIL&&DETAIL.products||[]).forEach(function(p){
+    // ⚠ Считаем ровно как сервер: по строкам УРОВНЯ «изделие». Поиск по слову «паковка» цеплял
+    // ещё и «Фурнитура X · Упаковка» — это деталь, её готовность к отгрузке отношения не имеет.
     var q=null;
-    (p.ops||[]).forEach(function(o){ if(o.op.indexOf('паковка')>=0) q=(q===null?o.ready:Math.min(q,o.ready)); });
+    (p.ops||[]).forEach(function(o){ if(o.level==='изделие') q=(q===null?o.ready:Math.min(q,o.ready)); });
+    if(q===null) (p.ops||[]).forEach(function(o){ if(o.op.indexOf('паковка')>=0) q=(q===null?o.ready:Math.min(q,o.ready)); });
     if(q===null) q=p.ordered;
     q=Math.min(Math.round(q), p.ordered);
     pk+=q; ord+=p.ordered;
-    if(q>0) out.push({name:(p.eq+' · '+p.model), qty:q, ordered:p.ordered});
+    if(q>0) out.push({name:(p.model+'  ('+p.eq+')'), qty:q, ordered:p.ordered});
     if(q<p.ordered) part.push('• '+p.model+' — упаковано '+q+' из '+p.ordered);
   });
-  out.sort(function(a,b){ return b.qty-a.qty; });
+  // ⚠ НЕ сортируем по количеству: три варианта одного оборудования разъезжались по списку,
+  // и «Арка со столом LUNO 16» вставала рядом с «Башня LUMO» — их и перепутали.
+  // Оставляем порядок карточки заказа: варианты одного товара идут подряд.
   return {lines:out, packed:pk, ordered:ord, part:part};
 }
 function ship(id){
@@ -769,8 +774,7 @@ function ship(id){
   if(!pl.packed){ alert('Отгружать нечего: ни одно изделие не упаковано.'); return; }
   // ШАГ 1 — что уезжает
   var t1='ОТГРУЖАЕМ '+pl.packed+' изделий'+(pl.ordered?(' из '+pl.ordered+' заказанных'):'')+':\n\n'
-    +pl.lines.slice(0,14).map(function(x){ return '• '+x.name+' — '+x.qty+' шт'+(x.qty<x.ordered?(' (из '+x.ordered+')'):''); }).join('\n')
-    +(pl.lines.length>14?('\n… ещё '+(pl.lines.length-14)+' позиций'):'')
+    +pl.lines.map(function(x){ return '• '+x.name+' — '+x.qty+' шт'+(x.qty<x.ordered?(' (из '+x.ordered+')'):''); }).join('\n')
     +'\n\nОтгружается только упакованное. Продолжить?';
   if(!confirm(t1)) return;
   // ШАГ 2 — что останется в цеху
