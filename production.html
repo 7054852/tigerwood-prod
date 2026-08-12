@@ -193,11 +193,12 @@ function catUrl(x){ return BASE+'?page=catalog&find='+encodeURIComponent(x||'');
 
 function render(){ if(VIEW==='detail'&&CUR){ if(DETAIL&&DETAIL.id===CUR) renderDetail(); else loadDetail(CUR); } else { renderList(); } }
 function openOrder(id){ VIEW='detail'; CUR=id; DETAIL=null; app.innerHTML='<div class="center muted">Загрузка заказа…</div>'; window.scrollTo(0,0); if(!MODELS.length) loadModels(); loadDetail(id); }
+var DETAIL_STATUSES=[];
 function backToList(){ VIEW='list'; CUR=null; DETAIL=null; load(); }
 // загрузить полный разворот ОДНОГО заказа по требованию (себестоимость/собрано считаются только для него)
 function loadDetail(id){
   api({vapi:'batch', batch:id}).then(function(r){
-    if(r&&r.ok&&r.batch){ DETAIL=r.batch; if(VIEW==='detail'&&CUR===id) renderDetail(); }
+    if(r&&r.ok&&r.batch){ DETAIL=r.batch; DETAIL_STATUSES=r.statuses||[]; if(VIEW==='detail'&&CUR===id) renderDetail(); }
     else { alert((r&&r.error)||'заказ не найден'); backToList(); }
   }).catch(function(e){ app.innerHTML='<div class="center err">Ошибка: '+esc(e.message||e)+'</div>'; });
 }
@@ -349,7 +350,11 @@ function inventSheet(id){
 function renderDetail(){
   var b=DETAIL; if(!b){ backToList(); return; }
   var id=b.id;
-  var opts=['новая','в работе','готово','отгружено'].map(function(s){return '<option'+(s===b.status?' selected':'')+'>'+s+'</option>';}).join('');
+  // ⚠ Список берём с сервера: литерал из четырёх статусов не знал «частично отгружено»,
+  // селект показывал не то и любым касанием затирал реальный статус заказа.
+  var stList=(DETAIL_STATUSES&&DETAIL_STATUSES.length)?DETAIL_STATUSES:['новая','в работе','готово','частично отгружено','отгружено'];
+  if(b.status&&stList.indexOf(b.status)<0) stList=stList.concat([b.status]);
+  var opts=stList.map(function(s){return '<option'+(s===b.status?' selected':'')+'>'+esc(s)+'</option>';}).join('');
   var items=(b.items||[]).map(function(it){ return itemRowHtml(it,b.id); }).join('');
   var prio=b.prio==='срочно';
   var costSum=(b.modelsAssembled||0)+'/'+(b.modelsTotal||0);
@@ -371,13 +376,16 @@ function renderDetail(){
       +'<button class="gray sm" title="обычно это происходит само при открытии заказа; кнопка — если нужно прямо сейчас" onclick="recalcOps(\''+b.id+'\')">↻ Пересобрать сейчас</button>'
       +'<button class="gray sm" title="печатный лист: пойти в цех и пересчитать детали по стадиям" onclick="inventSheet(\''+b.id+'\')">📋 Ведомость переучёта</button>'
       +'<button class="gray sm" title="взять в этот заказ детали, оставшиеся от прошлых партий" onclick="wipOffer(\''+b.id+'\')">🧩 Склад деталей</button>'
-      +'<button class="gray sm" onclick="ship(\''+b.id+'\')">📦 Отгрузить</button>'
+      +'<button class="gray sm" onclick="ship(\''+b.id+'\')">📦 '+((b.shipped||0)>0?'Довезти остаток':'Отгрузить')+'</button>'
+      +((b.shipped||0)>0?('<button class="gray sm" title="что и когда увозили" onclick="shipLog(\''+b.id+'\')">🚚 История отгрузок</button>'):'')
       +'<button class="gray sm" title="удалить заказ" onclick="delBatch(\''+b.id+'\')">🗑</button>'
       +'<span class="msg" id="bm_'+b.id+'"></span>'
       +'</div>'
+      +shipBadgeHtml(b)
       +'<div id="ship_'+b.id+'" style="margin-top:8px"></div>'
+      +'<div id="slog_'+b.id+'" style="margin-top:8px"></div>'
       +'<div id="wip_'+b.id+'" style="margin-top:8px"></div>'
-      +'<div style="overflow-x:auto"><table style="margin-top:8px"><thead><tr><th>Модель</th><th>Труд</th><th class="num">Кол-во</th><th class="num">Готово→склад</th><th></th></tr></thead><tbody id="items_'+b.id+'">'+items+'</tbody></table></div>'
+      +'<div style="overflow-x:auto"><table style="margin-top:8px"><thead><tr><th>Модель</th><th>Труд</th><th class="num">Кол-во</th><th class="num">Готово→склад</th><th class="num">Отгружено</th><th></th></tr></thead><tbody id="items_'+b.id+'">'+items+'</tbody></table></div>'
       +'<div class="row" style="margin-top:8px"><input list="modlist" id="am_'+b.id+'" placeholder="модель из каталога…" style="min-width:240px"><input class="q" id="aq_'+b.id+'" placeholder="кол-во"><button class="green sm" onclick="addItem(\''+b.id+'\')">＋ добавить модель</button></div>'
     +'</div>'
     +'<div class="sect">Операции заказа</div>'
@@ -717,6 +725,7 @@ function itemRowHtml(it,batchId){
     +'<td>'+asmBadge+(it.unitCost?' <span class="muted">'+it.unitCost.toFixed(2).replace('.',',')+' р/шт</span>':'')+'</td>'
     +'<td class="num"><input class="q" value="'+it.qty+'" onchange="updItem(\''+it.id+'\',this.value)"></td>'
     +'<td class="num"><input class="q" value="'+(it.done||0)+'" onchange="saveDone(\''+batchId+'\',\''+esc(it.sku)+'\',\''+esc(it.model)+'\',this.value)"></td>'
+    +'<td class="num">'+shipCellHtml(it)+'</td>'
     +'<td><button class="gray sm" title="убрать" onclick="rmItem(\''+it.id+'\')">🗑</button></td></tr>';
 }
 function curBatch(id){ if(DETAIL&&DETAIL.id===id) return DETAIL; for(var i=0;i<BATCHES.length;i++) if(BATCHES[i].id===id) return BATCHES[i]; return null; }
@@ -888,6 +897,49 @@ function wipGo(id){
     if(!r||!r.ok){ m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; return; }
     m.innerHTML='<span class="ok">взято со склада: '+t+' деталей</span>';
     setTimeout(reloadDetail,700);
+  });
+}
+// ─── ОТГРУЗКА ВИДНА В КАРТОЧКЕ ───
+// Без этого после отгрузки карточка выглядит один в один как до: % труда и «осталось ₽»
+// не меняются (и не должны — это метрики труда), а увезённое нигде не показывалось.
+function shipBadgeHtml(b){
+  var sh=Number(b.shipped)||0; if(!(sh>0)) return '';
+  var ord=Number(b.ordered)||0;
+  var packed=0, rest=0;
+  (b.items||[]).forEach(function(it){
+    var p=Number(it.done)||0, s=Number(it.shipped)||0;   // «Готово» = оприходовано на склад
+    packed+=p; rest+=Math.max(0,p-s);
+  });
+  return '<div class="row" style="margin-top:8px;background:#eef6ff;border:1px solid #cddffa;border-radius:10px;padding:8px 11px">'
+    +'<span>🚚 Отгружено <b>'+sh+'</b>'+(ord?(' из '+ord):'')+'</span>'
+    +(rest>0?('<span class="muted">· упаковано, но не увезено: <b>'+rest+'</b></span>'):'')
+    +(ord>sh?('<span class="muted">· не выполнено по заказу: <b>'+(ord-sh)+'</b></span>'):'')
+    +'</div>';
+}
+function shipCellHtml(it){
+  var s=Number(it.shipped)||0, d=Number(it.done)||0;
+  if(!s&&!d) return '<span class="muted">—</span>';
+  var rest=Math.max(0,d-s);
+  return s+(rest>0?(' <span class="muted" title="упаковано, но не увезено — лежит на складе готовой продукции">⏳'+rest+'</span>'):'');
+}
+function shipLog(id){
+  var box=$('slog_'+id);
+  if(box.innerHTML){ box.innerHTML=''; return; }
+  box.innerHTML='<div class="muted">загрузка…</div>';
+  api({vapi:'shiplog',batch:id}).then(function(r){
+    if(!r||!r.ok){ box.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; return; }
+    if(!r.rows.length){ box.innerHTML='<div class="muted">движений по этому заказу нет</div>'; return; }
+    var rows=r.rows.map(function(x){
+      var out=x.type==='расход';
+      return '<tr><td>'+esc(x.date)+'</td><td>'+esc(x.model)+'</td>'
+        +'<td>'+(out?'<span style="color:#2b7de9">увезено</span>':'<span class="muted">на склад</span>')+'</td>'
+        +'<td class="num">'+x.qty+'</td><td class="muted">'+esc(x.note||'')+'</td></tr>';
+    }).join('');
+    box.innerHTML='<div class="tray chktray"><div class="trayhd"><span class="tt">🚚 История отгрузок</span>'
+      +'<span class="th">увезено всего '+r.stat.shipped+'</span></div>'
+      +'<div style="overflow-x:auto"><table style="min-width:480px;margin-top:6px"><thead><tr>'
+      +'<th>Дата</th><th>Изделие</th><th>Движение</th><th class="num">Кол-во</th><th>Комментарий</th>'
+      +'</tr></thead><tbody>'+rows+'</tbody></table></div></div>';
   });
 }
 load();
