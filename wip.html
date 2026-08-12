@@ -64,6 +64,7 @@
   <div class="row noprint" style="margin-top:10px">
     <button id="save" onclick="saveCount()" disabled>💾 Провести пересчёт</button>
     <button class="gray sm" onclick="load()">отменить правки</button>
+    <button class="gray sm" id="issue" onclick="issueMode()" style="display:none">🚚 Отгрузить со склада</button>
     <span class="muted" id="chg"></span>
   </div>
   <div class="muted noprint" style="margin-top:6px" id="foot"></div>
@@ -86,6 +87,8 @@ function msg(h){ $('msg').innerHTML=h||''; }
 var TAB='wip', DATA=null;
 function setTab(t){
   TAB=t;
+  ISSUE=false; $('issue').style.display=(t==='fg')?'':'none';
+  $('issue').textContent='🚚 Отгрузить со склада'; $('save').style.display='';
   $('tb_wip').className=(t==='wip')?'on':''; $('tb_fg').className=(t==='fg')?'on':'';
   $('log').innerHTML=''; load();
 }
@@ -125,17 +128,17 @@ function renderFg(){
   $('tiles').innerHTML='<div class="tile"><div class="t">артикулов</div><div class="v">'+(s.rows||0)+'</div></div>'
     +'<div class="tile"><div class="t">лежит на складе</div><div class="v'+((s.qty||0)<0?' neg':'')+'">'+(s.qty||0)+'</div></div>'
     +'<div class="tile"><div class="t">в резерве</div><div class="v">'+(s.reserved||0)+'</div></div>';
-  $('hint').textContent='Впишите фактический остаток — сохранится только изменённое.';
+  $('hint').textContent=ISSUE?'Впишите, сколько увозите со склада.':'Впишите фактический остаток — сохранится только изменённое.';
   $('foot').innerHTML='Пересчёт правит только <b>физический остаток</b>. Резерв под продажи не трогается. '
     +'Отрицательный остаток — след старых операций, его тоже правят здесь.';
   $('thd').innerHTML='<tr><th>Изделие</th><th>Артикул</th><th class="num">в наличии</th><th class="num">резерв</th>'
-    +'<th class="num">факт</th><th class="num">целевой</th><th>обновлено</th><th></th></tr>';
+    +'<th class="num">'+(ISSUE?'везём':'факт')+'</th><th class="num">целевой</th><th>обновлено</th><th></th></tr>';
   if(!rows.length){ $('tb').innerHTML='<tr><td colspan="8" class="muted">Склад пуст.</td></tr>'; recount(); return; }
   $('tb').innerHTML=rows.map(function(x,i){
     return '<tr><td>'+esc(x.model||x.equip||'—')+'</td><td class="muted">'+esc(x.sku||'—')+'</td>'
       +'<td class="num'+(x.onHand<0?' neg':'')+'">'+x.onHand+'</td>'
       +'<td class="num muted">'+(x.reserved||'')+'</td>'
-      +'<td class="num wr"><input class="q" id="f_'+i+'" type="number" value="'+x.onHand+'" data-was="'+x.onHand+'" oninput="recount()"></td>'
+      +'<td class="num wr"><input class="q" id="f_'+i+'" type="number" value="'+(ISSUE?0:x.onHand)+'" data-was="'+x.onHand+'" oninput="recount()"'+(ISSUE?(' max="'+Math.max(0,x.onHand-(x.reserved||0))+'"'):'')+'></td>'
       +'<td class="num muted">'+(x.target||'')+'</td><td class="muted">'+esc(x.upd||'')+'</td>'
       +'<td class="noprint"><button class="gray sm" onclick="fgLog(\''+esc(x.sku)+'\')">журнал</button></td></tr>';
   }).join('');
@@ -167,6 +170,11 @@ function collect(){
   return out;
 }
 function recount(){
+  if(ISSUE){
+    var t=0; (DATA.rows||[]).forEach(function(x,i){ var el=$('f_'+i); if(el) t+=Math.max(0,Number(el.value)||0); });
+    $('chg').innerHTML=t?('везём <b>'+t+'</b> · <button class="sm" onclick="issueGo()">🚚 Отгрузить</button>'):'';
+    return;
+  }
   var ch=collect();
   $('chg').textContent=ch.length?('изменено строк: '+ch.length):'';
   $('save').disabled=!ch.length;
@@ -179,6 +187,34 @@ function saveCount(){
   api({vapi:(TAB==='wip')?'wipcount':'fgcount', items:JSON.stringify(ch)}).then(function(r){
     if(!r||!r.ok){ msg('<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'); $('save').disabled=false; return; }
     msg('<span class="ok">проведено: '+(r.changed||0)+' изменений</span>');
+    load();
+  });
+}
+// ─── ОТГРУЗКА СО СКЛАДА ───
+// Не привязана к заказу: увозим то, что лежит, кому угодно. Поле «факт» превращается в «везём».
+var ISSUE=false;
+function issueMode(){
+  ISSUE=!ISSUE;
+  $('issue').textContent=ISSUE?'✕ выйти из отгрузки':'🚚 Отгрузить со склада';
+  $('save').style.display=ISSUE?'none':'';
+  renderFg();
+  if(ISSUE) msg('<span style="color:#b7791f">режим отгрузки: впишите, сколько увозите</span>'); else msg('');
+}
+function issueGo(){
+  var items=[], t=0;
+  (DATA.rows||[]).forEach(function(x,i){
+    var el=$('f_'+i); if(!el) return;
+    var q=Number(el.value)||0; if(q>0){ items.push({sku:x.sku,qty:q}); t+=q; }
+  });
+  if(!t){ alert('Не указано ни одной позиции.'); return; }
+  var doc=prompt('Кому отгружаем / номер отгрузки:',''); if(doc===null) return;
+  if(!confirm('Отгрузить со склада '+t+' изделий?')) return;
+  msg('отгружаю…');
+  api({vapi:'fgissue', items:JSON.stringify(items), doc:doc}).then(function(r){
+    if(!r||!r.ok){ msg('<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'); return; }
+    var w=(r.warn&&r.warn.length)?(' · '+r.warn.join('; ')):'';
+    msg('<span class="ok">отгружено '+r.issued+w+'</span>');
+    ISSUE=false; $('issue').textContent='🚚 Отгрузить со склада'; $('save').style.display='';
     load();
   });
 }

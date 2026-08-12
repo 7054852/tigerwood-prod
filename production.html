@@ -808,6 +808,8 @@ function renderShip(id){
     +'<div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap">'
     +'<button id="sbtn_'+id+'" onclick="shipGo(\''+id+'\',0)">🚚 Отгрузить, заказ оставить открытым</button>'
     +'<button class="gray" onclick="shipGo(\''+id+'\',1)">🔒 Отгрузить и закрыть заказ</button>'
+    +'<button class="gray" onclick="toStockGo(\''+id+'\')">🏬 Сдать на склад</button>'
+    +'<button class="gray" onclick="restOrder(\''+id+'\')">📄 Закрыть и создать заказ на остаток</button>'
     +'<button class="gray" onclick="$(\'ship_'+id+'\').innerHTML=\'\'">отмена</button></div>'
     +'<div class="muted" style="margin-top:6px;font-size:12px">Закрытие заказа переводит недоделанные детали на склад деталей — оттуда их можно взять в следующую партию. Пока заказ открыт, детали остаются в нём.</div>'
     +'</div>';
@@ -940,6 +942,45 @@ function shipLog(id){
       +'<div style="overflow-x:auto"><table style="min-width:480px;margin-top:6px"><thead><tr>'
       +'<th>Дата</th><th>Изделие</th><th>Движение</th><th class="num">Кол-во</th><th>Комментарий</th>'
       +'</tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+  });
+}
+// ─── ВТОРОЙ ПУТЬ ТОВАРА: СДАТЬ НА СКЛАД ───
+// Отгрузка увозит клиенту напрямую и склад лишь проскакивает. Здесь товар на складе ОСТАЁТСЯ,
+// а увозят его потом со склада — уже не от имени заказа.
+function toStockGo(id){
+  var d=SHIP[id], items=[], t=0;
+  d.lines.forEach(function(l,i){ var q=shipQty(id,i); if(q>0){ items.push({sku:l.sku,model:l.model,qty:q}); t+=q; } });
+  if(!t){ alert('Не указано ни одной позиции.'); return; }
+  if(!confirm('Сдать на склад готовой продукции '+t+' изделий?\n\nТовар останется на складе, клиенту не уедет. '
+    +'Отгрузить его можно позже в разделе «🏬 Склады».')) return;
+  var m=$('bm_'+id); m.textContent='сдаю на склад…'; $('ship_'+id).innerHTML='';
+  api({vapi:'batchtostock',batch:id,lines:JSON.stringify(items),close:0}).then(function(r){
+    if(!r||!r.ok){ m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; return; }
+    m.innerHTML='<span class="ok">сдано на склад: '+r.toStock+'</span>';
+    setTimeout(reloadDetail,700);
+  });
+}
+// ─── ЗАКАЗ НА ОСТАТОК ───
+// Остаток = заказано − отгружено − сдано на склад. Готовое, что ещё лежит за заказом, входит
+// в новый заказ УЖЕ СДЕЛАННЫМ: операции закрыты начальными остатками, ЗП за него не начисляется.
+function restOrder(id){
+  var m=$('bm_'+id); m.textContent='считаю остаток…';
+  api({vapi:'batchfromrest',batch:id,dry:1}).then(function(r){
+    m.textContent='';
+    if(!r||!r.ok){ alert((r&&r.error)||'ошибка'); return; }
+    var t='Создать «'+r.name+'» на '+r.stat.rest+' изделий ('+r.stat.positions+' позиций)?\n\n'
+      +r.rows.map(function(x){ return '• '+x.model+' — '+x.qty+(x.carry?(' (из них '+x.carry+' уже готовы)'):''); }).join('\n')
+      +'\n\nТекущий заказ будет ЗАКРЫТ: недоделанные детали уйдут на склад деталей.'
+      +(r.stat.carry?('\nГотовые '+r.stat.carry+' шт войдут в новый заказ как уже сделанные — работать по ним не нужно.'):'');
+    if(!confirm(t)) return;
+    m.textContent='создаю…';
+    api({vapi:'batchfromrest',batch:id,close:1}).then(function(x){
+      if(!x||!x.ok){ m.innerHTML='<span class="err">'+esc((x&&x.error)||'ошибка')+'</span>'; return; }
+      var w=(x.wip&&x.wip.ok&&x.wip.stat)?(' · на склад деталей '+x.wip.stat.qty+' шт'):'';
+      var o=(x.offer&&x.offer.ok&&x.offer.stat&&x.offer.stat.qty)?(' · со склада можно взять '+x.offer.stat.qty+' деталей'):'';
+      m.innerHTML='<span class="ok">создан '+esc(x.num)+' на '+x.rest+' изделий'+w+o+'</span>';
+      setTimeout(function(){ backToList(); },1400);
+    });
   });
 }
 load();
