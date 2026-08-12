@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Тигервуд — склад деталей</title>
+<style>
+  :root{ --bg:#f4f6fb; --card:#fff; --fg:#1b2333; --muted:#8a93a6; --line:#e6e9f2; --accent:#2b7de9; --green:#137333; --amber:#b7791f; --red:#c0392b; }
+  *{box-sizing:border-box;} html,body{margin:0;background:var(--bg);}
+  body{ font-family:-apple-system,Roboto,Segoe UI,Arial,sans-serif; color:var(--fg); padding:14px; max-width:1100px; margin:0 auto; font-size:14px; }
+  .hi{ font-size:19px; font-weight:800; }
+  .muted{ color:var(--muted); font-size:13px; }
+  .sect{ font-size:13px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin:18px 4px 8px; }
+  .box{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px 16px; }
+  .row{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .tile{ flex:1 1 130px; background:#fff; border:1px solid var(--line); border-radius:12px; padding:11px 13px; }
+  .tile .t{ font-size:11.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; }
+  .tile .v{ font-size:22px; font-weight:800; font-variant-numeric:tabular-nums; margin-top:2px; }
+  button{ font:inherit; background:var(--accent); color:#fff; border:0; border-radius:9px; padding:8px 14px; cursor:pointer; }
+  button.gray{ background:#eef1f8; color:#334; } button:disabled{ opacity:.45; cursor:default; }
+  button.sm{ padding:5px 10px; font-size:13px; }
+  table{ width:100%; border-collapse:collapse; font-size:13px; margin-top:8px; }
+  th,td{ text-align:left; padding:6px 7px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  th{ font-size:11.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; font-weight:700; }
+  td.num,th.num{ text-align:right; font-variant-numeric:tabular-nums; }
+  .wrap{ overflow-x:auto; }
+  input.q{ width:64px; padding:6px; text-align:right; font-size:15px; border:1px solid var(--line); border-radius:8px; }
+  input.q.chg{ border-color:var(--amber); background:#fffaf0; font-weight:700; }
+  .cell0{ color:#c9cede; }
+  .msg{ font-size:13px; margin-left:8px; } .ok{ color:var(--green); } .err{ color:var(--red); }
+  /* печать: только ведомость, крупные пустые клетки под ручку */
+  @media print{
+    body{ padding:0; max-width:none; font-size:12px; }
+    .noprint{ display:none !important; }
+    th,td{ border-bottom:1px solid #999; }
+    td.wr{ height:30px; min-width:52px; border:1px solid #666; }
+  }
+</style>
+<style>html.emb>body>.hi,html.emb>body>.muted.sub0{display:none}</style>
+<script>if(/[?&]embed=1/.test(location.search))document.documentElement.classList.add('emb');</script>
+</head>
+<body>
+<div class="hi">🧩 Склад деталей</div>
+<div class="muted sub0">Незавершённые детали, снятые с закрытых заказов. Их можно пересчитать и взять в новый заказ.</div>
+
+<div class="row" style="margin-top:10px" id="tiles"></div>
+
+<div class="sect">Остатки по стадиям</div>
+<div class="box">
+  <div class="row noprint">
+    <button class="gray sm" onclick="load()">↻ Обновить</button>
+    <button class="gray sm" onclick="window.print()">🖨 Печать ведомости</button>
+    <span class="muted">Впишите фактическое количество — сохранится только то, что вы изменили.</span>
+    <span class="msg" id="msg" style="margin-left:auto"></span>
+  </div>
+  <div class="wrap"><table id="tbl"><thead id="thd"></thead><tbody id="tb"></tbody></table></div>
+  <div class="row noprint" style="margin-top:10px">
+    <button id="save" onclick="saveCount()" disabled>💾 Провести пересчёт</button>
+    <button class="gray sm" onclick="load()">отменить правки</button>
+    <span class="muted" id="chg"></span>
+  </div>
+  <div class="muted noprint" style="margin-top:6px">
+    В отличие от переучёта заказа здесь цифра может <b>уменьшиться</b>: склад — это состояние, а не накопленная выработка.
+  </div>
+</div>
+
+<script>
+function qp(k){ var m=new RegExp('[?&]'+k+'=([^&]*)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
+var BASE='https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';
+var APP='tw7prod';
+var TGID=qp('tgid')||(function(){try{return localStorage.getItem('tw_tgid')||'';}catch(e){return '';}})();
+function $(id){ return document.getElementById(id); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function api(p){ p.app=APP; if(TGID) p.tgid=TGID;
+  var q=Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]==null?'':p[k]);}).join('&');
+  return fetch(BASE+'?'+q).then(function(r){return r.json();}); }
+function msg(h){ $('msg').innerHTML=h||''; }
+
+var DATA=null;
+function load(){
+  msg('загрузка…');
+  api({vapi:'wipsheet'}).then(function(r){
+    if(!r||!r.ok){ msg('<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'); return; }
+    DATA=r; msg(''); render();
+  }).catch(function(e){ msg('<span class="err">'+esc(e.message)+'</span>'); });
+}
+function render(){
+  var st=DATA.stages||[], rows=DATA.rows||[];
+  $('tiles').innerHTML='<div class="tile"><div class="t">позиций</div><div class="v">'+(DATA.stat.rows||0)+'</div></div>'
+    +'<div class="tile"><div class="t">деталей всего</div><div class="v">'+(DATA.stat.qty||0)+'</div></div>';
+  // подсказки стадий — те же, что в ведомости заказа: считающий должен понимать, что считает
+  var hints=DATA.hints||{};
+  $('thd').innerHTML='<tr><th>Деталь</th><th>Вариант</th>'
+    +st.map(function(s){ return '<th class="num" title="'+esc(hints[s]||'')+'">'+esc(s)+'</th>'; }).join('')
+    +'<th class="num">всего</th></tr>';
+  if(!rows.length){ $('tb').innerHTML='<tr><td colspan="'+(st.length+3)+'" class="muted">Склад пуст. Детали попадают сюда при закрытии заказа — недоделанное остаётся за цехом.</td></tr>'; recount(); return; }
+  $('tb').innerHTML=rows.map(function(d,i){
+    var tot=0;
+    var cells=st.map(function(s){
+      var c=d.cells[s], q=c?c.qty:'';
+      if(c) tot+=c.qty;
+      return '<td class="num wr"><input class="q'+(c?'':' cell0')+'" id="c_'+i+'_'+esc(s)+'" type="number" min="0" value="'+(c?c.qty:'')+'" '
+        +'data-was="'+(c?c.qty:'')+'" oninput="recount()"></td>';
+    }).join('');
+    return '<tr><td>'+esc(d.detail)+'</td><td class="muted">'+esc(d.model||'—')+'</td>'+cells+'<td class="num"><b>'+tot+'</b></td></tr>';
+  }).join('');
+  recount();
+}
+function collect(){
+  var st=DATA.stages||[], rows=DATA.rows||[], out=[];
+  rows.forEach(function(d,i){
+    st.forEach(function(s){
+      var el=$('c_'+i+'_'+s); if(!el) return;
+      var was=el.getAttribute('data-was'), now=el.value;
+      el.className='q'+((String(was)!==String(now))?' chg':'');
+      if(String(was)===String(now)) return;
+      out.push({detail:d.detail, model:d.model, stage:s, qty:(now===''?0:Number(now))});
+    });
+  });
+  return out;
+}
+function recount(){
+  var ch=collect();
+  $('chg').textContent=ch.length?('изменено клеток: '+ch.length):'';
+  $('save').disabled=!ch.length;
+}
+function saveCount(){
+  var ch=collect(); if(!ch.length) return;
+  if(!confirm('Провести пересчёт склада по '+ch.length+' позициям?\nЦифры могут как вырасти, так и уменьшиться.')) return;
+  msg('сохраняю…'); $('save').disabled=true;
+  api({vapi:'wipcount', items:JSON.stringify(ch)}).then(function(r){
+    if(!r||!r.ok){ msg('<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'); $('save').disabled=false; return; }
+    msg('<span class="ok">проведено: '+(r.changed||0)+' изменений</span>');
+    load();
+  });
+}
+load();
+</script>
+</body>
+</html>

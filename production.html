@@ -370,11 +370,13 @@ function renderDetail(){
         +' <a href="javascript:void(0)" onclick="deadlineLog(\''+b.id+'\')" title="история изменений срока" style="text-decoration:none">🕘</a></span>'
       +'<button class="gray sm" title="обычно это происходит само при открытии заказа; кнопка — если нужно прямо сейчас" onclick="recalcOps(\''+b.id+'\')">↻ Пересобрать сейчас</button>'
       +'<button class="gray sm" title="печатный лист: пойти в цех и пересчитать детали по стадиям" onclick="inventSheet(\''+b.id+'\')">📋 Ведомость переучёта</button>'
+      +'<button class="gray sm" title="взять в этот заказ детали, оставшиеся от прошлых партий" onclick="wipOffer(\''+b.id+'\')">🧩 Склад деталей</button>'
       +'<button class="gray sm" onclick="ship(\''+b.id+'\')">📦 Отгрузить</button>'
       +'<button class="gray sm" title="удалить заказ" onclick="delBatch(\''+b.id+'\')">🗑</button>'
       +'<span class="msg" id="bm_'+b.id+'"></span>'
       +'</div>'
       +'<div id="ship_'+b.id+'" style="margin-top:8px"></div>'
+      +'<div id="wip_'+b.id+'" style="margin-top:8px"></div>'
       +'<div style="overflow-x:auto"><table style="margin-top:8px"><thead><tr><th>Модель</th><th>Труд</th><th class="num">Кол-во</th><th class="num">Готово→склад</th><th></th></tr></thead><tbody id="items_'+b.id+'">'+items+'</tbody></table></div>'
       +'<div class="row" style="margin-top:8px"><input list="modlist" id="am_'+b.id+'" placeholder="модель из каталога…" style="min-width:240px"><input class="q" id="aq_'+b.id+'" placeholder="кол-во"><button class="green sm" onclick="addItem(\''+b.id+'\')">＋ добавить модель</button></div>'
     +'</div>'
@@ -821,6 +823,73 @@ function shipGo(id,close){
   });
 }
 
+// ─── ВЗЯТЬ ОСТАТКИ СО СКЛАДА ДЕТАЛЕЙ В ЭТОТ ЗАКАЗ ───
+// Деталь, пролежавшая на складе, закрывает не только «свою» стадию, но и все предыдущие:
+// отшлифованная боковина заведомо распилена. Поэтому взятие поднимает начальные остатки
+// по всей цепочке до этой стадии — и только вверх, ничего не понижая.
+var WIPO={};
+function wipOffer(id){
+  var m=$('bm_'+id); m.textContent='смотрю склад…';
+  api({vapi:'wipoffer',batch:id}).then(function(r){
+    m.textContent='';
+    if(!r||!r.ok){ m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; return; }
+    WIPO[id]=r; renderWip(id);
+  });
+}
+function wipQty(id,i){ var el=$('wq_'+id+'_'+i); return Math.max(0,Math.min(Number(el&&el.value)||0,WIPO[id].items[i].canTake)); }
+function wipRecalc(id){
+  var t=0; (WIPO[id].items||[]).forEach(function(x,i){ t+=wipQty(id,i); });
+  var el=$('wtot_'+id); if(el) el.innerHTML='Берём <b>'+t+'</b> деталей';
+  var b=$('wbtn_'+id); if(b) b.disabled=!(t>0);
+}
+function wipAll(id,on){
+  (WIPO[id].items||[]).forEach(function(x,i){ var el=$('wq_'+id+'_'+i); if(el) el.value=on?x.canTake:0; });
+  wipRecalc(id);
+}
+function renderWip(id){
+  var d=WIPO[id], box=$('wip_'+id);
+  if(!d.items.length){
+    box.innerHTML='<div class="tray chktray"><div class="trayhd"><span class="tt">🧩 Склад деталей</span>'
+      +'<span class="th">подходящих остатков нет</span></div>'
+      +'<div class="muted" style="padding:8px 2px">На складе нет деталей, которые нужны этому заказу. '
+      +'Детали попадают на склад при закрытии заказа — недоделанное остаётся за цехом.</div>'
+      +'<div class="row" style="margin-top:6px"><button class="sm gray" onclick="$(\'wip_'+id+'\').innerHTML=\'\'">закрыть</button></div></div>';
+    return;
+  }
+  var rows=d.items.map(function(x,i){
+    return '<tr><td>'+esc(x.detail)+'</td><td class="muted">'+esc(x.model||'—')+'</td>'
+      +'<td>'+esc(x.stage)+'</td><td class="num">'+x.onWip+'</td><td class="num">'+x.room+'</td>'
+      +'<td class="num"><input id="wq_'+id+'_'+i+'" type="number" min="0" max="'+x.canTake+'" value="'+x.canTake+'" '
+      +'oninput="wipRecalc(\''+id+'\')" style="width:70px;padding:5px;text-align:right;font-size:15px"></td></tr>';
+  }).join('');
+  box.innerHTML='<div class="tray chktray" style="border-color:#cddffa"><div class="trayhd">'
+    +'<span class="tt">🧩 Склад деталей</span><span class="th">остатки прошлых партий, которые нужны этому заказу</span></div>'
+    +'<div style="overflow-x:auto"><table style="min-width:560px;margin-top:6px"><thead><tr>'
+    +'<th>Деталь</th><th>Вариант</th><th>Стадия</th><th class="num">на складе</th><th class="num">нужно</th><th class="num">берём</th>'
+    +'</tr></thead><tbody>'+rows+'</tbody></table></div>'
+    +'<div class="row" style="margin-top:8px;gap:6px;flex-wrap:wrap">'
+    +'<button class="sm gray" onclick="wipAll(\''+id+'\',1)">взять всё</button>'
+    +'<button class="sm gray" onclick="wipAll(\''+id+'\',0)">обнулить</button>'
+    +'<span id="wtot_'+id+'" style="margin-left:auto"></span></div>'
+    +'<div class="row" style="margin-top:10px;gap:8px">'
+    +'<button id="wbtn_'+id+'" onclick="wipGo(\''+id+'\')">✅ Взять в заказ</button>'
+    +'<button class="gray" onclick="$(\'wip_'+id+'\').innerHTML=\'\'">отмена</button></div>'
+    +'<div class="muted" style="margin-top:6px;font-size:12px">Взятое спишется со склада и встанет в «Начальные остатки» — на эту стадию и на все предыдущие.</div>'
+    +'</div>';
+  wipRecalc(id);
+}
+function wipGo(id){
+  var d=WIPO[id], items=[], t=0;
+  d.items.forEach(function(x,i){ var q=wipQty(id,i); if(q>0){ items.push({key:x.key,qty:q}); t+=q; } });
+  if(!t) return;
+  if(!confirm('Взять со склада '+t+' деталей в этот заказ?\nОни спишутся со склада и попадут в начальные остатки.')) return;
+  var m=$('bm_'+id); m.textContent='беру…'; $('wip_'+id).innerHTML='';
+  api({vapi:'wipissue',batch:id,items:JSON.stringify(items)}).then(function(r){
+    if(!r||!r.ok){ m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; return; }
+    m.innerHTML='<span class="ok">взято со склада: '+t+' деталей</span>';
+    setTimeout(reloadDetail,700);
+  });
+}
 load();
 
 // авто-обновление: оболочка шлёт «refresh» при возврате на раздел — перечитываем данные без перезагрузки страницы
