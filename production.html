@@ -374,6 +374,7 @@ function renderDetail(){
       +'<button class="gray sm" title="удалить заказ" onclick="delBatch(\''+b.id+'\')">🗑</button>'
       +'<span class="msg" id="bm_'+b.id+'"></span>'
       +'</div>'
+      +'<div id="ship_'+b.id+'" style="margin-top:8px"></div>'
       +'<div style="overflow-x:auto"><table style="margin-top:8px"><thead><tr><th>Модель</th><th>Труд</th><th class="num">Кол-во</th><th class="num">Готово→склад</th><th></th></tr></thead><tbody id="items_'+b.id+'">'+items+'</tbody></table></div>'
       +'<div class="row" style="margin-top:8px"><input list="modlist" id="am_'+b.id+'" placeholder="модель из каталога…" style="min-width:240px"><input class="q" id="aq_'+b.id+'" placeholder="кол-во"><button class="green sm" onclick="addItem(\''+b.id+'\')">＋ добавить модель</button></div>'
     +'</div>'
@@ -746,58 +747,77 @@ function rmItem(itemId){
   var b=DETAIL; if(!b||!b.items) return;
   for(var j=0;j<b.items.length;j++) if(b.items[j].id===itemId){ b.items.splice(j,1); renderItems(b.id); (function(bid){ api({vapi:'rmitem', item:itemId}).then(function(){ scheduleOpsRefresh(bid); }); })(b.id); return; }
 }
-// Отгрузка необратима, поэтому подтверждаем в два шага.
-// ⚠ Порядок важен: СНАЧАЛА «что отгружаем» — это главное решение, и оно строится из уже
-// загруженных данных, то есть появляется мгновенно. Остатки в цеху требуют счёта на сервере
-// и показываются вторым шагом, чтобы не заставлять ждать перед главным вопросом.
-function shipPlan(){
-  var out=[], pk=0, ord=0, part=[];
-  (DETAIL&&DETAIL.products||[]).forEach(function(p){
-    // ⚠ Считаем ровно как сервер: по строкам УРОВНЯ «изделие». Поиск по слову «паковка» цеплял
-    // ещё и «Фурнитура X · Упаковка» — это деталь, её готовность к отгрузке отношения не имеет.
-    var q=null;
-    (p.ops||[]).forEach(function(o){ if(o.level==='изделие') q=(q===null?o.ready:Math.min(q,o.ready)); });
-    if(q===null) (p.ops||[]).forEach(function(o){ if(o.op.indexOf('паковка')>=0) q=(q===null?o.ready:Math.min(q,o.ready)); });
-    if(q===null) q=p.ordered;
-    q=Math.min(Math.round(q), p.ordered);
-    pk+=q; ord+=p.ordered;
-    if(q>0) out.push({name:(p.model+'  ('+p.eq+')'), qty:q, ordered:p.ordered});
-    if(q<p.ordered) part.push('• '+p.model+' — упаковано '+q+' из '+p.ordered);
-  });
-  // ⚠ НЕ сортируем по количеству: три варианта одного оборудования разъезжались по списку,
-  // и «Арка со столом LUNO 16» вставала рядом с «Башня LUMO» — их и перепутали.
-  // Оставляем порядок карточки заказа: варианты одного товара идут подряд.
-  return {lines:out, packed:pk, ordered:ord, part:part};
-}
+// ─── ОТГРУЗКА ЧАСТЯМИ ───
+// Партию возят в несколько заходов: сколько готово — столько и увозим, заказ живёт дальше.
+// Количество по каждой позиции правится вручную, больше упакованного ввести нельзя.
+// ⚠ Упакованное, но не увезённое НЕ теряется: приход на склад готовой продукции делается на
+// всё упакованное, расход — только на увезённое, разница лежит в «Наличии» и видна следующему
+// заказу. Незавершённые детали уходят на склад деталей только при ЗАКРЫТИИ заказа.
+var SHIP={};
 function ship(id){
-  var m=$('bm_'+id), pl=shipPlan();
-  if(!pl.packed){ alert('Отгружать нечего: ни одно изделие не упаковано.'); return; }
-  // ШАГ 1 — что уезжает
-  var t1='ОТГРУЖАЕМ '+pl.packed+' изделий'+(pl.ordered?(' из '+pl.ordered+' заказанных'):'')+':\n\n'
-    +pl.lines.map(function(x){ return '• '+x.name+' — '+x.qty+' шт'+(x.qty<x.ordered?(' (из '+x.ordered+')'):''); }).join('\n')
-    +'\n\nОтгружается только упакованное. Продолжить?';
-  if(!confirm(t1)) return;
-  // ШАГ 2 — что останется в цеху
-  m.textContent='считаю остаток…';
-  api({vapi:'wiptake', batch:id, dry:1}).then(function(w){
+  var m=$('bm_'+id); m.textContent='считаю…';
+  api({vapi:'shippreview',batch:id}).then(function(r){
     m.textContent='';
-    var t2='';
-    if(pl.part.length) t2+='Не собрано полностью — эти изделия не поедут:\n'
-      +pl.part.slice(0,10).join('\n')+(pl.part.length>10?('\n… ещё '+(pl.part.length-10)):'')+'\n\n';
-    if(w&&w.ok&&w.stat&&w.stat.rows){
-      t2+='В цеху останется '+w.stat.qty+' деталей ('+w.stat.rows+' позиций) — уйдут на склад деталей:\n'
-        +(w.items||[]).slice(0,8).map(function(x){
-            return '• '+x.detail+(x.model?(' · '+x.model):'')+' · '+x.stage+' — '+x.qty+' шт'; }).join('\n')
-        +((w.items||[]).length>8?('\n… ещё '+((w.items||[]).length-8)+' позиций'):'');
-    } else t2+='Незавершённых деталей в цеху не осталось.';
-    t2+='\n\nПартия будет закрыта. Отгружаем?';
-    if(!confirm(t2)) return;
-    m.textContent='…';
-    api({vapi:'shipbatch', batch:id}).then(function(r){
-      var wip=(r&&r.wip&&r.wip.ok&&r.wip.stat)?(' · на склад деталей '+r.wip.stat.qty+' шт'):'';
-      m.innerHTML=(r&&r.ok)?('<span class="ok">отгружено '+(r.shipped||0)+wip+'</span>'):'<span class="err">ошибка</span>';
-      setTimeout(reloadDetail,700);
-    });
+    if(!r||!r.ok){ m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; return; }
+    SHIP[id]=r; renderShip(id);
+  });
+}
+function shipQty(id,i){ var el=$('sq_'+id+'_'+i); return Math.max(0,Math.min(Number(el&&el.value)||0,SHIP[id].lines[i].canShip)); }
+function shipRecalc(id){
+  var d=SHIP[id],t=0,rest=0;
+  d.lines.forEach(function(l,i){ var q=shipQty(id,i); t+=q; rest+=Math.max(0,l.packed-l.shippedBefore-q); });
+  var el=$('stot_'+id); if(el) el.innerHTML='Везём <b>'+t+'</b> шт'+(rest?(' · останется упакованными <b>'+rest+'</b>'):'');
+  var bt=$('sbtn_'+id); if(bt) bt.disabled=!(t>0);
+}
+function shipAll(id,on){
+  SHIP[id].lines.forEach(function(l,i){ var el=$('sq_'+id+'_'+i); if(el) el.value=on?l.canShip:0; });
+  shipRecalc(id);
+}
+function renderShip(id){
+  var d=SHIP[id];
+  var rows=d.lines.map(function(l,i){
+    var made=l.ordered-l.packed;
+    return '<tr'+(l.canShip?'':' style="opacity:.5"')+'>'
+      +'<td>'+esc(l.model)+'<div class="muted" style="font-size:11px">'+esc(l.equip)+'</div></td>'
+      +'<td class="num">'+l.ordered+'</td><td class="num">'+l.packed+'</td>'
+      +'<td class="num">'+(l.shippedBefore||'—')+'</td>'
+      +'<td class="num"><input id="sq_'+id+'_'+i+'" type="number" min="0" max="'+l.canShip+'" value="'+l.canShip+'" '
+      +(l.canShip?'':'disabled ')+'oninput="shipRecalc(\''+id+'\')" style="width:72px;padding:5px;text-align:right;font-size:15px"></td>'
+      +'<td class="muted" style="font-size:11px">'+(made>0?('не собрано '+made):'')+'</td></tr>';
+  }).join('');
+  $('ship_'+id).innerHTML='<div class="tray chktray" style="border-color:#cddffa"><div class="trayhd">'
+    +'<span class="tt">📦 Отгрузка</span><span class="th">впишите, сколько увозите по каждой позиции</span></div>'
+    +'<div style="overflow-x:auto"><table style="min-width:520px;margin-top:6px"><thead><tr>'
+    +'<th>Изделие</th><th class="num">заказ</th><th class="num">упаковано</th><th class="num">увезли</th><th class="num">везём</th><th></th>'
+    +'</tr></thead><tbody>'+rows+'</tbody></table></div>'
+    +'<div class="row" style="margin-top:8px;gap:6px;flex-wrap:wrap">'
+    +'<button class="sm gray" onclick="shipAll(\''+id+'\',1)">всё упакованное</button>'
+    +'<button class="sm gray" onclick="shipAll(\''+id+'\',0)">обнулить</button>'
+    +'<span id="stot_'+id+'" style="margin-left:auto"></span></div>'
+    +'<div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap">'
+    +'<button id="sbtn_'+id+'" onclick="shipGo(\''+id+'\',0)">🚚 Отгрузить, заказ оставить открытым</button>'
+    +'<button class="gray" onclick="shipGo(\''+id+'\',1)">🔒 Отгрузить и закрыть заказ</button>'
+    +'<button class="gray" onclick="$(\'ship_'+id+'\').innerHTML=\'\'">отмена</button></div>'
+    +'<div class="muted" style="margin-top:6px;font-size:12px">Закрытие заказа переводит недоделанные детали на склад деталей — оттуда их можно взять в следующую партию. Пока заказ открыт, детали остаются в нём.</div>'
+    +'</div>';
+  shipRecalc(id);
+}
+function shipGo(id,close){
+  var d=SHIP[id], items=[], tot=0, rest=0;
+  d.lines.forEach(function(l,i){ var q=shipQty(id,i); tot+=q; rest+=Math.max(0,l.packed-l.shippedBefore-q);
+    if(q>0) items.push({sku:l.sku,model:l.model,qty:q}); });
+  if(!tot){ alert('Не указано ни одной позиции к отгрузке.'); return; }
+  var txt='Отгружаем '+tot+' изделий.';
+  if(rest) txt+='\nОстанется упакованными в наличии: '+rest+' шт.';
+  txt+=close ? '\n\nЗАКАЗ БУДЕТ ЗАКРЫТ: недоделанные детали уйдут на склад деталей, недостающие изделия перестанут числиться в заказе. Продолжить?'
+             : '\n\nЗаказ останется открытым — остаток можно довезти позже. Продолжить?';
+  if(!confirm(txt)) return;
+  var m=$('bm_'+id); m.textContent='отгружаю…'; $('ship_'+id).innerHTML='';
+  api({vapi:'shipbatch',batch:id,lines:JSON.stringify(items),close:close?1:0}).then(function(r){
+    if(!r||!r.ok){ m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; return; }
+    var w=(r.wip&&r.wip.ok&&r.wip.stat)?(' · на склад деталей '+r.wip.stat.qty+' шт'):'';
+    m.innerHTML='<span class="ok">отгружено '+r.shipped+(r.closed?' · заказ закрыт':' · заказ открыт')+w+'</span>';
+    setTimeout(reloadDetail,700);
   });
 }
 
