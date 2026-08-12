@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Тигервуд — склад деталей</title>
+<title>Тигервуд — склады</title>
 <style>
   :root{ --bg:#f4f6fb; --card:#fff; --fg:#1b2333; --muted:#8a93a6; --line:#e6e9f2; --accent:#2b7de9; --green:#137333; --amber:#b7791f; --red:#c0392b; }
   *{box-sizing:border-box;} html,body{margin:0;background:var(--bg);}
@@ -19,6 +19,9 @@
   button{ font:inherit; background:var(--accent); color:#fff; border:0; border-radius:9px; padding:8px 14px; cursor:pointer; }
   button.gray{ background:#eef1f8; color:#334; } button:disabled{ opacity:.45; cursor:default; }
   button.sm{ padding:5px 10px; font-size:13px; }
+  .tabs{ display:flex; gap:6px; margin:10px 0 2px; flex-wrap:wrap; }
+  .tabs button{ background:#eef1f8; color:#334; border-radius:10px 10px 0 0; }
+  .tabs button.on{ background:var(--card); color:var(--fg); font-weight:700; border:1px solid var(--line); border-bottom-color:var(--card); }
   table{ width:100%; border-collapse:collapse; font-size:13px; margin-top:8px; }
   th,td{ text-align:left; padding:6px 7px; border-bottom:1px solid var(--line); white-space:nowrap; }
   th{ font-size:11.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; font-weight:700; }
@@ -27,11 +30,11 @@
   input.q{ width:64px; padding:6px; text-align:right; font-size:15px; border:1px solid var(--line); border-radius:8px; }
   input.q.chg{ border-color:var(--amber); background:#fffaf0; font-weight:700; }
   .cell0{ color:#c9cede; }
+  .neg{ color:var(--red); font-weight:700; }
   .msg{ font-size:13px; margin-left:8px; } .ok{ color:var(--green); } .err{ color:var(--red); }
-  /* печать: только ведомость, крупные пустые клетки под ручку */
   @media print{
     body{ padding:0; max-width:none; font-size:12px; }
-    .noprint{ display:none !important; }
+    .noprint,.tabs{ display:none !important; }
     th,td{ border-bottom:1px solid #999; }
     td.wr{ height:30px; min-width:52px; border:1px solid #666; }
   }
@@ -40,17 +43,21 @@
 <script>if(/[?&]embed=1/.test(location.search))document.documentElement.classList.add('emb');</script>
 </head>
 <body>
-<div class="hi">🧩 Склад деталей</div>
-<div class="muted sub0">Незавершённые детали, снятые с закрытых заказов. Их можно пересчитать и взять в новый заказ.</div>
+<div class="hi">🏬 Склады</div>
+<div class="muted sub0">Незавершённые детали из закрытых заказов и упакованный товар, который ещё не увезли.</div>
+
+<div class="tabs noprint">
+  <button id="tb_wip" class="on" onclick="setTab('wip')">🧩 Детали</button>
+  <button id="tb_fg" onclick="setTab('fg')">📦 Готовая продукция</button>
+</div>
 
 <div class="row" style="margin-top:10px" id="tiles"></div>
 
-<div class="sect">Остатки по стадиям</div>
-<div class="box">
+<div class="box" style="margin-top:10px">
   <div class="row noprint">
     <button class="gray sm" onclick="load()">↻ Обновить</button>
     <button class="gray sm" onclick="window.print()">🖨 Печать ведомости</button>
-    <span class="muted">Впишите фактическое количество — сохранится только то, что вы изменили.</span>
+    <span class="muted" id="hint"></span>
     <span class="msg" id="msg" style="margin-left:auto"></span>
   </div>
   <div class="wrap"><table id="tbl"><thead id="thd"></thead><tbody id="tb"></tbody></table></div>
@@ -59,10 +66,10 @@
     <button class="gray sm" onclick="load()">отменить правки</button>
     <span class="muted" id="chg"></span>
   </div>
-  <div class="muted noprint" style="margin-top:6px">
-    В отличие от переучёта заказа здесь цифра может <b>уменьшиться</b>: склад — это состояние, а не накопленная выработка.
-  </div>
+  <div class="muted noprint" style="margin-top:6px" id="foot"></div>
 </div>
+
+<div id="log" style="margin-top:12px"></div>
 
 <script>
 function qp(k){ var m=new RegExp('[?&]'+k+'=([^&]*)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
@@ -76,62 +83,120 @@ function api(p){ p.app=APP; if(TGID) p.tgid=TGID;
   return fetch(BASE+'?'+q).then(function(r){return r.json();}); }
 function msg(h){ $('msg').innerHTML=h||''; }
 
-var DATA=null;
+var TAB='wip', DATA=null;
+function setTab(t){
+  TAB=t;
+  $('tb_wip').className=(t==='wip')?'on':''; $('tb_fg').className=(t==='fg')?'on':'';
+  $('log').innerHTML=''; load();
+}
 function load(){
-  msg('загрузка…');
-  api({vapi:'wipsheet'}).then(function(r){
+  msg('загрузка…'); DATA=null;
+  api({vapi:(TAB==='wip')?'wipsheet':'fglist'}).then(function(r){
     if(!r||!r.ok){ msg('<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'); return; }
-    DATA=r; msg(''); render();
+    DATA=r; msg(''); (TAB==='wip')?renderWip():renderFg();
   }).catch(function(e){ msg('<span class="err">'+esc(e.message)+'</span>'); });
 }
-function render(){
-  var st=DATA.stages||[], rows=DATA.rows||[];
+
+// ─── ДЕТАЛИ: строка = деталь + вариант, колонки = стадии ───
+function renderWip(){
+  var st=DATA.stages||[], rows=DATA.rows||[], hints=DATA.hints||{};
   $('tiles').innerHTML='<div class="tile"><div class="t">позиций</div><div class="v">'+(DATA.stat.rows||0)+'</div></div>'
     +'<div class="tile"><div class="t">деталей всего</div><div class="v">'+(DATA.stat.qty||0)+'</div></div>';
-  // подсказки стадий — те же, что в ведомости заказа: считающий должен понимать, что считает
-  var hints=DATA.hints||{};
+  $('hint').textContent='Впишите фактическое количество — сохранится только изменённое.';
+  $('foot').innerHTML='Цифра может <b>уменьшиться</b>: склад — это состояние, а не накопленная выработка. Пустая клетка = «не считали», а не ноль.';
   $('thd').innerHTML='<tr><th>Деталь</th><th>Вариант</th>'
-    +st.map(function(s){ return '<th class="num" title="'+esc(hints[s]||'')+'">'+esc(s)+'</th>'; }).join('')
-    +'<th class="num">всего</th></tr>';
+    +st.map(function(s){ return '<th class="num" title="'+esc(hints[s]||'')+'">'+esc(s)+'</th>'; }).join('')+'<th class="num">всего</th></tr>';
   if(!rows.length){ $('tb').innerHTML='<tr><td colspan="'+(st.length+3)+'" class="muted">Склад пуст. Детали попадают сюда при закрытии заказа — недоделанное остаётся за цехом.</td></tr>'; recount(); return; }
   $('tb').innerHTML=rows.map(function(d,i){
     var tot=0;
     var cells=st.map(function(s){
-      var c=d.cells[s], q=c?c.qty:'';
-      if(c) tot+=c.qty;
-      return '<td class="num wr"><input class="q'+(c?'':' cell0')+'" id="c_'+i+'_'+esc(s)+'" type="number" min="0" value="'+(c?c.qty:'')+'" '
-        +'data-was="'+(c?c.qty:'')+'" oninput="recount()"></td>';
+      var c=d.cells[s]; if(c) tot+=c.qty;
+      return '<td class="num wr"><input class="q'+(c?'':' cell0')+'" id="c_'+i+'_'+esc(s)+'" type="number" min="0" value="'+(c?c.qty:'')+'" data-was="'+(c?c.qty:'')+'" oninput="recount()"></td>';
     }).join('');
     return '<tr><td>'+esc(d.detail)+'</td><td class="muted">'+esc(d.model||'—')+'</td>'+cells+'<td class="num"><b>'+tot+'</b></td></tr>';
   }).join('');
   recount();
 }
+
+// ─── ГОТОВАЯ ПРОДУКЦИЯ: строка = артикул ───
+function renderFg(){
+  var rows=DATA.rows||[];
+  var s=DATA.stat||{};
+  $('tiles').innerHTML='<div class="tile"><div class="t">артикулов</div><div class="v">'+(s.rows||0)+'</div></div>'
+    +'<div class="tile"><div class="t">лежит на складе</div><div class="v'+((s.qty||0)<0?' neg':'')+'">'+(s.qty||0)+'</div></div>'
+    +'<div class="tile"><div class="t">в резерве</div><div class="v">'+(s.reserved||0)+'</div></div>';
+  $('hint').textContent='Впишите фактический остаток — сохранится только изменённое.';
+  $('foot').innerHTML='Пересчёт правит только <b>физический остаток</b>. Резерв под продажи не трогается. '
+    +'Отрицательный остаток — след старых операций, его тоже правят здесь.';
+  $('thd').innerHTML='<tr><th>Изделие</th><th>Артикул</th><th class="num">в наличии</th><th class="num">резерв</th>'
+    +'<th class="num">факт</th><th class="num">целевой</th><th>обновлено</th><th></th></tr>';
+  if(!rows.length){ $('tb').innerHTML='<tr><td colspan="8" class="muted">Склад пуст.</td></tr>'; recount(); return; }
+  $('tb').innerHTML=rows.map(function(x,i){
+    return '<tr><td>'+esc(x.model||x.equip||'—')+'</td><td class="muted">'+esc(x.sku||'—')+'</td>'
+      +'<td class="num'+(x.onHand<0?' neg':'')+'">'+x.onHand+'</td>'
+      +'<td class="num muted">'+(x.reserved||'')+'</td>'
+      +'<td class="num wr"><input class="q" id="f_'+i+'" type="number" value="'+x.onHand+'" data-was="'+x.onHand+'" oninput="recount()"></td>'
+      +'<td class="num muted">'+(x.target||'')+'</td><td class="muted">'+esc(x.upd||'')+'</td>'
+      +'<td class="noprint"><button class="gray sm" onclick="fgLog(\''+esc(x.sku)+'\')">журнал</button></td></tr>';
+  }).join('');
+  recount();
+}
+
 function collect(){
-  var st=DATA.stages||[], rows=DATA.rows||[], out=[];
-  rows.forEach(function(d,i){
-    st.forEach(function(s){
-      var el=$('c_'+i+'_'+s); if(!el) return;
+  var out=[];
+  if(TAB==='wip'){
+    var st=DATA.stages||[];
+    (DATA.rows||[]).forEach(function(d,i){
+      st.forEach(function(s){
+        var el=$('c_'+i+'_'+s); if(!el) return;
+        var was=el.getAttribute('data-was'), now=el.value;
+        el.className='q'+((String(was)!==String(now))?' chg':'');
+        if(String(was)===String(now)) return;
+        out.push({detail:d.detail, model:d.model, stage:s, qty:(now===''?0:Number(now))});
+      });
+    });
+  } else {
+    (DATA.rows||[]).forEach(function(x,i){
+      var el=$('f_'+i); if(!el) return;
       var was=el.getAttribute('data-was'), now=el.value;
       el.className='q'+((String(was)!==String(now))?' chg':'');
-      if(String(was)===String(now)) return;
-      out.push({detail:d.detail, model:d.model, stage:s, qty:(now===''?0:Number(now))});
+      if(String(was)===String(now)||now==='') return;
+      out.push({sku:x.sku, equip:x.equip, model:x.model, qty:Number(now)});
     });
-  });
+  }
   return out;
 }
 function recount(){
   var ch=collect();
-  $('chg').textContent=ch.length?('изменено клеток: '+ch.length):'';
+  $('chg').textContent=ch.length?('изменено строк: '+ch.length):'';
   $('save').disabled=!ch.length;
 }
 function saveCount(){
   var ch=collect(); if(!ch.length) return;
-  if(!confirm('Провести пересчёт склада по '+ch.length+' позициям?\nЦифры могут как вырасти, так и уменьшиться.')) return;
+  var what=(TAB==='wip')?'склада деталей':'склада готовой продукции';
+  if(!confirm('Провести пересчёт '+what+' по '+ch.length+' позициям?\nЦифры могут как вырасти, так и уменьшиться.')) return;
   msg('сохраняю…'); $('save').disabled=true;
-  api({vapi:'wipcount', items:JSON.stringify(ch)}).then(function(r){
+  api({vapi:(TAB==='wip')?'wipcount':'fgcount', items:JSON.stringify(ch)}).then(function(r){
     if(!r||!r.ok){ msg('<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'); $('save').disabled=false; return; }
     msg('<span class="ok">проведено: '+(r.changed||0)+' изменений</span>');
     load();
+  });
+}
+function fgLog(sku){
+  var box=$('log');
+  box.innerHTML='<div class="muted">загрузка…</div>';
+  api({vapi:'fglog', sku:sku}).then(function(r){
+    if(!r||!r.ok){ box.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; return; }
+    if(!r.rows.length){ box.innerHTML='<div class="box muted">По «'+esc(sku)+'» движений нет</div>'; return; }
+    var rows=r.rows.map(function(x){
+      return '<tr><td>'+esc(x.date)+'</td><td>'+esc(x.type)+'</td><td class="num">'+x.qty+'</td>'
+        +'<td class="muted">'+esc(x.doc||'')+'</td><td class="muted">'+esc(x.note||'')+'</td></tr>';
+    }).join('');
+    box.innerHTML='<div class="box"><div class="row"><b>Журнал: '+esc(sku)+'</b>'
+      +'<span class="muted">движений '+r.total+'</span>'
+      +'<button class="gray sm" style="margin-left:auto" onclick="$(\'log\').innerHTML=\'\'">закрыть</button></div>'
+      +'<div class="wrap"><table><thead><tr><th>Дата</th><th>Тип</th><th class="num">Кол-во</th><th>Документ</th><th>Комментарий</th></tr></thead>'
+      +'<tbody>'+rows+'</tbody></table></div></div>';
   });
 }
 load();
