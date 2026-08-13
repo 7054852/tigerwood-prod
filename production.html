@@ -21,6 +21,23 @@
   button:disabled{ opacity:.5; cursor:default; }
   input,select{ padding:6px 8px; border:1px solid var(--line); border-radius:8px; font-size:13px; }
   input.q{ width:64px; text-align:right; font-variant-numeric:tabular-nums; }
+  /* СТРОКА ПОЗИЦИИ ЗАКАЗА. Раньше «оборудование · модель · артикул» шли одной строкой с nowrap —
+     таблица уезжала за экран, и колонка «Отгружено» пряталась под горизонтальной прокруткой.
+     Теперь имя в две строки, цифры узкие, ширина держится на table-layout:fixed. */
+  table.items{ table-layout:fixed; width:100%; }
+  table.items td,table.items th{ padding:7px 5px; }
+  table.items .c-nm{ width:auto; white-space:normal; }
+  table.items .c-n{ width:74px; }
+  table.items .c-x{ width:38px; }
+  .inm{ font-weight:600; line-height:1.25; }
+  .isub{ color:var(--muted); font-size:11.5px; line-height:1.3; margin-top:1px;
+         display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+  table.items input.q{ width:100%; max-width:66px; }
+  @media (max-width:760px){
+    table.items .c-n{ width:58px; }
+    table.items input.q{ max-width:52px; }
+    .isub span:nth-child(n+3){ display:none; }   /* на телефоне достаточно модели и статуса */
+  }
   .pill{ font-size:11px; padding:2px 9px; border-radius:20px; font-weight:700; }
   /* компактная отметка «собрано»: иконка, надпись выезжает по наведению (не двигает соседние колонки) */
   /* ⚠ это отметка «состав изделия подтверждён в каталоге», а НЕ «работа завершена».
@@ -385,7 +402,11 @@ function renderDetail(){
       +'<div id="ship_'+b.id+'" style="margin-top:8px"></div>'
       +'<div id="slog_'+b.id+'" style="margin-top:8px"></div>'
       +'<div id="wip_'+b.id+'" style="margin-top:8px"></div>'
-      +'<div style="overflow-x:auto"><table style="margin-top:8px"><thead><tr><th>Модель</th><th>Труд</th><th class="num">Кол-во</th><th class="num">Готово→склад</th><th class="num">Отгружено</th><th></th></tr></thead><tbody id="items_'+b.id+'">'+items+'</tbody></table></div>'
+      +'<table class="items" style="margin-top:8px"><thead><tr>'
+        +'<th class="c-nm">Изделие</th>'
+        +'<th class="num c-n">Заказ</th><th class="num c-n" title="произведено и оприходовано на склад">Готово</th>'
+        +'<th class="num c-n" title="увезено клиенту">Увезено</th><th class="c-x"></th>'
+      +'</tr></thead><tbody id="items_'+b.id+'">'+items+'</tbody></table>'
       +'<div class="row" style="margin-top:8px"><input list="modlist" id="am_'+b.id+'" placeholder="модель из каталога…" style="min-width:240px"><input class="q" id="aq_'+b.id+'" placeholder="кол-во"><button class="green sm" onclick="addItem(\''+b.id+'\')">＋ добавить модель</button></div>'
     +'</div>'
     +'<div class="sect">Операции заказа</div>'
@@ -718,15 +739,23 @@ function renameBatch(id,cur){ var nm=prompt('Название партии:',cur
 function delBatch(id){ if(!confirm('Удалить заказ со всеми позициями?')) return; api({vapi:'delbatch', batch:id}).then(function(){ backToList(); }); }
 // строка позиции (общий шаблон для рендера и оптимистичного добавления)
 function itemRowHtml(it,batchId){
+  // ⚠ в компактной строке у собранного изделия оставляем только значок: подпись «собрано»
+  // повторялась 17 раз и съедала ширину, из-за которой пряталась колонка «Увезено».
+  // У НЕсобранного текст оставляем — это требует действия, значок легко пропустить.
   var asmBadge = it.assembled
-    ? '<span class="asm ok" title="собрано">✓<span class="t">собрано</span></span>'
-    : '<a href="'+catUrl(it.sku||it.model)+'" target="_blank" class="asm no" title="не собрано — открыть в каталоге, проверить состав и отметить">⚠<span class="t">не собрано → открыть в каталоге</span></a>';
-  return '<tr data-item="'+esc(it.id)+'"><td>'+esc(itemName(it))+(it.sku?' <span class="muted">'+esc(it.sku)+'</span>':'')+'</td>'
-    +'<td>'+asmBadge+(it.unitCost?' <span class="muted">'+it.unitCost.toFixed(2).replace('.',',')+' р/шт</span>':'')+'</td>'
+    ? '<span class="asm ok" title="состав собран">✓</span>'
+    : '<a href="'+catUrl(it.sku||it.model)+'" target="_blank" class="asm no" title="не собрано — открыть в каталоге, проверить состав и отметить">⚠<span class="t">не собрано</span></a>';
+  return '<tr data-item="'+esc(it.id)+'">'
+    +'<td class="c-nm"><div class="inm">'+esc(it.model||it.equip||it.sku||'—')+'</div>'
+      +'<div class="isub">'+asmBadge
+      +(it.equip?('<span>'+esc(it.equip)+'</span>'):'')
+      +(it.sku?('<span>'+esc(it.sku)+'</span>'):'')
+      +(it.unitCost?('<span>'+it.unitCost.toFixed(2).replace('.',',')+' р/шт</span>'):'')
+      +'</div></td>'
     +'<td class="num"><input class="q" value="'+it.qty+'" onchange="updItem(\''+it.id+'\',this.value)"></td>'
     +'<td class="num"><input class="q" value="'+(it.done||0)+'" onchange="saveDone(\''+batchId+'\',\''+esc(it.sku)+'\',\''+esc(it.model)+'\',this.value)"></td>'
     +'<td class="num">'+shipCellHtml(it)+'</td>'
-    +'<td><button class="gray sm" title="убрать" onclick="rmItem(\''+it.id+'\')">🗑</button></td></tr>';
+    +'<td class="c-x"><button class="gray sm" title="убрать" onclick="rmItem(\''+it.id+'\')">🗑</button></td></tr>';
 }
 function curBatch(id){ if(DETAIL&&DETAIL.id===id) return DETAIL; for(var i=0;i<BATCHES.length;i++) if(BATCHES[i].id===id) return BATCHES[i]; return null; }
 function renderItems(id){ var b=curBatch(id), tb=$('items_'+id); if(b&&tb) tb.innerHTML=(b.items||[]).map(function(it){ return itemRowHtml(it,id); }).join(''); }
