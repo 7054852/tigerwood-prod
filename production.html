@@ -837,7 +837,8 @@ function renderShip(id){
     +'<div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap">'
     +'<button id="sbtn_'+id+'" onclick="shipGo(\''+id+'\',0)">🚚 Отгрузить, заказ оставить открытым</button>'
     +'<button class="gray" onclick="shipGo(\''+id+'\',1)">🔒 Отгрузить и закрыть заказ</button>'
-    +'<button class="gray" onclick="toStockGo(\''+id+'\')">🏬 Сдать на склад</button>'
+    +'<button class="gray" onclick="toStockGo(\''+id+'\',0)">🏬 Сдать на склад</button>'
+    +'<button class="gray" onclick="toStockGo(\''+id+'\',1)">🏬🔒 Сдать на склад и закрыть заказ</button>'
     +'<button class="gray" onclick="restOrder(\''+id+'\')">📄 Закрыть и создать заказ на остаток</button>'
     +'<button class="gray" onclick="$(\'ship_'+id+'\').innerHTML=\'\'">отмена</button></div>'
     +'<div class="muted" style="margin-top:6px;font-size:12px">Закрытие заказа переводит недоделанные детали на склад деталей — оттуда их можно взять в следующую партию. Пока заказ открыт, детали остаются в нём.</div>'
@@ -976,16 +977,21 @@ function shipLog(id){
 // ─── ВТОРОЙ ПУТЬ ТОВАРА: СДАТЬ НА СКЛАД ───
 // Отгрузка увозит клиенту напрямую и склад лишь проскакивает. Здесь товар на складе ОСТАЁТСЯ,
 // а увозят его потом со склада — уже не от имени заказа.
-function toStockGo(id){
+function toStockGo(id,close){
   var d=SHIP[id], items=[], t=0;
   d.lines.forEach(function(l,i){ var q=shipQty(id,i); if(q>0){ items.push({sku:l.sku,model:l.model,qty:q}); t+=q; } });
-  if(!t){ alert('Не указано ни одной позиции.'); return; }
-  if(!confirm('Сдать на склад готовой продукции '+t+' изделий?\n\nТовар останется на складе, клиенту не уедет. '
-    +'Отгрузить его можно позже в разделе «🏬 Склады».')) return;
+  if(!t && !close){ alert('Не указано ни одной позиции.'); return; }
+  var txt='Сдать на склад готовой продукции '+t+' изделий?\n\nТовар останется на складе, клиенту не уедет. '
+    +'Отгрузить его можно позже в разделе «🏬 Склады».';
+  if(close) txt+='\n\nЗАКАЗ БУДЕТ ЗАКРЫТ: недоделанные детали уйдут на склад деталей, '
+    +'а невыполненное по заказу перестанет числиться. Это единственный правильный способ закрыть заказ — '
+    +'смена статуса в списке детали на склад НЕ переведёт.';
+  if(!confirm(txt)) return;
   var m=$('bm_'+id); m.textContent='сдаю на склад…'; $('ship_'+id).innerHTML='';
-  api({vapi:'batchtostock',batch:id,lines:JSON.stringify(items),close:0}).then(function(r){
+  api({vapi:'batchtostock',batch:id,lines:JSON.stringify(items),close:close?1:0}).then(function(r){
     if(!r||!r.ok){ m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; return; }
-    m.innerHTML='<span class="ok">сдано на склад: '+r.toStock+'</span>';
+    var w=(r.wip&&r.wip.ok&&r.wip.stat)?(' · на склад деталей '+r.wip.stat.qty+' шт'):'';
+    m.innerHTML='<span class="ok">сдано на склад: '+r.toStock+(r.closed?' · заказ закрыт':'')+w+'</span>';
     setTimeout(reloadDetail,700);
   });
 }
