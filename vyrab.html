@@ -172,6 +172,9 @@ window.onerror=function(msg,src,line){
   <div class="row" id="jwrow" style="margin-top:6px;display:none">
     <select id="jworker" style="width:auto;flex:1" onchange="loadJournal()"></select>
   </div>
+  <div class="row" style="margin-top:6px">
+    <select id="jbatch" style="width:auto;flex:1" onchange="renderJournal()"></select>
+  </div>
   <div id="jpay" style="margin-top:12px"></div>
   <div id="jlist" style="margin-top:10px"></div>
 </div>
@@ -836,7 +839,7 @@ function sendBonus(rid,where){
 }
 // отклонённые за последние дни — свёрнуты в архив, чтобы не мешать проверке;
 // разворачивается по нажатию (нужен, когда наряд отклонили по ошибке)
-var REJ=[], REJOPEN=false;
+var REJ=[], REJOPEN=false, JRESP=null;   // последний ответ журнала — фильтр по заказу перерисовывает без запроса
 function loadRejected(){
   var box=document.getElementById('rejbox'); if(!box) return;
   // тот же приём: кэш общего запроса используем один раз, дальше — свежие данные
@@ -890,13 +893,43 @@ function loadJournal(){
   var jw=document.getElementById('jworker');
   if(master && jw && jw.value) jp.worker=jw.value;
   api(jp).then(function(r){
-    var items=(r&&r.items)||[], pr=(r&&r.payroll)||[];
-    if(pr.length){
-      var tot=pr.reduce(function(s,p){return s+p.sum;},0);
-      pay.innerHTML='<div class="card"><div class="row"><b>💰 ЗП за период (подтв.)</b><b class="ok">'+(Math.round(tot*100)/100)+' руб.</b></div>'
-        +pr.map(function(p){return '<div class="row"><span>'+esc(p.worker)+'</span><span>'+p.sum+' руб.</span></div>';}).join('')+'</div>';
-    }
-    items=items.filter(function(it){ return it.status==='подтверждено'; });   // журнал сданной работы — ТОЛЬКО принятые
+    JRESP=r||{items:[]};
+    fillJBatches();
+    renderJournal();
+  }).catch(function(){ lst.innerHTML='<span class="err">Ошибка загрузки</span>'; });
+}
+// список заказов строим ИЗ ОТВЕТА, а не из активных партий: в журнале есть и закрытые заказы
+function fillJBatches(){
+  var sel=document.getElementById('jbatch'); if(!sel) return;
+  var seen={}, opts=[];
+  ((JRESP&&JRESP.items)||[]).forEach(function(it){
+    if(it.status!=='подтверждено') return;
+    var k=it.free?'__free__':(it.batch||'');
+    if(!k || seen[k]) return; seen[k]=1;
+    opts.push('<option value="'+esc(k)+'">'+(it.free?'🧰 Вне заказа':esc(it.batch))+'</option>');
+  });
+  var keep=sel.value;
+  sel.innerHTML='<option value="">📦 Все заказы</option>'+opts.join('');
+  if(keep){ sel.value=keep; if(!sel.value) sel.value=''; }
+}
+// перерисовка без запроса к серверу: фильтр по заказу применяется к уже полученным строкам
+function renderJournal(){
+  var lst=document.getElementById('jlist'), pay=document.getElementById('jpay');
+  var r=JRESP||{items:[]}, master=isMaster();
+  var bf=(document.getElementById('jbatch')||{}).value||'';
+  var items=(r.items||[]).filter(function(it){ return it.status==='подтверждено'; });   // журнал сданной работы — ТОЛЬКО принятые
+  if(bf) items=items.filter(function(it){ return bf==='__free__' ? !!it.free : (!it.free && it.batch===bf); });
+  // ЗП считаем по ПОКАЗАННЫМ строкам — иначе при фильтре по заказу итог не сойдётся со списком
+  var pm={}, pord=[];
+  items.forEach(function(it){ if(pm[it.worker]==null){ pm[it.worker]=0; pord.push(it.worker); } pm[it.worker]+=it.sum||0; });
+  var pr=pord.map(function(w){ return {worker:w, sum:Math.round(pm[w]*100)/100}; }).sort(function(a,b){ return b.sum-a.sum; });
+  pay.innerHTML='';
+  if(pr.length){
+    var tot=pr.reduce(function(s,p){return s+p.sum;},0);
+    pay.innerHTML='<div class="card"><div class="row"><b>💰 ЗП за период (подтв.)'+(bf?' · по заказу':'')+'</b><b class="ok">'+(Math.round(tot*100)/100)+' руб.</b></div>'
+      +pr.map(function(p){return '<div class="row"><span>'+esc(p.worker)+'</span><span>'+p.sum+' руб.</span></div>';}).join('')+'</div>';
+  }
+  (function(){
     if(!items.length){ lst.innerHTML='<div class="muted">Нет принятых нарядов за период.</div>'; return; }
     // группировка по нарядам
     var groups=[], gidx={};
@@ -942,7 +975,7 @@ function loadJournal(){
         +'<div id="bonbox-j-'+bonKey(bonRid)+'"></div>'
         +shiftCtl+lines+bonusBlockHtml(gbd)+'</div>';
     }).join('');
-  }).catch(function(){ lst.innerHTML='<span class="err">Ошибка загрузки</span>'; });
+  })();
 }
 // ═══════════ 🪚 РАСКРОЙ НА ЧПУ: лист → детали ═══════════
 // Рабочий указывает лист материала и что с него вышло. Платим и за лист, и за детали.
