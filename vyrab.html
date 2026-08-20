@@ -174,6 +174,7 @@ window.onerror=function(msg,src,line){
   </div>
   <div class="row" style="margin-top:6px">
     <select id="jbatch" style="width:auto;flex:1" onchange="renderJournal()"></select>
+    <select id="jop" style="width:auto;flex:1" onchange="renderJournal()"></select>
   </div>
   <div id="jpay" style="margin-top:12px"></div>
   <div id="jlist" style="margin-top:10px"></div>
@@ -894,7 +895,7 @@ function loadJournal(){
   if(master && jw && jw.value) jp.worker=jw.value;
   api(jp).then(function(r){
     JRESP=r||{items:[]};
-    fillJBatches();
+    fillJBatches(); fillJOps();
     renderJournal();
   }).catch(function(){ lst.innerHTML='<span class="err">Ошибка загрузки</span>'; });
 }
@@ -912,13 +913,29 @@ function fillJBatches(){
   sel.innerHTML='<option value="">📦 Все заказы</option>'+opts.join('');
   if(keep){ sel.value=keep; if(!sel.value) sel.value=''; }
 }
-// перерисовка без запроса к серверу: фильтр по заказу применяется к уже полученным строкам
+function fillJOps(){
+  var sel=document.getElementById('jop'); if(!sel) return;
+  var seen={}, ops=[];
+  ((JRESP&&JRESP.items)||[]).forEach(function(it){
+    if(it.status!=='подтверждено') return;
+    var o=it.op||''; if(!o || seen[o]) return; seen[o]=1; ops.push(o);
+  });
+  ops.sort();
+  var keep=sel.value;
+  sel.innerHTML='<option value="">🛠 Все операции</option>'+ops.map(function(o){ return '<option value="'+esc(o)+'">'+esc(o)+'</option>'; }).join('');
+  if(keep){ sel.value=keep; if(!sel.value) sel.value=''; }
+}
+// перерисовка без запроса к серверу: фильтры по заказу и операции применяются к уже полученным строкам
 function renderJournal(){
   var lst=document.getElementById('jlist'), pay=document.getElementById('jpay');
   var r=JRESP||{items:[]}, master=isMaster();
-  var bf=(document.getElementById('jbatch')||{}).value||'';
-  var items=(r.items||[]).filter(function(it){ return it.status==='подтверждено'; });   // журнал сданной работы — ТОЛЬКО принятые
+  var bf=(document.getElementById('jbatch')||{}).value||'', of=(document.getElementById('jop')||{}).value||'';
+  var all=(r.items||[]).filter(function(it){ return it.status==='подтверждено'; });   // журнал сданной работы — ТОЛЬКО принятые
+  // сколько строк в наряде БЕЗ фильтров — чтобы честно сказать, когда показана только его часть
+  var full={}; all.forEach(function(it){ var k=it.report||('_'+it.id); full[k]=(full[k]||0)+1; });
+  var items=all;
   if(bf) items=items.filter(function(it){ return bf==='__free__' ? !!it.free : (!it.free && it.batch===bf); });
+  if(of) items=items.filter(function(it){ return it.op===of; });
   // ЗП считаем по ПОКАЗАННЫМ строкам — иначе при фильтре по заказу итог не сойдётся со списком
   var pm={}, pord=[];
   items.forEach(function(it){ if(pm[it.worker]==null){ pm[it.worker]=0; pord.push(it.worker); } pm[it.worker]+=it.sum||0; });
@@ -926,7 +943,7 @@ function renderJournal(){
   pay.innerHTML='';
   if(pr.length){
     var tot=pr.reduce(function(s,p){return s+p.sum;},0);
-    pay.innerHTML='<div class="card"><div class="row"><b>💰 ЗП за период (подтв.)'+(bf?' · по заказу':'')+'</b><b class="ok">'+(Math.round(tot*100)/100)+' руб.</b></div>'
+    pay.innerHTML='<div class="card"><div class="row"><b>💰 ЗП за период (подтв.)'+((bf||of)?' · по фильтру':'')+'</b><b class="ok">'+(Math.round(tot*100)/100)+' руб.</b></div>'
       +pr.map(function(p){return '<div class="row"><span>'+esc(p.worker)+'</span><span>'+p.sum+' руб.</span></div>';}).join('')+'</div>';
   }
   (function(){
@@ -935,7 +952,7 @@ function renderJournal(){
     var groups=[], gidx={};
     items.forEach(function(it){
       var key=it.report||('_'+it.id);
-      if(gidx[key]==null){ gidx[key]=groups.length; groups.push({single:!it.report,worker:it.worker,date:it.date,submitted:it.submitted||'',shift:it.shift||'день',batch:it.batch,sum:0,lines:[]}); }
+      if(gidx[key]==null){ gidx[key]=groups.length; groups.push({key:key,single:!it.report,worker:it.worker,date:it.date,submitted:it.submitted||'',shift:it.shift||'день',batch:it.batch,sum:0,lines:[]}); }
       var g=groups[gidx[key]]; g.sum+=it.sum; g.lines.push(it);
     });
     lst.innerHTML=groups.map(function(g){
@@ -968,12 +985,18 @@ function renderJournal(){
         if(L.kind==='премия') gbon+=L.sum||0; else if(L.paid!==false) effBase+=(L.base||0)*(L.koef||1); }
       var gbd=computeBreakdown(effBase, night);
       if(gbon){ gbd.bonus=Math.round(gbon*100)/100; gbd.total=Math.round((gbd.total+gbon)*100)/100; }
+      // ⚠ премия за наряд и ночная считаются от ВСЕГО наряда. Если фильтр показал только часть строк,
+      // разбивка была бы враньём (порог 100 ₽ на куске не наберётся) — вместо неё говорим прямо.
+      var cut=(full[g.key]||g.lines.length)>g.lines.length;
+      var bdHtml = cut
+        ? '<div class="muted" style="font-size:12px;border-top:1px solid #eee;padding-top:5px">показана часть наряда ('+g.lines.length+' из '+full[g.key]+' оп.) — надбавки считаются по всему наряду, снимите фильтр</div>'
+        : bonusBlockHtml(gbd);
       return '<div class="card"><div class="row"><b>'+esc(g.worker)+'</b><span class="muted">за '+esc(g.date)+' · '+(night?'🌙 ночь':'☀️ день')+'</span>'+bonBtn+'</div>'
         +'<div class="muted" style="font-size:12px">'+(g.submitted?'подан '+esc(g.submitted)+' · ':'')
           +((g.lines[0]&&g.lines[0].free)?'<span class="freeb">🧰 вне заказа</span>':esc(g.batch))
           +(g.single?'':' · наряд')+' · '+g.lines.length+' оп.</div>'
         +'<div id="bonbox-j-'+bonKey(bonRid)+'"></div>'
-        +shiftCtl+lines+bonusBlockHtml(gbd)+'</div>';
+        +shiftCtl+lines+bdHtml+'</div>';
     }).join('');
   })();
 }
