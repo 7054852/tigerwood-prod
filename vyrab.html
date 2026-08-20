@@ -169,6 +169,9 @@ window.onerror=function(msg,src,line){
     <input id="jto" type="date" style="width:auto;flex:1">
     <button class="sm" onclick="loadJournal()">Показать</button>
   </div>
+  <div class="row" id="jwrow" style="margin-top:6px;display:none">
+    <select id="jworker" style="width:auto;flex:1" onchange="loadJournal()"></select>
+  </div>
   <div id="jpay" style="margin-top:12px"></div>
   <div id="jlist" style="margin-top:10px"></div>
 </div>
@@ -219,6 +222,18 @@ function applyMode(){
   }
   if(isMaster()){ lw.textContent='✍️ Ввести за сотрудника'; lm.textContent='👏 Проверка'; lj.textContent='📋 Журнал (все)'; }
   else { lw.textContent='✍️ Моя выработка'; lm.textContent='⏳ Мои на проверке'; lj.textContent='📋 Мой журнал'; }
+  fillJWorkers();
+}
+// фильтр журнала по сотруднику — только проверяющему (рабочему сервер и так отдаёт только его строки)
+function fillJWorkers(){
+  var row=document.getElementById('jwrow'), sel=document.getElementById('jworker');
+  if(!row||!sel) return;
+  if(!isMaster()){ row.style.display='none'; return; }
+  row.style.display='';
+  var keep=sel.value;
+  sel.innerHTML='<option value="">👥 Все сотрудники</option>'
+    +(DATA.workers||[]).map(function(w){ return '<option value="'+esc(w.name)+'">'+esc(w.name)+'</option>'; }).join('');
+  if(keep){ sel.value=keep; }
 }
 function showTab(t){
   ['w','c','m','j'].forEach(function(x){
@@ -872,6 +887,8 @@ function loadJournal(){
   var fromRu=from?from.split('-').reverse().join('.'):'', toRu=to?to.split('-').reverse().join('.'):'';
   var master=isMaster();
   var jp={vapi:'journal',from:fromRu,to:toRu};   // рабочему сервер отдаёт ТОЛЬКО его строки (фильтр по Telegram ID)
+  var jw=document.getElementById('jworker');
+  if(master && jw && jw.value) jp.worker=jw.value;
   api(jp).then(function(r){
     var items=(r&&r.items)||[], pr=(r&&r.payroll)||[];
     if(pr.length){
