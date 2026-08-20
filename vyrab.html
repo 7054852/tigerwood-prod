@@ -176,6 +176,9 @@ window.onerror=function(msg,src,line){
     <select id="jbatch" style="width:auto;flex:1" onchange="renderJournal()"></select>
     <select id="jop" style="width:auto;flex:1" onchange="renderJournal()"></select>
   </div>
+  <div class="row" style="margin-top:6px">
+    <select id="jdet" style="width:auto;flex:1" onchange="renderJournal()"></select>
+  </div>
   <div id="jpay" style="margin-top:12px"></div>
   <div id="jlist" style="margin-top:10px"></div>
 </div>
@@ -895,7 +898,7 @@ function loadJournal(){
   if(master && jw && jw.value) jp.worker=jw.value;
   api(jp).then(function(r){
     JRESP=r||{items:[]};
-    fillJBatches(); fillJOps();
+    fillJBatches(); fillJOps(); fillJDetails();
     renderJournal();
   }).catch(function(){ lst.innerHTML='<span class="err">Ошибка загрузки</span>'; });
 }
@@ -925,17 +928,37 @@ function fillJOps(){
   sel.innerHTML='<option value="">🛠 Все операции</option>'+ops.map(function(o){ return '<option value="'+esc(o)+'">'+esc(o)+'</option>'; }).join('');
   if(keep){ sel.value=keep; if(!sel.value) sel.value=''; }
 }
-// перерисовка без запроса к серверу: фильтры по заказу и операции применяются к уже полученным строкам
+// в журнале деталь записана как «Оборудование — Деталь»; фильтруем по самой детали,
+// иначе одна и та же боковина разъедется на пять строк по числу изделий
+function jDet(it){
+  var s=String(it.detail||''), p=s.split(' — ');
+  return p.length>1 ? p.slice(1).join(' — ') : s;
+}
+function fillJDetails(){
+  var sel=document.getElementById('jdet'); if(!sel) return;
+  var seen={}, ds=[];
+  ((JRESP&&JRESP.items)||[]).forEach(function(it){
+    if(it.status!=='подтверждено') return;
+    if(it.kind==='премия'||it.kind==='повременно') return;   // это не деталь, а доплата — в списке деталей ей нечего делать
+    var d=jDet(it); if(!d || seen[d]) return; seen[d]=1; ds.push(d);
+  });
+  ds.sort(function(a,b){ return a.localeCompare(b,'ru'); });
+  var keep=sel.value;
+  sel.innerHTML='<option value="">🧩 Все детали</option>'+ds.map(function(d){ return '<option value="'+esc(d)+'">'+esc(d)+'</option>'; }).join('');
+  if(keep){ sel.value=keep; if(!sel.value) sel.value=''; }
+}
+// перерисовка без запроса к серверу: фильтры по заказу, операции и детали применяются к уже полученным строкам
 function renderJournal(){
   var lst=document.getElementById('jlist'), pay=document.getElementById('jpay');
   var r=JRESP||{items:[]}, master=isMaster();
-  var bf=(document.getElementById('jbatch')||{}).value||'', of=(document.getElementById('jop')||{}).value||'';
+  var bf=(document.getElementById('jbatch')||{}).value||'', of=(document.getElementById('jop')||{}).value||'', df=(document.getElementById('jdet')||{}).value||'';
   var all=(r.items||[]).filter(function(it){ return it.status==='подтверждено'; });   // журнал сданной работы — ТОЛЬКО принятые
   // сколько строк в наряде БЕЗ фильтров — чтобы честно сказать, когда показана только его часть
   var full={}; all.forEach(function(it){ var k=it.report||('_'+it.id); full[k]=(full[k]||0)+1; });
   var items=all;
   if(bf) items=items.filter(function(it){ return bf==='__free__' ? !!it.free : (!it.free && it.batch===bf); });
   if(of) items=items.filter(function(it){ return it.op===of; });
+  if(df) items=items.filter(function(it){ return jDet(it)===df; });
   // ЗП считаем по ПОКАЗАННЫМ строкам — иначе при фильтре по заказу итог не сойдётся со списком
   var pm={}, pord=[];
   items.forEach(function(it){ if(pm[it.worker]==null){ pm[it.worker]=0; pord.push(it.worker); } pm[it.worker]+=it.sum||0; });
@@ -943,7 +966,7 @@ function renderJournal(){
   pay.innerHTML='';
   if(pr.length){
     var tot=pr.reduce(function(s,p){return s+p.sum;},0);
-    pay.innerHTML='<div class="card"><div class="row"><b>💰 ЗП за период (подтв.)'+((bf||of)?' · по фильтру':'')+'</b><b class="ok">'+(Math.round(tot*100)/100)+' руб.</b></div>'
+    pay.innerHTML='<div class="card"><div class="row"><b>💰 ЗП за период (подтв.)'+((bf||of||df)?' · по фильтру':'')+'</b><b class="ok">'+(Math.round(tot*100)/100)+' руб.</b></div>'
       +pr.map(function(p){return '<div class="row"><span>'+esc(p.worker)+'</span><span>'+p.sum+' руб.</span></div>';}).join('')+'</div>';
   }
   (function(){
