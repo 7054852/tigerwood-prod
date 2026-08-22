@@ -116,6 +116,7 @@ window.onerror=function(msg,src,line){
 <div class="tabs" style="margin-top:12px">
   <button id="tab-w" class="active" onclick="showTab('w')">✍️ Выработка</button>
   <button id="tab-c" onclick="showTab('c')" style="display:none">🪚 Раскрой</button>
+  <button id="tab-o" onclick="showTab('o')" style="display:none">🔎 Приёмка</button>
   <button id="tab-m" onclick="showTab('m')">👏 Проверка</button>
   <button id="tab-j" onclick="showTab('j')">📋 Журнал</button>
 </div>
@@ -161,6 +162,12 @@ window.onerror=function(msg,src,line){
 <div id="workbar">
   <div class="wl" id="workline"></div>
   <button onclick="sendWork()" id="worksend">📨 Отправить наряд мастеру</button>
+</div>
+<div id="pane-o" style="display:none">
+  <h2>Приёмка по качеству</h2>
+  <div class="muted">Зона сдачи: что рабочие сдали и ждёт вашей проверки. Принимаете — работа засчитывается и оплачивается.</div>
+  <div id="ostat" style="margin-top:8px"></div>
+  <div id="olist">Загрузка…</div>
 </div>
 <div id="pane-j" style="display:none">
   <h2>Журнал выработки</h2>
@@ -227,6 +234,12 @@ function applyMode(){
     lc.style.display = DATA.canCut ? '' : 'none';
     if(!DATA.canCut && document.getElementById('pane-c').style.display!=='none') showTab('w');
   }
+  // вкладка «Приёмка» — роль контролёра или персональная отметка ОТК; право решает сервер
+  var lo=document.getElementById('tab-o');
+  if(lo){
+    lo.style.display = DATA.canQC ? '' : 'none';
+    if(!DATA.canQC && document.getElementById('pane-o').style.display!=='none') showTab('w');
+  }
   if(isMaster()){ lw.textContent='✍️ Ввести за сотрудника'; lm.textContent='👏 Проверка'; lj.textContent='📋 Журнал (все)'; }
   else { lw.textContent='✍️ Моя выработка'; lm.textContent='⏳ Мои на проверке'; lj.textContent='📋 Мой журнал'; }
   fillJWorkers();
@@ -243,7 +256,7 @@ function fillJWorkers(){
   if(keep){ sel.value=keep; }
 }
 function showTab(t){
-  ['w','c','m','j'].forEach(function(x){
+  ['w','c','o','m','j'].forEach(function(x){
     document.getElementById('pane-'+x).style.display = x===t?'':'none';
     document.getElementById('tab-'+x).className = x===t?'active':'';
   });
@@ -253,6 +266,7 @@ function showTab(t){
   if(bar){ var on=(BARON&&(t==='w'||t==='c')); bar.style.display=on?'block':'none'; document.body.className=on?'hasbar':''; }
   var wh=document.getElementById('whead'); if(wh) wh.style.display=(t==='w'||t==='c')?'':'none';
   if(t==='c') loadCut();
+  if(t==='o') loadOtk();
   if(t==='m') loadPending();
   if(t==='j') loadJournal();
 }
@@ -907,7 +921,7 @@ function fillJBatches(){
   var sel=document.getElementById('jbatch'); if(!sel) return;
   var seen={}, opts=[];
   ((JRESP&&JRESP.items)||[]).forEach(function(it){
-    if(it.status!=='подтверждено') return;
+    if(it.status!=='подтверждено'&&it.status!=='ждёт ОТК') return;
     var k=it.free?'__free__':(it.batch||'');
     if(!k || seen[k]) return; seen[k]=1;
     opts.push('<option value="'+esc(k)+'">'+(it.free?'🧰 Вне заказа':esc(it.batch))+'</option>');
@@ -920,7 +934,7 @@ function fillJOps(){
   var sel=document.getElementById('jop'); if(!sel) return;
   var seen={}, ops=[];
   ((JRESP&&JRESP.items)||[]).forEach(function(it){
-    if(it.status!=='подтверждено') return;
+    if(it.status!=='подтверждено'&&it.status!=='ждёт ОТК') return;
     var o=it.op||''; if(!o || seen[o]) return; seen[o]=1; ops.push(o);
   });
   ops.sort();
@@ -938,7 +952,7 @@ function fillJDetails(){
   var sel=document.getElementById('jdet'); if(!sel) return;
   var seen={}, ds=[];
   ((JRESP&&JRESP.items)||[]).forEach(function(it){
-    if(it.status!=='подтверждено') return;
+    if(it.status!=='подтверждено'&&it.status!=='ждёт ОТК') return;
     if(it.kind==='премия'||it.kind==='повременно') return;   // это не деталь, а доплата — в списке деталей ей нечего делать
     var d=jDet(it); if(!d || seen[d]) return; seen[d]=1; ds.push(d);
   });
@@ -952,7 +966,9 @@ function renderJournal(){
   var lst=document.getElementById('jlist'), pay=document.getElementById('jpay');
   var r=JRESP||{items:[]}, master=isMaster();
   var bf=(document.getElementById('jbatch')||{}).value||'', of=(document.getElementById('jop')||{}).value||'', df=(document.getElementById('jdet')||{}).value||'';
-  var all=(r.items||[]).filter(function(it){ return it.status==='подтверждено'; });   // журнал сданной работы — ТОЛЬКО принятые
+  // ⚠ «ждёт ОТК» ОБЯЗАН быть виден: иначе рабочий, чей наряд мастер одобрил, откроет журнал
+  // и увидит пусто. В деньги эти строки не идут — они ещё не засчитаны.
+  var all=(r.items||[]).filter(function(it){ return it.status==='подтверждено'||it.status==='ждёт ОТК'; });
   // сколько строк в наряде БЕЗ фильтров — чтобы честно сказать, когда показана только его часть
   var full={}; all.forEach(function(it){ var k=it.report||('_'+it.id); full[k]=(full[k]||0)+1; });
   var items=all;
@@ -961,7 +977,8 @@ function renderJournal(){
   if(df) items=items.filter(function(it){ return jDet(it)===df; });
   // ЗП считаем по ПОКАЗАННЫМ строкам — иначе при фильтре по заказу итог не сойдётся со списком
   var pm={}, pord=[];
-  items.forEach(function(it){ if(pm[it.worker]==null){ pm[it.worker]=0; pord.push(it.worker); } pm[it.worker]+=it.sum||0; });
+  items.forEach(function(it){ if(it.status!=='подтверждено') return;   // ждущее приёмку в ЗП не входит
+    if(pm[it.worker]==null){ pm[it.worker]=0; pord.push(it.worker); } pm[it.worker]+=it.sum||0; });
   var pr=pord.map(function(w){ return {worker:w, sum:Math.round(pm[w]*100)/100}; }).sort(function(a,b){ return b.sum-a.sum; });
   pay.innerHTML='';
   if(pr.length){
@@ -995,8 +1012,11 @@ function renderJournal(){
           : (it.kind==='премия')
             ? ('🎁 <b>Премия</b>'+(it.note?(' — '+esc(it.note)):''))
             : kindBadge(it)+esc(it.detail)+' · '+esc(it.op)+' · '+it.qty+' шт'+kbadge;
+        var money = (it.status==='ждёт ОТК')
+          ? '<span class="muted">🔎 ждёт приёмку ОТК</span>'
+          : '<span class="'+(it.paid===false?'muted':'ok')+'">'+(it.paid===false?'0 р · оплачено листом':(it.sum+' р'))+'</span>';
         return '<div class="row" id="j-'+esc(it.id)+'" style="border-top:1px solid #eee;padding-top:5px"><span>'+body+'</span>'
-          +'<span class="'+(it.paid===false?'muted':'ok')+'">'+(it.paid===false?'0 р · оплачено листом':(it.sum+' р'))+' '+acts+'</span></div>';
+          +'<span>'+money+' '+acts+'</span></div>';
       }).join('');
       var bonRid = rep||('_'+g.lines[0].id);
       var bonBtn = master ? '<button class="sm gray" onclick="addBonus(\''+esc(bonRid)+'\',\''+esc(g.worker)+'\',\'j\')" title="премия за наряд">🎁 + премия</button>' : '';
@@ -1005,12 +1025,15 @@ function renderJournal(){
         : (night?'<div class="muted" style="font-size:12px">🌙 ночная</div>':'');
       var effBase=0, gbon=0;
       for(var q=0;q<g.lines.length;q++){ var L=g.lines[q];
+        if(L.status==='ждёт ОТК') continue;   // ещё не засчитано — в разбивку наряда не берём
         if(L.kind==='премия') gbon+=L.sum||0; else if(L.paid!==false) effBase+=(L.base||0)*(L.koef||1); }
       var gbd=computeBreakdown(effBase, night);
       if(gbon){ gbd.bonus=Math.round(gbon*100)/100; gbd.total=Math.round((gbd.total+gbon)*100)/100; }
       // ⚠ премия за наряд и ночная считаются от ВСЕГО наряда. Если фильтр показал только часть строк,
       // разбивка была бы враньём (порог 100 ₽ на куске не наберётся) — вместо неё говорим прямо.
+      var nQC=0; for(var qq=0;qq<g.lines.length;qq++) if(g.lines[qq].status==='ждёт ОТК') nQC++;
       var cut=(full[g.key]||g.lines.length)>g.lines.length;
+      var qcNote = nQC ? '<div class="muted" style="font-size:12px;border-top:1px solid #eee;padding-top:5px">🔎 '+nQC+' из '+g.lines.length+' поз. ждут приёмку ОТК — их сумма в итог пока не входит</div>' : '';
       var bdHtml = cut
         ? '<div class="muted" style="font-size:12px;border-top:1px solid #eee;padding-top:5px">показана часть наряда ('+g.lines.length+' из '+full[g.key]+' оп.) — надбавки считаются по всему наряду, снимите фильтр</div>'
         : bonusBlockHtml(gbd);
@@ -1019,9 +1042,105 @@ function renderJournal(){
           +((g.lines[0]&&g.lines[0].free)?'<span class="freeb">🧰 вне заказа</span>':esc(g.batch))
           +(g.single?'':' · наряд')+' · '+g.lines.length+' оп.</div>'
         +'<div id="bonbox-j-'+bonKey(bonRid)+'"></div>'
-        +shiftCtl+lines+bdHtml+'</div>';
+        +shiftCtl+lines+qcNote+bdHtml+'</div>';
     }).join('');
   })();
+}
+// ═══════════ 🔎 ПРИЁМКА ОТК ═══════════
+// Контролёр стоит у зоны сдачи с телефоном. 90% нажатий — «принять как заявлено»,
+// поэтому она первой кнопкой и на группу, и на строку. Брак — второй экран, с причиной.
+// Ввод количества НЕ перерисовывает список: поле пересоздалось бы и фокус слетал бы после
+// каждой цифры (уже ловили на раскрое).
+var OTK=null, OTKBUSY=false, OTKOPEN={};
+function loadOtk(){
+  var el=document.getElementById('olist');
+  el.textContent='Загрузка…';
+  api({vapi:'otkqueue'}).then(function(r){
+    if(!r||!r.ok){ el.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка загрузки')+'</span>'; return; }
+    OTK=r; renderOtk();
+  }).catch(function(){ el.innerHTML='<span class="err">Ошибка сети</span>'; });
+}
+function otkAge(h){
+  if(h<24) return h+' ч';
+  return Math.round(h/24)+' дн';
+}
+function renderOtk(){
+  var st=document.getElementById('ostat'), el=document.getElementById('olist');
+  var s=(OTK&&OTK.stat)||{rows:0,qty:0,oldestH:0};
+  var warn=(OTK&&OTK.unknown&&OTK.unknown.length)
+    ? '<div class="card" style="background:#fdf3e7;border-color:#f0d0a0"><b>⚠ В списке точек контроля есть операции, которых нет в справочнике:</b> '+OTK.unknown.map(esc).join(', ')+'<div class="muted">Проверьте написание — иначе приёмка по ним не сработает.</div></div>'
+    : '';
+  st.innerHTML=warn+'<div class="card"><div class="row"><b>В зоне сдачи</b><b>'+s.rows+' поз. · '+s.qty+' шт</b></div>'
+    +(s.oldestH>0?('<div class="row"><span class="muted">самая давняя ждёт</span><span class="'+(s.oldestH>48?'err':'muted')+'">'+otkAge(s.oldestH)+'</span></div>'):'')+'</div>';
+  var gs=(OTK&&OTK.groups)||[];
+  if(!gs.length){ el.innerHTML='<div class="card muted">Ничего не ждёт приёмки. Как только рабочий сдаст работу на контрольной операции — она появится здесь.</div>'; return; }
+  el.innerHTML=gs.map(function(g,gi){
+    var ids=g.lines.map(function(l){return l.id;});
+    var lines=g.lines.map(function(l){
+      var open=!!OTKOPEN[l.id];
+      var form=open
+        ? '<div class="card" style="margin:6px 0 0;background:#fdf7f7">'
+          +'<div class="row"><label style="flex:1">Принято<input id="ok-'+esc(l.id)+'" type="number" min="0" value="'+l.qty+'" style="font-size:16px"></label>'
+          +'<label style="flex:1">Брак<input id="bad-'+esc(l.id)+'" type="number" min="0" value="0" style="font-size:16px"></label></div>'
+          +'<label>Причина брака<select id="why-'+esc(l.id)+'" style="font-size:16px">'
+          +((OTK.whys)||[]).map(function(w){return '<option value="'+esc(w)+'">'+esc(w)+'</option>';}).join('')+'</select></label>'
+          +'<div class="muted" style="font-size:12px;margin:4px 0">«'+esc((OTK&&OTK.whyWorker)||'вина рабочего')+'» — эти штуки не оплачиваются. Остальные причины оплачиваются как обычная работа.</div>'
+          +'<div class="row"><button class="sm" onclick="otkBadGo(\''+esc(l.id)+'\')">Провести приёмку</button>'
+          +'<button class="sm gray" onclick="otkBadClose(\''+esc(l.id)+'\')">отмена</button>'
+          +'<span class="msg" id="om-'+esc(l.id)+'"></span></div></div>'
+        : '';
+      return '<div class="row" style="border-top:1px solid #eee;padding-top:5px">'
+        +'<span>'+esc(l.worker)+' · <b>'+l.qty+' шт</b> <span class="muted">'+esc(l.date)+' · '+otkAge(l.ageH)+(l.waitMaster?' · ждёт мастера':'')+'</span></span>'
+        +'<span><button class="sm" onclick="otkOne(\''+esc(l.id)+'\')">✅</button>'
+        +'<button class="sm gray" onclick="otkBadOpen(\''+esc(l.id)+'\')">⚠ брак</button></span></div>'+form;
+    }).join('');
+    return '<div class="card"><div class="row"><b>'+esc(g.detail)+' · '+esc(g.op)+'</b><b>'+g.qty+' шт</b></div>'
+      +'<div class="muted" style="font-size:12px">'+(g.free?'🧰 вне заказа':esc(g.batch))+' · '+g.lines.length+' поз.</div>'
+      +lines
+      +'<div class="row" style="margin-top:8px"><button onclick="otkAll('+gi+')">✅ Принять всё как заявлено ('+g.qty+' шт)</button>'
+      +'<span class="msg" id="og-'+gi+'"></span></div></div>';
+  }).join('');
+}
+function otkBadOpen(id){ OTKOPEN[id]=1; renderOtk(); }
+function otkBadClose(id){ delete OTKOPEN[id]; renderOtk(); }
+function otkMsg(id,html){ var e=document.getElementById(id); if(e) e.innerHTML=html||''; }
+// ⚠ защита от повторного нажатия: ответ идёт 3-9 с, в цеху жмут ещё раз
+function otkGuard(){ if(OTKBUSY){ alert('Предыдущая приёмка ещё идёт — подождите.'); return false; } OTKBUSY=true; return true; }
+function otkDone(){ OTKBUSY=false; loadOtk(); }
+function otkOne(id){
+  if(!otkGuard()) return;
+  otkMsg('om-'+id,'принимаю…');
+  api({vapi:'otkaccept',id:id,ok:'',bad:0}).then(function(r){
+    OTKBUSY=false;
+    if(!r||!r.ok){ alert((r&&r.error)||'не удалось принять'); return; }
+    loadOtk();
+  }).catch(function(){ OTKBUSY=false; alert('Ошибка сети'); });
+}
+function otkBadGo(id){
+  var ok=(document.getElementById('ok-'+id)||{}).value;
+  var bad=(document.getElementById('bad-'+id)||{}).value||0;
+  var why=(document.getElementById('why-'+id)||{}).value||'';
+  if(Number(bad)>0 && !why){ otkMsg('om-'+id,'<span class="err">укажите причину</span>'); return; }
+  if(!otkGuard()) return;
+  otkMsg('om-'+id,'принимаю…');
+  api({vapi:'otkaccept',id:id,ok:ok,bad:bad,why:why}).then(function(r){
+    OTKBUSY=false;
+    if(!r||!r.ok){ otkMsg('om-'+id,'<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'); return; }
+    delete OTKOPEN[id]; loadOtk();
+  }).catch(function(){ OTKBUSY=false; otkMsg('om-'+id,'<span class="err">ошибка сети</span>'); });
+}
+function otkAll(gi){
+  var g=OTK&&OTK.groups&&OTK.groups[gi]; if(!g) return;
+  if(!confirm('Принять как заявлено: '+g.detail+' · '+g.op+' — '+g.qty+' шт по '+g.lines.length+' позициям?')) return;
+  if(!otkGuard()) return;
+  otkMsg('og-'+gi,'принимаю…');
+  var ids=g.lines.map(function(l){return l.id;});
+  api({vapi:'otkacceptall',ids:JSON.stringify(ids)}).then(function(r){
+    OTKBUSY=false;
+    if(!r||!r.ok){ otkMsg('og-'+gi,'<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'); return; }
+    if(r.errors&&r.errors.length) alert('Принято: '+r.accepted+'\nНе прошло: '+r.errors.join('; '));
+    loadOtk();
+  }).catch(function(){ OTKBUSY=false; otkMsg('og-'+gi,'<span class="err">ошибка сети</span>'); });
 }
 // ═══════════ 🪚 РАСКРОЙ НА ЧПУ: лист → детали ═══════════
 // Рабочий указывает лист материала и что с него вышло. Платим и за лист, и за детали.
