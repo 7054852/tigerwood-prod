@@ -796,8 +796,14 @@ function renderPending(r){
           +(rp.single?'':'<button class="sm" onclick="startAdd(\''+esc(rid)+'\',\''+esc(rp.date+' · '+rp.batch)+'\')">➕ Дополнить наряд</button>')
           +'<span class="muted" style="font-size:12px">⏳ ждёт подтверждения мастера</span></div>';
       var bTag=rp.free?'<span class="freeb" title="работа не по заказу — в ЗП входит, на выполнение заказов не влияет">🧰 вне заказа</span>':esc(rp.batch);
-      return '<div class="card"><div class="row"><b>'+esc(rp.worker)+'</b><span class="muted">'+esc(rp.date)+' · </span>'+bTag+'</div>'
-        +'<div class="muted">'+(rp.single?'одиночная запись':'наряд')+': '+rp.lines.length+' оп.'+(rp.submitted?' · подан '+esc(rp.submitted):'')+'</div>'
+      // ⚠ ДАТА СМЕНЫ — ЗАМЕТНОЙ, а не серым хвостиком после ФИО. Мастеру важно, за какой день
+      // наряд и сколько он уже лежит: вчерашний подтверждают не глядя, недельный — разбирают.
+      var ageH=ruAgeH(rp.date), oldN=(ageH>48);
+      return '<div class="card"><div class="row"><b>'+esc(rp.worker)+'</b>'
+        +'<span class="'+(oldN?'err':'muted')+'" style="font-size:13px">📅 <b>'+esc(rp.date)+'</b></span>'+bTag+'</div>'
+        +'<div class="muted">'+(rp.single?'одиночная запись':'наряд')+': '+rp.lines.length+' оп.'
+        +(ageH>=24?(' · <span class="'+(oldN?'err':'muted')+'">лежит '+otkAge(ageH)+'</span>'):'')
+        +(rp.submitted?' · подан '+esc(rp.submitted):'')+'</div>'
         +ctrls+lines+bonusBlockHtml(rp.breakdown||{})+footer+'</div>';
     }).join('');
   })();
@@ -1106,6 +1112,14 @@ function loadOtk(){
     if(!r||!r.ok){ el.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка загрузки')+'</span>'; return; }
     OTK=r; renderOtk();
   }).catch(function(){ el.innerHTML='<span class="err">Ошибка сети</span>'; });
+}
+// сколько часов прошло с даты смены («дд.мм.гггг»). Считаем на фронте: дата уже приходит,
+// новое поле в ответе ради этого заводить незачем.
+function ruAgeH(ru){
+  var m=/^(\d{2})\.(\d{2})\.(\d{4})$/.exec(String(ru||'')); if(!m) return 0;
+  var d=new Date(Number(m[3]),Number(m[2])-1,Number(m[1]));
+  var h=Math.round((new Date()-d)/36e5);
+  return h>0?h:0;
 }
 function otkAge(h){
   if(h<24) return h+' ч';
