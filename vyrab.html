@@ -296,7 +296,10 @@ function load(){
     applyMode();
     // стартовую вкладку выбираем ОДИН раз: load() зовётся и при обновлении из оболочки,
     // иначе экран посреди работы перескакивал на «Проверку»
-    if(!TABSET){ TABSET=1; if(isMaster()) showTab('m'); else if(qp('tab')==='j') showTab('j'); }
+    if(!TABSET){ TABSET=1;
+      if(qp('tab')==='otk'&&DATA.canQC) showTab('o');   // раздел «🔎 Приёмка ОТК» открывается сразу на своей вкладке
+      else if(isMaster()) showTab('m');
+      else if(qp('tab')==='j') showTab('j'); }
     // ПАРТИЯ или «вне заказа» (работа без привязки к заказу: задел, переделка, помощь другому участку)
     var bsel=document.getElementById('batch'), keep=bsel.value;   // при обновлении не сбрасываем выбор рабочего
     bsel.innerHTML=(DATA.batches||[]).map(function(b){return opt(b.id,b.num+' · '+b.name);}).join('')
@@ -1136,13 +1139,25 @@ function renderOtk(){
           +'<button class="sm gray" onclick="otkBadClose(\''+esc(l.id)+'\')">отмена</button>'
           +'<span class="msg" id="om-'+esc(l.id)+'"></span></div></div>'
         : '';
-      return '<div class="row" style="border-top:1px solid #eee;padding-top:5px">'
-        +'<span>'+esc(l.worker)+' · <b>'+l.qty+' шт</b> <span class="muted">'+esc(l.date)+' · '+otkAge(l.ageH)+(l.waitMaster?' · ждёт мастера':'')+'</span></span>'
+      // ⚠ ДАТА СДАЧИ — ОТДЕЛЬНОЙ СТРОКОЙ, а не в общем сером потоке. Контролёру важно, что он
+      // принимает: вчерашнее или недельной давности. В одну строку с ФИО и количеством она
+      // читалась как шум, и владелец её попросту не нашёл на экране.
+      var late=(l.ageH>48);
+      return '<div style="border-top:1px solid #eee;padding-top:5px">'
+        +'<div class="row"><span>'+esc(l.worker)+' · <b>'+l.qty+' шт</b></span>'
         +'<span><button class="sm" onclick="otkOne(\''+esc(l.id)+'\')">✅</button>'
-        +'<button class="sm gray" onclick="otkBadOpen(\''+esc(l.id)+'\')">⚠ брак</button></span></div>'+form;
+        +'<button class="sm gray" onclick="otkBadOpen(\''+esc(l.id)+'\')">⚠ брак</button></span></div>'
+        +'<div class="muted" style="font-size:12px">📅 сдано <b>'+esc(l.date)+'</b> · '+esc(l.shift||'день')
+        +' · <span class="'+(late?'err':'muted')+'">лежит '+otkAge(l.ageH)+'</span>'
+        +(l.waitMaster?' · ждёт мастера':'')+'</div></div>'+form;
     }).join('');
+    // дата на самой карточке: одна — показываем её, разные — диапазон
+    var ds={}, dl=[], amax=0;
+    for(var z=0;z<g.lines.length;z++){ var dd=g.lines[z].date; if(!ds[dd]){ds[dd]=1;dl.push(dd);} if(g.lines[z].ageH>amax) amax=g.lines[z].ageH; }
+    var dtxt=(dl.length===1)?dl[0]:(dl[dl.length-1]+' — '+dl[0]);
     return '<div class="card"><div class="row"><b>'+esc(g.detail)+' · '+esc(g.op)+'</b><b>'+g.qty+' шт</b></div>'
-      +'<div class="muted" style="font-size:12px">'+(g.free?'🧰 вне заказа':esc(g.batch))+' · '+g.lines.length+' поз.</div>'
+      +'<div class="row" style="font-size:12px"><span class="muted">'+(g.free?'🧰 вне заказа':esc(g.batch))+' · '+g.lines.length+' поз.</span>'
+      +'<span class="'+(amax>48?'err':'muted')+'">📅 '+esc(dtxt)+' · лежит '+otkAge(amax)+'</span></div>'
       +lines
       +'<div class="row" style="margin-top:8px"><button onclick="otkAll('+gi+')">✅ Принять всё как заявлено ('+g.qty+' шт)</button>'
       +'<span class="msg" id="og-'+gi+'"></span></div></div>';
