@@ -151,6 +151,7 @@ window.onerror=function(msg,src,line){
 <div id="pane-m" style="display:none">
   <h2>На проверке</h2>
   <div class="muted">Подтвердите, измените кол-во или отклоните — рабочий получит уведомление.</div>
+  <div id="qcwait" style="margin-top:10px"></div>
   <div id="mlist" style="margin-top:10px">Загрузка…</div>
   <div id="rejlist" style="margin-top:16px"></div>
 </div>
@@ -167,6 +168,12 @@ window.onerror=function(msg,src,line){
   <h2>Приёмка по качеству</h2>
   <div class="muted">Зона сдачи: что рабочие сдали и ждёт вашей проверки. Принимаете — работа засчитывается и оплачивается.</div>
   <div id="ostat" style="margin-top:8px"></div>
+  <div class="row" style="margin-top:8px">
+    <button class="gray sm" onclick="otkAddToggle()">➕ Внести работу за рабочего</button>
+    <button class="gray sm" onclick="otkStatsToggle()">📊 Качество за месяц</button>
+  </div>
+  <div id="oadd" style="display:none"></div>
+  <div id="oqual" style="display:none;margin-top:8px"></div>
   <div id="olist">Загрузка…</div>
 </div>
 <div id="pane-j" style="display:none">
@@ -693,6 +700,11 @@ function act(p, msg, done){
   });
 }
 function renderPending(r){
+  // мастеру видно, сколько работы стоит у контролёра: автоприёмки по таймауту нет и не будет
+  try {
+    var qb=document.getElementById('qcwait');
+    if(qb&&isMaster()) qb.innerHTML = (r&&r.qcWait) ? ('<div class="card" style="background:#eef4ff;border-color:#c8d8f5"><div class="row"><b>🔎 В приёмке ОТК: '+r.qcWait+' поз.</b><span class="'+((r.qcOldestH||0)>48?'err':'muted')+'">самая давняя '+Math.round((r.qcOldestH||0)/24)+' дн</span></div><div class="muted" style="font-size:12px">Работа принята по количеству, но ещё не засчитана и не оплачена — ждёт контролёра.</div></div>') : '';
+  } catch(e){}
   var el=document.getElementById('mlist'); if(!el) return;
   var master=isMaster();
   (function(){
@@ -1084,7 +1096,10 @@ function renderOtk(){
           +'<label style="flex:1">Брак<input id="bad-'+esc(l.id)+'" type="number" min="0" value="0" style="font-size:16px"></label></div>'
           +'<label>Причина брака<select id="why-'+esc(l.id)+'" style="font-size:16px">'
           +((OTK.whys)||[]).map(function(w){return '<option value="'+esc(w)+'">'+esc(w)+'</option>';}).join('')+'</select></label>'
-          +'<div class="muted" style="font-size:12px;margin:4px 0">«'+esc((OTK&&OTK.whyWorker)||'вина рабочего')+'» — эти штуки не оплачиваются. Остальные причины оплачиваются как обычная работа.</div>'
+          +'<div class="muted" style="font-size:12px;margin:4px 0">«'+esc((OTK&&OTK.whyWorker)||'вина рабочего')+'» — эти штуки не оплачиваются. По остальным причинам система сама начислит компенсацию отдельной строкой.</div>'
+          +'<label>Это переделка?<select id="redo-'+esc(l.id)+'" style="font-size:16px">'
+          +((OTK.redos)||['']).map(function(x){return '<option value="'+esc(x)+'">'+esc(x||'нет, обычная работа')+'</option>';}).join('')+'</select></label>'
+          +'<div class="muted" style="font-size:12px;margin:4px 0">Переделка своего брака не оплачивается. Чужого — оплачивается с коэффициентом '+((OTK&&OTK.redoKoef)||1)+'.</div>'
           +'<div class="row"><button class="sm" onclick="otkBadGo(\''+esc(l.id)+'\')">Провести приёмку</button>'
           +'<button class="sm gray" onclick="otkBadClose(\''+esc(l.id)+'\')">отмена</button>'
           +'<span class="msg" id="om-'+esc(l.id)+'"></span></div></div>'
@@ -1123,9 +1138,11 @@ function otkBadGo(id){
   if(Number(bad)>0 && !why){ otkMsg('om-'+id,'<span class="err">укажите причину</span>'); return; }
   if(!otkGuard()) return;
   otkMsg('om-'+id,'принимаю…');
-  api({vapi:'otkaccept',id:id,ok:ok,bad:bad,why:why}).then(function(r){
+  var redo=(document.getElementById('redo-'+id)||{}).value||'';
+  api({vapi:'otkaccept',id:id,ok:ok,bad:bad,why:why,redo:redo}).then(function(r){
     OTKBUSY=false;
     if(!r||!r.ok){ otkMsg('om-'+id,'<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'); return; }
+    if(r.comp) alert('Брак не по вине рабочего — начислена компенсация '+r.comp+' р. отдельной строкой.');
     delete OTKOPEN[id]; loadOtk();
   }).catch(function(){ OTKBUSY=false; otkMsg('om-'+id,'<span class="err">ошибка сети</span>'); });
 }
@@ -1141,6 +1158,90 @@ function otkAll(gi){
     if(r.errors&&r.errors.length) alert('Принято: '+r.accepted+'\nНе прошло: '+r.errors.join('; '));
     loadOtk();
   }).catch(function(){ OTKBUSY=false; otkMsg('og-'+gi,'<span class="err">ошибка сети</span>'); });
+}
+// ── контролёр вносит работу за рабочего ──
+// Свой каскад селектов (не трогаем форму рабочего — там свои id и своя логика упаковки).
+// Каталог берём из уже загруженного DATA.comp: лишнего запроса не делаем.
+var OADD=0;
+function otkAddToggle(){ OADD=!OADD; var b=document.getElementById('oadd');
+  b.style.display=OADD?'':'none'; if(OADD) renderOtkAdd(); }
+function otkEquips(){ return (DATA.equipments||[]); }
+function otkComp(){ return (DATA.comp||{}); }
+function renderOtkAdd(){
+  var b=document.getElementById('oadd');
+  var eqs=otkEquips();
+  if(!eqs.length){ b.innerHTML='<div class="card muted">Каталог ещё грузится — откройте вкладку «Выработка» и вернитесь.</div>'; return; }
+  var wopts=(DATA.workers||[]).map(function(w){ return opt(w.name); }).join('')||opt('','нет сотрудников');
+  var bopts=(DATA.batches||[]).map(function(x){ return opt(x.id,x.num+' · '+x.name); }).join('')+opt('','🧰 Вне заказа');
+  b.innerHTML='<div class="card"><b>Внести работу за рабочего</b>'
+    +'<div class="muted" style="font-size:12px;margin:4px 0">Рабочий сложил детали в зону сдачи и не заводил наряд. Запись пойдёт отдельным нарядом с пометкой «внесён ОТК», ему придёт уведомление.</div>'
+    +'<label>Сотрудник<select id="oa_w" style="font-size:16px">'+wopts+'</select></label>'
+    +'<label>Заказ<select id="oa_b" style="font-size:16px">'+bopts+'</select></label>'
+    +'<label>Оборудование<select id="oa_e" style="font-size:16px" onchange="otkAddDet()">'+eqs.map(function(e){return opt(e);}).join('')+'</select></label>'
+    +'<label>Деталь<select id="oa_d" style="font-size:16px" onchange="otkAddOp()"></select></label>'
+    +'<label>Операция<select id="oa_o" style="font-size:16px" onchange="otkAddCalc()"></select></label>'
+    +'<label>Количество<input id="oa_q" type="number" min="0" inputmode="numeric" style="font-size:16px" oninput="otkAddCalc()"></label>'
+    +'<div class="sum" id="oa_sum">—</div>'
+    +'<div class="row"><button id="oa_go" onclick="otkAddGo()">✅ Внести и принять</button><span class="msg" id="oa_msg"></span></div></div>';
+  otkAddDet();
+}
+function otkAddDet(){
+  var eq=(document.getElementById('oa_e')||{}).value||'', p=(otkComp()[eq]||{});
+  document.getElementById('oa_d').innerHTML=(p.order||[]).map(function(n){return opt(n);}).join('')||opt('','нет деталей');
+  otkAddOp();
+}
+function otkAddOp(){
+  var eq=(document.getElementById('oa_e')||{}).value||'', d=(document.getElementById('oa_d')||{}).value||'';
+  var ops=((otkComp()[eq]||{}).details||{})[d]||[];
+  document.getElementById('oa_o').innerHTML=ops.map(function(o){ return opt(o.op,o.op+' — '+o.rate+' р.'); }).join('')||opt('','нет операций');
+  otkAddCalc();
+}
+function otkAddRate(){
+  var eq=(document.getElementById('oa_e')||{}).value||'', d=(document.getElementById('oa_d')||{}).value||'', o=(document.getElementById('oa_o')||{}).value||'';
+  var ops=((otkComp()[eq]||{}).details||{})[d]||[];
+  for(var i=0;i<ops.length;i++) if(ops[i].op===o) return Number(ops[i].rate)||0;
+  return 0;
+}
+// только цифры — структуру не трогаем, иначе фокус слетит после каждой цифры
+function otkAddCalc(){
+  var q=Number((document.getElementById('oa_q')||{}).value)||0, r=otkAddRate();
+  var e=document.getElementById('oa_sum'); if(!e) return;
+  e.textContent = (q>0&&r>0) ? (Math.round(q*r*100)/100)+' руб.' : (r>0?'—':'нет расценки');
+}
+function otkAddGo(){
+  var w=(document.getElementById('oa_w')||{}).value||'', b=(document.getElementById('oa_b')||{}).value||'';
+  var eq=(document.getElementById('oa_e')||{}).value||'', d=(document.getElementById('oa_d')||{}).value||'';
+  var o=(document.getElementById('oa_o')||{}).value||'', q=(document.getElementById('oa_q')||{}).value||'';
+  if(!w){ otkMsg('oa_msg','<span class="err">выберите сотрудника</span>'); return; }
+  if(!(Number(q)>0)){ otkMsg('oa_msg','<span class="err">укажите количество</span>'); return; }
+  if(!confirm('Внести за '+w+': '+d+' · '+o+' · '+q+' шт?')) return;
+  if(!otkGuard()) return;
+  var btn=document.getElementById('oa_go'); if(btn){ btn.disabled=true; btn.textContent='вношу…'; }
+  api({vapi:'otkadd',worker:w,batch:b,equip:eq,detail:d,op:o,qty:q,date:todayRu(),shift:'день'}).then(function(r){
+    OTKBUSY=false; if(btn){ btn.disabled=false; btn.textContent='✅ Внести и принять'; }
+    if(!r||!r.ok){ otkMsg('oa_msg','<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'); return; }
+    otkMsg('oa_msg','<span class="ok">✅ внесено на '+r.sum+' р.</span>');
+    var qf=document.getElementById('oa_q'); if(qf) qf.value='';
+    otkAddCalc(); loadOtk();
+  }).catch(function(){ OTKBUSY=false; if(btn){ btn.disabled=false; btn.textContent='✅ Внести и принять'; } otkMsg('oa_msg','<span class="err">ошибка сети</span>'); });
+}
+function todayRu(){ var n=new Date(); return pad2(n.getDate())+'.'+pad2(n.getMonth()+1)+'.'+n.getFullYear(); }
+// ── отчёт по качеству ──
+var OQUAL=0;
+function otkStatsToggle(){ OQUAL=!OQUAL; var b=document.getElementById('oqual');
+  b.style.display=OQUAL?'':'none'; if(!OQUAL) return;
+  b.innerHTML='<div class="card muted">Загрузка…</div>';
+  var n=new Date(), m=pad2(n.getMonth()+1);
+  api({vapi:'otkstats',from:'01.'+m+'.'+n.getFullYear(),to:pad2(n.getDate())+'.'+m+'.'+n.getFullYear()}).then(function(r){
+    if(!r||!r.ok){ b.innerHTML='<div class="card err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
+    var why=(r.byWhy||[]).map(function(x){ return '<div class="row"><span>'+esc(x.name)+'</span><span>'+x.qty+' шт</span></div>'; }).join('')||'<div class="muted">брака не было</div>';
+    var wrk=(r.byWorker||[]).slice(0,8).map(function(x){ return '<div class="row"><span>'+esc(x.name)+'</span><span>'+x.qty+' шт</span></div>'; }).join('');
+    b.innerHTML='<div class="card"><div class="row"><b>Качество за месяц</b><b class="'+(r.badPct>5?'err':'ok')+'">'+r.badPct+'% брака</b></div>'
+      +'<div class="row"><span class="muted">принято</span><span>'+r.accepted+' шт</span></div>'
+      +'<div class="row"><span class="muted">забраковано</span><span>'+r.bad+' шт</span></div>'
+      +'<div class="muted" style="margin-top:8px">Причины:</div>'+why
+      +(wrk?('<div class="muted" style="margin-top:8px">По рабочим:</div>'+wrk):'')+'</div>';
+  }).catch(function(){ b.innerHTML='<div class="card err">ошибка сети</div>'; });
 }
 // ═══════════ 🪚 РАСКРОЙ НА ЧПУ: лист → детали ═══════════
 // Рабочий указывает лист материала и что с него вышло. Платим и за лист, и за детали.
