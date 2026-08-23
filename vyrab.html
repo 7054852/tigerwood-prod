@@ -152,6 +152,7 @@ window.onerror=function(msg,src,line){
   <h2>На проверке</h2>
   <div class="muted">Подтвердите, измените кол-во или отклоните — рабочий получит уведомление.</div>
   <div id="qcwait" style="margin-top:10px"></div>
+  <div id="otkmine" style="margin-top:10px"></div>
   <div id="mlist" style="margin-top:10px">Загрузка…</div>
   <div id="rejlist" style="margin-top:16px"></div>
 </div>
@@ -661,7 +662,38 @@ function renderMySummary(r){
       +(recent?'<div class="muted" style="margin-top:6px">Последние отчёты:</div>'+recent:'<div class="muted" style="margin-top:6px">пока нет отчётов</div>')+'</div>';
   })();
 }
+// наряды, которые за рабочего внёс контролёр: он обязан их УВИДЕТЬ и подтвердить.
+// Возражение цеха: «это не вы мне насчитали — это я вам выполнил работы».
+function loadOtkMine(){
+  var el=document.getElementById('otkmine'); if(!el) return;
+  api({vapi:'otkmine'}).then(function(r){
+    var reps=(r&&r.reports)||[];
+    if(!reps.length){ el.innerHTML=''; return; }
+    el.innerHTML=reps.map(function(g){
+      var lines=g.lines.map(function(l){
+        return '<div class="row" style="border-top:1px solid #eee;padding-top:5px"><span>'+esc(l.detail)+' · '+esc(l.op)+' · '+l.qty+' шт</span><span class="ok">'+l.sum+' р</span></div>';
+      }).join('');
+      return '<div class="card" style="background:#eef4ff;border-color:#c8d8f5">'
+        +'<div class="row"><b>🔎 Внёс контролёр '+esc(g.by)+'</b><b class="ok">'+g.sum+' руб.</b></div>'
+        +'<div class="muted" style="font-size:12px">за '+esc(g.date)+' · '+esc(g.shift)+' · вы сложили детали в зону сдачи, работу приняли и начислили</div>'
+        +lines
+        +'<div class="row" style="margin-top:8px"><button onclick="otkAck(\''+esc(g.report)+'\',1)">✅ Всё верно</button>'
+        +'<button class="gray" onclick="otkAck(\''+esc(g.report)+'\',0)">✖ Не согласен</button>'
+        +'<span class="msg" id="ack-'+esc(g.report)+'"></span></div></div>';
+    }).join('');
+  }).catch(function(){});
+}
+function otkAck(rep,ok){
+  if(!ok && !confirm('Сообщить мастеру, что вы не согласны с этим нарядом?')) return;
+  var m=document.getElementById('ack-'+rep); if(m) m.textContent='…';
+  api({vapi:'otkack',report:rep,ok:ok?1:0}).then(function(r){
+    if(!r||!r.ok){ if(m) m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; return; }
+    if(m) m.innerHTML=ok?'<span class="ok">✅ принято</span>':'<span class="err">мастеру отправлено</span>';
+    loadOtkMine();
+  }).catch(function(){ if(m) m.innerHTML='<span class="err">ошибка сети</span>'; });
+}
 function loadPending(){
+  loadOtkMine();
   var el=document.getElementById('mlist'); el.textContent='Загрузка…';
   loadRejected();
   // ⚠ ответ общего запроса используем РОВНО ОДИН раз. Раньше он оставался в SCREEN навсегда,
