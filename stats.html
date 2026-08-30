@@ -147,8 +147,10 @@ function render(){
     +'<div class="sect">По оборудованию — расценки и проверка</div>'
     +'<div class="muted" style="margin:-4px 4px 8px">Сколько деталей и расценок заведено по каждому оборудованию и сколько из них проверено.</div>'
     +'<div class="box"><table><thead><tr><th>Оборудование</th><th class="num">Деталей</th><th class="num">Расценок</th><th class="num">Проверено</th><th></th></tr></thead><tbody>'+equip+'</tbody></table></div>'
-    +'<div id="rateaudit"></div>';
+    +'<div id="rateaudit"></div>'
+    +'<div id="linkaudit"></div>';
   loadRateAudit();
+  loadLinkAudit();
  }).catch(function(e){ $('app').innerHTML='<div class="center err">Ошибка: '+esc(e.message||e)+'</div>'; });
 }
 // ── аудит расхождений расценок (состав ↔ справочник) ──
@@ -182,6 +184,41 @@ function renderAudit(){
     +'<div style="text-align:right;margin-bottom:10px"><button style="background:var(--red);color:#fff;border:0;border-radius:9px;padding:9px 14px;font-weight:600;cursor:pointer" onclick="fixVar(\'ALL\',\'все варианты\')">Исправить все ('+vs.length+')</button></div>'
     +rows;
 }
+// ── целостность связей (linkaudit) ──
+// Связи в системе держатся на имени: опечатка или переименование мимо каскада рвёт их молча.
+// Пока тут ноль — правило «поменял в одном месте, поменялось везде» работает.
+function loadLinkAudit(){
+  var box=$('linkaudit'); if(!box) return;
+  box.innerHTML='<div class="sect">Целостность связей</div><div class="muted" style="margin:0 4px">проверяю…</div>';
+  api({vapi:'linkaudit',tgid:TGID}).then(function(d){
+    if(!d||!d.ok){ box.innerHTML='<div class="sect">Целостность связей</div><div class="box err">'+esc((d&&d.error)||'ошибка')+'</div>'; return; }
+    if(d.clean){
+      box.innerHTML='<div class="sect">Целостность связей</div>'
+        +'<div class="box" style="border-color:#cfe9d7;background:#eaf7ef;color:var(--green)">✓ разрывов нет — составы, справочники, склад и привязки ссылаются друг на друга без потерь</div>';
+      return;
+    }
+    var rows=(d.checks||[]).filter(function(c){return c.count;}).map(function(c,i){
+      var items=(c.sample||[]).map(function(x){
+        var vals=[]; for(var k in x) vals.push(esc(String(x[k])));
+        return '<tr><td>'+vals.join('</td><td>')+'</td></tr>';
+      }).join('');
+      return '<div class="box" style="margin-bottom:10px;border-color:#f0b5b5">'
+        +'<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer" onclick="togLnk('+i+')">'
+          +'<span id="lnkc'+i+'" style="color:var(--muted)">▸</span>'
+          +'<b style="flex:1;min-width:160px">'+esc(c.title)+'</b>'
+          +'<span class="chip" style="color:var(--red);font-weight:700">'+c.count+'</span>'
+        +'</div>'
+        +'<div id="lnkb'+i+'" style="display:none;margin-top:8px">'
+          +'<div class="muted" style="margin-bottom:6px">'+esc(c.why||'')+'</div>'
+          +'<div style="overflow-x:auto"><table><tbody>'+items+'</tbody></table></div>'
+        +'</div></div>';
+    }).join('');
+    box.innerHTML='<div class="sect">Целостность связей <span style="text-transform:none;font-weight:400;color:var(--red)">'+d.total+' разрыв(ов)</span></div>'
+      +'<div class="muted" style="margin:-4px 4px 10px">Запись ссылается на имя, которого больше нет: правки до неё не доходят, а на экранах она выглядит нормально. Обычно это след переименования или опечатки.</div>'
+      +rows;
+  }).catch(function(){ box.innerHTML=''; });
+}
+function togLnk(i){ var b=$('lnkb'+i), c=$('lnkc'+i); if(b){ var open=b.style.display==='none'; b.style.display=open?'block':'none'; if(c)c.textContent=open?'▾':'▸'; } }
 function togAud(i){ var b=$('audb'+i), c=$('audc'+i); if(b){ var open=b.style.display==='none'; b.style.display=open?'block':'none'; if(c)c.textContent=open?'▾':'▸'; } }
 function fixVar(target,name){
   if(!TGID){ alert('нет входа (tgid) — откройте из сервиса'); return; }
