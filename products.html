@@ -52,6 +52,8 @@
   .regtbl td{ padding:3px 7px; border-bottom:1px solid var(--grid); white-space:nowrap; line-height:18px; }
   .regtbl tr.item:hover td{ background:rgba(127,140,170,.08); }
   .regtbl tr.grph td{ font-weight:700; padding:5px 7px; cursor:pointer; }
+  .regtbl tr.grph td .gsub{ font-weight:400; font-size:11px; opacity:.75; margin-left:8px; }
+  .regtbl tr.grph2 td{ font-weight:600; padding:4px 7px 4px 26px; cursor:pointer; background:var(--grid); font-size:12px; }
   .regtbl td.sku{ font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11.5px; font-weight:700; cursor:pointer; color:var(--accent); }
   .regtbl td.dim{ color:var(--muted); }
   .regtbl td.nm{ max-width:220px; overflow:hidden; text-overflow:ellipsis; }
@@ -141,6 +143,7 @@ var REGCOLS=[
   {k:'warranty',t:'Гар.', edit:1, cls:'dim'},
   {k:'_comp',  t:'Состав'},
   {k:'_cost',  t:'Себест., р.'},
+  {k:'_share', t:'Труд %'},
   {k:'_asm',   t:'Собрано'}
 ];
 var ARTPARTS=[['brand','Бренд'],['equip','Оборудование'],['model','Модель'],['size','Размер'],['color','Цвет'],['pack','Комплектация']];
@@ -172,6 +175,7 @@ function applyData(pr,ac,cat){
     p._cost=ci.cost||0;
     p._comp=ci.hasComp?(ci.detailsCount+' дет · '+ci.opsCount+' оп'):'';
     p._asm=ci.assembled?'✔':'';
+    p._share=(ci.laborShare!=null)?ci.laborShare:'';
     p._hasComp=!!ci.hasComp;
   });
 }
@@ -243,9 +247,10 @@ function renderTabs(){
     return '<button class="'+(TAB===t.id&&!CARD?'on':'')+'" onclick="go(\''+t.id+'\')">'+t.t+'</button>';
   }).join('')+'<button onclick="load(true);msg(\'⟳ обновляю с сервера…\',1)" title="перечитать с сервера">⟳</button>';
 }
-function go(tab){ TAB=tab; CARD=null; PENDCONF=null; renderTabs(); renderBody(); }
+function go(tab){ TAB=tab; CARD=null; CMPV=null; PENDCONF=null; renderTabs(); renderBody(); }
 function renderBody(){
   var b=$('tabbody'); if(!b) return;
+  if(CMPV){ b.innerHTML=compareHtml(); return; }
   if(CARD!==null){ b.innerHTML=cardView(); compRender(); return; }
   if(TAB==='reg') b.innerHTML=regView();
   else if(TAB==='grp') b.innerHTML=grpView();
@@ -347,15 +352,36 @@ function regView(){
       var ar=(SORT.k===c.k)?(SORT.dir===1?' ▲':' ▼'):'';
       return '<th onclick="regSortBy(\''+c.k+'\')">'+esc(c.t)+ar+'</th>';
     }).join('')+'</tr>';
-  var cur=null;
+  // статистика для заголовков: N товаров и средняя себестоимость по срезу
+  var gStat={}, eStat={};
+  if(!sorted) list.forEach(function(p){
+    var g0=(GRPBY==='equip')?(p.equip||'(без оборудования)'):(p.group||'(без группы)');
+    var gs=gStat[g0]||(gStat[g0]={n:0,c:0,cn:0}); gs.n++; if(p._cost>0){gs.c+=p._cost;gs.cn++;}
+    if(GRPBY==='group'){
+      var ek=g0+'▸'+(p.equip||'—');
+      var es=eStat[ek]||(eStat[ek]={n:0,c:0,cn:0}); es.n++; if(p._cost>0){es.c+=p._cost;es.cn++;}
+    }
+  });
+  function hdrStat(st){ if(!st) return '';
+    return '<span class="gsub">'+st.n+' тов.'+(st.cn?' · средн. себест. '+(st.c/st.cn).toLocaleString('ru-RU',{maximumFractionDigits:2})+' р.':'')+'</span>'; }
+  var open=!!Q.trim();   // при поиске всё раскрыто, как в старом каталоге
+  var cur=null, cur2=null;
   list.forEach(function(p){
     var g=(GRPBY==='equip')?(p.equip||'(без оборудования)'):(p.group||'(без группы)');
-    if(!sorted && g!==cur){ cur=g;
+    if(!sorted && g!==cur){ cur=g; cur2=null;
       var gi=(GRPBY==='equip')?{}:(grpInfo(g)||{});
       var gst=(gi.bg?'background:'+gi.bg+';':'background:var(--grid);')+(gi.fg?'color:'+gi.fg+';':'');
-      h+='<tr class="grph" onclick="CLOSED[\''+jsq(g)+'\']=!CLOSED[\''+jsq(g)+'\'];renderBody()"><td colspan="'+(cols.length+1)+'" style="'+gst+'">'+(CLOSED[g]?'▸':'▾')+' '+esc(g)+'</td></tr>';
+      h+='<tr class="grph" onclick="CLOSED[\''+jsq(g)+'\']=!CLOSED[\''+jsq(g)+'\'];renderBody()"><td colspan="'+(cols.length+1)+'" style="'+gst+'">'+(!open&&CLOSED[g]?'▸':'▾')+' '+esc(g)+hdrStat(gStat[g])+'</td></tr>';
     }
-    if(!sorted && CLOSED[g]) return;
+    if(!open && !sorted && CLOSED[g]) return;
+    // второй уровень: оборудование внутри группы (ключ свёртки составной — имена могут совпадать)
+    if(!sorted && GRPBY==='group'){
+      var ek=g+'▸'+(p.equip||'—');
+      if(ek!==cur2){ cur2=ek;
+        h+='<tr class="grph2" onclick="CLOSED[\''+jsq(ek)+'\']=!CLOSED[\''+jsq(ek)+'\'];renderBody()"><td colspan="'+(cols.length+1)+'">'+(!open&&CLOSED[ek]?'▸':'▾')+' '+esc(p.equip||'(без оборудования)')+hdrStat(eStat[ek])+'</td></tr>';
+      }
+      if(!open && CLOSED[ek]) return;
+    }
     var sq=jsq(p.sku);
     h+='<tr class="item">'
       +'<td><input type="checkbox" style="width:14px;height:14px" '+(SEL[p.sku]?'checked':'')+' onclick="selTgl(\''+sq+'\',this.checked)"></td>'
@@ -365,6 +391,7 @@ function regView(){
           +(p.folder?' <a href="'+esc(p.folder)+'" target="_blank" onclick="event.stopPropagation()" title="папка на Drive">📁</a>':'')+'</td>';
         if(c.k==='_comp') return '<td class="dim" onclick="openCard(\''+sq+'\')">'+(p._comp?esc(p._comp):'<span class="pill p-none">⚠ нет</span>')+'</td>';
         if(c.k==='_cost') return '<td onclick="openCard(\''+sq+'\')" style="text-align:right;font-variant-numeric:tabular-nums">'+(p._cost?p._cost.toLocaleString('ru-RU',{minimumFractionDigits:2}):'')+'</td>';
+        if(c.k==='_share') return '<td class="dim" onclick="openCard(\''+sq+'\')" style="text-align:right">'+(p._share!==''?p._share+'%':'')+'</td>';
         if(c.k==='_asm') return '<td style="cursor:pointer;text-align:center" onclick="asmTgl(\''+sq+'\')" title="отметка директора: изделие полностью расписано по операциям">'
           +(p._asm?'<span class="pill p-ok">✔</span>':'<span class="pill p-none">☐</span>')+'</td>';
         var v=esc(String(p[c.k]||'').trim());
@@ -379,6 +406,7 @@ function regView(){
     h+='<div id="massbar">выбрано: <b>'+selN+'</b>'
       +'<span>перенести в группу</span><select id="massGrp" style="width:auto">'+GF.map(function(g){return '<option>'+esc(g.name)+'</option>';}).join('')+'</select>'
       +'<button class="btn pri sm" onclick="massMove()">Применить</button>'
+      +(selN>=2?'<button class="btn sm" onclick="openCompare()">⚖ Сравнить ('+Math.min(selN,6)+')</button>':'')
       +'<button class="btn sm" onclick="SEL={};renderBody()">снять выделение</button></div>';
   }
   return h;
@@ -854,8 +882,39 @@ function cardDelDo(){
   });
 }
 
+/* ══════ ⚖ СРАВНЕНИЕ ВАРИАНТОВ (порт из каталога — метрики уже в CATIDX) ══════ */
+var CMPV=null;
+function openCompare(){
+  var skus=Object.keys(SEL).slice(0,6);
+  if(skus.length<2){ msg('⚠ отметьте хотя бы два товара'); return; }
+  CMPV=skus; CARD=null; renderTabs();
+  $('tabbody').innerHTML=compareHtml();
+  window.scrollTo(0,0);
+}
+function compareHtml(){
+  var items=CMPV.map(function(sku){ var p=prodBy(sku), ci=CATIDX[pkey(sku)]||{}; return p?{p:p,ci:ci}:null; }).filter(Boolean);
+  var allStages={}, order=[];
+  items.forEach(function(it){ (it.ci.stages||[]).forEach(function(st){ if(!allStages[st.op]){ allStages[st.op]=1; order.push(st.op); } }); });
+  function row(label,fn){ return '<tr><td class="dim" style="color:var(--muted)">'+label+'</td>'+items.map(function(it){ return '<td class="num">'+fn(it)+'</td>'; }).join('')+'</tr>'; }
+  var h='<div class="row" style="margin-bottom:8px"><span class="back" onclick="CMPV=null;renderBody()">← к реестру</span><b style="font-size:16px">⚖ Сравнение</b></div>';
+  h+='<div class="card tbwrap"><table><tr><th>Показатель</th>'+items.map(function(it){ return '<th>'+esc(it.p.equip)+'<br><span class="muted" style="font-weight:400">'+esc(it.p.model)+'</span></th>'; }).join('')+'</tr>'
+    +row('Себестоимость труда',function(it){ return it.ci.cost?it.ci.cost.toLocaleString('ru-RU',{minimumFractionDigits:2})+' р.':'—'; })
+    +row('Нормо-часы',function(it){ return it.ci.hours?hrs(it.ci.hours*60):'—'; })
+    +row('Цена продажи',function(it){ return it.ci.price?it.ci.price.toLocaleString('ru-RU')+' р.':'—'; })
+    +row('Труд в цене',function(it){ return it.ci.laborShare!=null?it.ci.laborShare+'%':'—'; })
+    +row('Деталей',function(it){ return it.ci.detailsCount||'—'; })
+    +row('Операций',function(it){ return it.ci.opsCount||'—'; })
+    +'<tr><td colspan="'+(items.length+1)+'" class="muted" style="padding-top:10px;font-size:12px">Труд по этапам, руб:</td></tr>'
+    +order.map(function(op){ return row(esc(op),function(it){
+      var st=(it.ci.stages||[]).filter(function(x){return x.op===op;})[0];
+      return st?st.cost.toLocaleString('ru-RU',{minimumFractionDigits:2}):'—'; }); }).join('')
+    +'</table></div>';
+  return h;
+}
+
 /* ══════ 🧩 СОСТАВ И ОПЕРАЦИИ (слито из «Каталога изделий») ══════ */
-var EMODE=false, EM=[], EDART='', EDEQ='', EDMOD='', EDWARNS=[];
+var EMODE=false, EM=[], EDART='', EDEQ='', EDMOD='', EDWARNS=[], IZDREF_AT=0;
+function hrs(min){ var h=Math.floor(min/60), m=Math.round(min%60); return (h?h+' ч ':'')+m+' мин'; }
 function compRender(){
   var box=$('compSec'); if(!box) return;
   var p=prodBy(CARD); if(!p){ box.innerHTML=''; return; }
@@ -883,8 +942,10 @@ function compRender(){
     return box.innerHTML=h+'</div>';
   }
   h+='<div class="row muted" style="margin-top:6px;font-size:12.5px">себестоимость труда <b style="color:var(--green)">'
-    +(c.cost||0).toLocaleString('ru-RU',{minimumFractionDigits:2})+' р.</b> · '+(Math.round((c.hours||0)*10)/10)+' н-ч · '
-    +(c.details.length)+' дет.</div>';
+    +(c.cost||0).toLocaleString('ru-RU',{minimumFractionDigits:2})+' р.</b> · ⏱ '+hrs((c.hours||0)*60)
+    +(ci.price?' · цена <b style="color:var(--accent)">'+ci.price.toLocaleString('ru-RU')+' р.</b>':' · цена —')
+    +(ci.laborShare!=null?' · труд <b style="color:var(--amber)">'+ci.laborShare+'%</b> цены':'')
+    +' · '+(ci.detailsCount||c.details.length)+' дет. · '+(ci.opsCount||'')+' оп.</div>';
   var mx=1; (c.stages||[]).forEach(function(st){ if(st.cost>mx) mx=st.cost; });
   h+='<div style="margin-top:8px">'+(c.stages||[]).map(function(st){
     return '<div class="row" style="gap:8px;font-size:12px;margin:2px 0"><span class="dim" style="width:150px;color:var(--muted)">'+esc(st.op)+'</span>'
@@ -935,10 +996,10 @@ function compDelDo(){
 }
 /* ── редактор: детали блоками, галочки операций, порядок стрелками ── */
 function izdRefEnsure(cb){
-  if(IZDREF){ cb(); return; }
+  if(IZDREF && Date.now()-IZDREF_AT<60000){ cb(); return; }   // справочник старше минуты — перечитываем
   api({vapi:'izddata'}).then(function(r){
     if(!r||!r.ok){ msg('⚠ справочник не загрузился: '+esc((r&&r.error)||'')); return; }
-    IZDREF=r; cb();
+    IZDREF=r; IZDREF_AT=Date.now(); cb();
   }).catch(function(e){ msg('⚠ '+esc(e.message||e)); });
 }
 function editOpen(){
@@ -958,7 +1019,7 @@ function emBuild(r){
   var order=[], by={};
   (r.rows||[]).forEach(function(row){
     var d=row.detail;
-    if(!by[d]){ by[d]={qty:row.qty, level:row.level||'деталь', seq:[]}; order.push(d); }
+    if(!by[d]){ by[d]={qty:(Number(row.qty)||1), level:row.level||'деталь', seq:[]}; order.push(d); }
     if(String(row.level||'')==='изделие') by[d].level='изделие';
     by[d].seq.push({op:row.op, rate:Number(row.rate)||0, on:true});
   });
@@ -971,25 +1032,95 @@ function emBuild(r){
     return {detail:d, qty:b.qty, level:b.level, ops:b.seq.concat(extra)};
   });
 }
+function emTotal(){
+  var t=0; EM.forEach(function(d){ var q=Number(d.qty)||0; d.ops.forEach(function(o){ if(o.on) t+=q*(Number(o.rate)||0); }); });
+  return Math.round(t*100)/100;
+}
+function emDetSum(d){
+  var q=Number(d.qty)||0, t=0; d.ops.forEach(function(o){ if(o.on) t+=q*(Number(o.rate)||0); });
+  return Math.round(t*100)/100;
+}
+// живой пересчёт итогов без перерисовки — фокус в полях не теряется
+function emRecalc(){
+  var e=$('edTot'); if(e) e.textContent=emTotal().toLocaleString('ru-RU',{minimumFractionDigits:2})+' р.';
+  EM.forEach(function(d,di){ var s2=$('edSum_'+di); if(s2) s2.textContent=emDetSum(d).toLocaleString('ru-RU',{minimumFractionDigits:2})+' р.'; });
+}
+/* блок «Сборка и упаковка изделия»: строки уровня «изделие» живут здесь, не в общем списке */
+function packBlockHtml(){
+  var pi=-1; EM.forEach(function(d,i){ if(d.level==='изделие') pi=i; });
+  var inner;
+  if(pi>=0){
+    var d=EM[pi];
+    inner=d.ops.map(function(o,oi){
+      return '<label style="display:inline-flex;gap:5px;align-items:center;margin:2px 12px 2px 0;font-size:12.5px;cursor:pointer">'
+        +'<input type="checkbox" style="width:14px;height:14px" '+(o.on?'checked':'')+' onchange="EM['+pi+'].ops['+oi+'].on=this.checked;emRecalc()">'
+        +esc(o.op)+' <span class="muted">'+(o.rate>0?o.rate+' р.':'⚠')+'</span></label>';
+    }).join('')
+    +'<div class="muted" style="font-size:11px">строка изделия: <b>'+esc(d.detail)+'</b> · 1 шт на товар</div>';
+  } else {
+    inner='<div style="color:var(--amber);font-size:12.5px">У модели нет операции упаковки изделия. Без неё не работают отгрузка партии, склад деталей и переучёт по упакованным товарам.</div>';
+  }
+  return '<div style="background:var(--grid);border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin:7px 0">'
+    +'<b style="font-size:13px">📦 Сборка и упаковка изделия</b><div style="margin-top:4px">'+inner+'</div>'
+    +'<div class="row" style="margin-top:6px">'
+    +(pi>=0?'':'<button class="btn sm" onclick="packAdd(\'product\')">＋ упаковка изделия</button>')
+    +'<button class="btn sm" onclick="packAdd(\'furn\')">＋ фурнитура</button>'
+    +'<button class="btn sm" onclick="packAdd(\'box\')">＋ коробка</button>'
+    +'</div></div>';
+}
+function packAdd(kind){
+  msg('⏳ подбираю по образцу других моделей…',1);
+  api({vapi:'packtemplate',eq:EDEQ,mod:EDMOD,art:EDART}).then(function(t){
+    if(!t||!t.ok){ msg('⚠ '+esc((t&&t.error)||'нет ответа')); return; }
+    var spec=(kind==='product')?t.product:(kind==='furn'?t.furn:t.box);
+    if(!spec){ msg('⚠ нечего добавить'); return; }
+    if(EM.some(function(d){ return pkey(d.detail)===pkey(spec.detail); })){ msg('⚠ «'+esc(spec.detail)+'» уже есть в составе — смотрите в списке'); return; }
+    if(spec.rate>0){ packAddDo(kind,spec,spec.rate,t); return; }
+    // расценки в справочнике нет — спрашиваем прямо в строке сообщений
+    window.__packCtx={kind:kind,spec:spec,t:t};
+    msg('Расценка за «'+esc(spec.detail)+' · '+esc(spec.op)+'», ₽/шт: '
+      +'<input id="packRate" value="0.15" style="width:80px;display:inline-block;margin:0 6px">'
+      +'<button class="btn pri sm" onclick="packRateGo()">Добавить</button><button class="btn sm" onclick="msgOff()">Отмена</button>');
+    var e=$('packRate'); if(e){ e.focus(); e.select(); }
+  }).catch(function(e){ msg('⚠ '+esc(e.message||e)); });
+}
+function packRateGo(){
+  var c=window.__packCtx; if(!c) return;
+  var rate=Number(String($('packRate').value).replace(',','.'))||0;
+  if(!(rate>0)){ msg('⚠ расценка должна быть больше нуля'); return; }
+  msgOff(); packAddDo(c.kind,c.spec,rate,c.t);
+}
+function packAddDo(kind,spec,rate,t){
+  api({vapi:'packrate',detail:spec.detail,op:spec.op,rate:rate,pdet:(t.product&&t.product.detail)||'',eqname:EDEQ}).then(function(rr){
+    if(!rr||!rr.ok){ msg('⚠ '+esc((rr&&rr.error)||'ошибка')); return; }
+    EM.push({detail:spec.detail, qty:1, level:(kind==='product'?'изделие':'деталь'), ops:[{op:spec.op, rate:rate, on:true}]});
+    compRender();
+    msg('✓ добавлено: '+esc(spec.detail)+' · '+esc(spec.op)+' · '+rate+' р.'+(rr.existed?'':' (расценка заведена в справочнике)')+'. Не забудьте «💾 Сохранить состав».',1);
+  }).catch(function(e){ msg('⚠ '+esc(e.message||e)); });
+}
 function editHtml(){
   var h='<div class="card"><div class="row" style="justify-content:space-between">'
     +'<b>✎ Состав: '+esc(EDMOD)+'</b>'
-    +'<span class="row"><button class="btn sm pri" onclick="editSave()">💾 Сохранить состав</button>'
+    +'<span class="row"><b class="muted" style="font-size:12.5px">труд: <span id="edTot" style="color:var(--green)">'+emTotal().toLocaleString('ru-RU',{minimumFractionDigits:2})+' р.</span></b>'
+    +'<button class="btn sm pri" onclick="editSave()">💾 Сохранить состав</button>'
     +'<button class="btn sm" onclick="EMODE=false;compRender()">отмена</button></span></div>'
     +'<div id="edWarn">'+warnHtml(EDWARNS)+'</div>'
-    +'<div class="muted" style="font-size:11.5px;margin:4px 0">Деталь приносит все свои операции — галочка включает в состав, стрелки ↑↓ задают техпорядок этой модели. «новая» — операция появилась в справочнике после создания состава.</div>';
+    +'<div class="muted" style="font-size:11.5px;margin:4px 0">Деталь приносит все свои операции — галочка включает в состав, стрелки ↑↓ задают техпорядок этой модели. «новая» — операция появилась в справочнике позже: поставьте галочку, если она нужна этой модели.</div>'
+    +packBlockHtml();
   EM.forEach(function(d,di){
+    if(d.level==='изделие') return;   // строки изделия — в блоке упаковки выше
     h+='<div style="border:1px solid var(--line);border-radius:10px;padding:7px 10px;margin:7px 0;background:var(--bg)">'
-      +'<div class="row"><b style="flex:1;font-size:13px">'+(d.level==='изделие'?'📦 ':'')+esc(d.detail)+'</b>'
+      +'<div class="row"><b style="flex:1;font-size:13px">'+esc(d.detail)+'</b>'
+      +'<b class="muted" style="font-size:11.5px"><span id="edSum_'+di+'">'+emDetSum(d).toLocaleString('ru-RU',{minimumFractionDigits:2})+' р.</span></b>'
       +'<span class="muted" style="font-size:11.5px">шт в изделии</span>'
-      +'<input type="number" value="'+esc(d.qty)+'" style="width:64px;padding:3px 6px" onchange="EM['+di+'].qty=this.value">'
+      +'<input type="number" value="'+esc(d.qty)+'" style="width:64px;padding:3px 6px" oninput="EM['+di+'].qty=this.value;emRecalc()">'
       +'<button class="btn sm danger" onclick="EM.splice('+di+',1);compRender()" title="убрать деталь из состава">✕</button></div>';
     d.ops.forEach(function(o,oi){
       h+='<div class="row" style="gap:6px;margin:3px 0;font-size:12.5px">'
         +'<span class="muted" style="width:16px;text-align:right">'+(oi+1)+'</span>'
         +'<button class="btn sm" style="padding:0 6px" '+(oi===0?'disabled':'')+' onclick="emMove('+di+','+oi+',-1)">↑</button>'
         +'<button class="btn sm" style="padding:0 6px" '+(oi===d.ops.length-1?'disabled':'')+' onclick="emMove('+di+','+oi+',1)">↓</button>'
-        +'<input type="checkbox" style="width:15px;height:15px" '+(o.on?'checked':'')+' onchange="EM['+di+'].ops['+oi+'].on=this.checked">'
+        +'<input type="checkbox" style="width:15px;height:15px" '+(o.on?'checked':'')+' onchange="EM['+di+'].ops['+oi+'].on=this.checked;emRecalc()">'
         +'<span style="flex:1">'+esc(o.op)+(o.fresh?' <span class="pill p-none" style="font-size:10px">новая</span>':'')+'</span>'
         +'<span class="'+(o.rate>0?'muted':'')+'" style="'+(o.rate>0?'':'color:var(--red);font-weight:700')+'">'+(o.rate>0?o.rate+' р.':'⚠ нет расценки')+'</span></div>';
     });
@@ -998,7 +1129,7 @@ function editHtml(){
   var dl='<datalist id="dlDet">'+((IZDREF&&IZDREF.details)||[]).map(function(x){return '<option value="'+esc(x)+'">';}).join('')+'</datalist>';
   h+=dl+'<div class="row" style="margin-top:8px"><input id="edAdd" list="dlDet" placeholder="＋ добавить деталь (начните вводить)" style="flex:1;min-width:200px" onkeydown="if(event.key===\'Enter\')emAddDet()">'
     +'<button class="btn sm" onclick="emAddDet()">Добавить</button>'
-    +'<button class="btn sm" onclick="IZDREF=null;izdRefEnsure(function(){msg(\'✓ справочник перечитан\',1)})" title="перечитать реестры деталей и расценок">↻ справочник</button></div>'
+    +'<button class="btn sm" onclick="refreshRefs()" title="перечитать реестры деталей и расценок">↻ справочник</button></div>'
     +'</div>';
   return h;
 }
@@ -1012,6 +1143,14 @@ function emMove(di,oi,dir){
   var ops=EM[di].ops, j=oi+dir; if(j<0||j>=ops.length) return;
   var t=ops[oi]; ops[oi]=ops[j]; ops[j]=t;
   compRender();
+}
+function refreshRefs(){
+  IZDREF=null;
+  izdRefEnsure(function(){
+    msg('✓ справочник перечитан. Перечитать и открытый состав? Несохранённые правки пропадут. '
+      +'<button class="btn sm pri" onclick="msgOff();editOpen()">Перечитать состав</button>'
+      +'<button class="btn sm" onclick="msgOff()">Оставить как есть</button>',1);
+  });
 }
 function emAddDet(){
   var e=$('edAdd'), det=e?e.value.trim():''; if(!det) return;
@@ -1064,11 +1203,14 @@ function orphAttach(i){
   var cands=P.filter(function(p){ return p.equip===o.eq && !p._hasComp; });
   msg('Привязать состав «'+esc(o.mod)+'» к товару: <select id="orphSku" style="width:auto;display:inline-block">'
     +cands.map(function(p){ return '<option value="'+esc(p.sku)+'">'+esc(p.sku)+' · '+esc(p.model)+'</option>'; }).join('')
-    +'</select> <button class="btn pri sm" onclick="orphAttachDo('+i+')">Привязать</button><button class="btn sm" onclick="msgOff()">Отмена</button>'
-    +(cands.length?'':' <span style="color:var(--red)">нет товаров этого оборудования без состава</span>'));
+    +'</select> или артикул: <input id="orphSku2" placeholder="впишите вручную" style="width:140px;display:inline-block">'
+    +' <button class="btn pri sm" onclick="orphAttachDo('+i+')">Привязать</button><button class="btn sm" onclick="msgOff()">Отмена</button>'
+    +(cands.length?'':' <span style="color:var(--red)">товаров этого оборудования без состава нет — впишите артикул вручную</span>'));
 }
 function orphAttachDo(i){
-  var o=ORPHANS[i], sku=$('orphSku')?$('orphSku').value:'';
+  var o=ORPHANS[i];
+  var manual=$('orphSku2')?$('orphSku2').value.trim():'';
+  var sku=manual||($('orphSku')?$('orphSku').value:'');
   if(!sku) return;
   msgOff();
   run(api({vapi:'reassigncomp',eq:o.eq,mod:o.mod,artikul:sku}), function(){
