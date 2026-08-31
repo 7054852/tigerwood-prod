@@ -931,12 +931,21 @@ function compareHtml(){
 }
 
 /* ══════ 🧩 СОСТАВ И ОПЕРАЦИИ (слито из «Каталога изделий») ══════ */
-var EMODE=false, EM=[], EDART='', EDEQ='', EDMOD='', EDWARNS=[], IZDREF_AT=0;
+var EMODE=false, EM=[], EDART='', EDEQ='', EDMOD='', EDWARNS=[], IZDREF_AT=0, EDC={};
 function hrs(min){ var h=Math.floor(min/60), m=Math.round(min%60); return (h?h+' ч ':'')+m+' мин'; }
 function compRender(){
   var box=$('compSec'); if(!box) return;
   var p=prodBy(CARD); if(!p){ box.innerHTML=''; return; }
   if(EMODE){ box.innerHTML=editHtml(); return; }
+  // заранее, пока человек смотрит карточку: состав для редактора и справочник деталей —
+  // тогда «✎ Редактировать» открывается мгновенно, а не двумя запросами по 4 секунды
+  if(!EDC[pkey(p.sku)] && p.equip && p.model){
+    EDC[pkey(p.sku)]='loading';
+    api({vapi:'izdcomp',eq:p.equip,mod:p.model,artikul:p.sku}).then(function(r){
+      EDC[pkey(p.sku)]=(r&&r.ok)?r:null;
+    }).catch(function(){ EDC[pkey(p.sku)]=null; });
+  }
+  if(!IZDREF) izdRefEnsure(function(){});
   var c=COMP[pkey(p.sku)];
   if(!c){
     box.innerHTML='<div class="card"><b>🧩 Состав и операции</b><div class="empty">⏳ загружаю состав…</div></div>';
@@ -993,7 +1002,7 @@ function cloneFrom(fromSku){
   var p=prodBy(CARD); if(!p) return;
   twSay('Копирую состав…');
   run(api({vapi:'clonevariant',from:fromSku,eq:p.equip,mod:p.model,to:p.sku}), function(){
-    delete COMP[pkey(p.sku)];
+    delete COMP[pkey(p.sku)]; delete EDC[pkey(p.sku)];
     msg('✓ состав скопирован с '+esc(fromSku),1);
     load(true); compRender();
   });
@@ -1007,14 +1016,14 @@ function compDelDo(){
   msgOff();
   var p=prodBy(CARD); if(!p) return;
   run(api({vapi:'delvariant',artikul:p.sku,eq:p.equip,mod:p.model}), function(){
-    delete COMP[pkey(p.sku)];
+    delete COMP[pkey(p.sku)]; delete EDC[pkey(p.sku)];
     msg('✓ состав удалён',1);
     load(true); compRender();
   });
 }
 /* ── редактор: детали блоками, галочки операций, порядок стрелками ── */
 function izdRefEnsure(cb){
-  if(IZDREF && Date.now()-IZDREF_AT<60000){ cb(); return; }   // справочник старше минуты — перечитываем
+  if(IZDREF){ cb(); return; }   // свежесть операций состава даёт серверный refOps; справочник — только для добавления деталей
   api({vapi:'izddata'}).then(function(r){
     if(!r||!r.ok){ msg('⚠ справочник не загрузился: '+esc((r&&r.error)||'')); return; }
     IZDREF=r; IZDREF_AT=Date.now(); cb();
@@ -1024,14 +1033,26 @@ function editOpen(){
   var p=prodBy(CARD); if(!p) return;
   if(!p.equip||!p.model){ msg('⚠ у товара нет оборудования/модели'); return; }
   EDART=p.sku; EDEQ=p.equip; EDMOD=p.model; EDWARNS=[];
-  izdRefEnsure(function(){
-    api({vapi:'izdcomp',eq:EDEQ,mod:EDMOD,artikul:EDART}).then(function(r){
-      if(!r||!r.ok){ msg('⚠ состав не загрузился: '+esc((r&&r.error)||'')); return; }
-      EM=emBuild(r);
-      EDWARNS=r.warns||[];
-      EMODE=true; compRender();
-    }).catch(function(e){ msg('⚠ '+esc(e.message||e)); });
-  });
+  var cached=EDC[pkey(p.sku)];
+  if(cached && cached!=='loading'){          // префетч успел — открываем мгновенно
+    EM=emBuild(cached); EDWARNS=cached.warns||[];
+    EMODE=true; compRender();
+    if(!IZDREF) izdRefEnsure(function(){ if(EMODE) compRender(); });   // datalist деталей дольёт себя
+    return;
+  }
+  var box=$('compSec'); if(box) box.innerHTML='<div class="card"><b>✎ Редактор</b><div class="empty">⏳ загружаю состав и справочник…</div></div>';
+  Promise.all([
+    api({vapi:'izdcomp',eq:EDEQ,mod:EDMOD,artikul:EDART}),
+    IZDREF?Promise.resolve({ok:true}):api({vapi:'izddata'})
+  ]).then(function(rs){
+    var r=rs[0], ref=rs[1];
+    if(ref&&ref.ok&&ref.details){ IZDREF=ref; IZDREF_AT=Date.now(); }
+    if(!r||!r.ok){ msg('⚠ состав не загрузился: '+esc((r&&r.error)||'')); compRender(); return; }
+    EDC[pkey(p.sku)]=r;
+    EM=emBuild(r);
+    EDWARNS=r.warns||[];
+    EMODE=true; compRender();
+  }).catch(function(e){ msg('⚠ '+esc(e.message||e)); compRender(); });
 }
 function emBuild(r){
   var order=[], by={};
@@ -1191,7 +1212,7 @@ function editSave(){
   twSay('Сохраняю состав — заказы пересоберутся…');
   run(apiPost({vapi:'savemodel',eq:EDEQ,mod:EDMOD,rows:JSON.stringify(rows),art:EDART}), function(r){
     EDWARNS=r.warns||[];
-    delete COMP[pkey(EDART)];
+    delete COMP[pkey(EDART)]; delete EDC[pkey(EDART)];
     if(EDWARNS.length){
       var w=$('edWarn'); if(w) w.innerHTML=warnHtml(EDWARNS);
       msg('Сохранено, но есть замечания к порядку операций — смотрите жёлтую плашку',1);
