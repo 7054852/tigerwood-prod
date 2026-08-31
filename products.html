@@ -644,9 +644,44 @@ function statView(){
 }
 
 /* ══════ КАРТОЧКА ТОВАРА (полноэкранно, паттерн «Кадров») ══════ */
-function openCard(sku){ CARD=sku; ARTSEL={}; PENDCONF=null; renderTabs(); renderBody(); window.scrollTo(0,0); }
-function fld(id,label,val,ph,wide){
-  return '<div'+(wide?' style="grid-column:1/-1"':'')+'><label class="f">'+label+'</label><input id="c_'+id+'" value="'+esc(val||'')+'"'+(ph?' placeholder="'+esc(ph)+'"':'')+'></div>';
+function openCard(sku){ CARD=sku; ARTSEL={}; PENDCONF=null; renderTabs(); renderBody(); skuHintDraw(); window.scrollTo(0,0); }
+function fld(id,label,val,ph,wide,listId,oninput){
+  return '<div'+(wide?' style="grid-column:1/-1"':'')+'><label class="f">'+label+'</label><input id="c_'+id+'" value="'+esc(val||'')+'"'
+    +(ph?' placeholder="'+esc(ph)+'"':'')+(listId?' list="'+listId+'"':'')+(oninput?' oninput="'+oninput+'"':'')+'></div>';
+}
+/* справочники для карточки: значения кодов + всё, что уже встречается у товаров */
+function dlOptions(type, pkeyName){
+  var seen={}, out=[];
+  codesOf(type).forEach(function(c){ var v=String(c.value||'').trim(); if(v&&!seen[pkey(v)]){ seen[pkey(v)]=1; out.push(v); } });
+  P.forEach(function(p){ var v=String(p[pkeyName]||'').trim(); if(v&&!seen[pkey(v)]){ seen[pkey(v)]=1; out.push(v); } });
+  return '<datalist id="dl_'+pkeyName+'">'+out.map(function(v){return '<option value="'+esc(v)+'">';}).join('')+'</datalist>';
+}
+/* ── автосборка артикула: значение поля → буквенный код; ручной ввод выключает авто ── */
+var SKUAUTO=false;
+function val2code(t,v){
+  v=pkey(v); if(!v) return '';
+  var m=codesOf(t), i;
+  for(i=0;i<m.length;i++) if(pkey(m[i].value)===v) return m[i].code;
+  for(i=0;i<m.length;i++) if(pkey(m[i].code)===v) return m[i].code;
+  return '';
+}
+function skuBuild(){
+  var map=[['brand','c_brand'],['equip','c_equip'],['model','c_model'],['size','c_size'],['color','c_color'],['pack','c_kit']];
+  var parts=[];
+  map.forEach(function(x){ var e=$(x[1]); if(!e) return; var c=val2code(x[0],e.value); if(c) parts.push(c); });
+  return parts.join(' ');
+}
+function skuAutoFill(){
+  if(!SKUAUTO) return;
+  var e=$('c_sku'); if(e) e.value=skuBuild();
+  skuHintDraw();
+}
+function skuManual(){ SKUAUTO=false; skuHintDraw(); }
+function skuAutoOn(){ SKUAUTO=true; skuAutoFill(); }
+function skuHintDraw(){
+  var h=$('skuHint'); if(!h) return;
+  if(SKUAUTO) h.innerHTML=($('c_sku').value?'собран автоматически из кодов — можно стереть и вписать свой (BusyKids)':'выберите бренд, оборудование, модель — артикул соберётся сам');
+  else h.innerHTML='введён вручную · <a href="javascript:skuAutoOn()">↺ собрать из кодов</a>';
 }
 function cardView(){
   var p=CARD?prodBy(CARD):null;
@@ -654,23 +689,27 @@ function cardView(){
   var d=p||{};
   var grpOpts='<option value="">—</option>'+GF.map(function(g){
     return '<option'+(d.group===g.name?' selected':'')+'>'+esc(g.name)+'</option>'; }).join('');
-  var h='<div class="row" style="margin-bottom:8px"><span class="back" onclick="CARD=null;renderTabs();renderBody()">← к реестру</span>'
+  SKUAUTO=isNew;
+  var h=dlOptions('brand','brand')+dlOptions('equip','equip')+dlOptions('model','model')
+    +dlOptions('size','size')+dlOptions('color','color')+dlOptions('pack','kit');
+  h+='<div class="row" style="margin-bottom:8px"><span class="back" onclick="CARD=null;renderTabs();renderBody()">← к реестру</span>'
     +'<b style="font-size:16px">'+(isNew?'Новый товар':esc(d.sku))+'</b>'
     +(d.src==='хаб'?'<span class="reghub">хаб</span>':'')
     +'</div>';
   h+='<div class="card"><b>Основное</b><div class="grid" style="margin-top:8px">'
-    +'<div><label class="f">Артикул *</label><div class="row" style="gap:4px"><input id="c_sku" value="'+esc(d.sku||'')+'" placeholder="BKBS00A01 или соберите из кодов">'
-    +'<button class="btn sm" onclick="cardArtTgl()" title="собрать артикул из кодов">🔧</button></div>'
+    +'<div><label class="f">Артикул *</label><div class="row" style="gap:4px"><input id="c_sku" value="'+esc(d.sku||'')+'" placeholder="выберите поля — соберётся сам" oninput="skuManual()">'
+    +'<button class="btn sm" onclick="cardArtTgl()" title="собрать артикул из кодов вручную">🔧</button></div>'
+    +'<div class="muted" id="skuHint" style="font-size:11px;margin-top:3px"></div>'
     +'<div id="cardArtBox" style="display:none;margin-top:8px;border:1px dashed var(--line);border-radius:10px;padding:10px">'
     +'<div class="grid" id="cardArt"></div>'
     +'<div class="row" style="margin-top:8px"><b id="cardArtPrev" style="font-family:ui-monospace,monospace">—</b>'
     +'<button class="btn sm pri" onclick="var v=artPreview();if(v)$(\'c_sku\').value=v;cardArtTgl()">применить</button></div></div></div>'
-    +fld('brand','Бренд',d.brand,'BusyKids / Tigerwood')
-    +fld('equip','Оборудование *',d.equip)
-    +fld('model','Модель *',d.model)
-    +fld('size','Размер',d.size)
-    +fld('color','Расцветка',d.color)
-    +fld('kit','Комплектация',d.kit)
+    +fld('brand','Бренд',d.brand,'BusyKids / Tigerwood',0,'dl_brand','skuAutoFill()')
+    +fld('equip','Оборудование *',d.equip,'',0,'dl_equip','skuAutoFill()')
+    +fld('model','Модель *',d.model,'',0,'dl_model','skuAutoFill()')
+    +fld('size','Размер',d.size,'',0,'dl_size','skuAutoFill()')
+    +fld('color','Расцветка',d.color,'',0,'dl_color','skuAutoFill()')
+    +fld('kit','Комплектация',d.kit,'',0,'dl_kit','skuAutoFill()')
     +'<div><label class="f">Группа</label><select id="c_group">'+grpOpts+'</select></div>'
     +'</div></div>';
   h+='<div class="card"><b>Наименования</b><div class="grid" style="margin-top:8px">'
@@ -725,9 +764,10 @@ function cardSave(){
     var casc='';
     if(r.cascade){ var n=0; Object.keys(r.cascade).forEach(function(k){ n+=Number(r.cascade[k])||0; });
       if(n) casc=' · артикул обновлён в связанных листах: '+n+' строк'; }
-    msg('✓ сохранено'+(r.created?' (создан)':'')+casc,1);
+    var fol=r.folderUrl?' · 📁 <a href="'+esc(r.folderUrl)+'" target="_blank">папка создана</a>':'';
+    msg('✓ сохранено'+(r.created?' (создан)':'')+casc+fol,1);
     CARD=null;
-    load();
+    load(true); renderBody();
   });
 }
 function cardFolder(){
