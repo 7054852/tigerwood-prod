@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Тигервуд — Товары</title>
+<style>
+  :root{
+    --bg:#f4f6fb; --card:#fff; --fg:#1b2333; --muted:#8a93a6; --line:#e6e9f2; --accent:#2b7de9;
+    --green:#137333; --green-bg:#e7f5ea; --amber:#b7791f; --amber-bg:#f7efdb; --red:#c0392b; --red-bg:#fdecea; --grid:#eef1f8;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{ --bg:#14161b; --card:#1c1f26; --fg:#e9eaee; --muted:#9aa0ad; --line:#2a2e37; --accent:#4f9bee;
+           --green:#4bbd7e; --green-bg:#13291d; --amber:#d6a23c; --amber-bg:#2c2411; --red:#e5776b; --red-bg:#2b1714; --grid:#23262e; }
+  }
+  *{box-sizing:border-box;} html,body{margin:0;background:var(--bg);}
+  body{ font-family:-apple-system,Roboto,Segoe UI,Arial,sans-serif; color:var(--fg); padding:14px; max-width:1180px; margin:0 auto; font-size:14px; }
+  html.emb>body>.hi,html.emb>body>.sub{display:none}
+  .hi{ font-size:19px; font-weight:800; } .sub{ color:var(--muted); font-size:13px; margin-top:2px; }
+  .muted{ color:var(--muted); } .center{ text-align:center; padding:40px 16px; color:var(--muted); }
+  .card{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:13px 14px; box-shadow:0 1px 3px rgba(20,30,60,.05); margin-bottom:10px; }
+  .tabs{ display:flex; gap:6px; flex-wrap:wrap; margin:10px 0 12px; }
+  .tabs button{ border:1px solid var(--line); background:var(--card); color:var(--fg); border-radius:999px; padding:7px 13px; font-size:13px; cursor:pointer; font-weight:600; }
+  .tabs button.on{ background:var(--accent); border-color:var(--accent); color:#fff; }
+  table{ width:100%; border-collapse:collapse; } th,td{ text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); font-size:13px; vertical-align:top; }
+  th{ color:var(--muted); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.03em; }
+  td.num,th.num{ text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .tbwrap{ overflow-x:auto; }
+  .pill{ display:inline-block; border-radius:999px; padding:2px 9px; font-size:11.5px; font-weight:700; white-space:nowrap; }
+  .p-ok{ background:var(--green-bg); color:var(--green); } .p-none{ background:var(--grid); color:var(--muted); }
+  .btn{ border:1px solid var(--line); background:var(--card); color:var(--fg); border-radius:9px; padding:6px 11px; font-size:13px; cursor:pointer; font-weight:600; }
+  .btn.pri{ background:var(--accent); border-color:var(--accent); color:#fff; }
+  .btn.danger{ background:var(--red-bg); border-color:var(--red-bg); color:var(--red); }
+  .btn.sm{ padding:3px 8px; font-size:12px; }
+  .row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:9px; }
+  label.f{ display:block; font-size:11.5px; color:var(--muted); margin-bottom:3px; }
+  input,select,textarea{ width:100%; padding:7px 9px; border:1px solid var(--line); border-radius:9px; background:var(--card); color:var(--fg); font-size:13px; font-family:inherit; }
+  input[type=checkbox]{ width:16px; height:16px; }
+  input[type=color]{ width:34px; height:28px; padding:1px; }
+  .back{ cursor:pointer; color:var(--accent); font-weight:600; font-size:13px; }
+  .empty{ color:var(--muted); font-size:12.5px; padding:8px 0; }
+  a{ color:var(--accent); }
+  /* сообщения вместо alert */
+  #msg{ display:none; margin:8px 0; padding:8px 12px; border-radius:10px; font-size:13px; font-weight:600; }
+  #msg.ok{ display:block; background:var(--green-bg); color:var(--green); }
+  #msg.err{ display:block; background:var(--red-bg); color:var(--red); }
+  #msg .btn{ margin-left:8px; }
+  /* ── реестр ── */
+  .regtbl{ border-collapse:collapse; width:100%; min-width:1100px; font-size:12.5px; }
+  .regtbl th{ position:sticky; top:0; background:var(--card); z-index:2; cursor:pointer; white-space:nowrap; padding:6px 7px; border-bottom:2px solid var(--line); }
+  .regtbl td{ padding:3px 7px; border-bottom:1px solid var(--grid); white-space:nowrap; line-height:18px; }
+  .regtbl tr.item:hover td{ background:rgba(127,140,170,.08); }
+  .regtbl tr.grph td{ font-weight:700; padding:5px 7px; cursor:pointer; }
+  .regtbl td.sku{ font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11.5px; font-weight:700; cursor:pointer; color:var(--accent); }
+  .regtbl td.dim{ color:var(--muted); }
+  .regtbl td.nm{ max-width:220px; overflow:hidden; text-overflow:ellipsis; }
+  .regtbl td.rege{ cursor:text; }
+  .reghub{ background:var(--green-bg); color:var(--green); padding:0 6px; border-radius:8px; font-size:10px; font-weight:700; }
+  #massbar{ position:sticky; bottom:8px; z-index:5; background:var(--card); border:1px solid var(--accent); border-radius:12px;
+            padding:9px 12px; display:flex; gap:10px; align-items:center; flex-wrap:wrap; box-shadow:0 6px 20px rgba(20,30,60,.18); margin-top:10px; }
+  /* ── группы ── */
+  .gcard{ display:flex; gap:10px; align-items:center; background:var(--card); border:1px solid var(--line); border-radius:12px;
+          padding:9px 12px; margin-bottom:7px; cursor:grab; }
+  .gcard.sel{ border-color:var(--accent); box-shadow:0 4px 14px rgba(43,125,233,.25); transform:translateY(-1px); }
+  .gcard.target{ outline:2px dashed var(--accent); outline-offset:2px; }
+  .gcard .gname{ flex:1; min-width:140px; font-weight:700; padding:3px 9px; border-radius:8px; cursor:pointer; }
+  .gcard .cnt{ color:var(--muted); font-size:12px; white-space:nowrap; }
+  /* ── коды ── */
+  .chipx{ display:inline-flex; align-items:center; gap:6px; background:var(--grid); border:1px solid var(--line);
+          border-radius:999px; padding:3px 5px 3px 10px; margin:3px 4px 3px 0; font-size:12.5px; cursor:pointer; }
+  .chipx b{ font-family:ui-monospace,Menlo,monospace; }
+  .chipx .x{ color:var(--red); font-weight:700; padding:0 5px; border-radius:50%; }
+  .chipx .x:hover{ background:var(--red-bg); }
+  .kbadd{ display:flex; gap:6px; margin-top:8px; max-width:420px; }
+  .kbadd input:first-child{ width:110px; flex:none; font-family:ui-monospace,monospace; }
+  /* видимая реакция кнопок (телефон) */
+  button{ touch-action:manipulation; -webkit-tap-highlight-color:transparent;
+          transition:transform .06s ease, filter .12s ease, opacity .12s ease; }
+  button:active{ transform:scale(.94); filter:brightness(.86); }
+  button[disabled]{ opacity:.5; pointer-events:none; }
+  #twload{ position:fixed; left:0; top:0; height:3px; width:100%; z-index:60; display:none; overflow:hidden; }
+  #twload>i{ display:block; height:100%; width:38%; background:var(--accent); animation:twslide 1.1s ease-in-out infinite; }
+  @keyframes twslide{ 0%{ margin-left:-38% } 100%{ margin-left:100% } }
+  #twwait{ position:fixed; inset:0; background:rgba(246,247,252,.78); z-index:70; display:none; align-items:center; justify-content:center; }
+  #twwait .wb{ background:var(--card); border-radius:16px; padding:18px 22px; text-align:center; min-width:190px; box-shadow:0 12px 34px rgba(20,25,50,.18); }
+  #twwait .sp{ width:28px; height:28px; border:3px solid rgba(43,125,233,.22); border-top-color:var(--accent); border-radius:50%; margin:0 auto 10px; animation:twspin .8s linear infinite; }
+  @keyframes twspin{ to{ transform:rotate(360deg) } }
+  #twwait .wt{ font-weight:700; font-size:15px; } #twwait .wh{ font-size:12.5px; opacity:.6; margin-top:4px; }
+</style>
+</head>
+<body>
+<div id="twload"><i></i></div>
+<div id="twwait"><div class="wb"><div class="sp"></div><div class="wt" id="twwt">Отправляю…</div><div class="wh">идёт обмен с сервером — не нажимайте</div></div></div>
+<div class="hi">🏷 Товары</div>
+<div class="sub">Реестр, группы, коды артикула, папки — первоисточник товаров.</div>
+<div id="app"><div class="center">Загрузка…</div></div>
+<script>
+var BASE='https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';
+var APP='tw7prod';
+if(/[?&]embed=1/.test(location.search))document.documentElement.classList.add('emb');
+function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]*)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
+var TGID=qp('tgid')||(function(){try{return localStorage.getItem('tw_tgid')||'';}catch(e){return '';}})();
+try{ if(!TGID && window.Telegram && Telegram.WebApp && Telegram.WebApp.initDataUnsafe && Telegram.WebApp.initDataUnsafe.user) TGID=String(Telegram.WebApp.initDataUnsafe.user.id); }catch(e){}
+if(TGID){ try{ localStorage.setItem('tw_tgid',TGID); }catch(e){} }
+function api(p){ p.app=APP; if(TGID&&!p.tgid)p.tgid=TGID;
+  var q=Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]==null?'':p[k]);}).join('&');
+  return fetch(BASE+'?'+q).then(function(r){return r.json();}); }
+function apiPost(p){ p.app=APP; if(TGID&&!p.tgid)p.tgid=TGID;
+  var body=Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]==null?'':p[k]);}).join('&');
+  return fetch(BASE,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body}).then(function(r){return r.json();}); }
+function $(id){ return document.getElementById(id); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function jsq(s){ return esc(String(s==null?'':s)).replace(/'/g,'&#39;'); }
+
+/* ══ Состояние ══ */
+var P=[], GF=[], CODES=[], CATIDX={};
+var TAB='reg', CARD=null;               // CARD: sku | '' (новый) | null
+var SEL={}, Q='', GRPF='';
+var SORT={k:'',dir:1}, HIDE={}, CLOSED={}, GSEL='';
+try{ HIDE=JSON.parse(localStorage.getItem('twRegHide')||'{}'); }catch(e){ HIDE={}; }
+var ARTSEL={}, BUSY=0, PENDCONF=null;
+
+var FIELDS=['sku','brand','equip','model','size','color','kit','group','name','nameEn','hs','boxSize','boxW','warranty','palL','palW','palH','palQty','palNet','palGross'];
+var REGCOLS=[
+  {k:'sku',    t:'Артикул'},
+  {k:'brand',  t:'Бренд', edit:1},
+  {k:'equip',  t:'Оборудование'},
+  {k:'model',  t:'Модель'},
+  {k:'size',   t:'Размер', edit:1, cls:'dim'},
+  {k:'color',  t:'Цвет', edit:1, cls:'dim'},
+  {k:'kit',    t:'Компл.', edit:1, cls:'dim'},
+  {k:'nameEn', t:'Для документов', edit:1, cls:'nm'},
+  {k:'boxSize',t:'Коробка', edit:1, cls:'dim'},
+  {k:'boxW',   t:'Вес, кг', edit:1, cls:'dim'},
+  {k:'palL',   t:'Пал: Д', edit:1, cls:'dim'},
+  {k:'palW',   t:'Пал: Ш', edit:1, cls:'dim'},
+  {k:'palH',   t:'Пал: В', edit:1, cls:'dim'},
+  {k:'palQty', t:'Пал: шт', edit:1, cls:'dim'},
+  {k:'palGross',t:'Пал: брутто', edit:1, cls:'dim'},
+  {k:'warranty',t:'Гар.', edit:1, cls:'dim'}
+];
+var ARTPARTS=[['brand','Бренд'],['equip','Оборудование'],['model','Модель'],['size','Размер'],['color','Цвет'],['pack','Комплектация']];
+var ARTTYPES=[['brand','Бренды'],['equip','Оборудование'],['model','Модели'],['size','Размеры'],['color','Цвета'],['pack','Комплектации'],['unit','Единицы измерения']];
+
+function pkey(s){ return String(s||'').trim().toLowerCase(); }
+function prodBy(sku){ for(var i=0;i<P.length;i++) if(pkey(P[i].sku)===pkey(sku)) return P[i]; return null; }
+function grpInfo(name){ for(var i=0;i<GF.length;i++) if(GF[i].name===name) return GF[i]; return null; }
+function grpOrd(name){ for(var i=0;i<GF.length;i++) if(GF[i].name===name) return i; return 900; }
+function codesOf(t){ return CODES.filter(function(c){return c.type===t;}); }
+
+/* ══ Загрузка: три запроса параллельно, дальше вкладки без сети ══ */
+function load(){
+  $('app').innerHTML='<div class="center">Загрузка…</div>';
+  Promise.all([ api({vapi:'productsfull'}), api({vapi:'artcodes'}), api({vapi:'catalog'}) ]).then(function(rs){
+    var pr=rs[0], ac=rs[1], cat=rs[2];
+    if(!pr||!pr.ok){ $('app').innerHTML='<div class="center">Ошибка: '+esc((pr&&pr.error)||'нет данных')+'<br><br><button class="btn" onclick="load()">↻ Повторить</button></div>'; return; }
+    P=pr.products||[]; GF=pr.groupsFull||[];
+    CODES=(ac&&ac.ok&&ac.codes)||[];
+    CATIDX={};
+    if(cat&&cat.ok) (cat.groups||[]).forEach(function(g){ (g.models||[]).forEach(function(m){ (m.variants||[]).forEach(function(v){
+      CATIDX[pkey(v.art)]={hasComp:!!v.hasComp, assembled:!!v.assembled};
+    });});});
+    renderShell();
+    var focus=qp('sku'); if(focus && prodBy(focus)){ openCard(focus); }
+  }).catch(function(e){ $('app').innerHTML='<div class="center">Сеть: '+esc(e.message)+'<br><br><button class="btn" onclick="load()">↻ Повторить</button></div>'; });
+}
+
+/* ══ Каркас: тулбар и вкладки рисуются один раз — поиск не теряет фокус ══ */
+function renderShell(){
+  var h='<div class="row" style="margin-bottom:2px">'
+    +'<input id="q" placeholder="🔎 поиск: артикул, модель, наименование" style="flex:1;min-width:180px" oninput="Q=this.value;renderBody()">'
+    +'<select id="grpf" style="width:auto" onchange="GRPF=this.value;renderBody()"></select>'
+    +'<button class="btn pri" onclick="openCard(\'\')">＋ Товар</button>'
+    +'<button class="btn" onclick="doExport(this)" title="выгрузить в Google-таблицу, лист «Прохаб: выгрузка»">⬆️ В Google-реестр</button>'
+    +'<button class="btn" onclick="askImport()" title="импорт из Google-реестра — перезапишет правки системы">⋯</button>'
+    +'</div>'
+    +'<div id="msg"></div>'
+    +'<div class="tabs" id="tabsrow"></div>'
+    +'<div id="tabbody"></div>';
+  $('app').innerHTML=h;
+  fillGrpFilter(); renderTabs(); renderBody();
+}
+function fillGrpFilter(){
+  var known={}; GF.forEach(function(g){ known[g.name]=1; });
+  var extra={}; P.forEach(function(p){ if(p.group&&!known[p.group]) extra[p.group]=1; });
+  var opts=GF.map(function(g){return g.name;}).concat(Object.keys(extra).sort());
+  $('grpf').innerHTML='<option value="">все группы</option>'+opts.map(function(g){
+    return '<option'+(g===GRPF?' selected':'')+'>'+esc(g)+'</option>'; }).join('');
+}
+var TABS=[{id:'reg',t:'📋 Реестр'},{id:'grp',t:'🗂 Группы'},{id:'art',t:'⚙️ Артикул'},{id:'stat',t:'📈 Сводка'}];
+function renderTabs(){
+  $('tabsrow').innerHTML=TABS.map(function(t){
+    return '<button class="'+(TAB===t.id&&!CARD?'on':'')+'" onclick="go(\''+t.id+'\')">'+t.t+'</button>';
+  }).join('')+'<button onclick="load()" title="перечитать с сервера">⟳</button>';
+}
+function go(tab){ TAB=tab; CARD=null; PENDCONF=null; renderTabs(); renderBody(); }
+function renderBody(){
+  var b=$('tabbody'); if(!b) return;
+  if(CARD!==null){ b.innerHTML=cardView(); return; }
+  if(TAB==='reg') b.innerHTML=regView();
+  else if(TAB==='grp') b.innerHTML=grpView();
+  else if(TAB==='art') b.innerHTML=artView();
+  else b.innerHTML=statView();
+}
+function msg(t,ok){
+  var m=$('msg'); if(!m) return;
+  m.className=ok?'ok':'err'; m.innerHTML=t;
+  if(ok){ clearTimeout(msg._t); msg._t=setTimeout(function(){ m.className=''; m.innerHTML=''; },5000); }
+}
+function msgOff(){ var m=$('msg'); if(m){ m.className=''; m.innerHTML=''; } }
+
+/* ══ Общая запись с BUSY ══ */
+function run(promise, done, failMsg){
+  if(BUSY) return; BUSY=1;
+  promise.then(function(r){
+    BUSY=0;
+    if(!r||!r.ok){ msg('⚠ '+esc((r&&r.error)||failMsg||'не сохранилось')); return; }
+    if(done) done(r);
+  }).catch(function(e){ BUSY=0; msg('⚠ связь оборвалась: '+esc(e.message||e)); });
+}
+
+/* ══ Экспорт / импорт ══ */
+function doExport(btn){
+  if(btn){ btn.disabled=true; }
+  run(api({vapi:'exportproducts'}), function(r){
+    if(btn) btn.disabled=false;
+    msg('✓ выгружено '+r.rows+' товаров, '+r.groups+' групп → лист «Прохаб: выгрузка» в Google-таблице', 1);
+  });
+  if(btn) setTimeout(function(){ btn.disabled=false; }, 12000);
+}
+function askImport(){
+  msg('Импорт из Google-реестра <b>перезапишет</b> правки, сделанные в системе (кроме товаров «хаб»). '
+    +'<button class="btn danger sm" onclick="doImport()">Да, перезаписать из Google</button>'
+    +'<button class="btn sm" onclick="msgOff()">Отмена</button>');
+}
+function doImport(){
+  msgOff();
+  run(apiPost({vapi:'syncproducts',force:1}), function(r){
+    msg('✓ импортировано '+r.count+' товаров (хабовских сохранено: '+(r.keptHub||0)+')', 1);
+    load();
+  });
+}
+
+/* ══════ 📋 РЕЕСТР ══════ */
+function visCols(){ return REGCOLS.filter(function(c){ return !HIDE[c.k]; }); }
+function regFilter(){
+  var q=Q.toLowerCase().trim();
+  return P.filter(function(p){
+    if(GRPF && p.group!==GRPF) return false;
+    if(!q) return true;
+    return (p.sku+' '+p.brand+' '+p.equip+' '+p.model+' '+p.name+' '+p.nameEn+' '+p.size+' '+p.color+' '+p.kit+' '+p.group).toLowerCase().indexOf(q)>=0;
+  });
+}
+function regSortBy(k){
+  if(SORT.k===k){ if(SORT.dir===1) SORT.dir=-1; else { SORT.k=''; SORT.dir=1; } }
+  else { SORT.k=k; SORT.dir=1; }
+  renderBody();
+}
+function regView(){
+  var list=regFilter();
+  var sorted=!!SORT.k;
+  if(sorted){
+    var sk=SORT.k, dir=SORT.dir;
+    list.sort(function(a,b){
+      var x=String(a[sk]||'').trim(), y=String(b[sk]||'').trim();
+      if(x===''&&y!=='') return 1; if(y===''&&x!=='') return -1;
+      var nx=parseFloat(x.replace(',','.')), ny=parseFloat(y.replace(',','.'));
+      if(!isNaN(nx)&&!isNaN(ny)) return (nx-ny)*dir;
+      return x.localeCompare(y,'ru')*dir;
+    });
+  } else {
+    list.sort(function(a,b){
+      return (grpOrd(a.group)-grpOrd(b.group)) || (a.group||'я').localeCompare(b.group||'я')
+        || a.equip.localeCompare(b.equip) || a.model.localeCompare(b.model);
+    });
+  }
+  var cols=visCols();
+  var selN=Object.keys(SEL).length;
+  var h='<div class="row" style="margin-bottom:6px">'
+    +'<span class="muted" style="font-size:12px">товаров: '+list.length+'</span>'
+    +'<span style="position:relative;display:inline-block">'
+    +'<button class="btn sm" onclick="var m=$(\'colsMenu\');m.style.display=m.style.display===\'none\'?\'\':\'none\'">⚙ колонки</button>'
+    +'<span id="colsMenu" style="display:none;position:absolute;top:30px;left:0;background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.15);padding:6px;z-index:20;min-width:170px">'
+    +REGCOLS.map(function(c){ return '<label style="display:flex;gap:6px;align-items:center;padding:3px 6px;cursor:pointer;font-size:13px"><input type="checkbox" style="width:auto" '+(HIDE[c.k]?'':'checked')+' onchange="colTgl(\''+c.k+'\')">'+esc(c.t)+'</label>'; }).join('')
+    +'</span></span>'
+    +'<span class="muted" style="font-size:11.5px">двойной клик по ячейке — правка · клик по артикулу — карточка · клик по заголовку — сортировка</span>'
+    +'</div>';
+  h+='<div class="card tbwrap" style="padding:0"><table class="regtbl"><tr>'
+    +'<th style="cursor:default"><input type="checkbox" style="width:14px;height:14px" '+(selN&&selN>=list.length?'checked':'')+' onclick="selAll(this.checked)" title="выбрать все видимые"></th>'
+    +cols.map(function(c){
+      var ar=(SORT.k===c.k)?(SORT.dir===1?' ▲':' ▼'):'';
+      return '<th onclick="regSortBy(\''+c.k+'\')">'+esc(c.t)+ar+'</th>';
+    }).join('')+'</tr>';
+  var cur=null;
+  list.forEach(function(p){
+    var g=p.group||'(без группы)';
+    if(!sorted && g!==cur){ cur=g;
+      var gi=grpInfo(g)||{};
+      var gst=(gi.bg?'background:'+gi.bg+';':'background:var(--grid);')+(gi.fg?'color:'+gi.fg+';':'');
+      h+='<tr class="grph" onclick="CLOSED[\''+jsq(g)+'\']=!CLOSED[\''+jsq(g)+'\'];renderBody()"><td colspan="'+(cols.length+1)+'" style="'+gst+'">'+(CLOSED[g]?'▸':'▾')+' '+esc(g)+'</td></tr>';
+    }
+    if(!sorted && CLOSED[g]) return;
+    var sq=jsq(p.sku);
+    h+='<tr class="item">'
+      +'<td><input type="checkbox" style="width:14px;height:14px" '+(SEL[p.sku]?'checked':'')+' onclick="selTgl(\''+sq+'\',this.checked)"></td>'
+      +cols.map(function(c){
+        if(c.k==='sku') return '<td class="sku" onclick="openCard(\''+sq+'\')" title="открыть карточку">'+esc(p.sku)
+          +(p.src==='хаб'?' <span class="reghub">хаб</span>':'')
+          +(p.folder?' <a href="'+esc(p.folder)+'" target="_blank" onclick="event.stopPropagation()" title="папка на Drive">📁</a>':'')+'</td>';
+        var v=esc(String(p[c.k]||'').trim());
+        if(c.edit) return '<td class="'+(c.cls||'')+' rege" ondblclick="cellEdit(this,\''+sq+'\',\''+c.k+'\')" title="двойной клик — править">'+v+'</td>';
+        return '<td class="'+(c.cls||'')+'" onclick="openCard(\''+sq+'\')">'+v+'</td>';
+      }).join('')+'</tr>';
+  });
+  h+='</table></div>';
+  if(!list.length) h='<div class="center">Ничего не найдено</div>';
+  if(selN){
+    h+='<div id="massbar">выбрано: <b>'+selN+'</b>'
+      +'<span>перенести в группу</span><select id="massGrp" style="width:auto">'+GF.map(function(g){return '<option>'+esc(g.name)+'</option>';}).join('')+'</select>'
+      +'<button class="btn pri sm" onclick="massMove()">Применить</button>'
+      +'<button class="btn sm" onclick="SEL={};renderBody()">снять выделение</button></div>';
+  }
+  return h;
+}
+function colTgl(k){
+  if(HIDE[k]) delete HIDE[k]; else HIDE[k]=1;
+  try{ localStorage.setItem('twRegHide',JSON.stringify(HIDE)); }catch(e){}
+  renderBody();
+}
+function selTgl(sku,on){ if(on) SEL[sku]=1; else delete SEL[sku]; renderBody(); }
+function selAll(on){
+  SEL={};
+  if(on) regFilter().forEach(function(p){ SEL[p.sku]=1; });
+  renderBody();
+}
+function massMove(){
+  var grp=$('massGrp').value, skus=Object.keys(SEL);
+  if(!skus.length) return;
+  run(apiPost({vapi:'prodsetgroup',skus:skus.join('|'),group:grp}), function(r){
+    skus.forEach(function(s){ var p=prodBy(s); if(p) p.group=grp; });
+    SEL={};
+    msg('✓ перенесено в «'+esc(grp)+'»: '+r.moved,1);
+    renderBody();
+  });
+}
+// инлайн-правка ячейки: Enter/уход = сохранить, Esc = отмена
+function cellEdit(td,sku,key){
+  if(td.getAttribute('data-e')||BUSY) return;
+  var p=prodBy(sku); if(!p) return;
+  td.setAttribute('data-e','1');
+  var old=String(p[key]||'');
+  td.innerHTML='<input value="'+esc(old)+'" style="min-width:70px;padding:1px 5px;font-size:12px;border-color:var(--accent)">';
+  var inp=td.firstChild; inp.focus(); inp.select();
+  var done=false;
+  function fin(saveIt){
+    if(done) return; done=true;
+    var val=inp.value.trim();
+    td.removeAttribute('data-e');
+    if(!saveIt||val===old.trim()){ td.textContent=old; return; }
+    td.textContent=val; td.style.background='var(--amber-bg)';
+    var d={}; FIELDS.forEach(function(k){ d[k]=String(p[k]||''); });
+    d.palNet=String(p.palNet||''); d[key]=val;
+    apiPost({vapi:'productsave',data:JSON.stringify(d),oldsku:p.sku}).then(function(r){
+      if(!r||!r.ok){ td.textContent=old; td.style.background='var(--red-bg)'; msg('⚠ не сохранилось: '+esc((r&&r.error)||'ошибка')); return; }
+      p[key]=val; td.style.background='var(--green-bg)';
+      setTimeout(function(){ td.style.background=''; },900);
+    }).catch(function(e){ td.textContent=old; td.style.background='var(--red-bg)'; msg('⚠ '+esc(e.message||e)); });
+  }
+  inp.onkeydown=function(ev){ if(ev.key==='Enter') fin(true); if(ev.key==='Escape') fin(false); };
+  inp.onblur=function(){ fin(true); };
+}
+
+/* ══════ 🗂 ГРУППЫ ══════ */
+function grpView(){
+  if(!GF.length) return '<div class="center">Групп нет — добавьте первую ниже</div>'+grpAddRow();
+  var cnt={}; P.forEach(function(p){ cnt[p.group]=(cnt[p.group]||0)+1; });
+  var h='<div class="muted" style="font-size:12px;margin-bottom:8px">Перетащите карточку (или: тап по группе → тап по месту). Клик по имени — переименовать. Порядок используется в реестре и выгрузке.</div>';
+  h+=GF.map(function(g,i){
+    var st=(g.bg?'background:'+g.bg+';':'background:var(--grid);')+(g.fg?'color:'+g.fg+';':'');
+    return '<div class="gcard'+(GSEL===g.name?' sel':'')+(GSEL&&GSEL!==g.name?' target':'')+'" draggable="true"'
+      +' ondragstart="gDrag(event,\''+jsq(g.name)+'\')"'
+      +' ondragover="event.preventDefault();this.classList.add(\'target\')" ondragleave="this.classList.remove(\'target\')"'
+      +' ondrop="gDrop(event,'+i+')" onclick="gTap(\''+jsq(g.name)+'\','+i+')">'
+      +'<span class="muted" style="cursor:grab">⠿</span>'
+      +'<button class="btn sm" onclick="event.stopPropagation();gMove('+i+',-1)" '+(i===0?'disabled':'')+'>↑</button>'
+      +'<button class="btn sm" onclick="event.stopPropagation();gMove('+i+',1)" '+(i===GF.length-1?'disabled':'')+'>↓</button>'
+      +'<span class="gname" id="gn'+i+'" style="'+st+'" onclick="event.stopPropagation();gRename('+i+')" title="клик — переименовать">'+esc(g.name)+'</span>'
+      +'<span class="cnt">'+(cnt[g.name]||0)+' тов.</span>'
+      +'<input type="color" value="'+esc(g.fg||'#333333')+'" title="цвет текста" onclick="event.stopPropagation()" onchange="gColor('+i+',this.value,null)">'
+      +'<input type="color" value="'+esc(g.bg||'#eeeeee')+'" title="цвет фона" onclick="event.stopPropagation()" onchange="gColor('+i+',null,this.value)">'
+      +((cnt[g.name]||0)===0?'<button class="btn danger sm" onclick="event.stopPropagation();gDel('+i+')">🗑</button>':'')
+      +'</div>';
+  }).join('');
+  h+=grpAddRow();
+  return h;
+}
+function grpAddRow(){
+  return '<div class="row" style="margin-top:10px;max-width:480px">'
+    +'<input id="gNew" placeholder="новая группа, например TW: Новинки" style="flex:1" onkeydown="if(event.key===\'Enter\')gAdd()">'
+    +'<button class="btn pri" onclick="gAdd()">＋ Добавить</button></div>';
+}
+function gDrag(ev,name){ GSEL=name; try{ ev.dataTransfer.setData('text/plain',name); }catch(e){} }
+function gDrop(ev,toIdx){ ev.preventDefault(); var name=''; try{ name=ev.dataTransfer.getData('text/plain'); }catch(e){}
+  if(!name) name=GSEL; GSEL=''; if(name) gPlace(name,toIdx); }
+function gTap(name,i){
+  if(!GSEL){ GSEL=name; renderBody(); return; }
+  if(GSEL===name){ GSEL=''; renderBody(); return; }
+  var moving=GSEL; GSEL=''; gPlace(moving,i);
+}
+// вставить группу на позицию toIdx и сохранить весь порядок одним вызовом
+function gPlace(name,toIdx){
+  var from=-1; GF.forEach(function(g,i){ if(g.name===name) from=i; });
+  if(from<0||from===toIdx){ renderBody(); return; }
+  var g=GF.splice(from,1)[0];
+  GF.splice(toIdx,0,g);
+  renderBody();
+  run(apiPost({vapi:'prodgrouporder',names:GF.map(function(x){return x.name;}).join('|')}), function(){
+    msg('✓ порядок сохранён',1);
+  });
+}
+function gMove(i,dir){
+  var j=i+dir; if(j<0||j>=GF.length) return;
+  var t=GF[i]; GF[i]=GF[j]; GF[j]=t;
+  renderBody();
+  run(apiPost({vapi:'prodgrouporder',names:GF.map(function(x){return x.name;}).join('|')}), function(){ msg('✓ порядок сохранён',1); });
+}
+function gRename(i){
+  var g=GF[i], span=$('gn'+i); if(!span||span.getAttribute('data-e')) return;
+  span.setAttribute('data-e','1');
+  span.innerHTML='<input value="'+esc(g.name)+'" style="min-width:160px;padding:2px 6px">';
+  var inp=span.firstChild; inp.focus(); inp.select();
+  var done=false;
+  function fin(saveIt){
+    if(done) return; done=true;
+    var val=inp.value.trim();
+    span.removeAttribute('data-e');
+    if(!saveIt||!val||val===g.name){ renderBody(); return; }
+    run(api({vapi:'prodgroupsave',name:val,old:g.name}), function(r){
+      var oldName=g.name;
+      g.name=val;
+      P.forEach(function(p){ if(p.group===oldName) p.group=val; });
+      msg('✓ группа переименована'+(r.renamedProducts?' (товаров: '+r.renamedProducts+')':''),1);
+      fillGrpFilter(); renderBody();
+    });
+    renderBody();
+  }
+  inp.onkeydown=function(ev){ if(ev.key==='Enter') fin(true); if(ev.key==='Escape') fin(false); };
+  inp.onblur=function(){ fin(inp.value.trim()!==g.name); };
+}
+function gColor(i,fg,bg){
+  var g=GF[i];
+  run(api({vapi:'prodgroupsave',name:g.name,old:g.name,fg:fg||g.fg||'',bg:bg||g.bg||''}), function(){
+    if(fg) g.fg=fg; if(bg) g.bg=bg;
+    msg('✓ цвет сохранён',1); renderBody();
+  });
+}
+function gAdd(){
+  var v=$('gNew').value.trim(); if(!v) return;
+  run(api({vapi:'prodgroupsave',name:v,old:''}), function(){
+    GF.push({name:v,fg:'',bg:''});
+    msg('✓ группа «'+esc(v)+'» добавлена',1);
+    fillGrpFilter(); renderBody();
+  });
+}
+function gDel(i){
+  var g=GF[i];
+  msg('Удалить группу «'+esc(g.name)+'»? <button class="btn danger sm" onclick="gDelDo('+i+')">Удалить</button><button class="btn sm" onclick="msgOff()">Отмена</button>');
+}
+function gDelDo(i){
+  msgOff();
+  var g=GF[i];
+  run(api({vapi:'prodgroupdel',name:g.name}), function(){
+    GF.splice(i,1);
+    msg('✓ группа удалена',1);
+    fillGrpFilter(); renderBody();
+  });
+}
+
+/* ══════ ⚙️ АРТИКУЛ (настройки кодов) ══════ */
+function artView(){
+  var h='<div class="muted" style="font-size:12px;margin-bottom:8px">Буквенные коды, из которых собирается артикул. Клик по чипу — править значение, ✕ — удалить. Для BusyKids артикул выдаёт партнёр — вводится вручную.</div>';
+  ARTTYPES.forEach(function(t){
+    var list=codesOf(t[0]);
+    h+='<div class="card"><b>'+esc(t[1])+'</b> <span class="muted" style="font-size:12px">('+list.length+')</span><div style="margin-top:6px">'
+      +list.map(function(c){
+        return '<span class="chipx" id="cx_'+t[0]+'_'+esc(c.code)+'" onclick="codeEdit(\''+t[0]+'\',\''+jsq(c.code)+'\')"><b>'+esc(c.code)+'</b> '+esc(c.value)
+          +'<span class="x" onclick="event.stopPropagation();codeDel(\''+t[0]+'\',\''+jsq(c.code)+'\')">✕</span></span>';
+      }).join('')
+      +'</div><div class="kbadd">'
+      +'<input id="nc_'+t[0]+'" placeholder="КОД" onkeydown="if(event.key===\'Enter\')codeAdd(\''+t[0]+'\')">'
+      +'<input id="nv_'+t[0]+'" placeholder="значение" onkeydown="if(event.key===\'Enter\')codeAdd(\''+t[0]+'\')">'
+      +'<button class="btn sm" onclick="codeAdd(\''+t[0]+'\')">＋</button></div></div>';
+  });
+  // связка бренд ↔ оборудование
+  var be={}; codesOf('brandEquip').forEach(function(c){ be[c.code]=String(c.value||'').split(',').filter(Boolean); });
+  h+='<div class="card"><b>Какое оборудование у какого бренда</b><div class="muted" style="font-size:12px;margin:3px 0 8px">Конструктор предлагает бренду только его оборудование.</div>';
+  codesOf('brand').forEach(function(b){
+    var mine=be[b.code]||[];
+    h+='<div style="margin:8px 0"><b style="font-family:ui-monospace,monospace">'+esc(b.code)+'</b> · '+esc(b.value)+'<div style="margin-top:4px">'
+      +codesOf('equip').map(function(e){
+        var on=mine.indexOf(e.code)>=0;
+        return '<label style="display:inline-flex;gap:4px;align-items:center;margin:2px 10px 2px 0;font-size:12.5px;cursor:pointer">'
+          +'<input type="checkbox" style="width:14px;height:14px" '+(on?'checked':'')+' onchange="beTgl(\''+jsq(b.code)+'\',\''+jsq(e.code)+'\',this.checked)">'
+          +'<b style="font-family:ui-monospace,monospace">'+esc(e.code)+'</b></label>';
+      }).join('')+'</div></div>';
+  });
+  h+='</div>';
+  // живой пример сборки
+  h+='<div class="card"><b>Пример сборки артикула</b><div class="grid" style="margin-top:8px">'+artSelects()+'</div>'
+    +'<div style="margin-top:10px;font-family:ui-monospace,Menlo,monospace;font-size:16px;font-weight:700" id="artPrev">'+esc(artPreview()||'—')+'</div></div>';
+  return h;
+}
+function artSelects(prefix){
+  prefix=prefix||'';
+  var be={}; codesOf('brandEquip').forEach(function(c){ be[c.code]=String(c.value||'').split(',').filter(Boolean); });
+  return ARTPARTS.map(function(p2){
+    var list=codesOf(p2[0]);
+    if(p2[0]==='equip' && ARTSEL.brand && be[ARTSEL.brand] && be[ARTSEL.brand].length)
+      list=list.filter(function(c){ return be[ARTSEL.brand].indexOf(c.code)>=0; });
+    return '<div><label class="f">'+esc(p2[1])+'</label><select onchange="ARTSEL[\''+p2[0]+'\']=this.value;artRefresh(\''+prefix+'\')">'
+      +'<option value="">—</option>'
+      +list.map(function(c){ return '<option value="'+esc(c.code)+'"'+(ARTSEL[p2[0]]===c.code?' selected':'')+'>'+esc(c.code)+' · '+esc(c.value)+'</option>'; }).join('')
+      +'</select></div>';
+  }).join('');
+}
+function artPreview(){ return ARTPARTS.map(function(p){return ARTSEL[p[0]]||'';}).filter(Boolean).join(' '); }
+function artRefresh(prefix){
+  if(prefix==='card'){ var box=$('cardArt'); if(box){ box.innerHTML=artSelects('card'); }
+    var pv=$('cardArtPrev'); if(pv) pv.textContent=artPreview()||'—'; return; }
+  renderBody();
+}
+function codeAdd(t){
+  var c=$('nc_'+t).value.trim(), v=$('nv_'+t).value.trim();
+  if(!c) return;
+  run(api({vapi:'artcodesave',type:t,code:c,value:v,old:''}), function(){
+    CODES.push({type:t,code:c,value:v});
+    msg('✓ код '+esc(c)+' добавлен',1); renderBody();
+  });
+}
+function codeEdit(t,code){
+  var cur=CODES.filter(function(x){return x.type===t&&x.code===code;})[0]; if(!cur) return;
+  var chip=$('cx_'+t+'_'+code); if(!chip||chip.getAttribute('data-e')) return;
+  chip.setAttribute('data-e','1');
+  chip.innerHTML='<b>'+esc(code)+'</b> <input value="'+esc(cur.value)+'" style="width:150px;padding:1px 6px;font-size:12px">';
+  var inp=chip.querySelector('input'); inp.focus(); inp.select();
+  var done=false;
+  function fin(saveIt){
+    if(done) return; done=true;
+    var val=inp.value.trim();
+    chip.removeAttribute('data-e');
+    if(!saveIt||val===cur.value){ renderBody(); return; }
+    run(api({vapi:'artcodesave',type:t,code:code,value:val,old:code}), function(){
+      cur.value=val; msg('✓ сохранено',1); renderBody();
+    });
+  }
+  inp.onkeydown=function(ev){ if(ev.key==='Enter') fin(true); if(ev.key==='Escape') fin(false); };
+  inp.onblur=function(){ fin(true); };
+  event.stopPropagation();
+}
+function codeDel(t,code){
+  msg('Удалить код <b>'+esc(code)+'</b>? <button class="btn danger sm" onclick="codeDelDo(\''+t+'\',\''+jsq(code)+'\')">Удалить</button><button class="btn sm" onclick="msgOff()">Отмена</button>');
+}
+function codeDelDo(t,code){
+  msgOff();
+  run(api({vapi:'artcodedel',type:t,code:code}), function(){
+    CODES=CODES.filter(function(x){return !(x.type===t&&x.code===code);});
+    msg('✓ код удалён',1); renderBody();
+  });
+}
+function beTgl(brand,equip,on){
+  var cur=CODES.filter(function(x){return x.type==='brandEquip'&&x.code===brand;})[0];
+  var list=cur?String(cur.value||'').split(',').filter(Boolean):[];
+  if(on){ if(list.indexOf(equip)<0) list.push(equip); } else { list=list.filter(function(x){return x!==equip;}); }
+  var csv=list.join(',');
+  run(api({vapi:'artcodesave',type:'brandEquip',code:brand,value:csv,old:brand}), function(){
+    if(cur) cur.value=csv; else CODES.push({type:'brandEquip',code:brand,value:csv});
+    msg('✓ связка сохранена',1); renderBody();
+  });
+}
+
+/* ══════ 📈 СВОДКА ══════ */
+function statView(){
+  var byG={};
+  P.forEach(function(p){
+    var g=p.group||'(без группы)';
+    var o=byG[g]||(byG[g]={n:0,comp:0,asm:0,box:0,fold:0});
+    var ci=CATIDX[pkey(p.sku)];
+    o.n++;
+    if(ci&&ci.hasComp) o.comp++;
+    if(ci&&ci.assembled) o.asm++;
+    if(String(p.boxSize||'').trim()) o.box++;
+    if(String(p.folder||'').trim()) o.fold++;
+  });
+  var names=Object.keys(byG).sort(function(a,b){ return (grpOrd(a)-grpOrd(b))||a.localeCompare(b); });
+  var tot={n:0,comp:0,asm:0,box:0,fold:0};
+  var rows=names.map(function(g){
+    var o=byG[g]; Object.keys(tot).forEach(function(k){ tot[k]+=o[k]; });
+    var gi=grpInfo(g)||{};
+    var st=(gi.bg?'background:'+gi.bg+';':'')+(gi.fg?'color:'+gi.fg+';':'');
+    return '<tr><td><span style="'+st+'padding:2px 9px;border-radius:8px;font-weight:700">'+esc(g)+'</span></td>'
+      +'<td class="num">'+o.n+'</td><td class="num">'+o.comp+'</td><td class="num">'+o.asm+'</td><td class="num">'+o.box+'</td><td class="num">'+o.fold+'</td></tr>';
+  }).join('');
+  return '<div class="card tbwrap"><table><tr><th>Группа</th><th class="num">Товаров</th><th class="num">Состав задан</th><th class="num">Собрано</th><th class="num">Логистика</th><th class="num">Папка</th></tr>'
+    +rows+'<tr style="font-weight:700"><td>ИТОГО</td><td class="num">'+tot.n+'</td><td class="num">'+tot.comp+'</td><td class="num">'+tot.asm+'</td><td class="num">'+tot.box+'</td><td class="num">'+tot.fold+'</td></tr></table></div>';
+}
+
+/* ══════ КАРТОЧКА ТОВАРА (полноэкранно, паттерн «Кадров») ══════ */
+function openCard(sku){ CARD=sku; ARTSEL={}; PENDCONF=null; renderTabs(); renderBody(); window.scrollTo(0,0); }
+function fld(id,label,val,ph,wide){
+  return '<div'+(wide?' style="grid-column:1/-1"':'')+'><label class="f">'+label+'</label><input id="c_'+id+'" value="'+esc(val||'')+'"'+(ph?' placeholder="'+esc(ph)+'"':'')+'></div>';
+}
+function cardView(){
+  var p=CARD?prodBy(CARD):null;
+  var isNew=!p;
+  var d=p||{};
+  var grpOpts='<option value="">—</option>'+GF.map(function(g){
+    return '<option'+(d.group===g.name?' selected':'')+'>'+esc(g.name)+'</option>'; }).join('');
+  var h='<div class="row" style="margin-bottom:8px"><span class="back" onclick="CARD=null;renderTabs();renderBody()">← к реестру</span>'
+    +'<b style="font-size:16px">'+(isNew?'Новый товар':esc(d.sku))+'</b>'
+    +(d.src==='хаб'?'<span class="reghub">хаб</span>':'')
+    +'</div>';
+  h+='<div class="card"><b>Основное</b><div class="grid" style="margin-top:8px">'
+    +'<div><label class="f">Артикул *</label><div class="row" style="gap:4px"><input id="c_sku" value="'+esc(d.sku||'')+'" placeholder="BKBS00A01 или соберите из кодов">'
+    +'<button class="btn sm" onclick="cardArtTgl()" title="собрать артикул из кодов">🔧</button></div>'
+    +'<div id="cardArtBox" style="display:none;margin-top:8px;border:1px dashed var(--line);border-radius:10px;padding:10px">'
+    +'<div class="grid" id="cardArt"></div>'
+    +'<div class="row" style="margin-top:8px"><b id="cardArtPrev" style="font-family:ui-monospace,monospace">—</b>'
+    +'<button class="btn sm pri" onclick="var v=artPreview();if(v)$(\'c_sku\').value=v;cardArtTgl()">применить</button></div></div></div>'
+    +fld('brand','Бренд',d.brand,'BusyKids / Tigerwood')
+    +fld('equip','Оборудование *',d.equip)
+    +fld('model','Модель *',d.model)
+    +fld('size','Размер',d.size)
+    +fld('color','Расцветка',d.color)
+    +fld('kit','Комплектация',d.kit)
+    +'<div><label class="f">Группа</label><select id="c_group">'+grpOpts+'</select></div>'
+    +'</div></div>';
+  h+='<div class="card"><b>Наименования</b><div class="grid" style="margin-top:8px">'
+    +fld('name','Наименование',d.name,'пусто = как модель',1)
+    +fld('nameEn','Наименование для документов',d.nameEn,'как товар записан в отгрузочных документах (граница)',1)
+    +fld('hs','HS-код',d.hs,'пусто = подставится сам')
+    +fld('warranty','Гарантия, мес',d.warranty)
+    +'</div></div>';
+  h+='<div class="card"><b>📦 Упаковка и логистика</b><div class="grid" style="margin-top:8px">'
+    +fld('boxSize','Размер коробки',d.boxSize,'630*440*70')
+    +fld('boxW','Вес коробки, кг',d.boxW)
+    +fld('palL','Паллета: длина',d.palL)
+    +fld('palW','Паллета: ширина',d.palW)
+    +fld('palH','Паллета: высота',d.palH)
+    +fld('palQty','На паллете, шт',d.palQty)
+    +fld('palNet','Паллета: нетто, кг',d.palNet)
+    +fld('palGross','Паллета: брутто, кг',d.palGross)
+    +'</div></div>';
+  h+='<div class="row">'
+    +'<button class="btn pri" onclick="cardSave()">💾 Сохранить</button>'
+    +(!isNew?'<button class="btn" onclick="cardFolder()">'+(d.folder?'📁 Папка':'📁 Создать папку')+'</button>':'')
+    +(!isNew?'<button class="btn" onclick="eqRenameAsk()" title="переименовать оборудование везде: товары, составы, заказы, выработка, склад">✎ Оборудование</button>':'')
+    +(!isNew?'<button class="btn danger" onclick="cardDelAsk()">🗑 Удалить</button>':'')
+    +'</div>';
+  if(!isNew){
+    var ci=CATIDX[pkey(d.sku)];
+    h+='<div class="muted" style="margin-top:8px;font-size:12px">'
+      +(ci&&ci.hasComp?'состав задан · ':'состава нет · ')
+      +(ci&&ci.assembled?'✔ собрано (директор)':'не отмечен собранным')
+      +' — состав правится в «Каталоге изделий»</div>';
+  }
+  return h;
+}
+function cardArtTgl(){
+  var b=$('cardArtBox'); if(!b) return;
+  if(b.style.display==='none'){ b.style.display=''; $('cardArt').innerHTML=artSelects('card'); }
+  else b.style.display='none';
+}
+function cardCollect(){
+  var d={};
+  FIELDS.forEach(function(k){ var e=$('c_'+k); if(e) d[k]=e.value.trim(); });
+  d.group=$('c_group')?$('c_group').value:'';
+  return d;
+}
+function cardSave(){
+  var d=cardCollect();
+  var oldSku=CARD||'';
+  if(!d.sku){ msg('⚠ артикул обязателен'); return; }
+  if(!d.equip||!d.model){ msg('⚠ нужны оборудование и модель'); return; }
+  if(oldSku && pkey(oldSku)!==pkey(d.sku)) twSay('Каскад по системе: составы, заказы, продажи, склад…');
+  run(apiPost({vapi:'productsave',data:JSON.stringify(d),oldsku:oldSku}), function(r){
+    var casc='';
+    if(r.cascade){ var n=0; Object.keys(r.cascade).forEach(function(k){ n+=Number(r.cascade[k])||0; });
+      if(n) casc=' · артикул обновлён в связанных листах: '+n+' строк'; }
+    msg('✓ сохранено'+(r.created?' (создан)':'')+casc,1);
+    CARD=null;
+    load();
+  });
+}
+function cardFolder(){
+  var p=prodBy(CARD); if(!p) return;
+  if(p.folder){ window.open(p.folder,'_blank'); return; }
+  msg('Папки у товара нет. Создать на Drive рядом с папками соседей по «'+esc(p.equip)+'»? '
+    +'<button class="btn pri sm" onclick="cardFolderDo()">Создать</button><button class="btn sm" onclick="msgOff()">Отмена</button>');
+}
+function cardFolderDo(){
+  msgOff();
+  var p=prodBy(CARD); if(!p) return;
+  twSay('Создаю папку на Drive…');
+  run(api({vapi:'productfolder',sku:p.sku,create:1}), function(r){
+    p.folder=r.url;
+    msg('✓ папка создана — <a href="'+esc(r.url)+'" target="_blank">открыть</a>',1);
+    renderBody();
+  });
+}
+function eqRenameAsk(){
+  var p=prodBy(CARD); if(!p) return;
+  msg('Новое название оборудования вместо «'+esc(p.equip)+'» (поменяется везде): '
+    +'<input id="eqNew" value="'+esc(p.equip)+'" style="width:240px;display:inline-block;margin:0 6px">'
+    +'<button class="btn pri sm" onclick="eqRenameDry()">Проверить</button><button class="btn sm" onclick="msgOff()">Отмена</button>');
+  var e=$('eqNew'); if(e){ e.focus(); e.select(); }
+}
+function eqRenameDry(){
+  var p=prodBy(CARD), nn=$('eqNew')?$('eqNew').value.trim():'';
+  if(!p||!nn||nn===p.equip){ msgOff(); return; }
+  run(api({vapi:'renameequip',old:p.equip,name:nn,dry:1}), function(d){
+    var w=d.will||{};
+    msg('«'+esc(p.equip)+'» → «'+esc(nn)+'». Будет обновлено: товары '+(w.products||0)+', составы '+(w.comp||0)
+      +', операции заказов '+(w.ops||0)+', позиции '+(w.items||0)+', продажи '+(w.sale||0)+', склад '+(w.fg||0)+'. '
+      +'<button class="btn danger sm" onclick="eqRenameDo(\''+jsq(p.equip)+'\',\''+jsq(nn)+'\')">Переименовать везде</button>'
+      +'<button class="btn sm" onclick="msgOff()">Отмена</button>');
+  });
+}
+function eqRenameDo(oldName,newName){
+  msgOff();
+  twSay('Переименовываю по всей системе…');
+  run(api({vapi:'renameequip',old:oldName,name:newName}), function(){
+    msg('✓ оборудование переименовано везде',1);
+    CARD=null; load();
+  });
+}
+function cardDelAsk(){
+  var p=prodBy(CARD); if(!p) return;
+  msg('Удалить товар «'+esc(p.sku)+'» из системы? '
+    +'<button class="btn danger sm" onclick="cardDelDo()">Удалить</button><button class="btn sm" onclick="msgOff()">Отмена</button>');
+}
+function cardDelDo(){
+  msgOff();
+  var p=prodBy(CARD); if(!p) return;
+  run(api({vapi:'productdel',sku:p.sku}), function(){
+    msg('✓ товар удалён',1);
+    CARD=null; load();
+  });
+}
+
+/* ══ индикаторы (полоска + заслонка) — паттерн planning.html ══ */
+var TWL=0, TWCLICK=0, TWTMR=0;
+function twLoadOn(wait){
+  TWL++;
+  var b=$('twload'); if(b) b.style.display='block';
+  if(wait){ var w=$('twwait'); if(w) w.style.display='flex';
+    clearTimeout(TWTMR);
+    TWTMR=setTimeout(function(){
+      var h=$('twwt'); if(h) h.textContent='Ответа всё нет';
+      var s=document.querySelector('#twwait .wh'); if(s) s.textContent='связь медленная — нажмите, чтобы закрыть';
+      var ww=$('twwait'); if(ww) ww.onclick=function(){ TWL=0; twLoadOff(); };
+    },30000);
+  }
+}
+function twLoadOff(){
+  TWL=Math.max(0,TWL-1); if(TWL) return;
+  clearTimeout(TWTMR);
+  var b=$('twload'); if(b) b.style.display='none';
+  var w=$('twwait'); if(w){ w.style.display='none'; w.onclick=null; }
+  var h=$('twwt'); if(h) h.textContent='Отправляю…';
+  var s=document.querySelector('#twwait .wh'); if(s) s.textContent='идёт обмен с сервером — не нажимайте';
+}
+function twSay(t){ var e=$('twwt'); if(e&&t) e.textContent=t; }
+document.addEventListener('click',function(e){
+  var n=e.target;
+  while(n&&n!==document.body){ if(n.tagName==='BUTTON'){ TWCLICK=Date.now(); return; } n=n.parentNode; }
+},true);
+(function(){
+  var _api=api, _post=apiPost;
+  var wrap=function(fn){ return function(p){
+    var mine=(TWCLICK&&(Date.now()-TWCLICK)<20000); if(mine) TWCLICK=0;
+    twLoadOn(mine);
+    return fn(p).then(function(r){ twLoadOff(); return r; }, function(e){ twLoadOff(); throw e; });
+  }; };
+  api=wrap(_api); apiPost=wrap(_post);
+})();
+
+load();
+(function(){
+  try{ var m=/[?&]twsec=([^&]+)/.exec(location.search); window.top.postMessage({tw:'hello',sec:m?decodeURIComponent(m[1]):''},'*'); }catch(e){}
+  window.addEventListener('message',function(e){ var d=e&&e.data; if(d&&d.tw==='refresh'){ try{ if(!CARD&&!BUSY) load(); }catch(err){} } });
+})();
+</script>
+</body>
+</html>
