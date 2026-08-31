@@ -344,6 +344,7 @@ function regView(){
     +'<span id="colsMenu" style="display:none;position:absolute;top:30px;left:0;background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.15);padding:6px;z-index:20;min-width:170px">'
     +REGCOLS.map(function(c){ return '<label style="display:flex;gap:6px;align-items:center;padding:3px 6px;cursor:pointer;font-size:13px"><input type="checkbox" style="width:auto" '+(HIDE[c.k]?'':'checked')+' onchange="colTgl(\''+c.k+'\')">'+esc(c.t)+'</label>'; }).join('')
     +'</span></span>'
+    +(!sorted?'<button class="btn sm" onclick="collapseAll()" title="сжать весь каталог до заголовков">⊟ свернуть всё</button><button class="btn sm" onclick="CLOSED={};renderBody()" title="раскрыть все группы и оборудование">⊞ развернуть всё</button>':'')
     +'<span class="muted" style="font-size:11.5px">двойной клик по ячейке — правка · клик по артикулу — карточка · клик по заголовку — сортировка</span>'
     +'</div>';
   h+='<div class="card tbwrap" style="padding:0"><table class="regtbl"><tr>'
@@ -356,14 +357,15 @@ function regView(){
   var gStat={}, eStat={};
   if(!sorted) list.forEach(function(p){
     var g0=(GRPBY==='equip')?(p.equip||'(без оборудования)'):(p.group||'(без группы)');
-    var gs=gStat[g0]||(gStat[g0]={n:0,c:0,cn:0}); gs.n++; if(p._cost>0){gs.c+=p._cost;gs.cn++;}
+    var gs=gStat[g0]||(gStat[g0]={n:0,c:0,cn:0,a:0}); gs.n++; if(p._cost>0){gs.c+=p._cost;gs.cn++;} if(p._asm)gs.a++;
     if(GRPBY==='group'){
       var ek=g0+'▸'+(p.equip||'—');
-      var es=eStat[ek]||(eStat[ek]={n:0,c:0,cn:0}); es.n++; if(p._cost>0){es.c+=p._cost;es.cn++;}
+      var es=eStat[ek]||(eStat[ek]={n:0,c:0,cn:0,a:0}); es.n++; if(p._cost>0){es.c+=p._cost;es.cn++;} if(p._asm)es.a++;
     }
   });
   function hdrStat(st){ if(!st) return '';
-    return '<span class="gsub">'+st.n+' тов.'+(st.cn?' · средн. себест. '+(st.c/st.cn).toLocaleString('ru-RU',{maximumFractionDigits:2})+' р.':'')+'</span>'; }
+    return '<span class="gsub">'+st.n+' тов.'+(st.a?' · <span style="color:var(--green);font-weight:700">✔ собрано '+st.a+'/'+st.n+'</span>':'')
+      +(st.cn?' · средн. себест. '+(st.c/st.cn).toLocaleString('ru-RU',{maximumFractionDigits:2})+' р.':'')+'</span>'; }
   var open=!!Q.trim();   // при поиске всё раскрыто, как в старом каталоге
   var cur=null, cur2=null;
   list.forEach(function(p){
@@ -387,6 +389,7 @@ function regView(){
       +'<td><input type="checkbox" style="width:14px;height:14px" '+(SEL[p.sku]?'checked':'')+' onclick="selTgl(\''+sq+'\',this.checked)"></td>'
       +cols.map(function(c){
         if(c.k==='sku') return '<td class="sku" onclick="openCard(\''+sq+'\')" title="открыть карточку">'+esc(p.sku)
+          +(p._asm?' <span style="color:var(--green);font-weight:900" title="товар собран — подтверждено директором">✔</span>':'')
           +(p.src==='хаб'?' <span class="reghub">хаб</span>':'')
           +(p.folder?' <a href="'+esc(p.folder)+'" target="_blank" onclick="event.stopPropagation()" title="папка на Drive">📁</a>':'')+'</td>';
         if(c.k==='_comp') return '<td class="dim" onclick="openCard(\''+sq+'\')">'+(p._comp?esc(p._comp):'<span class="pill p-none">⚠ нет</span>')+'</td>';
@@ -410,6 +413,15 @@ function regView(){
       +'<button class="btn sm" onclick="SEL={};renderBody()">снять выделение</button></div>';
   }
   return h;
+}
+function collapseAll(){
+  CLOSED={};
+  regFilter().forEach(function(p){
+    var g=(GRPBY==='equip')?(p.equip||'(без оборудования)'):(p.group||'(без группы)');
+    CLOSED[g]=true;
+    if(GRPBY==='group') CLOSED[g+'▸'+(p.equip||'—')]=true;
+  });
+  renderBody();
 }
 function colTgl(k){
   if(HIDE[k]) delete HIDE[k]; else HIDE[k]=1;
