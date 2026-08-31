@@ -149,21 +149,54 @@ function grpInfo(name){ for(var i=0;i<GF.length;i++) if(GF[i].name===name) retur
 function grpOrd(name){ for(var i=0;i<GF.length;i++) if(GF[i].name===name) return i; return 900; }
 function codesOf(t){ return CODES.filter(function(c){return c.type===t;}); }
 
-/* ══ Загрузка: три запроса параллельно, дальше вкладки без сети ══ */
-function load(){
-  $('app').innerHTML='<div class="center">Загрузка…</div>';
+/* ══ Загрузка: мгновенный старт из кэша + тихое фоновое обновление.
+   Возврат в раздел (оболочка шлёт refresh на каждый показ) НЕ должен ронять экран
+   в «Загрузка…» — данные товаров меняются редко, обновляемся фоном и не чаще раза в 5 минут. ══ */
+var LASTLOAD=0, CACHE_KEY='twProdsCache';
+function applyData(pr,ac,cat){
+  P=pr.products||[]; GF=pr.groupsFull||[];
+  CODES=(ac&&ac.ok&&ac.codes)||[];
+  CATIDX={};
+  if(cat&&cat.ok) (cat.groups||[]).forEach(function(g){ (g.models||[]).forEach(function(m){ (m.variants||[]).forEach(function(v){
+    CATIDX[pkey(v.art)]={hasComp:!!v.hasComp, assembled:!!v.assembled};
+  });});});
+}
+function cacheSave(pr,ac,cat){
+  try{ localStorage.setItem(CACHE_KEY, JSON.stringify({pr:pr,ac:ac,cat:cat,ts:Date.now()})); }catch(e){}
+}
+function cacheLoad(){
+  try{ var c=JSON.parse(localStorage.getItem(CACHE_KEY)||'null');
+    if(c&&c.pr&&c.pr.ok){ applyData(c.pr,c.ac,c.cat); return true; } }catch(e){}
+  return false;
+}
+function load(silent){
+  if(!silent) $('app').innerHTML='<div class="center">Загрузка…</div>';
   Promise.all([ api({vapi:'productsfull'}), api({vapi:'artcodes'}), api({vapi:'catalog'}) ]).then(function(rs){
     var pr=rs[0], ac=rs[1], cat=rs[2];
-    if(!pr||!pr.ok){ $('app').innerHTML='<div class="center">Ошибка: '+esc((pr&&pr.error)||'нет данных')+'<br><br><button class="btn" onclick="load()">↻ Повторить</button></div>'; return; }
-    P=pr.products||[]; GF=pr.groupsFull||[];
-    CODES=(ac&&ac.ok&&ac.codes)||[];
-    CATIDX={};
-    if(cat&&cat.ok) (cat.groups||[]).forEach(function(g){ (g.models||[]).forEach(function(m){ (m.variants||[]).forEach(function(v){
-      CATIDX[pkey(v.art)]={hasComp:!!v.hasComp, assembled:!!v.assembled};
-    });});});
+    if(!pr||!pr.ok){
+      if(!silent) $('app').innerHTML='<div class="center">Ошибка: '+esc((pr&&pr.error)||'нет данных')+'<br><br><button class="btn" onclick="load()">↻ Повторить</button></div>';
+      return;
+    }
+    LASTLOAD=Date.now();
+    applyData(pr,ac,cat); cacheSave(pr,ac,cat);
+    if(silent){
+      // мягко: не трогаем открытую карточку, правку ячейки и выделение; сохраняем прокрутку
+      if(CARD!==null||BUSY||document.querySelector('[data-e]')) return;
+      var sy=window.scrollY;
+      fillGrpFilter(); renderBody();
+      window.scrollTo(0,sy);
+    } else {
+      renderShell();
+      var focus=qp('sku'); if(focus && prodBy(focus)){ openCard(focus); }
+    }
+  }).catch(function(e){ if(!silent) $('app').innerHTML='<div class="center">Сеть: '+esc(e.message)+'<br><br><button class="btn" onclick="load()">↻ Повторить</button></div>'; });
+}
+function boot(){
+  if(cacheLoad()){
     renderShell();
     var focus=qp('sku'); if(focus && prodBy(focus)){ openCard(focus); }
-  }).catch(function(e){ $('app').innerHTML='<div class="center">Сеть: '+esc(e.message)+'<br><br><button class="btn" onclick="load()">↻ Повторить</button></div>'; });
+    load(true);                     // свежие данные — фоном, экран не мигает
+  } else load();
 }
 
 /* ══ Каркас: тулбар и вкладки рисуются один раз — поиск не теряет фокус ══ */
@@ -192,7 +225,7 @@ var TABS=[{id:'reg',t:'📋 Реестр'},{id:'grp',t:'🗂 Группы'},{id:
 function renderTabs(){
   $('tabsrow').innerHTML=TABS.map(function(t){
     return '<button class="'+(TAB===t.id&&!CARD?'on':'')+'" onclick="go(\''+t.id+'\')">'+t.t+'</button>';
-  }).join('')+'<button onclick="load()" title="перечитать с сервера">⟳</button>';
+  }).join('')+'<button onclick="load(true);msg(\'⟳ обновляю с сервера…\',1)" title="перечитать с сервера">⟳</button>';
 }
 function go(tab){ TAB=tab; CARD=null; PENDCONF=null; renderTabs(); renderBody(); }
 function renderBody(){
@@ -277,8 +310,13 @@ function regView(){
   }
   var cols=visCols();
   var selN=Object.keys(SEL).length;
+  var chips='';
+  if(GRPF) chips+='<span class="pill" style="background:var(--accent);color:#fff;cursor:pointer" onclick="GRPF=\'\';$(\'grpf\').value=\'\';renderBody()" title="снять фильтр группы">группа: '+esc(GRPF)+' ✕</span>';
+  if(SORT.k){ var sc=REGCOLS.filter(function(c){return c.k===SORT.k;})[0];
+    chips+='<span class="pill" style="background:var(--amber-bg);color:var(--amber);cursor:pointer" onclick="SORT={k:\'\',dir:1};renderBody()" title="убрать сортировку — вернуть группы">сортировка: '+esc(sc?sc.t:SORT.k)+(SORT.dir===1?' ▲':' ▼')+' ✕ — вернуть группы</span>'; }
+  if(Q.trim()) chips+='<span class="pill p-none" style="cursor:pointer" onclick="Q=\'\';$(\'q\').value=\'\';renderBody()">поиск: «'+esc(Q.trim())+'» ✕</span>';
   var h='<div class="row" style="margin-bottom:6px">'
-    +'<span class="muted" style="font-size:12px">товаров: '+list.length+'</span>'
+    +'<span class="muted" style="font-size:12px">товаров: '+list.length+'</span>'+chips
     +'<span style="position:relative;display:inline-block">'
     +'<button class="btn sm" onclick="var m=$(\'colsMenu\');m.style.display=m.style.display===\'none\'?\'\':\'none\'">⚙ колонки</button>'
     +'<span id="colsMenu" style="display:none;position:absolute;top:30px;left:0;background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.15);padding:6px;z-index:20;min-width:170px">'
@@ -785,10 +823,12 @@ document.addEventListener('click',function(e){
   api=wrap(_api); apiPost=wrap(_post);
 })();
 
-load();
+boot();
 (function(){
   try{ var m=/[?&]twsec=([^&]+)/.exec(location.search); window.top.postMessage({tw:'hello',sec:m?decodeURIComponent(m[1]):''},'*'); }catch(e){}
-  window.addEventListener('message',function(e){ var d=e&&e.data; if(d&&d.tw==='refresh'){ try{ if(!CARD&&!BUSY) load(); }catch(err){} } });
+  window.addEventListener('message',function(e){ var d=e&&e.data; if(d&&d.tw==='refresh'){
+    try{ if(Date.now()-LASTLOAD>300000) load(true); }catch(err){}   // тихо и не чаще раза в 5 минут
+  } });
 })();
 </script>
 </body>
