@@ -36,6 +36,11 @@
   .mgrid td,.mgrid th{ padding:3px 4px; font-size:11.5px; text-align:center; white-space:nowrap; }
   .mgrid td.nm{ text-align:left; font-weight:600; white-space:nowrap; }
   .mgrid td{ cursor:pointer; transition:background .12s ease; -webkit-tap-highlight-color:transparent; }
+  .mgrid tr:hover td{ background:rgba(43,125,233,.10); }
+  .mgrid tr:hover td.cell-d{ background:#ffe9b3; } .mgrid tr:hover td.cell-n{ background:#cdd6ff; }
+  .mgrid col.hl{ background:rgba(43,125,233,.08); }
+  .mgrid th.hl{ background:#2b7de9; color:#fff; border-radius:6px; }
+  .mgrid td.nm.hl{ color:#2b7de9; }
   .mgrid td.nm, .mgrid th{ cursor:default; }
   .mgrid td:active{ filter:brightness(.9); }
   .cell-d{ background:#fff3d6; } .cell-n{ background:#e3e8ff; }
@@ -358,9 +363,25 @@ function renderMonth(){
   $('pane').innerHTML='<div class="box"><div class="row"><button class="gho" onclick="shiftMonth(-1)">←</button><b>'+YM+'</b><button class="gho" onclick="shiftMonth(1)">→</button>'
     +'<span class="muted">клик по клетке: ☀️ день → 🌙 ночь → пусто · зелёная рамка — вышел, красная — не вышел</span>'
     +'<span id="sv" class="muted"></span></div></div>'
-    +'<div class="box mgrid" style="overflow-x:auto"><table id="mtbl">'+thead+body+'</table></div>';
+    +'<div class="box mgrid" style="overflow-x:auto"><table id="mtbl"><colgroup>'+Array(M.days+2).join('<col>')+'</colgroup>'+thead+body+'</table></div>';
   var tbl=$('mtbl');
-  if(tbl) tbl.addEventListener('click', monthCellClick);
+  if(tbl){
+    tbl.addEventListener('click', monthCellClick);
+    // перекрестье: видно, чья строка и какой день под курсором
+    tbl.addEventListener('mouseover', function(ev){
+      var td=ev.target.closest?ev.target.closest('td'):null;
+      if(!td||!td.hasAttribute('data-d')) return;
+      var i=td.cellIndex;
+      tbl.querySelectorAll('colgroup col').forEach(function(c,j){ c.className=(j===i)?'hl':''; });
+      tbl.querySelectorAll('th').forEach(function(t){ t.classList.toggle('hl', t.cellIndex===i); });
+      tbl.querySelectorAll('td.nm').forEach(function(t){ t.classList.toggle('hl', t.parentNode===td.parentNode); });
+    });
+    tbl.addEventListener('mouseout', function(ev){
+      if(ev.relatedTarget && tbl.contains(ev.relatedTarget)) return;
+      tbl.querySelectorAll('colgroup col').forEach(function(c){ c.className=''; });
+      tbl.querySelectorAll('th.hl,td.nm.hl').forEach(function(t){ t.classList.remove('hl'); });
+    });
+  }
 }
 function monthCellClick(ev){
   var td=ev.target.closest?ev.target.closest('td'):null;
