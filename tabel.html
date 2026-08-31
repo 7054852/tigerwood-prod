@@ -35,6 +35,9 @@
   /* месяц */
   .mgrid td,.mgrid th{ padding:3px 4px; font-size:11.5px; text-align:center; white-space:nowrap; }
   .mgrid td.nm{ text-align:left; font-weight:600; white-space:nowrap; }
+  .mgrid td{ cursor:pointer; transition:background .12s ease; -webkit-tap-highlight-color:transparent; }
+  .mgrid td.nm, .mgrid th{ cursor:default; }
+  .mgrid td:active{ filter:brightness(.9); }
   .cell-d{ background:#fff3d6; } .cell-n{ background:#e3e8ff; }
   .cell-out{ outline:2px solid #7fc78f; outline-offset:-2px; } .cell-no{ outline:2px solid #e88; outline-offset:-2px; text-decoration:line-through; }
   /* план на день */
@@ -203,13 +206,14 @@ function bgSave(p){
   // записи уходят СТРОГО ПО ОЧЕРЕДИ кликов (иначе параллельные запросы могут обогнать друг друга)
   SAVEQ=SAVEQ.then(function(){ return api(p); }).then(function(r){
     SAVING--; if(SAVING<=0){ SAVING=0; svDone(); scheduleConverge(); }
-    if(!r||!r.ok){ alert((r&&r.error)||'не сохранилось — обновляю'); loadDay(true); }
-  }).catch(function(){ SAVING--; if(SAVING<0)SAVING=0; alert('Нет связи — обновляю'); loadDay(true); });
+    if(!r||!r.ok){ alert((r&&r.error)||'не сохранилось — обновляю'); if(TAB==='m') loadMonth(); else loadDay(true); }
+  }).catch(function(){ SAVING--; if(SAVING<0)SAVING=0; alert('Нет связи — обновляю'); if(TAB==='m') loadMonth(); else loadDay(true); });
 }
 // после того как все записи ушли — один тихий сверочный запрос (экран сходится с сервером)
 function scheduleConverge(){
   if(CONVERGE) clearTimeout(CONVERGE);
-  CONVERGE=setTimeout(function(){ CONVERGE=null; if(SAVING===0&&TAB==='t') loadDay('silent'); },1200);
+  CONVERGE=setTimeout(function(){ CONVERGE=null; if(SAVING!==0) return;
+    if(TAB==='t') loadDay('silent'); else if(TAB==='m') loadMonth(true); },1200);
 }
 function setShift(i,sh){
   var w=D.workers[i]; var next=(w.shift===sh)?'':sh;   // повторный клик — снять смену
@@ -316,33 +320,65 @@ function renderPay(){
   },80);
 }
 
-/* ── МЕСЯЦ ── */
+/* ── МЕСЯЦ: график расставляется кликами по клеткам (пусто → ☀️ день → 🌙 ночь → пусто) ── */
 var YM=isoToday().slice(0,7);
+var M=null;   // {ym, days, mon, map{worker|day→entry}, workers}
 function shiftMonth(d){ var p=YM.split('-'); var dt=new Date(Number(p[0]),Number(p[1])-1+d,1); YM=dt.getFullYear()+'-'+pad2(dt.getMonth()+1); loadMonth(); }
-function loadMonth(){
-  $('pane').innerHTML='<div class="center muted">Загрузка…</div>';
+function loadMonth(silent){
+  if(!silent) $('pane').innerHTML='<div class="center muted">Загрузка…</div>';
   var ym0=YM;
   api({vapi:'tabelmonth',ym:YM,tgid:TGID}).then(function(r){
     if(TAB!=='m'||ym0!==YM) return;                    // пользователь уже на другой вкладке/месяце — экран не трогаем
-    if(!r||!r.ok){ $('pane').innerHTML='<div class="box err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
+    if(silent && SAVING>0) return;                     // идёт запись — свежие клики не затираем сверкой
+    if(!r||!r.ok){ if(!silent) $('pane').innerHTML='<div class="box err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
     var p=YM.split('-'), days=new Date(Number(p[0]),Number(p[1]),0).getDate();
     var map={}; r.entries.forEach(function(e){ map[e.worker+'|'+Number(e.date.slice(8))]=e; });
-    var wk=r.workers.filter(function(w){ return r.entries.some(function(e){return e.worker===w;}) || true; });
-    var thead='<tr><th></th>'; for(var d=1;d<=days;d++) thead+='<th>'+d+'</th>'; thead+='</tr>';
-    var body=r.workers.map(function(w){
-      var tds=''; var cnt=0;
-      for(var d=1;d<=days;d++){ var e=map[w+'|'+d];
-        if(!e||!e.shift){ tds+='<td></td>'; continue; }
-        cnt++;
-        var cls=(e.shift==='ночь'?'cell-n':'cell-d')+(e.status==='вышел'?' cell-out':(e.status==='не вышел'?' cell-no':''));
-        tds+='<td class="'+cls+'" title="'+esc(w)+' '+d+'.'+p[1]+' '+esc(e.shift)+(e.status&&e.status!=='план'?' · '+esc(e.status):'')+'">'+(e.shift==='ночь'?'н':'д')+'</td>';
-      }
-      return '<tr><td class="nm">'+esc(w)+' <span class="muted">('+cnt+')</span></td>'+tds+'</tr>';
-    }).join('');
-    $('pane').innerHTML='<div class="box"><div class="row"><button class="gho" onclick="shiftMonth(-1)">←</button><b>'+YM+'</b><button class="gho" onclick="shiftMonth(1)">→</button>'
-      +'<span class="muted">д=день, н=ночь; зелёная рамка — вышел, красная — не вышел</span></div></div>'
-      +'<div class="box mgrid" style="overflow-x:auto"><table>'+thead+body+'</table></div>';
+    M={ym:YM, days:days, mon:p[1], map:map, workers:r.workers};
+    renderMonth();
   });
+}
+function renderMonth(){
+  if(!M) return;
+  var thead='<tr><th></th>'; for(var d=1;d<=M.days;d++) thead+='<th>'+d+'</th>'; thead+='</tr>';
+  var body=M.workers.map(function(w,wi){
+    var tds=''; var cnt=0;
+    for(var d=1;d<=M.days;d++){
+      var e=M.map[w+'|'+d];
+      var sh=e?e.shift:'', st=e?e.status:'';
+      var cls='', txt='';
+      if(sh){ cnt++;
+        cls=(sh==='ночь'?'cell-n':'cell-d')+(st==='вышел'?' cell-out':(st==='не вышел'?' cell-no':''));
+        txt=(sh==='ночь'?'🌙':'☀️');
+      }
+      tds+='<td class="'+cls+'" data-w="'+wi+'" data-d="'+d+'" title="'+esc(w)+' '+d+'.'+M.mon
+        +(sh?' '+esc(sh)+(st&&st!=='план'?' · '+esc(st):''):'')+'">'+txt+'</td>';
+    }
+    return '<tr><td class="nm">'+esc(w)+' <span class="muted">('+cnt+')</span></td>'+tds+'</tr>';
+  }).join('');
+  $('pane').innerHTML='<div class="box"><div class="row"><button class="gho" onclick="shiftMonth(-1)">←</button><b>'+YM+'</b><button class="gho" onclick="shiftMonth(1)">→</button>'
+    +'<span class="muted">клик по клетке: ☀️ день → 🌙 ночь → пусто · зелёная рамка — вышел, красная — не вышел</span>'
+    +'<span id="sv" class="muted"></span></div></div>'
+    +'<div class="box mgrid" style="overflow-x:auto"><table id="mtbl">'+thead+body+'</table></div>';
+  var tbl=$('mtbl');
+  if(tbl) tbl.addEventListener('click', monthCellClick);
+}
+function monthCellClick(ev){
+  var td=ev.target.closest?ev.target.closest('td'):null;
+  if(!td||!td.hasAttribute('data-w')) return;
+  var wi=Number(td.getAttribute('data-w')), d=Number(td.getAttribute('data-d'));
+  var w=M.workers[wi]; if(!w) return;
+  var key=w+'|'+d, e=M.map[key];
+  var sh=e?e.shift:'', st=e?e.status:'';
+  var next=(sh==='')?'день':(sh==='день'?'ночь':'');
+  // по смене уже отмечен ФАКТ выхода: снятие удалило бы строку вместе с фактом — не пускаем
+  if(next==='' && st && st!=='план'){
+    alert(w+' '+d+'.'+M.mon+': выход уже отмечен («'+st+'») — снять смену можно только вместе с фактом во вкладке «Табель».');
+    return;
+  }
+  if(next==='') delete M.map[key];
+  else M.map[key]={date:YM+'-'+pad2(d), worker:w, shift:next, status:(e&&e.status)||'план'};
+  renderMonth();                                       // мгновенно на экране
+  bgSave({vapi:'tabelset',date:YM+'-'+pad2(d),worker:w,shift:next,tgid:TGID});
 }
 shell();
 
