@@ -114,10 +114,10 @@ function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){retur
 function jsq(s){ return esc(String(s==null?'':s)).replace(/'/g,'&#39;'); }
 
 /* ══ Состояние ══ */
-var P=[], GF=[], CODES=[], CATIDX={};
+var P=[], GF=[], CODES=[], CATIDX={}, ORPHANS=[], COMP={}, IZDREF=null;
 var TAB='reg', CARD=null;               // CARD: sku | '' (новый) | null
 var SEL={}, Q='', GRPF='';
-var SORT={k:'',dir:1}, HIDE={}, CLOSED={}, GSEL='';
+var SORT={k:'',dir:1}, HIDE={}, CLOSED={}, GSEL='', GRPBY='group';
 try{ HIDE=JSON.parse(localStorage.getItem('twRegHide')||'{}'); }catch(e){ HIDE={}; }
 var ARTSEL={}, BUSY=0, PENDCONF=null;
 
@@ -138,7 +138,10 @@ var REGCOLS=[
   {k:'palH',   t:'Пал: В', edit:1, cls:'dim'},
   {k:'palQty', t:'Пал: шт', edit:1, cls:'dim'},
   {k:'palGross',t:'Пал: брутто', edit:1, cls:'dim'},
-  {k:'warranty',t:'Гар.', edit:1, cls:'dim'}
+  {k:'warranty',t:'Гар.', edit:1, cls:'dim'},
+  {k:'_comp',  t:'Состав'},
+  {k:'_cost',  t:'Себест., р.'},
+  {k:'_asm',   t:'Собрано'}
 ];
 var ARTPARTS=[['brand','Бренд'],['equip','Оборудование'],['model','Модель'],['size','Размер'],['color','Цвет'],['pack','Комплектация']];
 var ARTTYPES=[['brand','Бренды'],['equip','Оборудование'],['model','Модели'],['size','Размеры'],['color','Цвета'],['pack','Комплектации'],['unit','Единицы измерения']];
@@ -156,10 +159,21 @@ var LASTLOAD=0, CACHE_KEY='twProdsCache';
 function applyData(pr,ac,cat){
   P=pr.products||[]; GF=pr.groupsFull||[];
   CODES=(ac&&ac.ok&&ac.codes)||[];
-  CATIDX={};
+  CATIDX={}; ORPHANS=[];
   if(cat&&cat.ok) (cat.groups||[]).forEach(function(g){ (g.models||[]).forEach(function(m){ (m.variants||[]).forEach(function(v){
-    CATIDX[pkey(v.art)]={hasComp:!!v.hasComp, assembled:!!v.assembled};
+    if(v.orphan){ ORPHANS.push({eq:v.eq,mod:v.mod}); return; }
+    CATIDX[pkey(v.art)]={hasComp:!!v.hasComp, assembled:!!v.assembled, cost:v.cost||0, hours:v.hours||0,
+      price:v.price||0, laborShare:v.laborShare, detailsCount:v.detailsCount||0, opsCount:v.opsCount||0,
+      stages:v.stages||[], eq:v.eq, mod:v.mod};
   });});});
+  // сшиваем показатели каталога в строки товаров — сортировка и фильтр работают как с обычными полями
+  P.forEach(function(p){
+    var ci=CATIDX[pkey(p.sku)]||{};
+    p._cost=ci.cost||0;
+    p._comp=ci.hasComp?(ci.detailsCount+' дет · '+ci.opsCount+' оп'):'';
+    p._asm=ci.assembled?'✔':'';
+    p._hasComp=!!ci.hasComp;
+  });
 }
 function cacheSave(pr,ac,cat){
   try{ localStorage.setItem(CACHE_KEY, JSON.stringify({pr:pr,ac:ac,cat:cat,ts:Date.now()})); }catch(e){}
@@ -204,6 +218,8 @@ function renderShell(){
   var h='<div class="row" style="margin-bottom:2px">'
     +'<input id="q" placeholder="🔎 поиск: артикул, модель, наименование" style="flex:1;min-width:180px" oninput="Q=this.value;renderBody()">'
     +'<select id="grpf" style="width:auto" onchange="GRPF=this.value;renderBody()"></select>'
+    +'<select id="grpby" style="width:auto" title="как группировать список" onchange="GRPBY=this.value;CLOSED={};renderBody()">'
+    +'<option value="group">по группам</option><option value="equip">по оборудованию</option></select>'
     +'<button class="btn pri" onclick="openCard(\'\')">＋ Товар</button>'
     +'<button class="btn" onclick="doExport(this)" title="выгрузить в Google-таблицу, лист «Прохаб: выгрузка»">⬆️ В Google-реестр</button>'
     +'<button class="btn" onclick="askImport()" title="импорт из Google-реестра — перезапишет правки системы">⋯</button>'
@@ -230,7 +246,7 @@ function renderTabs(){
 function go(tab){ TAB=tab; CARD=null; PENDCONF=null; renderTabs(); renderBody(); }
 function renderBody(){
   var b=$('tabbody'); if(!b) return;
-  if(CARD!==null){ b.innerHTML=cardView(); return; }
+  if(CARD!==null){ b.innerHTML=cardView(); compRender(); return; }
   if(TAB==='reg') b.innerHTML=regView();
   else if(TAB==='grp') b.innerHTML=grpView();
   else if(TAB==='art') b.innerHTML=artView();
@@ -304,6 +320,7 @@ function regView(){
     });
   } else {
     list.sort(function(a,b){
+      if(GRPBY==='equip') return (a.equip||'я').localeCompare(b.equip||'я','ru') || a.model.localeCompare(b.model);
       return (grpOrd(a.group)-grpOrd(b.group)) || (a.group||'я').localeCompare(b.group||'я')
         || a.equip.localeCompare(b.equip) || a.model.localeCompare(b.model);
     });
@@ -332,9 +349,9 @@ function regView(){
     }).join('')+'</tr>';
   var cur=null;
   list.forEach(function(p){
-    var g=p.group||'(без группы)';
+    var g=(GRPBY==='equip')?(p.equip||'(без оборудования)'):(p.group||'(без группы)');
     if(!sorted && g!==cur){ cur=g;
-      var gi=grpInfo(g)||{};
+      var gi=(GRPBY==='equip')?{}:(grpInfo(g)||{});
       var gst=(gi.bg?'background:'+gi.bg+';':'background:var(--grid);')+(gi.fg?'color:'+gi.fg+';':'');
       h+='<tr class="grph" onclick="CLOSED[\''+jsq(g)+'\']=!CLOSED[\''+jsq(g)+'\'];renderBody()"><td colspan="'+(cols.length+1)+'" style="'+gst+'">'+(CLOSED[g]?'▸':'▾')+' '+esc(g)+'</td></tr>';
     }
@@ -346,6 +363,10 @@ function regView(){
         if(c.k==='sku') return '<td class="sku" onclick="openCard(\''+sq+'\')" title="открыть карточку">'+esc(p.sku)
           +(p.src==='хаб'?' <span class="reghub">хаб</span>':'')
           +(p.folder?' <a href="'+esc(p.folder)+'" target="_blank" onclick="event.stopPropagation()" title="папка на Drive">📁</a>':'')+'</td>';
+        if(c.k==='_comp') return '<td class="dim" onclick="openCard(\''+sq+'\')">'+(p._comp?esc(p._comp):'<span class="pill p-none">⚠ нет</span>')+'</td>';
+        if(c.k==='_cost') return '<td onclick="openCard(\''+sq+'\')" style="text-align:right;font-variant-numeric:tabular-nums">'+(p._cost?p._cost.toLocaleString('ru-RU',{minimumFractionDigits:2}):'')+'</td>';
+        if(c.k==='_asm') return '<td style="cursor:pointer;text-align:center" onclick="asmTgl(\''+sq+'\')" title="отметка директора: изделие полностью расписано по операциям">'
+          +(p._asm?'<span class="pill p-ok">✔</span>':'<span class="pill p-none">☐</span>')+'</td>';
         var v=esc(String(p[c.k]||'').trim());
         if(c.edit) return '<td class="'+(c.cls||'')+' rege" ondblclick="cellEdit(this,\''+sq+'\',\''+c.k+'\')" title="двойной клик — править">'+v+'</td>';
         return '<td class="'+(c.cls||'')+'" onclick="openCard(\''+sq+'\')">'+v+'</td>';
@@ -353,6 +374,7 @@ function regView(){
   });
   h+='</table></div>';
   if(!list.length) h='<div class="center">Ничего не найдено</div>';
+  if(!sorted && !Q.trim() && !GRPF) h+=orphanBlock();
   if(selN){
     h+='<div id="massbar">выбрано: <b>'+selN+'</b>'
       +'<span>перенести в группу</span><select id="massGrp" style="width:auto">'+GF.map(function(g){return '<option>'+esc(g.name)+'</option>';}).join('')+'</select>'
@@ -407,6 +429,18 @@ function cellEdit(td,sku,key){
   }
   inp.onkeydown=function(ev){ if(ev.key==='Enter') fin(true); if(ev.key==='Escape') fin(false); };
   inp.onblur=function(){ fin(true); };
+}
+
+// отметка «Собрано» прямо из списка (тот же серверный флаг, что видят заказы)
+function asmTgl(sku){
+  var p=prodBy(sku); if(!p) return;
+  var ci=CATIDX[pkey(sku)];
+  if(!ci||!ci.hasComp){ msg('⚠ у «'+esc(sku)+'» не задан состав — сначала распишите операции в карточке'); return; }
+  var on=!ci.assembled;
+  ci.assembled=on; p._asm=on?'✔':''; renderBody();
+  api({vapi:'setassembled',art:sku,val:on?'1':''}).then(function(r){
+    if(!r||!r.ok){ ci.assembled=!on; p._asm=!on?'✔':''; renderBody(); msg('⚠ '+esc((r&&r.error)||'не сохранилось')); }
+  }).catch(function(e){ ci.assembled=!on; p._asm=!on?'✔':''; renderBody(); msg('⚠ '+esc(e.message||e)); });
 }
 
 /* ══════ 🗂 ГРУППЫ ══════ */
@@ -734,13 +768,7 @@ function cardView(){
     +(!isNew?'<button class="btn" onclick="eqRenameAsk()" title="переименовать оборудование везде: товары, составы, заказы, выработка, склад">✎ Оборудование</button>':'')
     +(!isNew?'<button class="btn danger" onclick="cardDelAsk()">🗑 Удалить</button>':'')
     +'</div>';
-  if(!isNew){
-    var ci=CATIDX[pkey(d.sku)];
-    h+='<div class="muted" style="margin-top:8px;font-size:12px">'
-      +(ci&&ci.hasComp?'состав задан · ':'состава нет · ')
-      +(ci&&ci.assembled?'✔ собрано (директор)':'не отмечен собранным')
-      +' — состав правится в «Каталоге изделий»</div>';
-  }
+  if(!isNew) h+='<div id="compSec" style="margin-top:10px"></div>';
   return h;
 }
 function cardArtTgl(){
@@ -823,6 +851,241 @@ function cardDelDo(){
   run(api({vapi:'productdel',sku:p.sku}), function(){
     msg('✓ товар удалён',1);
     CARD=null; load();
+  });
+}
+
+/* ══════ 🧩 СОСТАВ И ОПЕРАЦИИ (слито из «Каталога изделий») ══════ */
+var EMODE=false, EM=[], EDART='', EDEQ='', EDMOD='', EDWARNS=[];
+function compRender(){
+  var box=$('compSec'); if(!box) return;
+  var p=prodBy(CARD); if(!p){ box.innerHTML=''; return; }
+  if(EMODE){ box.innerHTML=editHtml(); return; }
+  var c=COMP[pkey(p.sku)];
+  if(!c){
+    box.innerHTML='<div class="card"><b>🧩 Состав и операции</b><div class="empty">⏳ загружаю состав…</div></div>';
+    api({vapi:'varcomp',art:p.sku}).then(function(r){
+      COMP[pkey(p.sku)]=r&&r.ok?r:{ok:false,error:(r&&r.error)||'не загрузился'};
+      compRender();
+    }).catch(function(e){ COMP[pkey(p.sku)]={ok:false,error:String(e.message||e)}; compRender(); });
+    return;
+  }
+  var ci=CATIDX[pkey(p.sku)]||{};
+  var h='<div class="card"><div class="row" style="justify-content:space-between">'
+    +'<b>🧩 Состав и операции</b>'
+    +'<span class="row">'
+    +'<span class="pill '+(ci.assembled?'p-ok':'p-none')+'" style="cursor:pointer" onclick="asmTgl(\''+jsq(p.sku)+'\');compRender()" title="отметка директора — видна и в заказах">'+(ci.assembled?'✔ собрано':'☐ отметить собранным')+'</span>'
+    +'<button class="btn sm pri" onclick="editOpen()">✎ Редактировать состав</button>'
+    +(ci.hasComp?'<button class="btn sm danger" onclick="compDelAsk()">🗑</button>':'')
+    +'</span></div>';
+  if(!c.ok || !(c.details&&c.details.length)){
+    h+='<div class="empty" style="margin-top:8px">Состав не задан — операции этого товара не попадут в заказы.'
+      +(cloneSibs(p).length?' Можно скопировать с другого варианта:':'')+'</div>'+cloneBtns(p);
+    return box.innerHTML=h+'</div>';
+  }
+  h+='<div class="row muted" style="margin-top:6px;font-size:12.5px">себестоимость труда <b style="color:var(--green)">'
+    +(c.cost||0).toLocaleString('ru-RU',{minimumFractionDigits:2})+' р.</b> · '+(Math.round((c.hours||0)*10)/10)+' н-ч · '
+    +(c.details.length)+' дет.</div>';
+  var mx=1; (c.stages||[]).forEach(function(st){ if(st.cost>mx) mx=st.cost; });
+  h+='<div style="margin-top:8px">'+(c.stages||[]).map(function(st){
+    return '<div class="row" style="gap:8px;font-size:12px;margin:2px 0"><span class="dim" style="width:150px;color:var(--muted)">'+esc(st.op)+'</span>'
+      +'<span style="height:8px;border-radius:4px;background:var(--amber);width:'+Math.max(6,Math.round(st.cost/mx*180))+'px"></span> '
+      +(st.cost||0).toLocaleString('ru-RU',{minimumFractionDigits:2})+' р.</div>';
+  }).join('')+'</div>';
+  h+='<div style="margin-top:8px">'+(c.details||[]).map(function(dd){
+    return '<div style="border:1px solid var(--line);border-radius:10px;padding:7px 10px;margin:6px 0;background:var(--bg)">'
+      +'<b style="font-size:13px">'+esc(dd.name)+'</b> <span style="float:right;color:var(--green);font-weight:700">'+(dd.cost||0).toLocaleString('ru-RU',{minimumFractionDigits:2})+' р.</span>'
+      +'<table style="margin-top:4px"><tr><th>Операция</th><th class="num">Кол-во</th><th class="num">Расц.</th><th class="num">Стоим.</th></tr>'
+      +(dd.ops||[]).map(function(o){ return '<tr><td>'+esc(o.op)+'</td><td class="num">'+o.qty+'</td><td class="num">'+o.rate+'</td><td class="num">'+(o.cost||0).toLocaleString('ru-RU',{minimumFractionDigits:2})+'</td></tr>'; }).join('')
+      +'</table></div>';
+  }).join('')+'</div>';
+  box.innerHTML=h+'</div>';
+}
+function cloneSibs(p){
+  return P.filter(function(x){ return x.equip===p.equip && x.sku!==p.sku && x._hasComp; });
+}
+function cloneBtns(p){
+  var sibs=cloneSibs(p);
+  if(!sibs.length) return '';
+  return '<div class="row" style="margin-top:6px">'+sibs.slice(0,8).map(function(x){
+    return '<button class="btn sm" onclick="cloneFrom(\''+jsq(x.sku)+'\')">⎘ как '+esc(x.model)+'</button>';
+  }).join('')+'</div>';
+}
+function cloneFrom(fromSku){
+  var p=prodBy(CARD); if(!p) return;
+  twSay('Копирую состав…');
+  run(api({vapi:'clonevariant',from:fromSku,eq:p.equip,mod:p.model,to:p.sku}), function(){
+    delete COMP[pkey(p.sku)];
+    msg('✓ состав скопирован с '+esc(fromSku),1);
+    load(true); compRender();
+  });
+}
+function compDelAsk(){
+  var p=prodBy(CARD); if(!p) return;
+  msg('Удалить состав «'+esc(p.sku)+'» целиком? Операции пропадут из будущих заказов. '
+    +'<button class="btn danger sm" onclick="compDelDo()">Удалить состав</button><button class="btn sm" onclick="msgOff()">Отмена</button>');
+}
+function compDelDo(){
+  msgOff();
+  var p=prodBy(CARD); if(!p) return;
+  run(api({vapi:'delvariant',artikul:p.sku,eq:p.equip,mod:p.model}), function(){
+    delete COMP[pkey(p.sku)];
+    msg('✓ состав удалён',1);
+    load(true); compRender();
+  });
+}
+/* ── редактор: детали блоками, галочки операций, порядок стрелками ── */
+function izdRefEnsure(cb){
+  if(IZDREF){ cb(); return; }
+  api({vapi:'izddata'}).then(function(r){
+    if(!r||!r.ok){ msg('⚠ справочник не загрузился: '+esc((r&&r.error)||'')); return; }
+    IZDREF=r; cb();
+  }).catch(function(e){ msg('⚠ '+esc(e.message||e)); });
+}
+function editOpen(){
+  var p=prodBy(CARD); if(!p) return;
+  if(!p.equip||!p.model){ msg('⚠ у товара нет оборудования/модели'); return; }
+  EDART=p.sku; EDEQ=p.equip; EDMOD=p.model; EDWARNS=[];
+  izdRefEnsure(function(){
+    api({vapi:'izdcomp',eq:EDEQ,mod:EDMOD,artikul:EDART}).then(function(r){
+      if(!r||!r.ok){ msg('⚠ состав не загрузился: '+esc((r&&r.error)||'')); return; }
+      EM=emBuild(r);
+      EDWARNS=r.warns||[];
+      EMODE=true; compRender();
+    }).catch(function(e){ msg('⚠ '+esc(e.message||e)); });
+  });
+}
+function emBuild(r){
+  var order=[], by={};
+  (r.rows||[]).forEach(function(row){
+    var d=row.detail;
+    if(!by[d]){ by[d]={qty:row.qty, level:row.level||'деталь', seq:[]}; order.push(d); }
+    if(String(row.level||'')==='изделие') by[d].level='изделие';
+    by[d].seq.push({op:row.op, rate:Number(row.rate)||0, on:true});
+  });
+  var refOps=r.refOps||{};
+  return order.map(function(d){
+    var b=by[d], have={};
+    b.seq.forEach(function(o){ have[pkey(o.op)]=1; });
+    var extra=(refOps[d]||((IZDREF&&IZDREF.ratesByDetail&&IZDREF.ratesByDetail[d])||[])).filter(function(o){ return !have[pkey(o.op)]; })
+      .map(function(o){ return {op:o.op, rate:Number(o.rate)||0, on:false, fresh:true}; });
+    return {detail:d, qty:b.qty, level:b.level, ops:b.seq.concat(extra)};
+  });
+}
+function editHtml(){
+  var h='<div class="card"><div class="row" style="justify-content:space-between">'
+    +'<b>✎ Состав: '+esc(EDMOD)+'</b>'
+    +'<span class="row"><button class="btn sm pri" onclick="editSave()">💾 Сохранить состав</button>'
+    +'<button class="btn sm" onclick="EMODE=false;compRender()">отмена</button></span></div>'
+    +'<div id="edWarn">'+warnHtml(EDWARNS)+'</div>'
+    +'<div class="muted" style="font-size:11.5px;margin:4px 0">Деталь приносит все свои операции — галочка включает в состав, стрелки ↑↓ задают техпорядок этой модели. «новая» — операция появилась в справочнике после создания состава.</div>';
+  EM.forEach(function(d,di){
+    h+='<div style="border:1px solid var(--line);border-radius:10px;padding:7px 10px;margin:7px 0;background:var(--bg)">'
+      +'<div class="row"><b style="flex:1;font-size:13px">'+(d.level==='изделие'?'📦 ':'')+esc(d.detail)+'</b>'
+      +'<span class="muted" style="font-size:11.5px">шт в изделии</span>'
+      +'<input type="number" value="'+esc(d.qty)+'" style="width:64px;padding:3px 6px" onchange="EM['+di+'].qty=this.value">'
+      +'<button class="btn sm danger" onclick="EM.splice('+di+',1);compRender()" title="убрать деталь из состава">✕</button></div>';
+    d.ops.forEach(function(o,oi){
+      h+='<div class="row" style="gap:6px;margin:3px 0;font-size:12.5px">'
+        +'<span class="muted" style="width:16px;text-align:right">'+(oi+1)+'</span>'
+        +'<button class="btn sm" style="padding:0 6px" '+(oi===0?'disabled':'')+' onclick="emMove('+di+','+oi+',-1)">↑</button>'
+        +'<button class="btn sm" style="padding:0 6px" '+(oi===d.ops.length-1?'disabled':'')+' onclick="emMove('+di+','+oi+',1)">↓</button>'
+        +'<input type="checkbox" style="width:15px;height:15px" '+(o.on?'checked':'')+' onchange="EM['+di+'].ops['+oi+'].on=this.checked">'
+        +'<span style="flex:1">'+esc(o.op)+(o.fresh?' <span class="pill p-none" style="font-size:10px">новая</span>':'')+'</span>'
+        +'<span class="'+(o.rate>0?'muted':'')+'" style="'+(o.rate>0?'':'color:var(--red);font-weight:700')+'">'+(o.rate>0?o.rate+' р.':'⚠ нет расценки')+'</span></div>';
+    });
+    h+='</div>';
+  });
+  var dl='<datalist id="dlDet">'+((IZDREF&&IZDREF.details)||[]).map(function(x){return '<option value="'+esc(x)+'">';}).join('')+'</datalist>';
+  h+=dl+'<div class="row" style="margin-top:8px"><input id="edAdd" list="dlDet" placeholder="＋ добавить деталь (начните вводить)" style="flex:1;min-width:200px" onkeydown="if(event.key===\'Enter\')emAddDet()">'
+    +'<button class="btn sm" onclick="emAddDet()">Добавить</button>'
+    +'<button class="btn sm" onclick="IZDREF=null;izdRefEnsure(function(){msg(\'✓ справочник перечитан\',1)})" title="перечитать реестры деталей и расценок">↻ справочник</button></div>'
+    +'</div>';
+  return h;
+}
+function warnHtml(w){
+  if(!w||!w.length) return '<div class="pill p-ok" style="margin-top:4px">✓ порядок операций выглядит логично</div>';
+  return '<div style="background:var(--amber-bg);color:var(--amber);border-radius:10px;padding:7px 10px;margin-top:4px;font-size:12.5px">'
+    +w.map(function(x){ return '⚠ '+esc(x.detail||'')+': '+esc(x.msg||x.op||''); }).join('<br>')
+    +'<br><span style="opacity:.8">поправьте порядок стрелками ↑↓ и сохраните ещё раз</span></div>';
+}
+function emMove(di,oi,dir){
+  var ops=EM[di].ops, j=oi+dir; if(j<0||j>=ops.length) return;
+  var t=ops[oi]; ops[oi]=ops[j]; ops[j]=t;
+  compRender();
+}
+function emAddDet(){
+  var e=$('edAdd'), det=e?e.value.trim():''; if(!det) return;
+  for(var i=0;i<EM.length;i++) if(pkey(EM[i].detail)===pkey(det)){ msg('⚠ деталь уже в составе'); return; }
+  var ops=((IZDREF&&IZDREF.ratesByDetail&&IZDREF.ratesByDetail[det])||[]).map(function(o){ return {op:o.op, rate:Number(o.rate)||0, on:true}; });
+  if(!ops.length) msg('⚠ у «'+esc(det)+'» нет операций в справочнике — добавьте их в «Операциях и расценках»');
+  EM.push({detail:det, qty:1, level:'деталь', ops:ops});
+  compRender();
+  var e2=$('edAdd'); if(e2){ e2.value=''; e2.focus(); }
+}
+function editSave(){
+  var rows=[];
+  EM.forEach(function(d){
+    d.ops.forEach(function(o){
+      if(!o.on) return;
+      rows.push({detail:d.detail, op:o.op, qty:Number(d.qty)||0, rate:o.rate, level:d.level||'деталь'});
+    });
+  });
+  if(!rows.length){ msg('⚠ в составе не осталось ни одной операции — если нужно удалить состав, есть кнопка 🗑'); return; }
+  twSay('Сохраняю состав — заказы пересоберутся…');
+  run(apiPost({vapi:'savemodel',eq:EDEQ,mod:EDMOD,rows:JSON.stringify(rows),art:EDART}), function(r){
+    EDWARNS=r.warns||[];
+    delete COMP[pkey(EDART)];
+    if(EDWARNS.length){
+      var w=$('edWarn'); if(w) w.innerHTML=warnHtml(EDWARNS);
+      msg('Сохранено, но есть замечания к порядку операций — смотрите жёлтую плашку',1);
+    } else {
+      EMODE=false;
+      msg('✓ состав сохранён',1);
+      compRender();
+    }
+    load(true);
+  });
+}
+/* ── составы-сироты (без товара в реестре) ── */
+function orphanBlock(){
+  if(!ORPHANS.length) return '';
+  var h='<div class="card" style="margin-top:10px"><b>⚠ Составы, не привязанные к товару ('+ORPHANS.length+')</b>'
+    +'<div class="muted" style="font-size:12px;margin:3px 0">Состав есть, а товара с таким артикулом нет — привяжите к товару или удалите.</div>';
+  ORPHANS.forEach(function(o,i){
+    h+='<div class="row" style="border-top:1px solid var(--line);padding:6px 0;font-size:13px">'
+      +'<span style="flex:1">'+esc(o.eq)+' · <b>'+esc(o.mod)+'</b></span>'
+      +'<button class="btn sm" onclick="orphAttach('+i+')">🔗 привязать к товару</button>'
+      +'<button class="btn sm danger" onclick="orphDel('+i+')">🗑</button></div>';
+  });
+  return h+'</div>';
+}
+function orphAttach(i){
+  var o=ORPHANS[i];
+  var cands=P.filter(function(p){ return p.equip===o.eq && !p._hasComp; });
+  msg('Привязать состав «'+esc(o.mod)+'» к товару: <select id="orphSku" style="width:auto;display:inline-block">'
+    +cands.map(function(p){ return '<option value="'+esc(p.sku)+'">'+esc(p.sku)+' · '+esc(p.model)+'</option>'; }).join('')
+    +'</select> <button class="btn pri sm" onclick="orphAttachDo('+i+')">Привязать</button><button class="btn sm" onclick="msgOff()">Отмена</button>'
+    +(cands.length?'':' <span style="color:var(--red)">нет товаров этого оборудования без состава</span>'));
+}
+function orphAttachDo(i){
+  var o=ORPHANS[i], sku=$('orphSku')?$('orphSku').value:'';
+  if(!sku) return;
+  msgOff();
+  run(api({vapi:'reassigncomp',eq:o.eq,mod:o.mod,artikul:sku}), function(){
+    msg('✓ состав привязан к '+esc(sku),1);
+    load(true);
+  });
+}
+function orphDel(i){
+  var o=ORPHANS[i];
+  msg('Удалить состав-сироту «'+esc(o.mod)+'»? <button class="btn danger sm" onclick="orphDelDo('+i+')">Удалить</button><button class="btn sm" onclick="msgOff()">Отмена</button>');
+}
+function orphDelDo(i){
+  var o=ORPHANS[i];
+  msgOff();
+  run(api({vapi:'delvariant',artikul:'',eq:o.eq,mod:o.mod}), function(){
+    msg('✓ удалён',1);
+    load(true);
   });
 }
 
