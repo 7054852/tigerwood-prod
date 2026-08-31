@@ -186,13 +186,17 @@ function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); ret
 var TGID=qp('tgid')||(function(){try{return localStorage.getItem('tw_tgid')||'';}catch(e){return '';}})();
 if(TGID){ try{localStorage.setItem('tw_tgid',TGID);}catch(e){} }
 
-function load(){
-  app.innerHTML='<div class="center muted">Загрузка…</div>';
+var LASTLOAD=0;
+function load(silent){
+  if(!silent) app.innerHTML='<div class="center muted">Загрузка…</div>';
   Promise.all([api({vapi:'prodneeds'}), api({vapi:'batches'})]).then(function(res){
     NEEDS=(res[0]&&res[0].rows)||[]; BATCHES=(res[1]&&res[1].batches)||[]; PULSE=(res[1]&&res[1].pulse)||null;
+    LASTLOAD=Date.now();
+    // тихое обновление не выдёргивает почву из-под ввода: если человек что-то печатает — не перерисовываем
+    if(silent && document.activeElement && /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
     render();
     if(!MODELS.length) loadModels();
-  }).catch(function(e){ app.innerHTML='<div class="center err">Ошибка загрузки: '+esc(e.message||e)+'</div>'; });
+  }).catch(function(e){ if(!silent) app.innerHTML='<div class="center err">Ошибка загрузки: '+esc(e.message||e)+'</div>'; });
 }
 function loadModels(){
   api({vapi:'catmodels'}).then(function(r){
@@ -216,11 +220,16 @@ function openOrder(id){ VIEW='detail'; CUR=id; DETAIL=null; app.innerHTML='<div 
 var DETAIL_STATUSES=[];
 function backToList(){ VIEW='list'; CUR=null; DETAIL=null; load(); }
 // загрузить полный разворот ОДНОГО заказа по требованию (себестоимость/собрано считаются только для него)
-function loadDetail(id){
+function loadDetail(id, silent){
   api({vapi:'batch', batch:id}).then(function(r){
-    if(r&&r.ok&&r.batch){ DETAIL=r.batch; DETAIL_STATUSES=r.statuses||[]; if(VIEW==='detail'&&CUR===id) renderDetail(); }
-    else { alert((r&&r.error)||'заказ не найден'); backToList(); }
-  }).catch(function(e){ app.innerHTML='<div class="center err">Ошибка: '+esc(e.message||e)+'</div>'; });
+    if(r&&r.ok&&r.batch){
+      DETAIL=r.batch; DETAIL_STATUSES=r.statuses||[]; LASTLOAD=Date.now();
+      if(VIEW!=='detail'||CUR!==id) return;
+      if(silent && document.activeElement && /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
+      renderDetail();
+    }
+    else if(!silent){ alert((r&&r.error)||'заказ не найден'); backToList(); }
+  }).catch(function(e){ if(!silent) app.innerHTML='<div class="center err">Ошибка: '+esc(e.message||e)+'</div>'; });
 }
 function reloadDetail(){ if(CUR) loadDetail(CUR); }
 // пересобрать операции заказа из актуального состава/расценок (остатки и выработка сохраняются)
@@ -788,7 +797,14 @@ function curBatch(id){ if(DETAIL&&DETAIL.id===id) return DETAIL; for(var i=0;i<B
 function renderItems(id){ var b=curBatch(id), tb=$('items_'+id); if(b&&tb) tb.innerHTML=(b.items||[]).map(function(it){ return itemRowHtml(it,id); }).join(''); }
 // операции — редкое обновление: пересобираем один раз через паузу после последнего изменения позиций (expand дорогой)
 var _opsTimer=null;
-function scheduleOpsRefresh(id){ var box=$('ops_'+id); if(box) box.innerHTML='<div class="muted">операции обновятся…</div>'; if(_opsTimer) clearTimeout(_opsTimer); _opsTimer=setTimeout(function(){ loadOps(id); },2500); }
+function scheduleOpsRefresh(id){
+  var box=$('ops_'+id);
+  if(box && !$('opsref_'+id)){   // старое содержимое остаётся — только пометка, что цифры обновляются
+    var tag=document.createElement('div'); tag.id='opsref_'+id; tag.className='muted'; tag.textContent='⏳ операции пересчитываются…';
+    box.insertBefore(tag, box.firstChild);
+  }
+  if(_opsTimer) clearTimeout(_opsTimer); _opsTimer=setTimeout(function(){ loadOps(id); },2500);
+}
 
 function addItem(id){
   var el=$('am_'+id), lbl=el.value.trim(), qEl=$('aq_'+id), qty=Number(qEl.value), m=$('bm_'+id);
@@ -1058,7 +1074,10 @@ load();
 // авто-обновление: оболочка шлёт «refresh» при возврате на раздел — перечитываем данные без перезагрузки страницы
 (function(){
   try{ var m=/[?&]twsec=([^&]+)/.exec(location.search); window.top.postMessage({tw:'hello',sec:m?decodeURIComponent(m[1]):''},'*'); }catch(e){}
-  window.addEventListener('message',function(e){ var d=e&&e.data; if(d&&d.tw==='refresh'){ try{ if(typeof VIEW!=="undefined"&&VIEW==="detail"&&CUR){loadDetail(CUR);}else{load();} }catch(err){} } });
+  window.addEventListener('message',function(e){ var d=e&&e.data; if(d&&d.tw==='refresh'){ try{
+    if(Date.now()-LASTLOAD<300000) return;                       // данные свежее 5 минут — не дёргаем экран
+    if(typeof VIEW!=="undefined"&&VIEW==="detail"&&CUR){loadDetail(CUR,true);}else{load(true);}
+  }catch(err){} } });
 })();
 
 // ─────── ПОКАЗЫВАЕМ, ЧТО ИДЁТ РАБОТА ───────
