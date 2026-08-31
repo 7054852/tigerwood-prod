@@ -50,7 +50,9 @@
   .regtbl{ border-collapse:collapse; width:100%; min-width:1100px; font-size:12.5px; }
   .regtbl th{ position:sticky; top:0; background:var(--card); z-index:2; cursor:pointer; white-space:nowrap; padding:6px 7px; border-bottom:2px solid var(--line); }
   .regtbl td{ padding:3px 7px; border-bottom:1px solid var(--grid); white-space:nowrap; line-height:18px; }
-  .regtbl tr.item:hover td{ background:rgba(127,140,170,.08); }
+  .regtbl tr.item:hover td{ background:rgba(43,125,233,.10); }
+  .regtbl col.hl{ background:rgba(43,125,233,.07); }
+  .regtbl th.hl{ color:var(--accent); }
   .regtbl tr.grph td{ font-weight:700; padding:5px 7px; cursor:pointer; }
   .regtbl tr.grph td .gsub, .regtbl tr.grph2 td .gsub{ font-weight:400; font-size:11px; opacity:.75; margin-left:8px; }
   .regtbl tr.grph2 td{ font-weight:600; padding:4px 7px 4px 26px; cursor:pointer; background:var(--grid); font-size:12px; }
@@ -350,7 +352,8 @@ function regView(){
     +(!sorted?'<button class="btn sm" onclick="collapseAll()" title="сжать весь каталог до заголовков">⊟ свернуть всё</button><button class="btn sm" onclick="CLOSED={};renderBody()" title="раскрыть все группы и оборудование">⊞ развернуть всё</button>':'')
     +'<span class="muted" style="font-size:11.5px">двойной клик по ячейке — правка · клик по артикулу — карточка · клик по заголовку — сортировка</span>'
     +'</div>';
-  h+='<div class="card tbwrap" style="padding:0"><table class="regtbl"><tr>'
+  h+='<div class="card tbwrap" style="padding:0"><table class="regtbl"><colgroup>'
+    +Array(cols.length+2).join('<col>')+'</colgroup><tr>'
     +'<th style="cursor:default"><input type="checkbox" style="width:14px;height:14px" '+(selN&&selN>=list.length?'checked':'')+' onclick="selAll(this.checked)" title="выбрать все видимые"></th>'
     +cols.map(function(c){
       var ar=(SORT.k===c.k)?(SORT.dir===1?' ▲':' ▼'):'';
@@ -1282,6 +1285,24 @@ document.addEventListener('click',function(e){
   }; };
   api=wrap(_api); apiPost=wrap(_post);
 })();
+
+// «перекрестье»: при наведении подсвечивается и строка (CSS), и весь столбец (col + заголовок)
+document.addEventListener('mouseover', function(e){
+  var cell=e.target.closest?e.target.closest('td,th'):null;
+  if(!cell) return;
+  var tbl=cell.closest('table'); if(!tbl||String(tbl.className).indexOf('regtbl')<0) return;
+  if(cell.parentNode && /grph/.test(cell.parentNode.className)) return;   // подзаголовки — не колонки
+  var i=cell.cellIndex;
+  tbl.querySelectorAll('colgroup col').forEach(function(c,j){ c.className=(j===i)?'hl':''; });
+  tbl.querySelectorAll('th').forEach(function(t){ t.classList.toggle('hl', t.cellIndex===i); });
+});
+document.addEventListener('mouseout', function(e){
+  var tbl=e.target.closest?e.target.closest('table.regtbl'):null;
+  if(!tbl) return;
+  if(e.relatedTarget && tbl.contains(e.relatedTarget)) return;
+  tbl.querySelectorAll('colgroup col').forEach(function(c){ c.className=''; });
+  tbl.querySelectorAll('th.hl').forEach(function(t){ t.classList.remove('hl'); });
+});
 
 boot();
 (function(){
