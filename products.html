@@ -147,7 +147,7 @@ var REGCOLS=[
   {k:'palGross',t:'Пал: брутто', edit:1, cls:'dim'},
   {k:'warranty',t:'Гар.', edit:1, cls:'dim'},
   {k:'_comp',  t:'Состав'},
-  {k:'_cost',  t:'Себест., р.'},
+  {k:'_cost',  t:'Стоим. операций, р.'},
   {k:'_share', t:'Труд %'},
   {k:'_asm',   t:'Собрано'}
 ];
@@ -209,6 +209,7 @@ function load(silent){
       fillGrpFilter(); renderBody();
       window.scrollTo(0,sy);
     } else {
+      defaultCollapse();
       renderShell();
       var focus=qp('sku'); if(focus && prodBy(focus)){ openCard(focus); }
     }
@@ -216,6 +217,7 @@ function load(silent){
 }
 function boot(){
   if(cacheLoad()){
+    defaultCollapse();
     renderShell();
     var focus=qp('sku'); if(focus && prodBy(focus)){ openCard(focus); }
     load(true);                     // свежие данные — фоном, экран не мигает
@@ -227,7 +229,7 @@ function renderShell(){
   var h='<div class="row" style="margin-bottom:2px">'
     +'<input id="q" placeholder="🔎 поиск: артикул, модель, наименование" style="flex:1;min-width:180px" oninput="Q=this.value;renderBody()">'
     +'<select id="grpf" style="width:auto" onchange="GRPF=this.value;renderBody()"></select>'
-    +'<select id="grpby" style="width:auto" title="как группировать список" onchange="GRPBY=this.value;CLOSED={};renderBody()">'
+    +'<select id="grpby" style="width:auto" title="как группировать список" onchange="GRPBY=this.value;defaultCollapse();renderBody()">'
     +'<option value="group">по группам</option><option value="equip">по оборудованию</option></select>'
     +'<button class="btn pri" onclick="openCard(\'\')">＋ Товар</button>'
     +'<button class="btn" onclick="doExport(this)" title="выгрузить в Google-таблицу, лист «Прохаб: выгрузка»">⬆️ В Google-реестр</button>'
@@ -373,9 +375,10 @@ function regView(){
       var es=eStat[ek]||(eStat[ek]={n:0,c:0,cn:0,a:0}); es.n++; if(p._cost>0){es.c+=p._cost;es.cn++;} if(p._asm)es.a++;
     }
   });
+  // средняя себестоимость по группе убрана намеренно: среднее по разнородным товарам
+  // ничего не говорит, стоимость операций смотрим по каждому товару в его строке
   function hdrStat(st){ if(!st) return '';
-    return '<span class="gsub">'+st.n+' тов.'+(st.a?' · <span style="color:var(--green);font-weight:700">✔ собрано '+st.a+'/'+st.n+'</span>':'')
-      +(st.cn?' · средн. себест. '+(st.c/st.cn).toLocaleString('ru-RU',{maximumFractionDigits:2})+' р.':'')+'</span>'; }
+    return '<span class="gsub">'+st.n+' тов.'+(st.a?' · <span style="color:var(--green);font-weight:700">✔ собрано '+st.a+'/'+st.n+'</span>':'')+'</span>'; }
   var open=!!Q.trim();   // при поиске всё раскрыто, как в старом каталоге
   var cur=null, cur2=null;
   list.forEach(function(p){
@@ -423,6 +426,15 @@ function regView(){
       +'<button class="btn sm" onclick="SEL={};renderBody()">снять выделение</button></div>';
   }
   return h;
+}
+// вид по умолчанию: группы раскрыты, оборудование внутри свёрнуто —
+// сверху видно перечень оборудования, а товары разворачиваются по нужному
+function defaultCollapse(){
+  CLOSED={};
+  if(GRPBY!=='group') return;
+  regFilter().forEach(function(p){
+    CLOSED[(p.group||'(без группы)')+'▸'+(p.equip||'—')]=true;
+  });
 }
 function collapseAll(){
   CLOSED={};
