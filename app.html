@@ -25,7 +25,7 @@
 
   /* ─── каркас сервиса ─── */
   .shell{ display:flex; min-height:100vh; }
-  .side{ width:246px; flex:0 0 246px; background:var(--side); color:var(--sidefg); display:flex; flex-direction:column;
+  .side{ width:270px; flex:0 0 270px; background:var(--side); color:var(--sidefg); display:flex; flex-direction:column;
          position:sticky; top:0; height:100vh; overflow-y:auto; }
   .sbrand{ display:flex; align-items:center; gap:10px; padding:16px 16px 12px; }
   .sbrand .logo{ width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,#2b7de9,#1b56b0);color:#fff;display:flex;align-items:center;justify-content:center;font-size:20px;flex:0 0 auto; }
@@ -39,7 +39,10 @@
   .sitem:hover{ background:rgba(255,255,255,.06); }
   .sitem.active{ background:var(--accent); color:#fff; font-weight:600; }
   .sitem .ic{ width:20px; text-align:center; flex:0 0 auto; }
-  .sitem .ex{ margin-left:auto; font-size:11px; color:var(--sidemut); }
+  /* название раздела — всегда одной строкой: перенос делал пункты разной высоты и «прыгающим» меню.
+     Ellipsis — страховка на случай очень длинного названия, полное видно во всплывающей подсказке. */
+  .sitem .lb{ flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .sitem .ex{ margin-left:6px; flex:0 0 auto; font-size:11px; color:var(--sidemut); }
 
   .main{ flex:1; min-width:0; display:flex; flex-direction:column; }
   .topbar{ display:none; align-items:center; gap:10px; padding:10px 12px; background:var(--side); color:#fff; position:sticky; top:0; z-index:20; }
@@ -121,7 +124,7 @@ window.onerror=function(msg,src,line){
 <script>
 var BASE='https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';
 var APP='tw7prod', TGID='', ME=null, ROLE='', app=document.getElementById('app');
-var VER='20260901b';
+var VER='20260901c';
 var RUN=String(Date.now());   // одна метка на загрузку оболочки — сбивает кеш встроенных страниц   // бамп при изменении встраиваемых stat-страниц — сбивает кеш GitHub Pages в iframe
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
@@ -222,8 +225,8 @@ function navHtml(){
     if(!its.length) return '';
     var links=its.map(function(id){
       var it=ITEMS[id], ext=EXTERNAL[id];
-      if(ext) return '<a class="sitem" href="'+esc(withTid(it.url))+'" target="_blank" rel="noopener"><span class="ic">'+itemIcon(it)+'</span><span>'+esc(itemLabel(it))+'</span><span class="ex">↗</span></a>';
-      return '<div class="sitem" id="nav_'+id+'" onclick="go(\''+id+'\')"><span class="ic">'+itemIcon(it)+'</span><span>'+esc(itemLabel(it))+'</span></div>';
+      if(ext) return '<a class="sitem" href="'+esc(withTid(it.url))+'" target="_blank" rel="noopener" title="'+esc(itemLabel(it))+'"><span class="ic">'+itemIcon(it)+'</span><span class="lb">'+esc(itemLabel(it))+'</span><span class="ex">↗</span></a>';
+      return '<div class="sitem" id="nav_'+id+'" onclick="go(\''+id+'\')" title="'+esc(itemLabel(it))+'"><span class="ic">'+itemIcon(it)+'</span><span class="lb">'+esc(itemLabel(it))+'</span></div>';
     }).join('');
     return '<div class="sgroup"><div class="gt">'+esc(g.title)+'</div>'+links+'</div>';
   }).join('');
