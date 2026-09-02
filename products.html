@@ -1113,9 +1113,20 @@ function packBlockHtml(){
         +'<input type="checkbox" style="width:14px;height:14px" '+(o.on?'checked':'')+' onchange="EM['+pi+'].ops['+oi+'].on=this.checked;emRecalc()">'
         +esc(o.op)+' <span class="muted">'+(o.rate>0?o.rate+' р.':'⚠')+'</span></label>';
     }).join('')
-    +'<div class="muted" style="font-size:11px">строка изделия: <b>'+esc(d.detail)+'</b> · 1 шт на товар</div>';
+    +'<div class="muted" style="font-size:11px">строка изделия: <b>'+esc(d.detail)+'</b> · 1 шт на товар '
+    +'<button class="btn sm" style="padding:0 6px;font-size:11px" onclick="emUnsetProd('+pi+')" title="вернуть строку в обычные детали">снять пометку</button></div>';
   } else {
-    inner='<div style="color:var(--amber);font-size:12.5px">У модели нет операции упаковки изделия. Без неё не работают отгрузка партии, склад деталей и переучёт по упакованным товарам.</div>';
+    // подсказываем готового кандидата: чаще всего строка уже есть, просто заведена деталью
+    var ci=-1;
+    EM.forEach(function(x,i){
+      if(ci>=0) return;
+      var op=(x.ops||[]).filter(function(o){ return pkey(o.op)===pkey('Упаковка')||pkey(o.op)===pkey('Упаковка после сборки'); }).length;
+      var dt=pkey(x.detail);
+      if(op && dt.indexOf('фурнитура')!==0 && dt.indexOf('коробка')!==0) ci=i;
+    });
+    inner='<div style="color:var(--amber);font-size:12.5px">У модели нет строки уровня «изделие». Без неё не работают отгрузка партии, склад деталей, переучёт и мотивация начальника за упаковку.</div>'
+      +(ci>=0?'<div style="margin-top:5px;font-size:12.5px">Похоже, это <b>'+esc(EM[ci].detail)+'</b> — у неё есть операция упаковки. '
+        +'<button class="btn sm pri" style="padding:1px 8px" onclick="emSetProd('+ci+')">отметить изделием</button></div>':'');
   }
   return '<div style="background:var(--grid);border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin:7px 0">'
     +'<b style="font-size:13px">📦 Сборка и упаковка изделия</b><div style="margin-top:4px">'+inner+'</div>'
@@ -1171,6 +1182,7 @@ function editHtml(){
       +'<b class="muted" style="font-size:11.5px"><span id="edSum_'+di+'">'+emDetSum(d).toLocaleString('ru-RU',{minimumFractionDigits:2})+' р.</span></b>'
       +'<span class="muted" style="font-size:11.5px">шт в изделии</span>'
       +'<input type="number" value="'+esc(d.qty)+'" style="width:64px;padding:3px 6px" oninput="EM['+di+'].qty=this.value;emRecalc()">'
+      +'<button class="btn sm" onclick="emSetProd('+di+')" title="отметить эту строку как изделие целиком — по ней считаются упаковка, отгрузка, склад и мотивация начальника">📦 это изделие</button>'
       +'<button class="btn sm danger" onclick="EM.splice('+di+',1);compRender()" title="убрать деталь из состава">✕</button></div>';
     d.ops.forEach(function(o,oi){
       h+='<div class="row" style="gap:6px;margin:3px 0;font-size:12.5px">'
@@ -1195,6 +1207,20 @@ function warnHtml(w){
   return '<div style="background:var(--amber-bg);color:var(--amber);border-radius:10px;padding:7px 10px;margin-top:4px;font-size:12.5px">'
     +w.map(function(x){ return '⚠ '+esc(x.detail||'')+': '+esc(x.msg||x.op||''); }).join('<br>')
     +'<br><span style="opacity:.8">поправьте порядок стрелками ↑↓ и сохраните ещё раз</span></div>';
+}
+// отметить строку как «изделие целиком». Изделие в модели ровно одно — прежнюю пометку снимаем,
+// иначе упаковка посчиталась бы дважды (и в отгрузке, и в деньгах начальника).
+function emSetProd(di){
+  var d=EM[di];
+  if(!confirm('Отметить «'+d.detail+'» как изделие целиком?\n\nПо строке изделия считаются: упаковано штук, отгрузка партии, склад деталей, переучёт и мотивация начальника.\nВ модели такая строка одна — с остальных пометка снимется.')) return;
+  EM.forEach(function(x){ if(x.level==='изделие') x.level='деталь'; });
+  d.level='изделие';
+  compRender();
+  msg('Строка «'+esc(d.detail)+'» помечена изделием — не забудьте «Сохранить состав»');
+}
+function emUnsetProd(di){
+  EM[di].level='деталь'; compRender();
+  msg('Пометка снята. Без строки изделия не работают отгрузка, склад и переучёт — отметьте другую строку.');
 }
 function emMove(di,oi,dir){
   var ops=EM[di].ops, j=oi+dir; if(j<0||j>=ops.length) return;
