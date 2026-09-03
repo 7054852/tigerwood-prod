@@ -113,8 +113,12 @@ function $(id){ return document.getElementById(id); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function money(n){ return (Number(n)||0).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 
-var TAB='dl', DATA=null, CARD=null;
-var TABS=[{id:'dl',t:'⏱ Сроки'},{id:'emp',t:'👤 Сотрудники'},{id:'con',t:'📑 Договоры'},{id:'ord',t:'📜 Приказы'},
+// первый экран — люди, а не список просрочек: раздел открывают, чтобы найти сотрудника,
+// а сроки видны красным счётчиком на вкладке «Сроки» с любого экрана
+var TAB='emp', DATA=null, CARD=null;
+// НПД (самозанятый) — такой же гражданско-правовой договор, как подряд: те же поля и та же логика
+function isCivil(k){ k=String(k||'').toLowerCase(); return k==='подряд'||k==='нпд'; }
+var TABS=[{id:'emp',t:'👤 Сотрудники'},{id:'dl',t:'⏱ Сроки'},{id:'con',t:'📑 Договоры'},{id:'ord',t:'📜 Приказы'},
           {id:'sick',t:'🏥 Больничные'},{id:'doc',t:'🗂 Документы'},{id:'fuel',t:'⛽ Топливо'},{id:'tpl',t:'📋 Шаблоны'}];
 
 // ВСЁ грузится одним запросом (вызов GAS стоит секунды) — вкладки и карточки дальше открываются мгновенно, без сети
@@ -179,7 +183,7 @@ var SHOWHIDDEN=false;
 function toggleHidden(){ SHOWHIDDEN=!SHOWHIDDEN; render(); }
 // порядок: работающие по контракту → работающие по подряду → оформляются → (скрытые) завершённый подряд → уволенные
 function empRank(e){
-  if(e.status==='работает') return e.type==='подряд'?2:1;
+  if(e.status==='работает') return isCivil(e.type)?2:1;
   if(e.status==='оформляется') return 3;
   return e.status==='завершён'?4:5;
 }
@@ -247,7 +251,7 @@ function cardView(){
         (c.kind==='контракт'?(c.appLink?' <a class="btn sm" href="'+esc(c.appLink)+'" target="_blank">📄 заявление</a>'
                                         :' <button class="btn sm" onclick="uploadDoc(\''+c.id+'\',\'conapp\')" title="прикрепить заявление о приёме">📎 заявление</button>'):'')+
         (((c.state||{}).needRenew)?' <button class="btn sm pri" onclick="renewForm(\''+c.id+'\')">⏭ новый контракт</button>':'')+
-        (c.kind==='подряд'&&String(c.status).toLowerCase()!=='расторгнут'?' <button class="btn sm pri" onclick="termForm(\''+c.id+'\')">⏹ прекращение</button>':'')+
+        (isCivil(c.kind)&&String(c.status).toLowerCase()!=='расторгнут'?' <button class="btn sm pri" onclick="termForm(\''+c.id+'\')">⏹ прекращение</button>':'')+
         ' <button class="btn sm" onclick="delRec(\'contract\',\''+c.id+'\',\''+esc(c.kind)+' № '+esc(c.num)+'\')" title="удалить договор">🗑</button>';
       return '<tr><td>'+dot(c.missing)+sevPill((c.state||{}).sev)+'</td><td>'+esc(c.kind)+'</td><td><b>'+esc(c.num)+'</b></td><td>'+esc(c.date)+'</td>'+
         '<td>'+esc(c.end||'—')+'</td>'+
@@ -268,6 +272,7 @@ function cardView(){
     }).join('')+'</tbody></table>';
   h+='<div class="row" style="margin-top:8px"><button class="btn" onclick="newCon(\'контракт\')">+ контракт (штат)</button>'+
      '<button class="btn" onclick="newCon(\'подряд\')">+ договор подряда</button>'+
+     '<button class="btn" onclick="newCon(\'нпд\')">+ НПД (самозанятый)</button>'+
      '<button class="btn" onclick="newCon(\'обучение\')">+ производственное обучение</button>'+
      '<span class="muted" style="font-size:12px">папка сотрудника создаётся автоматически при добавлении договора</span></div></div>';
 
@@ -504,7 +509,7 @@ function newEmp(){ empForm({}); }
 function editEmp(){ empForm(CARD.emp); }
 function empForm(e){
   // тип (штат/подряд), должность, код, даты приёма и увольнения задаются В ДОГОВОРЕ и выводятся из него
-  var t=(e.type==='подряд')?'подряд':(e.type==='штат'?'контракт':null);
+  var t=isCivil(e.type)?(String(e.type).toLowerCase()==='нпд'?'нпд':'подряд'):(e.type==='штат'?'контракт':null);
   REQKEYS = t? reqSet(t,'emp') : (function(){ var a=reqSet('контракт','emp'), b=reqSet('подряд','emp');
     Object.keys(b).forEach(function(k){ a[k]=b[k]; }); return a; })();
   dlg(e.id?'Правка сотрудника':'Новый сотрудник',
@@ -523,11 +528,11 @@ function empForm(e){
 }
 function newCon(kind){
   var today=new Date(), d=('0'+today.getDate()).slice(-2)+'.'+('0'+(today.getMonth()+1)).slice(-2)+'.'+today.getFullYear();
-  var c={emp:CARD.emp.id,kind:kind||(CARD.emp.type==='подряд'?'подряд':'контракт'),date:d,
+  var c={emp:CARD.emp.id,kind:kind||(isCivil(CARD.emp.type)?'подряд':'контракт'),date:d,
          wStart:'09:00',wBreak:'13:00 по 14:00',wEnd:'18:00',vacMain:24,vacExtra:1,termText:'1 (один) год'};
   busy(1);
   api({vapi:'hrnextnums',date:d}).then(function(r){ busy(0);
-    if(r&&r.ok) c.num = (c.kind==='подряд')? r.podryad : r.contract;
+    if(r&&r.ok) c.num = isCivil(c.kind)? r.podryad : r.contract;
     conForm(c);
   });
 }
@@ -542,10 +547,10 @@ function conKindChange(){
 }
 function conForm(c){
   CONDRAFT=c;
-  var isP=(c.kind==='подряд'), isE=(c.kind==='обучение');
+  var isP=isCivil(c.kind), isE=(c.kind==='обучение');
   REQKEYS = reqSet(c.kind||'контракт','con');
   // для подряда поля трудового контракта (оклад, отпуск, режим дня) не применяются и не показываются
-  var body=sel('kind','Вид',c.kind||'контракт',['контракт','подряд','обучение'],'conKindChange()')+
+  var body=sel('kind','Вид',c.kind||'контракт',['контракт','подряд','нпд','обучение'],'conKindChange()')+
     fld('num',isE?'№ договора с учреждением образования':'№ (пусто = следующий по счётчику)',c.num)+
     fld('date',isE?'Дата договора с УО':'Дата',c.date)+
     fld('end',isP?'Окончание работ':(isE?'Окончание обучения':'Дата окончания'),c.end)+
@@ -600,7 +605,7 @@ function docMenu(target,id){
           : (DATA.orders||[]).filter(function(x){return x.id===id;})[0];
   if(!rec) return;
   var title = target==='con' ? (rec.kind+' № '+rec.num) : (target==='ds' ? ('доп. соглашение № '+rec.num) : ('приказ № '+rec.num));
-  var canTpl = (target==='con' && (rec.kind==='контракт'||rec.kind==='подряд'||rec.kind==='обучение')) ||
+  var canTpl = (target==='con' && (rec.kind==='контракт'||rec.kind==='подряд'||rec.kind==='обучение')) ||   // у НПД шаблона пока нет — только загрузка
                (target==='order' && /при[её]м/i.test(rec.kind||'')) || target==='ds';
   var h='<div class="card"><b>Документ: '+esc(title)+'</b>'+
     '<div class="muted" style="margin:6px 0 10px;font-size:12.5px">Данные записи уже сохранены в системе. Здесь создаётся или прикладывается сам файл — он ляжет в папку сотрудника.</div>';
@@ -865,7 +870,14 @@ function tplView(){
     sec.groups.forEach(function(g){
       h+='<div class="card">'+(g.sub?'<div style="font-weight:700;margin-bottom:6px">'+esc(g.sub)+'</div>':'')+
         '<div style="display:flex;flex-direction:column;gap:2px">'+
-        g.items.map(function(it){ return '<a href="'+esc(it.url)+'" target="_blank" style="padding:4px 0">📄 '+esc(it.name)+'</a>'; }).join('')+
+        g.items.map(function(it){
+          // ✅ — шаблон подключён к генерации (система заполняет сама), ⚪ — просто лежит бланком
+          var mark = it.wired
+            ? '<span class="pill p-ok" style="margin-left:6px" title="подключён: система заполняет сам">✅ подключён</span>'
+            : '<span class="pill p-none" style="margin-left:6px" title="лежит в папке, но к генерации не подключён — только скачать и заполнить руками">⚪ не подключён</span>';
+          return '<div style="padding:4px 0;display:flex;align-items:center;gap:2px;flex-wrap:wrap">'
+            +'<a href="'+esc(it.url)+'" target="_blank">📄 '+esc(it.name)+'</a>'+mark+'</div>';
+        }).join('')+
         '</div></div>';
     });
   });
