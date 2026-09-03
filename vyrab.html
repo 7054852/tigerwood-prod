@@ -1309,7 +1309,7 @@ function otkAddGo(){
 }
 function todayRu(){ var n=new Date(); return pad2(n.getDate())+'.'+pad2(n.getMonth()+1)+'.'+n.getFullYear(); }
 // ── отчёт по качеству ──
-var OQUAL=0, OQDAYS=0;   // 0 — текущий месяц, иначе N последних дней
+var OQUAL=0, OQDAYS=0, OQSEQ=0;   // 0 — текущий месяц, иначе N последних дней
 function otkStatsToggle(){ OQUAL=!OQUAL; var b=document.getElementById('oqual');
   b.style.display=OQUAL?'':'none'; if(!OQUAL) return; otkStatsLoad(); }
 function otkStatsDays(d){ OQDAYS=d; otkStatsLoad(); }
@@ -1321,7 +1321,11 @@ function otkStatsLoad(){
     var s=new Date(); s.setDate(s.getDate()-OQDAYS);
     from=pad2(s.getDate())+'.'+pad2(s.getMonth()+1)+'.'+s.getFullYear(); title='за '+OQDAYS+' дней';
   } else { from='01.'+pad2(n.getMonth()+1)+'.'+n.getFullYear(); title='за месяц'; }
+  // ⚠ ответы GAS идут 2-4 с: при быстром переключении периода ранний ответ приходит последним
+  // и затирает поздний. Рисуем только ответ на САМЫЙ свежий запрос.
+  var seq = ++OQSEQ;
   api({vapi:'otkstats',from:from,to:to}).then(function(r){
+    if(seq!==OQSEQ) return;
     if(!r||!r.ok){ b.innerHTML='<div class="card err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
     var why=(r.byWhy||[]).map(function(x){ return '<div class="row"><span>'+esc(x.name)+'</span><span>'+x.qty+' шт</span></div>'; }).join('')||'<div class="muted">брака не было</div>';
     var wrk=(r.byWorker||[]).slice(0,8).map(function(x){ return '<div class="row"><span>'+esc(x.name)+'</span><span>'+x.qty+' шт</span></div>'; }).join('');
