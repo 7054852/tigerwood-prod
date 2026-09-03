@@ -1069,8 +1069,13 @@ function renderJournal(){
         var money = (it.status==='ждёт ОТК')
           ? '<span class="muted">🔎 ждёт приёмку ОТК</span>'
           : '<span class="'+(it.paid===false?'muted':'ok')+'">'+(it.paid===false?'0 р · оплачено листом':(it.sum+' р'))+'</span>';
-        return '<div class="row" id="j-'+esc(it.id)+'" style="border-top:1px solid #eee;padding-top:5px"><span>'+body+'</span>'
-          +'<span>'+money+' '+acts+'</span></div>';
+        // след приёмки: кто принял и сколько вернул — видно и рабочему, и мастеру
+        var qc = it.qcBy
+          ? '<div class="muted" style="font-size:12px">🔎 принял '+esc(it.qcBy)+(it.qcAt?(' · '+esc(it.qcAt)):'')
+            +(it.qcBad>0?(' · <span class="err">вернул '+it.qcBad+' шт'+(it.qcWhy?(' — '+esc(it.qcWhy)):'')+'</span>'):'')+'</div>'
+          : '';
+        return '<div id="j-'+esc(it.id)+'" style="border-top:1px solid #eee;padding-top:5px">'
+          +'<div class="row"><span>'+body+'</span><span>'+money+' '+acts+'</span></div>'+qc+'</div>';
       }).join('');
       var bonRid = rep||('_'+g.lines[0].id);
       var bonBtn = master ? '<button class="sm gray" onclick="addBonus(\''+esc(bonRid)+'\',\''+esc(g.worker)+'\',\'j\')" title="премия за наряд">🎁 + премия</button>' : '';
@@ -1313,9 +1318,19 @@ function otkStatsToggle(){ OQUAL=!OQUAL; var b=document.getElementById('oqual');
     if(!r||!r.ok){ b.innerHTML='<div class="card err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
     var why=(r.byWhy||[]).map(function(x){ return '<div class="row"><span>'+esc(x.name)+'</span><span>'+x.qty+' шт</span></div>'; }).join('')||'<div class="muted">брака не было</div>';
     var wrk=(r.byWorker||[]).slice(0,8).map(function(x){ return '<div class="row"><span>'+esc(x.name)+'</span><span>'+x.qty+' шт</span></div>'; }).join('');
+    // по приёмщикам — их будет несколько, и планка у них не должна расходиться
+    var qc=(r.byQc||[]).map(function(x){
+      return '<div style="border-top:1px solid #eee;padding-top:5px;margin-top:5px">'
+        +'<div class="row"><b>'+esc(x.name)+'</b><b class="'+(x.badPct>5?'err':'ok')+'">'+x.badPct+'% возврат</b></div>'
+        +'<div class="row"><span class="muted">принял</span><span>'+x.ok+' шт · '+x.rows+' поз.</span></div>'
+        +'<div class="row"><span class="muted">вернул (брак)</span><span>'+x.bad+' шт</span></div>'
+        +(x.added?'<div class="row"><span class="muted">из них завёл сам</span><span>'+x.added+' поз.</span></div>':'')
+        +'</div>';
+    }).join('');
     b.innerHTML='<div class="card"><div class="row"><b>Качество за месяц</b><b class="'+(r.badPct>5?'err':'ok')+'">'+r.badPct+'% брака</b></div>'
       +'<div class="row"><span class="muted">принято</span><span>'+r.accepted+' шт</span></div>'
       +'<div class="row"><span class="muted">забраковано</span><span>'+r.bad+' шт</span></div>'
+      +(qc?('<div class="muted" style="margin-top:10px"><b>По приёмщикам:</b></div>'+qc):'')
       +'<div class="muted" style="margin-top:8px">Причины:</div>'+why
       +(wrk?('<div class="muted" style="margin-top:8px">По рабочим:</div>'+wrk):'')+'</div>';
   }).catch(function(){ b.innerHTML='<div class="card err">ошибка сети</div>'; });
