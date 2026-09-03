@@ -1309,12 +1309,19 @@ function otkAddGo(){
 }
 function todayRu(){ var n=new Date(); return pad2(n.getDate())+'.'+pad2(n.getMonth()+1)+'.'+n.getFullYear(); }
 // ── отчёт по качеству ──
-var OQUAL=0;
+var OQUAL=0, OQDAYS=0;   // 0 — текущий месяц, иначе N последних дней
 function otkStatsToggle(){ OQUAL=!OQUAL; var b=document.getElementById('oqual');
-  b.style.display=OQUAL?'':'none'; if(!OQUAL) return;
+  b.style.display=OQUAL?'':'none'; if(!OQUAL) return; otkStatsLoad(); }
+function otkStatsDays(d){ OQDAYS=d; otkStatsLoad(); }
+function otkStatsLoad(){
+  var b=document.getElementById('oqual'); if(!b) return;
   b.innerHTML='<div class="card muted">Загрузка…</div>';
-  var n=new Date(), m=pad2(n.getMonth()+1);
-  api({vapi:'otkstats',from:'01.'+m+'.'+n.getFullYear(),to:pad2(n.getDate())+'.'+m+'.'+n.getFullYear()}).then(function(r){
+  var n=new Date(), from, to=pad2(n.getDate())+'.'+pad2(n.getMonth()+1)+'.'+n.getFullYear(), title;
+  if(OQDAYS>0){
+    var s=new Date(); s.setDate(s.getDate()-OQDAYS);
+    from=pad2(s.getDate())+'.'+pad2(s.getMonth()+1)+'.'+s.getFullYear(); title='за '+OQDAYS+' дней';
+  } else { from='01.'+pad2(n.getMonth()+1)+'.'+n.getFullYear(); title='за месяц'; }
+  api({vapi:'otkstats',from:from,to:to}).then(function(r){
     if(!r||!r.ok){ b.innerHTML='<div class="card err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
     var why=(r.byWhy||[]).map(function(x){ return '<div class="row"><span>'+esc(x.name)+'</span><span>'+x.qty+' шт</span></div>'; }).join('')||'<div class="muted">брака не было</div>';
     var wrk=(r.byWorker||[]).slice(0,8).map(function(x){ return '<div class="row"><span>'+esc(x.name)+'</span><span>'+x.qty+' шт</span></div>'; }).join('');
@@ -1327,10 +1334,15 @@ function otkStatsToggle(){ OQUAL=!OQUAL; var b=document.getElementById('oqual');
         +(x.added?'<div class="row"><span class="muted">из них завёл сам</span><span>'+x.added+' поз.</span></div>':'')
         +'</div>';
     }).join('');
-    b.innerHTML='<div class="card"><div class="row"><b>Качество за месяц</b><b class="'+(r.badPct>5?'err':'ok')+'">'+r.badPct+'% брака</b></div>'
+    var per='<div class="tabs" style="margin:6px 0 0">'
+      +'<button class="sm '+(OQDAYS===0?'active':'')+'" onclick="otkStatsDays(0)">Месяц</button>'
+      +'<button class="sm '+(OQDAYS===30?'active':'')+'" onclick="otkStatsDays(30)">30 дней</button>'
+      +'<button class="sm '+(OQDAYS===90?'active':'')+'" onclick="otkStatsDays(90)">90 дней</button></div>';
+    b.innerHTML='<div class="card"><div class="row"><b>Качество '+title+'</b><b class="'+(r.badPct>5?'err':'ok')+'">'+r.badPct+'% брака</b></div>'+per
       +'<div class="row"><span class="muted">принято</span><span>'+r.accepted+' шт</span></div>'
       +'<div class="row"><span class="muted">забраковано</span><span>'+r.bad+' шт</span></div>'
-      +(qc?('<div class="muted" style="margin-top:10px"><b>По приёмщикам:</b></div>'+qc):'')
+      +(qc?('<div class="muted" style="margin-top:10px"><b>По приёмщикам:</b></div>'+qc)
+          :'<div class="muted" style="margin-top:10px">За период приёмок не было — выберите период шире.</div>')
       +'<div class="muted" style="margin-top:8px">Причины:</div>'+why
       +(wrk?('<div class="muted" style="margin-top:8px">По рабочим:</div>'+wrk):'')+'</div>';
   }).catch(function(){ b.innerHTML='<div class="card err">ошибка сети</div>'; });
