@@ -143,6 +143,7 @@ function buildCard(empId){
   return { ok:true, emp:row.emp, contracts:cons,
     ds:(DATA.ds||[]).filter(function(d){return conIds[d.con];}),
     orders:(DATA.orders||[]).filter(function(o){return o.emp===empId;}),
+    docs:(DATA.edocs||[]).filter(function(d){return d.emp===empId||conIds[d.con];}),
     sick:(DATA.sick||[]).filter(function(x){return x.emp===empId;}),
     fuel:(DATA.fuel||[]).filter(function(x){return x.emp===empId;}),
     steps:(DATA.steps||[]).filter(function(s){return s.emp===empId;}),
@@ -276,34 +277,102 @@ function cardView(){
      '<button class="btn" onclick="newCon(\'обучение\')">+ производственное обучение</button>'+
      '<span class="muted" style="font-size:12px">папка сотрудника создаётся автоматически при добавлении договора</span></div></div>';
 
-  // доп. соглашения
-  h+='<div class="sect">Доп. соглашения</div><div class="card tbwrap">';
-  if(!CARD.ds.length) h+='<div class="empty">Доп. соглашений нет.</div>';
-  else h+='<table><thead><tr><th>№</th><th>Дата</th><th>Что изменилось</th><th>Документ</th><th></th></tr></thead><tbody>'+
-      CARD.ds.slice().sort(function(a,b){return (dt(a.date)||0)-(dt(b.date)||0);}).map(function(d){
-        var lbl={salary:'оклад',tariff:'тариф',advance:'аванс',wStart:'начало',wBreak:'перерыв',wEnd:'конец'};
-        var chTxt=Object.keys(d.changes||{}).map(function(k){return (lbl[k]||k)+' → '+d.changes[k];}).join(', ');
-        return '<tr><td><b>'+esc(d.num||'—')+'</b></td><td>'+esc(d.date||'—')+'</td><td>'+(chTxt?esc(chTxt):esc(d.reason||'—'))+'</td>'+
-        '<td>'+(d.link?'<a class="btn sm" href="'+esc(d.link)+'" target="_blank">📄 открыть</a> ':'')+
-              '<button class="btn sm" onclick="docMenu(\'ds\',\''+d.id+'\')">'+(d.link?'⋯':'📄 документ…')+'</button></td>'+
-        '<td style="white-space:nowrap"><button class="btn sm" onclick=\'dsForm('+JSON.stringify(d).replace(/'/g,"&#39;")+')\'>✎ данные</button>'+
-        ' <button class="btn sm" onclick="delRec(\'ds\',\''+d.id+'\',\'доп. соглашение № '+esc(d.num)+'\')" title="удалить">🗑</button></td></tr>'; }).join('')+'</tbody></table>';
-  h+='<div class="row" style="margin-top:8px"><button class="btn" onclick="newDs()">+ доп. соглашение</button>'+
-     '<span class="muted" style="font-size:12px">меняет условия контракта (оплата, график, аванс). Чтобы приложить УЖЕ подписанное соглашение — нажмите «+ доп. соглашение», заполните новые условия и выберите «Загрузить готовый».</span></div></div>';
-  // приказы
-  h+='<div class="sect">Приказы</div><div class="card tbwrap">';
-  if(!CARD.orders.length) h+='<div class="empty">Приказов нет.</div>';
-  else h+='<table><thead><tr><th>№</th><th>Дата</th><th>Вид</th><th>Основание / заявление</th><th>Документ</th><th></th></tr></thead><tbody>'+
-      CARD.orders.map(function(o){ return '<tr><td><b>'+esc(o.num)+'</b></td><td>'+esc(o.date||'—')+'</td><td>'+esc(o.kind||'')+'</td>'+
-        '<td>'+(o.basis?'<span class="muted">'+esc(o.basis)+'</span> ':'')+
-              (o.basisLink?'<a class="btn sm" href="'+esc(o.basisLink)+'" target="_blank">📄 заявление</a>'
-                          :'<button class="btn sm" onclick="uploadDoc(\''+o.id+'\',\'orderbasis\')" title="прикрепить заявление">📎 заявление</button>')+'</td>'+
-        '<td>'+(o.link?'<a class="btn sm" href="'+esc(o.link)+'" target="_blank">📄 документ</a>'
-                      :'<button class="btn sm" onclick="docMenu(\'order\',\''+o.id+'\')">📄 документ…</button>')+'</td>'+
-        '<td style="white-space:nowrap"><button class="btn sm" onclick=\'ordForm('+JSON.stringify(o).replace(/'/g,"&#39;")+')\'>✎ данные</button>'+
-        ' <button class="btn sm" onclick="delRec(\'order\',\''+o.id+'\',\'приказ № '+esc(o.num)+'\')" title="удалить">🗑</button></td></tr>'; }).join('')+'</tbody></table>';
-  h+='<div class="row" style="margin-top:8px"><button class="btn" onclick="ordForm({emp:CARD.emp.id})">+ приказ</button></div></div>';
+  h+=docsBlock();
   return h;
+}
+
+/* ─── Документы сотрудника ───────────────────────────────────────────────
+   Один список на всё: свои документы + доп. соглашения + приказы. Список ОБЩИЙ,
+   но модель раздельная: ДС по-прежнему меняет условия договора («действует сейчас»),
+   а приказ получает свой номер — поэтому правятся они своими формами. */
+function docTitle(d){ return d.title||d.type||'документ'; }
+function filesCell(d){
+  var f=(d.files||[]).filter(String);
+  if(!f.length && d.docLink) f=[d.docLink];
+  if(!f.length) return '<span class="muted" title="файл не приложен">📎 —</span>';
+  if(f.length===1) return '<a class="pill p-ok" href="'+esc(f[0])+'" target="_blank" title="открыть">📎 файл</a>';
+  return '<span class="pill p-ok" title="страниц: '+f.length+'">📎 '+f.length+'</span> '+
+    f.map(function(u,i){ return '<a href="'+esc(u)+'" target="_blank">'+(i+1)+'</a>'; }).join(' ');
+}
+function docRow(d){
+  var con=(CARD.contracts||[]).filter(function(c){return c.id===d.con;})[0];
+  var st=String(d.status||'нужен');
+  var acts;
+  if(d.src==='ds'){
+    var orig=(DATA.ds||[]).filter(function(x){return x.id===d.id;})[0]||{};
+    acts='<button class="btn sm" onclick=\'dsForm('+JSON.stringify(orig).replace(/'/g,"&#39;")+')\'>✎ данные</button>'+
+         ' <button class="btn sm" onclick="docMenu(\'ds\',\''+d.id+'\')">📄 документ…</button>'+
+         ' <button class="btn sm" onclick="delRec(\'ds\',\''+d.id+'\',\'доп. соглашение № '+esc(d.num)+'\')">🗑</button>';
+  } else if(d.src==='order'){
+    var oo=(DATA.orders||[]).filter(function(x){return x.id===d.id;})[0]||{};
+    acts='<button class="btn sm" onclick=\'ordForm('+JSON.stringify(oo).replace(/'/g,"&#39;")+')\'>✎ данные</button>'+
+         ' <button class="btn sm" onclick="docMenu(\'order\',\''+d.id+'\')">📄 документ…</button>'+
+         (oo.basisLink?' <a class="btn sm" href="'+esc(oo.basisLink)+'" target="_blank">📄 заявление</a>'
+                      :' <button class="btn sm" onclick="uploadDoc(\''+d.id+'\',\'orderbasis\')">📎 заявление</button>')+
+         ' <button class="btn sm" onclick="delRec(\'order\',\''+d.id+'\',\'приказ № '+esc(d.num)+'\')">🗑</button>';
+  } else {
+    acts='<button class="btn sm" onclick=\'edocForm('+JSON.stringify(d).replace(/'/g,"&#39;")+')\'>✎ данные</button>'+
+         ' <button class="btn sm" onclick="uploadDoc(\''+d.id+'\',\'edoc\')">📎 загрузить</button>'+
+         ' <button class="btn sm" onclick="delRec(\'edoc\',\''+d.id+'\',\''+esc(docTitle(d))+'\')">🗑</button>';
+  }
+  return '<tr><td><b>'+esc(docTitle(d))+'</b>'+(d.note?'<div class="muted" style="font-size:12px">'+esc(d.note)+'</div>':'')+'</td>'+
+    '<td>'+esc(d.num||'—')+'</td><td>'+esc(d.date||'—')+'</td>'+
+    '<td class="muted">'+(con?esc(con.kind+' № '+con.num):'—')+'</td>'+
+    '<td><span class="pill '+(st==='подписан'?'p-ok':'p-amber')+'">'+esc(st)+'</span></td>'+
+    '<td>'+filesCell(d)+'</td>'+
+    '<td style="white-space:nowrap">'+acts+'</td></tr>';
+}
+function docsBlock(){
+  var rows=(CARD.docs||[]);
+  var h='<div class="sect">Документы</div><div class="card tbwrap">';
+  if(!rows.length) h+='<div class="empty">Документов нет.</div>';
+  else h+='<table><thead><tr><th>Документ</th><th>№</th><th>Дата</th><th>К договору</th><th>Статус</th><th>Файл</th><th></th></tr></thead><tbody>'+
+    rows.map(docRow).join('')+'</tbody></table>';
+  h+='<div class="row" style="margin-top:8px">'+
+     '<button class="btn pri" onclick="edocForm({emp:CARD.emp.id})">+ документ</button>'+
+     '<button class="btn" onclick="newDs()">+ доп. соглашение</button>'+
+     '<button class="btn" onclick="ordForm({emp:CARD.emp.id})">+ приказ</button>'+
+     '<span class="muted" style="font-size:12px">сюда кладётся всё: паспорт, заявления, справки, больничные, письма органов. '+
+     'Доп. соглашение и приказ заводятся своими кнопками — они меняют условия договора и получают номер.</span></div></div>';
+  return h;
+}
+function edocForm(d){
+  d=d||{}; REQKEYS={};
+  var types=(DATA.dtypes||[]).filter(function(t){ return t.group!=='дс'&&t.group!=='приказ'; });
+  if(!types.length) types=[{key:'прочее',title:'Прочее',group:'прочее'}];
+  var cur=d.type||types[0].key;
+  var grp={}; types.forEach(function(t){ (grp[t.group]=grp[t.group]||[]).push(t); });
+  var opts=Object.keys(grp).map(function(g){
+    return '<optgroup label="'+esc(g)+'">'+grp[g].map(function(t){
+      return '<option value="'+esc(t.key)+'"'+(t.key===cur?' selected':'')+'>'+esc(t.title)+'</option>'; }).join('')+'</optgroup>'; }).join('');
+  var cons=(CARD.contracts||[]);
+  dlg(d.id?'Правка документа':'Новый документ',
+    '<div class="fld"><label class="f">Тип документа</label><select id="f_type">'+opts+
+      '<option value="__new__">＋ добавить свой тип…</option></select></div>'+
+    '<div class="fld"><label class="f">К договору (не обязательно)</label><select id="f_con">'+
+      '<option value="">— к сотруднику, не к договору —</option>'+
+      cons.map(function(c){ return '<option value="'+c.id+'"'+(c.id===d.con?' selected':'')+'>'+esc(c.kind+' № '+c.num)+'</option>'; }).join('')+
+      '</select></div>'+
+    fld('num','№ документа',d.num)+fld('date','Дата',d.date)+fld('note','Примечание',d.note),
+    function(){
+      var type=val('type');
+      if(type==='__new__'){ addDocType(); return; }
+      var rec={id:d.id||'',emp:CARD.emp.id,con:val('con'),type:type,num:val('num'),date:val('date'),
+               note:val('note'),status:d.status||'нужен'};
+      busy(1); api({vapi:'hredocsave',data:JSON.stringify(rec)}).then(function(r){ busy(0);
+        if(!r.ok){ alert(r.error||'ошибка'); return; }
+        apply(r,CARD.emp.id);
+      });
+    }, '', 'Заводим карточку документа. Сам файл прикладывается кнопкой «📎 загрузить» в списке.');
+}
+function addDocType(){
+  var title=prompt('Название нового типа документа\n(например: «Требование ФСЗН»)',''); if(!title) return;
+  busy(1);
+  api({vapi:'hrdtypesave',data:JSON.stringify({title:title,group:'прочее',scope:'любое'})}).then(function(r){ busy(0);
+    if(!r.ok){ alert(r.error||'ошибка'); return; }
+    var id=CARD.emp.id; DATA=r; CARD=buildCard(id);
+    edocForm({emp:id,type:r.savedType||''});
+  });
 }
 // Уведомление — это документ. Подписанное работником уведомление и есть его ответ,
 // поэтому отдельного «ответа» не спрашиваем: жмём «✔ подписано».
@@ -632,13 +701,20 @@ function uploadDoc(recId,target){
   target=target||'con';
   var c = target==='con' ? ((DATA.contracts||[]).filter(function(x){return x.id===recId;})[0]||{})
         : target==='ds' ? ((DATA.ds||[]).filter(function(x){return x.id===recId;})[0]||{})
+        : target==='edoc' ? ((DATA.edocs||[]).filter(function(x){return x.src==='edoc'&&x.id===recId;})[0]||{})
         : ((DATA.orders||[]).filter(function(x){return x.id===recId;})[0]||{});
+  // у документа сотрудника имя файла собирает сервер по названию типа («Паспорт», «Паспорт 2») —
+  // подпись не спрашиваем, иначе в папке окажется десяток разнобойных имён
+  if(target==='edoc') return uploadFiles(recId,target,'');
   var def = target==='con' ? ((c.kind==='подряд'?'Договор подряда':(c.kind==='обучение'?'Договор о производственном обучении':'Контракт'))+' № '+(c.num||'')+' от '+(c.date||''))
           : target==='ds' ? ('Доп. соглашение № '+(c.num||'')+' от '+(c.date||''))
           : target==='orderbasis' ? ('Заявление к приказу № '+(c.num||'')+' от '+(c.date||''))
           : ('Приказ № '+(c.num||'')+' от '+(c.date||''));
   var label=prompt('Как подписать документ в папке сотрудника?\n(например: «Приказ № 1/1-к от 12.01.2026 о зачислении»)', def);
   if(label===null) return;
+  uploadFiles(recId,target,label);
+}
+function uploadFiles(recId,target,label){
   var inp=document.createElement('input'); inp.type='file'; inp.multiple=true;
   inp.accept='image/*,application/pdf';
   inp.onchange=function(){
