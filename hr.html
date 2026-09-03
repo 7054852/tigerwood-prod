@@ -311,7 +311,14 @@ function docRow(d){
                       :' <button class="btn sm" onclick="uploadDoc(\''+d.id+'\',\'orderbasis\')">📎 заявление</button>')+
          ' <button class="btn sm" onclick="delRec(\'order\',\''+d.id+'\',\'приказ № '+esc(d.num)+'\')">🗑</button>';
   } else {
+    // у типа есть шаблон → «создать» собирает Google-документ; после этого кнопка ведёт на него
+    var tplBtn = !d.tpl ? ''
+      : (d.docLink
+          ? ' <a class="btn sm" href="'+esc(d.docLink)+'" target="_blank">📄 эл. документ</a>'+
+            ' <button class="btn sm" onclick="delElDoc(\''+d.id+'\',\''+esc(docTitle(d))+'\')" title="удалить электронный документ (сканы останутся)">🗑 док</button>'
+          : ' <button class="btn sm pri" onclick="genEDoc(\''+d.id+'\')">🖨 создать</button>');
     acts='<button class="btn sm" onclick=\'edocForm('+JSON.stringify(d).replace(/'/g,"&#39;")+')\'>✎ данные</button>'+
+         tplBtn+
          ' <button class="btn sm" onclick="uploadDoc(\''+d.id+'\',\'edoc\')">📎 загрузить</button>'+
          ' <button class="btn sm" onclick="delRec(\'edoc\',\''+d.id+'\',\''+esc(docTitle(d))+'\')">🗑</button>';
   }
@@ -364,6 +371,22 @@ function edocForm(d){
         apply(r,CARD.emp.id);
       });
     }, '', 'Заводим карточку документа. Сам файл прикладывается кнопкой «📎 загрузить» в списке.');
+}
+function genEDoc(id){
+  busy(1);
+  api({vapi:'hrgenedoc',doc:id}).then(function(r){ busy(0);
+    if(!r.ok){ alert(r.error||'ошибка'); return; }
+    apply(r,CARD.emp.id);
+    if((r.leftPlaceholders||[]).length) alert('Документ создан, но в нём остались незаполненные места: '+r.leftPlaceholders.join(', ')+'\nЗаполните данные и создайте заново.');
+    window.open(r.url,'_blank');
+  });
+}
+function delElDoc(id,label){
+  if(!confirm('Удалить электронный документ «'+label+'»?\n\nФайл уйдёт в корзину Google Drive. Приложенные сканы останутся.')) return;
+  busy(1); api({vapi:'hrdelelcdoc',doc:id}).then(function(r){ busy(0);
+    if(!r.ok){ alert(r.error||'ошибка'); return; }
+    apply(r,CARD.emp.id);
+  });
 }
 function addDocType(){
   var title=prompt('Название нового типа документа\n(например: «Требование ФСЗН»)',''); if(!title) return;
