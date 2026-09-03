@@ -680,18 +680,18 @@ function loadOtkMine(){
         +'<div class="row"><b>🔎 Внёс контролёр '+esc(g.by)+'</b><b class="ok">'+g.sum+' руб.</b></div>'
         +'<div style="font-size:12px">📅 <b>'+esc(g.date)+'</b> <span class="muted">· '+esc(g.shift)+' · вы сложили детали в зону сдачи, работу приняли и начислили</span></div>'
         +lines
-        +'<div class="row" style="margin-top:8px"><button onclick="otkAck(\''+esc(g.report)+'\',1)">✅ Всё верно</button>'
-        +'<button class="gray" onclick="otkAck(\''+esc(g.report)+'\',0)">✖ Не согласен</button>'
+        // ⚠ кнопка «не согласен» убрана намеренно: спорные вопросы решаются с мастером
+        // в цеху, а не кнопкой. У рабочего остаётся только подтверждение.
+        +'<div class="row" style="margin-top:8px"><button onclick="otkAck(\''+esc(g.report)+'\')">✅ Всё верно</button>'
         +'<span class="msg" id="ack-'+esc(g.report)+'"></span></div></div>';
     }).join('');
   }).catch(function(){});
 }
-function otkAck(rep,ok){
-  if(!ok && !confirm('Сообщить мастеру, что вы не согласны с этим нарядом?')) return;
+function otkAck(rep){
   var m=document.getElementById('ack-'+rep); if(m) m.textContent='…';
-  api({vapi:'otkack',report:rep,ok:ok?1:0}).then(function(r){
+  api({vapi:'otkack',report:rep,ok:1}).then(function(r){
     if(!r||!r.ok){ if(m) m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; return; }
-    if(m) m.innerHTML=ok?'<span class="ok">✅ принято</span>':'<span class="err">мастеру отправлено</span>';
+    if(m) m.innerHTML='<span class="ok">✅ принято</span>';
     loadOtkMine();
   }).catch(function(){ if(m) m.innerHTML='<span class="err">ошибка сети</span>'; });
 }
