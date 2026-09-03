@@ -1244,7 +1244,11 @@ function renderOtkAdd(){
     +'<label>Оборудование<select id="oa_e" style="font-size:16px" onchange="otkAddDet()">'+eqs.map(function(e){return opt(e);}).join('')+'</select></label>'
     +'<label>Деталь<select id="oa_d" style="font-size:16px" onchange="otkAddOp()"></select></label>'
     +'<label>Операция<select id="oa_o" style="font-size:16px" onchange="otkAddCalc()"></select></label>'
-    +'<label>Количество<input id="oa_q" type="number" min="0" inputmode="numeric" style="font-size:16px" oninput="otkAddCalc()"></label>'
+    +'<label>Принято, шт<input id="oa_q" type="number" min="0" inputmode="numeric" style="font-size:16px" oninput="otkAddCalc()"></label>'
+    +'<label>Не принято (брак), шт<input id="oa_bad" type="number" min="0" inputmode="numeric" value="0" style="font-size:16px" oninput="otkAddBad()"></label>'
+    +'<div id="oa_whybox" style="display:none"><label>Причина брака<select id="oa_why" style="font-size:16px">'
+    +  ((OTK&&OTK.whys)||[]).map(function(x){return opt(x);}).join('')+'</select></label>'
+    +  '<div class="muted" style="font-size:12px;margin:4px 0">«'+esc((OTK&&OTK.whyWorker)||'вина рабочего')+'» — эти штуки не оплачиваются. По остальным причинам система начислит компенсацию отдельной строкой.</div></div>'
     +'<div class="sum" id="oa_sum">—</div>'
     +'<div class="row"><button id="oa_go" onclick="otkAddGo()">✅ Внести и принять</button><span class="msg" id="oa_msg"></span></div></div>';
   otkAddDet();
@@ -1272,21 +1276,29 @@ function otkAddCalc(){
   var e=document.getElementById('oa_sum'); if(!e) return;
   e.textContent = (q>0&&r>0) ? (Math.round(q*r*100)/100)+' руб.' : (r>0?'—':'нет расценки');
 }
+// поле причины показываем только когда брак есть — иначе лишний вопрос на каждой приёмке
+function otkAddBad(){
+  var bad=Number((document.getElementById('oa_bad')||{}).value||0);
+  var box=document.getElementById('oa_whybox'); if(box) box.style.display=bad>0?'':'none';
+}
 function otkAddGo(){
   var w=(document.getElementById('oa_w')||{}).value||'', b=(document.getElementById('oa_b')||{}).value||'';
   var eq=(document.getElementById('oa_e')||{}).value||'', d=(document.getElementById('oa_d')||{}).value||'';
   var o=(document.getElementById('oa_o')||{}).value||'', q=(document.getElementById('oa_q')||{}).value||'';
+  var bad=(document.getElementById('oa_bad')||{}).value||'0', why=(document.getElementById('oa_why')||{}).value||'';
   if(!w){ otkMsg('oa_msg','<span class="err">выберите сотрудника</span>'); return; }
-  if(!(Number(q)>0)){ otkMsg('oa_msg','<span class="err">укажите количество</span>'); return; }
-  if(!confirm('Внести за '+w+': '+d+' · '+o+' · '+q+' шт?')) return;
+  if(!(Number(q)>0)){ otkMsg('oa_msg','<span class="err">укажите принятое количество</span>'); return; }
+  if(Number(bad)>0 && !why){ otkMsg('oa_msg','<span class="err">укажите причину брака</span>'); return; }
+  if(!confirm('Внести за '+w+': '+d+' · '+o+'\nпринято '+q+' шт'+(Number(bad)>0?(', брак '+bad+' шт ('+why+')'):'')+'?')) return;
   if(!otkGuard()) return;
   var btn=document.getElementById('oa_go'); if(btn){ btn.disabled=true; btn.textContent='вношу…'; }
-  api({vapi:'otkadd',worker:w,batch:b,equip:eq,detail:d,op:o,qty:q,date:todayRu(),shift:'день'}).then(function(r){
+  api({vapi:'otkadd',worker:w,batch:b,equip:eq,detail:d,op:o,qty:q,bad:bad,why:why,date:todayRu(),shift:'день'}).then(function(r){
     OTKBUSY=false; if(btn){ btn.disabled=false; btn.textContent='✅ Внести и принять'; }
     if(!r||!r.ok){ otkMsg('oa_msg','<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'); return; }
-    otkMsg('oa_msg','<span class="ok">✅ внесено на '+r.sum+' р.</span>');
+    otkMsg('oa_msg','<span class="ok">✅ внесено на '+r.sum+' р.'+(Number(bad)>0?(' · брак '+bad+' шт учтён'):'')+'</span>');
     var qf=document.getElementById('oa_q'); if(qf) qf.value='';
-    otkAddCalc(); loadOtk();
+    var bf=document.getElementById('oa_bad'); if(bf) bf.value='0';
+    otkAddBad(); otkAddCalc(); loadOtk();
   }).catch(function(){ OTKBUSY=false; if(btn){ btn.disabled=false; btn.textContent='✅ Внести и принять'; } otkMsg('oa_msg','<span class="err">ошибка сети</span>'); });
 }
 function todayRu(){ var n=new Date(); return pad2(n.getDate())+'.'+pad2(n.getMonth()+1)+'.'+n.getFullYear(); }
