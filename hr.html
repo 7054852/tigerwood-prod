@@ -42,6 +42,7 @@
   label.f{ display:block; font-size:11.5px; color:var(--muted); margin-bottom:3px; }
   input,select,textarea{ width:100%; padding:7px 9px; border:1px solid var(--line); border-radius:9px; background:var(--card); color:var(--fg); font-size:13px; font-family:inherit; }
   .steps{ margin-top:4px; }
+  .tabs .b.amber{ background:var(--amber,#b45309); }
   .dlink{ cursor:pointer; border-bottom:1px dashed var(--line); }
   .dlink:hover{ border-bottom-color:currentColor; }
   .step{ display:flex; gap:9px; align-items:flex-start; padding:7px 0; border-bottom:1px dashed var(--line); }
@@ -120,8 +121,11 @@ function money(n){ return (Number(n)||0).toLocaleString('ru-RU',{minimumFraction
 var TAB='emp', DATA=null, CARD=null;
 // НПД (самозанятый) — такой же гражданско-правовой договор, как подряд: те же поля и та же логика
 function isCivil(k){ k=String(k||'').toLowerCase(); return k==='подряд'||k==='нпд'; }
-var TABS=[{id:'emp',t:'👤 Сотрудники'},{id:'dl',t:'⏱ Сроки'},{id:'con',t:'📑 Договоры'},{id:'ord',t:'📜 Приказы'},
-          {id:'sick',t:'🏥 Больничные'},{id:'doc',t:'🗂 Документы'},{id:'fuel',t:'⛽ Топливо'},{id:'tpl',t:'📋 Шаблоны'}];
+// Сроки — не вкладка, а уведомление: их читают раз в неделю, а место они занимали первым экраном.
+// Приказы и больничные — типы документов, поэтому живут в общем реестре «Документы», а не своими вкладками.
+var TABS=[{id:'emp',t:'👤 Сотрудники'},{id:'con',t:'📑 Договоры'},{id:'doc',t:'🗂 Документы'},
+          {id:'fuel',t:'⛽ Топливо'},{id:'tpl',t:'📋 Шаблоны'}];
+var DLOPEN=false, DOCF='all', DOCQ='';
 
 // ВСЁ грузится одним запросом (вызов GAS стоит секунды) — вкладки и карточки дальше открываются мгновенно, без сети
 function apply(r,keepCardId){
@@ -154,27 +158,32 @@ function buildCard(empId){
 function sevPill(s){ var m={red:'🔴',amber:'🟡',ok:'🟢',none:'—'}; return '<span class="pill p-'+(s||'none')+'">'+(m[s]||'—')+'</span>'; }
 
 function render(){
-  var red=(DATA.deadlines||[]).filter(function(x){return x.sev==='red';}).length;
+  var dl=DATA.deadlines||[], red=dl.filter(function(x){return x.sev==='red';}).length;
   var h='<div class="tabs">'+TABS.map(function(t){
-    return '<button class="'+(TAB===t.id?'on':'')+'" onclick="go(\''+t.id+'\')">'+t.t+(t.id==='dl'&&red?'<span class="b">'+red+'</span>':'')+'</button>';
-  }).join('')+'<button onclick="load(1)" title="перечитать с сервера">⟳</button>'+
+    return '<button class="'+(TAB===t.id?'on':'')+'" onclick="go(\''+t.id+'\')">'+t.t+'</button>';
+  }).join('')+
+  '<button class="'+(DLOPEN?'on':'')+'" onclick="toggleDl()" title="сроки и напоминания">🔔'+
+    (dl.length?('<span class="b'+(red?'':' amber')+'">'+dl.length+'</span>'):'')+'</button>'+
+  '<button onclick="load(1)" title="перечитать с сервера">⟳</button>'+
   (DATA.cached?'<span class="muted" style="align-self:center;font-size:11.5px">данные из кеша</span>':'')+'</div>';
-  if(CARD) h+=cardView(); else if(TAB==='dl') h+=dlView();
+  if(DLOPEN) h+=dlView();
+  if(CARD) h+=cardView();
   else if(TAB==='emp') h+=empView();
   else if(TAB==='con') h+=conRegView();
-  else if(TAB==='ord') h+=ordView();
-  else if(TAB==='sick') h+=sickView();
   else if(TAB==='doc') h+=docView();
   else if(TAB==='fuel') h+=fuelView();
   else if(TAB==='tpl') h+=tplView();
   $('app').innerHTML=h;
 }
+function toggleDl(){ DLOPEN=!DLOPEN; render(); }
 
 /* ─── Сроки ─── */
 function dlView(){
   var d=DATA.deadlines||[];
-  if(!d.length) return '<div class="card"><b>✓ Всё в порядке</b><div class="muted" style="margin-top:4px">Нет истекающих договоров и просроченных шагов оформления.</div></div>';
-  return '<div class="card tbwrap"><table><thead><tr><th></th><th>Кто</th><th>Что</th><th>Ответственный</th><th>Комментарий</th></tr></thead><tbody>'+
+  var head='<div class="row" style="justify-content:space-between;margin-bottom:6px"><b>🔔 Сроки и напоминания</b>'+
+    '<button class="btn sm" onclick="toggleDl()">скрыть</button></div>';
+  if(!d.length) return '<div class="card">'+head+'<div class="muted">Нет истекающих договоров и просроченных шагов оформления.</div></div>';
+  return '<div class="card tbwrap">'+head+'<table><thead><tr><th></th><th>Кто</th><th>Что</th><th>Ответственный</th><th>Комментарий</th></tr></thead><tbody>'+
     d.map(function(x){
       return '<tr class="click" onclick="openCard(\''+x.empId+'\')"><td>'+sevPill(x.sev)+'</td><td><b>'+esc(x.fio)+'</b></td>'+
         '<td>'+esc(x.title)+'</td><td class="muted">'+esc(x.who||'')+'</td><td>'+esc(x.msg)+'</td></tr>';
@@ -960,36 +969,6 @@ function dt(ru){ var p=String(ru||'').split('.'); return p.length===3?new Date(+
 /* ─── реестры ─── */
 function empOpts(v){ return '<div><label class="f">Сотрудник</label><select id="f_emp"><option value="">—</option>'+
   (DATA.list||[]).map(function(x){ return '<option value="'+x.emp.id+'"'+(x.emp.id===v?' selected':'')+'>'+esc(x.emp.fio)+'</option>'; }).join('')+'</select></div>'; }
-var ORDFILTER='all';
-function ordFilter(v){ ORDFILTER=v; render(); }
-function ordView(){
-  var all=(DATA.orders||[]).slice();
-  var l=all.filter(function(o){ return ORDFILTER==='all'||o.series===ORDFILTER; });
-  // сортировка по ДАТЕ (возр.) внутри серии — загруженный задним числом встаёт в нужное место
-  l.sort(function(a,b){
-    if(a.series!==b.series) return a.series==='кадровые'?-1:1;
-    var da=dt(a.date)||0, db=dt(b.date)||0;
-    if(da!==db) return da-db;
-    return numKey(a.num)-numKey(b.num);
-  });
-  var h='<div class="row" style="margin-bottom:8px"><button class="btn pri" onclick="ordForm({})">+ Приказ</button>'+
-    ['all','кадровые','основная деятельность'].map(function(v){ return '<button class="btn'+(ORDFILTER===v?' pri':'')+'" onclick="ordFilter(\''+v+'\')">'+
-      (v==='all'?'все':(v==='кадровые'?'кадровые':'осн. деятельности'))+'</button>'; }).join('')+
-    '<span class="muted">всего: '+all.length+'</span></div>';
-  h+='<div class="card tbwrap"><table><thead><tr><th>№</th><th>Дата</th><th>Серия</th><th>Вид</th><th>ФИО</th><th>Основание / заявление</th><th>Документ</th><th></th></tr></thead><tbody>';
-  h+=l.map(function(o){
-    return '<tr><td><b>'+esc(o.num)+'</b></td><td>'+esc(o.date||'—')+'</td><td class="muted">'+esc(o.series==='кадровые'?'кадр.':'осн.')+'</td>'+
-      '<td>'+esc(o.kind||'')+'</td><td>'+esc(o.fio||'—')+'</td>'+
-      '<td>'+(o.basis?'<span class="muted">'+esc(o.basis)+'</span> ':'')+
-            (o.basisLink?'<a class="btn sm" href="'+esc(o.basisLink)+'" target="_blank">📄 заявление</a>'
-                        :'<button class="btn sm" onclick="uploadDoc(\''+o.id+'\',\'orderbasis\')" title="прикрепить заявление (скан/фото/PDF)">📎 заявление</button>')+'</td>'+
-      '<td>'+(o.link?'<a class="btn sm" href="'+esc(o.link)+'" target="_blank">📄 открыть</a> ':'')+
-            '<button class="btn sm" onclick=\'ordDoc('+JSON.stringify(o).replace(/\x27/g,"&#39;")+')\'>'+(o.link?'⋯':'📄 документ…')+'</button></td>'+
-      '<td style="white-space:nowrap"><button class="btn sm" onclick=\'ordForm('+JSON.stringify(o).replace(/\x27/g,"&#39;")+')\'>✎ данные</button>'+
-      ' <button class="btn sm" onclick="delRec(\'order\',\''+o.id+'\',\'приказ № '+esc(o.num)+'\')" title="удалить">🗑</button></td></tr>';
-  }).join('');
-  return h+'</tbody></table>'+(l.length?'':'<div class="empty">Пусто.</div>')+'</div>';
-}
 function ordDoc(o){ docMenu('order',o.id); }
 function ordForm(o){
   o=o||{};
@@ -1012,29 +991,77 @@ function ordForm(o){
     'Сохраняем данные приказа. Документ — кнопкой «Сохранить и перейти к документу»: собрать по шаблону (для приёма) или загрузить готовый.',
     function(){ saveOrd(true); });
 }
-function sickView(){
-  var l=DATA.sick||[];
-  var h='<div class="row" style="margin-bottom:8px"><button class="btn pri" onclick="sickForm({})">+ Больничный</button><span class="muted">всего: '+l.length+'</span></div>';
-  h+='<div class="card tbwrap"><table><thead><tr><th>Серия и номер</th><th>ФИО</th><th>С</th><th>По</th><th class="num">Расчёт</th><th></th></tr></thead><tbody>';
-  h+=l.map(function(s){ return '<tr><td>'+esc(s.sernum)+'</td><td>'+esc(s.fio||'—')+'</td><td>'+esc(s.from||'—')+'</td><td>'+esc(s.to||'—')+'</td><td class="num">'+(s.calc?money(s.calc):'—')+'</td>'+
-    '<td><button class="btn sm" onclick=\'sickForm('+JSON.stringify(s).replace(/'/g,"&#39;")+')\'>✎</button> <button class="btn sm" onclick="delRec(\'sick\',\''+s.id+'\',\'больничный\')">🗑</button></td></tr>'; }).join('');
-  return h+'</tbody></table>'+(l.length?'':'<div class="empty">Пусто.</div>')+'</div>';
-}
-function sickForm(s){
-  dlg('Больничный', fld('sernum','Серия и номер',s.sernum)+empOpts(s.emp)+fld('from','Дата начала',s.from)+
-    fld('to','Дата окончания',s.to)+fld('calc','Расчёт',s.calc)+fld('note','Примечание',s.note),
-    function(){
-      var d={id:s.id||'',sernum:val('sernum'),emp:val('emp'),from:val('from'),to:val('to'),calc:val('calc'),note:val('note')};
-      busy(1); api({vapi:'hrsavesick',data:JSON.stringify(d)}).then(function(r){ busy(0); TAB='sick'; apply(r); });
-    });
-}
 function docView(){
+  var all=(DATA.edocs||[]).slice();
+  var fio={}; (DATA.list||[]).forEach(function(x){ fio[x.emp.id]=x.emp.fio; });
+  var kinds=[['all','Все'],['приказ','Приказы'],['дс','Доп. соглашения'],['личный','Личные'],
+             ['уведомление','Уведомления'],['прочее','Прочее']];
+  var groupOf=function(d){
+    if(d.src==='order') return 'приказ';
+    if(d.src==='ds') return 'дс';
+    var t=(DATA.dtypes||[]).filter(function(x){return x.key===d.type;})[0];
+    return (t&&t.group)||'прочее';
+  };
+  var q=DOCQ.toLowerCase();
+  var l=all.filter(function(d){
+    if(DOCF!=='all'&&groupOf(d)!==DOCF) return false;
+    if(!q) return true;
+    return ((fio[d.emp]||'')+' '+docTitle(d)+' '+(d.num||'')).toLowerCase().indexOf(q)>=0;
+  });
+  var cnt={}; all.forEach(function(d){ var g=groupOf(d); cnt[g]=(cnt[g]||0)+1; });
+  var h='<div class="row" style="margin-bottom:8px;flex-wrap:wrap">'+
+    kinds.map(function(k){
+      var n=k[0]==='all'?all.length:(cnt[k[0]]||0);
+      return '<button class="btn sm'+(DOCF===k[0]?' pri':'')+'" onclick="docFilter(\''+k[0]+'\')">'+k[1]+' '+n+'</button>';
+    }).join('')+
+    '<input id="docq" placeholder="поиск по сотруднику, документу, №" value="'+esc(DOCQ)+'" '+
+      'oninput="DOCQ=this.value;docRender()" style="flex:1;min-width:180px">'+
+    '</div><div id="docbody">'+docTable(l,fio)+'</div>';
+  // табели и ведомости живут отдельным листом и к сотруднику не привязаны — показываем, только если есть
+  if((DATA.docs||[]).length||false) h+=docSheetsBlock();
+  h+='<div class="row" style="margin-top:8px"><button class="btn" onclick="docForm({})">+ табель / ведомость</button>'+
+     '<span class="muted" style="font-size:12px">документы сотрудников добавляются в его карточке</span></div>';
+  return h;
+}
+function docTable(l,fio){
+  if(!l.length) return '<div class="card"><div class="empty">Ничего не найдено.</div></div>';
+  return '<div class="card tbwrap"><table><thead><tr><th>Сотрудник</th><th>Документ</th><th>№</th><th>Дата</th>'+
+    '<th>Статус</th><th>Файл</th></tr></thead><tbody>'+
+    l.map(function(d){
+      var st=String(d.status||'нужен');
+      return '<tr class="click" onclick="openCard(\''+d.emp+'\')"><td><b>'+esc(fio[d.emp]||'—')+'</b></td>'+
+        '<td>'+esc(docTitle(d))+'</td><td>'+esc(d.num||'—')+'</td><td>'+esc(d.date||'—')+'</td>'+
+        '<td><span class="pill '+(st==='подписан'?'p-ok':'p-amber')+'">'+esc(st)+'</span></td>'+
+        '<td onclick="event.stopPropagation()">'+filesCell(d)+'</td></tr>';
+    }).join('')+'</tbody></table></div>';
+}
+// перерисовываем ТОЛЬКО таблицу — иначе поле поиска пересоздаётся и теряет фокус на каждой букве
+function docRender(){
+  var fio={}; (DATA.list||[]).forEach(function(x){ fio[x.emp.id]=x.emp.fio; });
+  var groupOf=function(d){
+    if(d.src==='order') return 'приказ';
+    if(d.src==='ds') return 'дс';
+    var t=(DATA.dtypes||[]).filter(function(x){return x.key===d.type;})[0];
+    return (t&&t.group)||'прочее';
+  };
+  var q=DOCQ.toLowerCase();
+  var l=(DATA.edocs||[]).filter(function(d){
+    if(DOCF!=='all'&&groupOf(d)!==DOCF) return false;
+    if(!q) return true;
+    return ((fio[d.emp]||'')+' '+docTitle(d)+' '+(d.num||'')).toLowerCase().indexOf(q)>=0;
+  });
+  var b=$('docbody'); if(b) b.innerHTML=docTable(l,fio);
+}
+function docFilter(k){ DOCF=k; render(); }
+function docSheetsBlock(){
   var l=DATA.docs||[];
-  var h='<div class="row" style="margin-bottom:8px"><button class="btn pri" onclick="docForm({})">+ Документ</button><span class="muted">табели, расчётные ведомости, штатное расписание</span></div>';
-  h+='<div class="card tbwrap"><table><thead><tr><th>Тип</th><th>Номер</th><th>Дата</th><th>Период</th><th>Скан</th><th></th></tr></thead><tbody>';
-  h+=l.map(function(d){ return '<tr><td>'+esc(d.type)+'</td><td>'+esc(d.num||'—')+'</td><td>'+esc(d.date||'—')+'</td><td>'+esc(d.period||'—')+'</td><td>'+(d.link?'<a href="'+esc(d.link)+'" target="_blank">открыть</a>':'—')+'</td>'+
-    '<td><button class="btn sm" onclick=\'docForm('+JSON.stringify(d).replace(/'/g,"&#39;")+')\'>✎</button> <button class="btn sm" onclick="delRec(\'doc\',\''+d.id+'\',\'документ\')">🗑</button></td></tr>'; }).join('');
-  return h+'</tbody></table>'+(l.length?'':'<div class="empty">Пусто.</div>')+'</div>';
+  return '<div class="sect">Табели и ведомости</div><div class="card tbwrap"><table>'+
+    '<thead><tr><th>Тип</th><th>Номер</th><th>Дата</th><th>Период</th><th>Скан</th><th></th></tr></thead><tbody>'+
+    l.map(function(d){ return '<tr><td>'+esc(d.type)+'</td><td>'+esc(d.num||'—')+'</td><td>'+esc(d.date||'—')+'</td>'+
+      '<td>'+esc(d.period||'—')+'</td><td>'+(d.link?'<a href="'+esc(d.link)+'" target="_blank">открыть</a>':'—')+'</td>'+
+      '<td><button class="btn sm" onclick=\'docForm('+JSON.stringify(d).replace(/'/g,"&#39;")+')\'>✎</button> '+
+      '<button class="btn sm" onclick="delRec(\'doc\',\''+d.id+'\',\'документ\')">🗑</button></td></tr>'; }).join('')+
+    '</tbody></table></div>';
 }
 function docForm(d){
   dlg('Документ', sel('type','Тип',d.type||'табель',['табель','расчётная ведомость','штатное расписание','прочее'])+
