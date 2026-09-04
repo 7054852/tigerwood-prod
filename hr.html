@@ -7,11 +7,11 @@
 <style>
   :root{
     --bg:#f4f6fb; --card:#fff; --fg:#1b2333; --muted:#8a93a6; --line:#e6e9f2; --accent:#2b7de9;
-    --green:#137333; --green-bg:#e7f5ea; --amber:#b7791f; --amber-bg:#f7efdb; --red:#c0392b; --red-bg:#fdecea; --grid:#eef1f8;
+    --accent-bg:#e8f0fe; --green:#137333; --green-bg:#e7f5ea; --amber:#b7791f; --amber-bg:#f7efdb; --red:#c0392b; --red-bg:#fdecea; --grid:#eef1f8;
   }
   @media (prefers-color-scheme:dark){
     :root{ --bg:#14161b; --card:#1c1f26; --fg:#e9eaee; --muted:#9aa0ad; --line:#2a2e37; --accent:#4f9bee;
-           --green:#4bbd7e; --green-bg:#13291d; --amber:#d6a23c; --amber-bg:#2c2411; --red:#e5776b; --red-bg:#2b1714; --grid:#23262e; }
+           --accent-bg:#16283f; --green:#4bbd7e; --green-bg:#13291d; --amber:#d6a23c; --amber-bg:#2c2411; --red:#e5776b; --red-bg:#2b1714; --grid:#23262e; }
   }
   *{box-sizing:border-box;} html,body{margin:0;background:var(--bg);}
   body{ font-family:-apple-system,Roboto,Segoe UI,Arial,sans-serif; color:var(--fg); padding:14px; max-width:1000px; margin:0 auto; font-size:14px; }
@@ -32,6 +32,7 @@
   tr.click:hover td{ background:rgba(127,140,170,.07); cursor:pointer; }
   .tbwrap{ overflow-x:auto; }
   .pill{ display:inline-block; border-radius:999px; padding:2px 9px; font-size:11.5px; font-weight:700; white-space:nowrap; }
+  .p-info{ background:var(--accent-bg,#e8f0fe); color:var(--accent); }
   .p-red{ background:var(--red-bg); color:var(--red); } .p-amber{ background:var(--amber-bg); color:var(--amber); }
   .p-ok{ background:var(--green-bg); color:var(--green); } .p-none{ background:var(--grid); color:var(--muted); }
   .btn{ border:1px solid var(--line); background:var(--card); color:var(--fg); border-radius:9px; padding:6px 11px; font-size:13px; cursor:pointer; font-weight:600; }
@@ -134,10 +135,10 @@ function apply(r,keepCardId){
 }
 function load(force){
   $('app').innerHTML='<div class="center">Загрузка…</div>';
-  api(force?{vapi:'hrall',force:1}:{vapi:'hrall'}).then(function(r){
-    if(!r||!r.ok){ $('app').innerHTML='<div class="center">Ошибка: '+esc((r&&r.error)||'нет данных')+'</div>'; return; }
-    DATA=r; render();
-  }).catch(function(e){ $('app').innerHTML='<div class="center">Сеть: '+esc(e.message)+'</div>'; });
+  return api(force?{vapi:'hrall',force:1}:{vapi:'hrall'}).then(function(r){
+    if(!r||!r.ok){ $('app').innerHTML='<div class="center">Ошибка: '+esc((r&&r.error)||'нет данных')+'</div>'; return false; }
+    DATA=r; render(); return true;
+  }).catch(function(e){ $('app').innerHTML='<div class="center">Сеть: '+esc(e.message)+'</div>'; return false; });
 }
 function go(tab){ TAB=tab; CARD=null; render(); }
 // карточка собирается из уже загруженного пакета — ноль запросов
@@ -175,6 +176,20 @@ function render(){
   else if(TAB==='tpl') h+=tplView();
   $('app').innerHTML=h;
 }
+// человеческие названия групп справочника — и в чипах реестра, и в выборе типа
+function hrIsEl(u){ return /docs\.google\.com\/document/.test(String(u||'')); }
+var saveOrd=null, saveCon=null, CONSAVE=null;
+var GRPNAME={'дс':'Доп. соглашения','приказ':'Приказы','заявление':'Заявления',
+  'уведомление':'Уведомления','больничный':'Больничные','личный':'Личные',
+  'договор':'К договору','прочее':'Прочее'};
+// плашка поверх экрана (документ собран, результат распознавания) — одна на всё приложение
+function msgBox(html){
+  var m=$('msgbar');
+  if(!m){ m=document.createElement('div'); m.id='msgbar'; m.className='card'; m.style.margin='8px 0';
+          var app=$('app'); app.insertBefore(m, app.firstChild); }
+  m.innerHTML=html;
+}
+function msgClose(){ var m=$('msgbar'); if(m&&m.parentNode) m.parentNode.removeChild(m); }
 function toggleDl(){ DLOPEN=!DLOPEN; render(); }
 
 /* ─── Сроки ─── */
@@ -261,13 +276,9 @@ function cardView(){
   if(!CARD.contracts.length) h+='<div class="empty">Нет договоров.</div>';
   else h+='<table><thead><tr><th></th><th>Вид</th><th>№</th><th>Дата</th><th>Окончание</th><th>Статус</th><th>Файл</th><th></th></tr></thead><tbody>'+
     CARD.contracts.map(function(c){
-      var canTpl=(c.kind==='контракт'||c.kind==='подряд'||c.kind==='обучение');
-      var mkBtn=c.link?'<a class="btn sm" href="'+esc(c.link)+'" target="_blank">📄 эл. документ</a>'
-              :(canTpl?'<button class="btn sm" onclick="genDoc(\''+c.id+'\',\'\',\'con\')">📄 создать</button>':'');
-      var acts='<button class="btn sm" onclick="uploadDoc(\''+c.id+'\',\'con\')">⬆ загрузить</button> '+mkBtn+
-        ' <button class="btn sm" onclick="delRec(\'contract\',\''+c.id+'\',\''+esc(c.kind)+' № '+esc(c.num)+'\')" title="удалить договор и файлы с Google Диска">🗑</button>';
+      var acts=conActs(c);
       return '<tr><td>'+dot(c.missing)+sevPill((c.state||{}).sev)+'</td>'+
-        '<td><a class="dlink" onclick=\'editCon('+JSON.stringify(c).replace(/'/g,"&#39;")+')\' title="изменить данные и действия по договору"><b>'+esc(c.kind)+'</b></a></td>'+
+        '<td><b>'+esc(c.kind)+'</b></td>'+
         '<td><b>'+esc(c.num)+'</b></td><td>'+esc(c.date)+'</td><td>'+esc(c.end||'—')+'</td>'+
         '<td><select class="stsel" onchange="event.stopPropagation();setConStatus(\''+c.id+'\',this.value)" onclick="event.stopPropagation()">'+
           ['действует','истёк','расторгнут','продлён'].map(function(o){ return '<option'+(o===(c.statusEff||c.status)?' selected':'')+'>'+o+'</option>'; }).join('')+'</select></td>'+
@@ -308,49 +319,89 @@ function filesCell(d){
     var oo=(DATA.orders||[]).filter(function(x){return x.id===d.id;})[0]||{};
     if(oo.basisLink) extra=' <a href="'+esc(oo.basisLink)+'" target="_blank" title="заявление-основание">заявл.</a>';
   }
-  // у своих документов электронный документ показан своей кнопкой — скрепка означает СКАН.
-  // у ДС и приказов ссылка на документ единственная, поэтому там подставляем её.
-  if(!f.length && d.docLink && d.src!=='edoc') f=[d.docLink];
   if(!f.length) return '<span class="muted" title="скан не приложен">📎 —</span>'+extra;
   if(f.length===1) return '<a class="pill p-ok" href="'+esc(f[0])+'" target="_blank" title="открыть">📎 скан</a>'+extra;
   return '<span class="pill p-ok" title="страниц: '+f.length+'">📎 '+f.length+'</span> '+
     f.map(function(u,i){ return '<a href="'+esc(u)+'" target="_blank">'+(i+1)+'</a>'; }).join(' ')+extra;
 }
-// Кнопок ровно две, как просил владелец: «загрузить» и «создать» (после сборки — «эл. документ»),
-// плюс удаление. Правка данных — по клику на названии документа, отдельной кнопки не заводим.
+/* ─── Кнопки документа ───────────────────────────────────────────────────────
+   Ровно четыре, как в ТЗ (п.12.5): загрузить · создать · редактировать · удалить.
+   «Создать» НИЧЕГО не создаёт сразу — открывает карточку, где вводят данные и жмут
+   «Создать документ» (п.12.8). Когда документ собран, кнопка называется «эл. документ»
+   и ведёт в ту же карточку, где его можно пересобрать или удалить (п.12.11).
+   Скан приложен → кнопка «создать» пропадает (п.12.7).                                    */
+function docActs(d){
+  var mk='';
+  if(d.docLink) mk='<button class="btn sm" onclick="openDoc(\''+d.src+'\',\''+d.id+'\')">📄 эл. документ</button> ';
+  else if(d.tpl && !(d.files||[]).length) mk='<button class="btn sm" onclick="openDoc(\''+d.src+'\',\''+d.id+'\')">📄 создать</button> ';
+  var what=d.src==='ds'?'ds':(d.src==='order'?'order':'edoc');
+  return '<button class="btn sm" onclick="uploadDoc(\''+d.id+'\',\''+what+'\')">⬆ загрузить</button> '+mk+
+    '<button class="btn sm" onclick="openDoc(\''+d.src+'\',\''+d.id+'\')" title="редактировать — карточка документа">✎</button> '+
+    '<button class="btn sm" onclick="delRec(\''+what+'\',\''+d.id+'\',\''+esc(docTitle(d))+'\')" title="удалить документ и файлы с Google Диска">🗑</button>';
+}
+/* Единственная точка входа в карточку любого документа — и из карточки сотрудника, и из реестра.
+   Из реестра глобальная CARD пуста, а формы читают CARD.emp.id и CARD.contracts, поэтому карточку
+   сотрудника поднимаем молча и запоминаем, куда вернуться. */
+function openDoc(src,id){
+  var d=null;
+  if(src==='con'){ d=(DATA.contracts||[]).filter(function(x){return x.id===id;})[0]; }
+  else { d=(DATA.edocs||[]).filter(function(x){return x.src===src&&x.id===id;})[0]; }
+  if(!d){ alert('документ не найден'); return; }
+  var empId=d.emp||'';
+  if(!empId&&d.con){ var c=(DATA.contracts||[]).filter(function(x){return x.id===d.con;})[0]; empId=c?c.emp:''; }
+  if(!empId){ alert('документ не привязан к сотруднику — откройте его через карточку сотрудника'); return; }
+  if(!CARD||CARD.emp.id!==empId){ if(!FROM) FROM=TAB; CARD=buildCard(empId); if(!CARD){ alert('сотрудник не найден'); return; } }
+  if(src==='con') conForm(d);
+  else if(src==='ds') dsForm((DATA.ds||[]).filter(function(x){return x.id===id;})[0]||{});
+  else if(src==='order') ordForm((DATA.orders||[]).filter(function(x){return x.id===id;})[0]||{});
+  else edocForm(d);
+  window.scrollTo(0,0);
+}
+/* Хвост карточки любого документа: что с электронным вариантом. Отдаёт подписи кнопок для dlg. */
+function docTail(state){
+  // state = {link, tpl, onCreate, onRebuild, onDrop}
+  if(state.link) return {
+    saveLabel:'💾 Сохранить и пересобрать документ',
+    extra:'<a class="btn" href="'+esc(state.link)+'" target="_blank">📄 Открыть</a>'+
+          '<button class="btn" onclick="'+state.onDrop+'">🗑 Удалить эл. документ</button>',
+    foot:'«Сохранить» соберёт документ заново по новым данным: прежний файл уйдёт в корзину Google Диска. '+
+         'Приложенные сканы останутся на месте.' };
+  if(state.tpl) return {
+    saveLabel:'💾 Сохранить',
+    extra:'<button class="btn pri" onclick="'+state.onCreate+'">🖨 Создать документ</button>',
+    foot:'«Создать документ» соберёт его по шаблону в Google Документах — заполните поля до нажатия.' };
+  return { saveLabel:'💾 Сохранить', foot:'Для этого вида документа шаблона нет — приложите готовый скан кнопкой «⬆ загрузить».' };
+}
+// Строка документа: название — обычный текст, все действия в четырёх кнопках справа.
+// Ссылку-на-карточку с названия убрали: два разных пути в одно место и ни одного очевидного.
 function docRow(d){
   var con=(CARD.contracts||[]).filter(function(c){return c.id===d.con;})[0];
   var st=String(d.status||'нужен');
-  var edit, mk='', del, upl;
-  if(d.src==='ds'){
-    var orig=(DATA.ds||[]).filter(function(x){return x.id===d.id;})[0]||{};
-    edit='dsForm('+JSON.stringify(orig).replace(/'/g,"&#39;")+')';
-    mk='genDs(\''+d.id+'\')';
-    upl='uploadDoc(\''+d.id+'\',\'ds\')';
-    del='delRec(\'ds\',\''+d.id+'\',\'доп. соглашение № '+esc(d.num)+'\')';
-  } else if(d.src==='order'){
-    var oo=(DATA.orders||[]).filter(function(x){return x.id===d.id;})[0]||{};
-    edit='ordForm('+JSON.stringify(oo).replace(/'/g,"&#39;")+')';
-    if(/при[её]м/i.test(oo.kind||'')) mk='genDoc(\''+d.id+'\',\'приказ-приём\',\'order\')';
-    upl='uploadDoc(\''+d.id+'\',\'order\')';
-    del='delRec(\'order\',\''+d.id+'\',\'приказ № '+esc(d.num)+'\')';
-  } else {
-    edit='edocForm('+JSON.stringify(d).replace(/'/g,"&#39;")+')';
-    if(d.tpl) mk='genEDoc(\''+d.id+'\')';
-    upl='uploadDoc(\''+d.id+'\',\'edoc\')';
-    del='delRec(\'edoc\',\''+d.id+'\',\''+esc(docTitle(d))+'\')';
-  }
-  var mkBtn = d.docLink ? '<a class="btn sm" href="'+esc(d.docLink)+'" target="_blank">📄 эл. документ</a>'
-            : (mk ? '<button class="btn sm" onclick="'+mk+'">📄 создать</button>' : '');
-  var acts='<button class="btn sm" onclick="'+upl+'">⬆ загрузить</button> '+mkBtn+
-           ' <button class="btn sm" onclick="'+del+'" title="удалить документ и файлы с Google Диска">🗑</button>';
-  return '<tr><td><a class="dlink" onclick="'+edit+'" title="изменить данные документа"><b>'+esc(docTitle(d))+'</b></a>'+
+  return '<tr><td><b>'+esc(docTitle(d))+'</b>'+
     (d.note?'<div class="muted" style="font-size:12px">'+esc(d.note)+'</div>':'')+'</td>'+
     '<td>'+esc(d.num||'—')+'</td><td>'+esc(d.date||'—')+'</td>'+
     '<td class="muted">'+(con?esc(con.kind+' № '+con.num):'—')+'</td>'+
-    '<td><span class="pill '+(st==='подписан'?'p-ok':'p-amber')+'">'+esc(st)+'</span></td>'+
+    '<td>'+statusPill(st)+'</td>'+
     '<td>'+filesCell(d)+'</td>'+
-    '<td style="white-space:nowrap">'+acts+'</td></tr>';
+    '<td style="white-space:nowrap">'+docActs(d)+'</td></tr>';
+}
+// «нужен» — жёлтый, «создан» — синий (документ есть, подписи нет), «подписан» — зелёный
+function statusPill(st){
+  var cls=st==='подписан'?'p-ok':(st==='создан'?'p-info':'p-amber');
+  return '<span class="pill '+cls+'">'+esc(st)+'</span>';
+}
+// Договор — такой же документ: те же четыре кнопки и та же логика «создать → эл. документ».
+// ⚠ Электронный документ отличаем по адресу Google Документов: у договора в «Ссылке» может
+// лежать и загруженный скан (колонка «Источник» это помнит, но раньше её тут игнорировали).
+function conActs(c){
+  var el=hrIsEl(c.link)?c.link:'';
+  var tpl=(c.kind==='контракт'||c.kind==='подряд'||c.kind==='обучение');
+  var mk='';
+  if(el) mk='<button class="btn sm" onclick="openDoc(\'con\',\''+c.id+'\')">📄 эл. документ</button> ';
+  else if(tpl && !((c.files||[]).length)) mk='<button class="btn sm" onclick="openDoc(\'con\',\''+c.id+'\')">📄 создать</button> ';
+  return '<button class="btn sm" onclick="uploadDoc(\''+c.id+'\',\'con\')">⬆ загрузить</button> '+mk+
+    '<button class="btn sm" onclick="openDoc(\'con\',\''+c.id+'\')" title="редактировать — карточка договора">✎</button> '+
+    '<button class="btn sm" onclick="delRec(\'contract\',\''+c.id+'\',\''+esc(c.kind)+' № '+esc(c.num)+'\')" title="удалить договор и файлы с Google Диска">🗑</button>';
 }
 function docsBlock(){
   var rows=(CARD.docs||[]);
@@ -359,12 +410,42 @@ function docsBlock(){
   else h+='<table><thead><tr><th>Документ</th><th>№</th><th>Дата</th><th>К договору</th><th>Статус</th><th>Файл</th><th></th></tr></thead><tbody>'+
     rows.map(docRow).join('')+'</tbody></table>';
   h+='<div class="row" style="margin-top:8px">'+
-     '<button class="btn pri" onclick="edocForm({emp:CARD.emp.id})">+ документ</button>'+
+     '<button class="btn pri" onclick="addDoc()">+ документ</button>'+
      '<button class="btn" onclick="newDs()">+ доп. соглашение</button>'+
      '<button class="btn" onclick="ordForm({emp:CARD.emp.id})">+ приказ</button>'+
      '<span class="muted" style="font-size:12px">сюда кладётся всё: паспорт, заявления, справки, больничные, письма органов. '+
      'Доп. соглашение и приказ заводятся своими кнопками — они меняют условия договора и получают номер.</span></div></div>';
   return h;
+}
+/* Добавление документа по ТЗ (п.12.1–12.4, 9): нажимаем добавить → выбираем тип →
+   указываем, к какому договору относится (или ни к какому) → ОК → строка появилась.
+   Номер, дата и примечание заполняются потом в карточке: на этом шаге они только мешают. */
+function addDoc(){
+  REQKEYS={};
+  var types=(DATA.dtypes||[]).filter(function(t){ return t.group!=='дс'&&t.group!=='приказ'; });
+  var grp={}; types.forEach(function(t){ (grp[t.group]=grp[t.group]||[]).push(t); });
+  var opts=Object.keys(grp).map(function(g){
+    return '<optgroup label="'+esc(GRPNAME[g]||g)+'">'+grp[g].map(function(t){
+      return '<option value="'+esc(t.key)+'">'+esc(t.title)+'</option>'; }).join('')+'</optgroup>'; }).join('');
+  var cons=(CARD.contracts||[]);
+  dlg('Новый документ: '+esc(CARD.emp.fio),
+    '<div class="fld"><label class="f">Тип документа</label><select id="f_type">'+opts+
+      '<option value="__new__">＋ добавить свой тип…</option></select></div>'+
+    '<div class="fld"><label class="f">Относится к договору</label><select id="f_con">'+
+      '<option value="">— не относится, документ сотрудника —</option>'+
+      cons.map(function(c){ return '<option value="'+c.id+'">'+esc(c.kind+' № '+c.num)+'</option>'; }).join('')+
+      '</select></div>',
+    function(){
+      var type=val('type');
+      if(type==='__new__'){ addDocType(); return; }
+      busy(1);
+      api({vapi:'hredocsave',data:JSON.stringify({emp:CARD.emp.id,con:val('con'),type:type,status:'нужен'})})
+        .then(function(r){ busy(0);
+          if(!r.ok){ alert(r.error||'ошибка'); return; }
+          apply(r,CARD.emp.id); backFromForm();
+        });
+    }, '', 'Выберите вид документа. Номер, дату и файл добавите в его карточке.',
+    { saveLabel:'ОК — создать документ' });
 }
 function edocForm(d){
   d=d||{}; REQKEYS={};
@@ -373,77 +454,77 @@ function edocForm(d){
   var cur=d.type||types[0].key;
   var grp={}; types.forEach(function(t){ (grp[t.group]=grp[t.group]||[]).push(t); });
   var opts=Object.keys(grp).map(function(g){
-    return '<optgroup label="'+esc(g)+'">'+grp[g].map(function(t){
+    return '<optgroup label="'+esc(GRPNAME[g]||g)+'">'+grp[g].map(function(t){
       return '<option value="'+esc(t.key)+'"'+(t.key===cur?' selected':'')+'>'+esc(t.title)+'</option>'; }).join('')+'</optgroup>'; }).join('');
   var cons=(CARD.contracts||[]);
-  dlg(d.id?'Правка документа':'Новый документ',
+  var t=(DATA.dtypes||[]).filter(function(x){return x.key===cur;})[0];
+  var tail=docTail({ link:d.docLink||'', tpl:!!(t&&t.tpl),
+    onCreate:"edocSave('"+(d.id||'')+"',1)", onDrop:"dropElDoc('edoc','"+(d.id||'')+"')" });
+  EDOCDRAFT=d;
+  dlg(d.id?'Карточка документа: '+docTitle(d):'Новый документ',
     '<div class="fld"><label class="f">Тип документа</label><select id="f_type">'+opts+
       '<option value="__new__">＋ добавить свой тип…</option></select></div>'+
     '<div class="fld"><label class="f">К договору (не обязательно)</label><select id="f_con">'+
       '<option value="">— к сотруднику, не к договору —</option>'+
       cons.map(function(c){ return '<option value="'+c.id+'"'+(c.id===d.con?' selected':'')+'>'+esc(c.kind+' № '+c.num)+'</option>'; }).join('')+
       '</select></div>'+
-    fld('num','№ документа',d.num)+fld('date','Дата',d.date)+fld('note','Примечание',d.note)+
-    (d.docLink?'<div class="fld" style="grid-column:1/-1"><label class="f">Документ собран</label>'+
-      '<div class="row"><a class="btn sm" href="'+esc(d.docLink)+'" target="_blank">📄 открыть</a>'+
-      '<button class="btn sm" onclick="regenEDoc(\''+d.id+'\')">↻ собрать заново</button></div></div>':''),
-    function(){
-      var type=val('type');
-      if(type==='__new__'){ addDocType(); return; }
-      var rec={id:d.id||'',emp:CARD.emp.id,con:val('con'),type:type,num:val('num'),date:val('date'),
-               note:val('note'),status:d.status||'нужен'};
-      busy(1); api({vapi:'hredocsave',data:JSON.stringify(rec)}).then(function(r){ busy(0);
-        if(!r.ok){ alert(r.error||'ошибка'); return; }
-        apply(r,CARD.emp.id);
-      });
-    }, '', 'Заводим карточку документа. Сам файл прикладывается кнопкой «📎 загрузить» в списке.');
+    fld('num','№ документа',d.num)+fld('date','Дата',d.date)+fld('note','Примечание',d.note),
+    function(){ edocSave(d.id||'', d.docLink?1:0); },
+    '', d.id?'Данные документа. Файл — кнопками ниже.':'Заводим карточку документа.', tail);
 }
-function genEDoc(id){
+var EDOCDRAFT=null;
+// Одна функция на три сценария: просто сохранить, сохранить и собрать, сохранить и пересобрать.
+// gen=1 → после сохранения документ собирается по шаблону (прежний файл гасит сервер).
+function edocSave(id,gen){
+  var type=val('type');
+  if(type==='__new__'){ addDocType(); return; }
+  var rec={id:id||'',emp:CARD.emp.id,con:val('con'),type:type,num:val('num'),date:val('date'),
+           note:val('note'),status:(EDOCDRAFT&&EDOCDRAFT.status)||'нужен'};
   busy(1);
-  api({vapi:'hrgenedoc',doc:id}).then(function(r){ busy(0);
+  api({vapi:'hredocsave',data:JSON.stringify(rec)}).then(function(r){
+    if(!r.ok){ busy(0); alert(r.error||'ошибка'); return; }
+    var newId=id||r.savedId;
+    if(!gen){ busy(0); apply(r,CARD.emp.id); backFromForm(); return; }
+    return api({vapi:'hrgenedoc',doc:newId}).then(function(r2){ busy(0);
+      if(!r2.ok){ alert(r2.error||'ошибка'); apply(r,CARD.emp.id); return; }
+      apply(r2,CARD.emp.id); backFromForm();
+      docDone(r2.url, r2.leftPlaceholders);
+    });
+  }).catch(function(e){ busy(0); alert('сеть: '+e.message); });
+}
+// Плашка «документ собран» со ссылкой. window.open часто съедает блокировщик поп-апов,
+// поэтому ссылку показываем на экране, а не полагаемся только на новую вкладку.
+function docDone(url,left){
+  var w=(left&&left.length)?('<div style="color:var(--red);margin-top:4px">В документе остались незаполненные места: '+esc(left.join(', '))+' — заполните данные и соберите заново.</div>'):'';
+  msgBox('<b>✅ Документ собран.</b> <a href="'+esc(url)+'" target="_blank">Открыть в Google Документах</a>'+w+
+    '<div class="row" style="margin-top:8px"><button class="btn sm" onclick="msgClose()">Понятно</button></div>');
+  try{ window.open(url,'_blank'); }catch(e){}
+}
+function dropElDoc(src,id){
+  if(!confirm('Удалить электронный документ?\n\nФайл уйдёт в корзину Google Диска. Приложенные сканы останутся.')) return;
+  busy(1);
+  api({vapi:'hrdelelcdoc',doc:id,src:src}).then(function(r){ busy(0);
     if(!r.ok){ alert(r.error||'ошибка'); return; }
-    apply(r,CARD.emp.id);
-    if((r.leftPlaceholders||[]).length) alert('Документ создан, но в нём остались незаполненные места: '+r.leftPlaceholders.join(', ')+'\nЗаполните данные и создайте заново.');
-    window.open(r.url,'_blank');
+    apply(r,CARD?CARD.emp.id:null); backFromForm();
   });
 }
-// Пересоздать документ (данные исправили → собрать заново). В строке этой кнопки нет —
-// она живёт в карточке документа, чтобы в списке оставались ровно «загрузить» и «создать».
-// Распознавание приложенного скана: что это за документ, его номер и дата.
 function recogDoc(id){
-  var box=function(html){ var m=$('msgbar'); if(m){ m.innerHTML=html; return; }
-    var d=document.createElement('div'); d.id='msgbar'; d.className='card'; d.style.margin='8px 0'; d.innerHTML=html;
-    var app=$('app'); app.insertBefore(d, app.firstChild); };
-  box('<span class="muted">🔎 распознаю документ…</span>');
+  msgBox('<span class="muted">🔎 распознаю документ…</span>');
   api({vapi:'hrrecogdoc',doc:id}).then(function(r){
-    if(!r.ok){ box('<span class="muted">Скан загружен. Распознать не удалось: '+esc(r.error||'')+' — заполните тип и № вручную.</span>'); return; }
+    if(!r.ok){ msgBox('<span class="muted">Скан загружен. Распознать не удалось: '+esc(r.error||'')+' — заполните тип и № вручную.</span>'); return; }
     var s=r.suggest||{};
-    if(!s.type&&!s.num&&!s.date){ box('<span class="muted">Скан загружен. Что это за документ — определить не получилось, укажите тип вручную.</span>'); return; }
-    box('<b>🔎 Похоже на:</b> '+esc(s.typeTitle||s.title||'—')+
+    if(!s.type&&!s.num&&!s.date){ msgBox('<span class="muted">Скан загружен. Что это за документ — определить не получилось, укажите тип вручную.</span>'); return; }
+    msgBox('<b>🔎 Похоже на:</b> '+esc(s.typeTitle||s.title||'—')+
         (s.num?(' № '+esc(s.num)):'')+(s.date?(' от '+esc(s.date)):'')+
         '<div class="row" style="margin-top:8px"><button class="btn pri" onclick="recogApply(\''+id+'\')">Применить</button>'+
-        '<button class="btn" onclick="recogClose()">Оставить как есть</button></div>');
-  }).catch(function(e){ box('<span class="muted">Скан загружен. Сеть: '+esc(e.message)+'</span>'); });
+        '<button class="btn" onclick="msgClose()">Оставить как есть</button></div>');
+  }).catch(function(e){ msgBox('<span class="muted">Скан загружен. Сеть: '+esc(e.message)+'</span>'); });
 }
 function recogApply(id){
   busy(1);
   api({vapi:'hrrecogdoc',doc:id,apply:1}).then(function(r){ busy(0);
     if(!r.ok){ alert(r.error||'ошибка'); return; }
     apply(r,CARD?CARD.emp.id:null);
-  });
-}
-function recogClose(){ var m=$('msgbar'); if(m) m.parentNode.removeChild(m); }
-function regenEDoc(id){
-  if(!confirm('Собрать документ заново?\n\nСтарый файл уйдёт в корзину Google Drive, приложенные сканы останутся.')) return;
-  busy(1);
-  api({vapi:'hrdelelcdoc',doc:id}).then(function(r){
-    if(!r.ok){ busy(0); alert(r.error||'ошибка'); return; }
-    return api({vapi:'hrgenedoc',doc:id}).then(function(r2){ busy(0);
-      if(!r2.ok){ alert(r2.error||'ошибка'); return; }
-      apply(r2,CARD.emp.id);
-      if((r2.leftPlaceholders||[]).length) alert('В документе остались незаполненные места: '+r2.leftPlaceholders.join(', '));
-      window.open(r2.url,'_blank');
-    });
   });
 }
 function addDocType(){
@@ -518,40 +599,6 @@ function genDs(dsId){
     if((r.leftPlaceholders||[]).length) alert('В документе остались незаполненные места: '+r.leftPlaceholders.join(', '));
   });
 }
-function dsDocForm_unused(dsId){
-  var d=(DATA.ds||[]).filter(function(x){return x.id===dsId;})[0]; if(!d) return;
-  var c=(DATA.contracts||[]).filter(function(x){return x.id===d.con;})[0]||{};
-  REQKEYS={};
-  var body='<div class="fld"><label class="f">Что меняет соглашение</label><select id="f_kind" onchange="dsDocToggle()">'+
-    '<option value="дс-оплата">оплата труда (оклад и тарифный оклад)</option>'+
-    '<option value="дс-аванс">размер аванса</option>'+
-    '<option value="дс-график">режим рабочего дня</option></select></div>'+
-    '<div id="boxPay" style="display:contents">'+fld('salary','Новый оклад',c.salary)+fld('tariff','Новый тарифный оклад',c.tariff)+'</div>'+
-    '<div id="boxAdv" style="display:none">'+fld('advance','Новый аванс',c.advance)+'</div>'+
-    '<div id="boxWt" style="display:none">'+fld('wStart','Начало рабочего дня',c.wStart)+fld('wBreak','Перерыв',c.wBreak)+fld('wEnd','Конец рабочего дня',c.wEnd)+'</div>';
-  dlg('Доп. соглашение № '+esc(d.num)+' к контракту № '+esc(c.num)+' — документ', body,
-    function(){
-      var w=$('f_kind').value;
-      var o={apply:1};
-      if(w==='дс-оплата'){ o.salary=val('salary'); o.tariff=val('tariff'); }
-      if(w==='дс-аванс'){ o.advance=val('advance'); }
-      if(w==='дс-график'){ o.wStart=val('wStart'); o.wBreak=val('wBreak'); o.wEnd=val('wEnd'); }
-      busy(1);
-      api({vapi:'hrgends',ds:dsId,what:w,opts:JSON.stringify(o)}).then(function(r){ busy(0);
-        if(!r.ok){ alert(r.error); return; }
-        apply(r,CARD?CARD.emp.id:null);
-        window.open(r.url,'_blank');
-        if((r.leftPlaceholders||[]).length) alert('Внимание: в документе остались незаполненные места: '+r.leftPlaceholders.join(', '));
-      });
-    }, '',
-    'Введённые значения будут напечатаны в соглашении и станут действующими условиями договора.');
-  setTimeout(function(){ $('dlgSave').textContent='🖨 Сформировать документ'; },0);
-}
-function dsDocToggle(){ var w=$('f_kind').value;
-  $('boxPay').style.display=(w==='дс-оплата')?'contents':'none';
-  $('boxAdv').style.display=(w==='дс-аванс')?'contents':'none';
-  $('boxWt').style.display=(w==='дс-график')?'contents':'none'; }
-// прекращение подряда: соглашение (подрядчик на месте) или уведомление (не выходит на связь) — по регламенту
 function termForm(conId){
   var c=(DATA.contracts||[]).filter(function(x){return x.id===conId;})[0]; if(!c) return;
   REQKEYS={};
@@ -642,17 +689,26 @@ function reqLeft(){ return Object.keys(REQKEYS).filter(function(k){ var e=$('f_'
   .map(function(k){ return REQKEYS[k]; }); }
 function reqHint(){ var l=reqLeft(); return l.length?('<div class="reqhint">● отмеченные поля нужны, чтобы сформировать документ по шаблону. Осталось: '+esc(l.join(', '))+'</div>'):''; }
 function val(k){ var el=$('f_'+k); return el?el.value.trim():''; }
-// Во всех формах заполняются ДАННЫЕ записи. Сам документ (файл) создаётся отдельно —
-// об этом говорит подпись под заголовком и вторая кнопка «сохранить и перейти к документу».
-function dlg(title,body,onsave,note,hint,onsaveDoc){
+// Карточка документа. Шестой аргумент opts задаёт подпись главной кнопки и дополнительные
+// действия — набор зависит от того, собран электронный документ или нет (п.12.8/12.10/12.11 ТЗ).
+function dlg(title,body,onsave,note,hint,opts){
+  opts=opts||{};
   var h='<div class="card"><b>'+esc(title)+'</b>'+
-    '<div class="muted" style="font-size:12.5px;margin-top:3px">'+(hint||'Заполняются данные записи в системе. Документ (файл) создаётся отдельно — кнопкой «документ».')+'</div>'+
+    '<div class="muted" style="font-size:12.5px;margin-top:3px">'+(hint||'Заполняются данные записи в системе. Документ (файл) создаётся отдельно.')+'</div>'+
     '<div class="grid" style="margin-top:9px">'+body+'</div>'+
     '<div id="reqHint"></div>'+(note||'')+
-    '<div class="row" style="margin-top:10px"><button class="btn pri" id="dlgSave">Сохранить данные</button>'+
-    (onsaveDoc?'<button class="btn" id="dlgSaveDoc">Сохранить и перейти к документу</button>':'')+
-    '<button class="btn" onclick="'+(CARD?'openCard(\''+CARD.emp.id+'\')':'load()')+'">Отмена</button></div></div>';
-  $('app').innerHTML=h; $('dlgSave').onclick=onsave; if(onsaveDoc&&$('dlgSaveDoc')) $('dlgSaveDoc').onclick=onsaveDoc; updHint();
+    '<div class="row" style="margin-top:10px"><button class="btn pri" id="dlgSave">'+(opts.saveLabel||'Сохранить данные')+'</button>'+
+    (opts.extra||'')+
+    '<button class="btn" onclick="backFromForm()">Отмена</button></div>'+
+    (opts.foot?'<div class="muted" style="font-size:12px;margin-top:8px">'+opts.foot+'</div>':'')+'</div>';
+  $('app').innerHTML=h; $('dlgSave').onclick=onsave; updHint();
+}
+// Куда возвращаться из формы: в карточку сотрудника или в реестр, откуда пришли.
+// Раньше «Отмена» без открытой карточки звала load() — лишние 4 секунды сети на пустом месте.
+var FROM=null;
+function backFromForm(){
+  if(FROM){ var t=FROM; FROM=null; CARD=null; TAB=t; render(); window.scrollTo(0,0); return; }
+  if(CARD) openCard(CARD.emp.id); else render();
 }
 function updHint(){ var e=$('reqHint'); if(e) e.innerHTML=reqHint(); }
 function newEmp(){ empForm({}); }
@@ -806,17 +862,22 @@ function conForm(c){
     return Object.keys(rq).filter(function(k){ return !String(e[k]||'').trim(); }).map(function(k){ return rq[k]; }); })();
   var note = empMiss.length ? ('<div class="misline">● в карточке сотрудника не заполнено: <b>'+esc(empMiss.join(', '))+
     '</b> — <span class="back" onclick="empForm(CARD.emp)">открыть карточку</span></div>') : '';
-  var saveCon=function(then){
+  saveCon=function(then){
       var d={id:c.id||'',emp:c.emp||CARD.emp.id};
       ['kind','num','date','end','pos','posCode','salary','tariff','advance','rate','termText','wStart','wBreak','wEnd',
        'vacMain','vacExtra','workTime','status','termDate','notify','answer','link','note','school','tutor','eduStart'].forEach(function(k){
         if($('f_'+k)) d[k]=val(k);
       });
-      busy(1); api({vapi:'hrsavecontract',data:JSON.stringify(d)}).then(function(r){ busy(0);
-        if(!apply(r,d.emp)) return;
-        if(then){ var mine=(r.contracts||[]).filter(function(x){return x.emp===d.emp;});
-          var id=d.id|| (mine.length?mine[mine.length-1].id:''); if(id) docMenu('con',id); }
-      });
+      busy(1); api({vapi:'hrsavecontract',data:JSON.stringify(d)}).then(function(r){
+        if(!r||!r.ok){ busy(0); alert((r&&r.error)||'ошибка'); return; }
+        var mine=(r.contracts||[]).filter(function(x){return x.emp===d.emp;});
+        var id=d.id||(mine.length?mine[mine.length-1].id:'');
+        if(!then||!id){ busy(0); apply(r,d.emp); backFromForm(); return; }
+        return api({vapi:'hrgendoc',con:id,what:''}).then(function(r2){ busy(0);
+          if(!r2.ok){ alert(r2.error||'ошибка'); apply(r,d.emp); return; }
+          apply(r2,d.emp); backFromForm(); docDone(r2.url,r2.leftPlaceholders);
+        });
+      }).catch(function(e){ busy(0); alert('сеть: '+e.message); });
   };
   // Действия по договору (уведомить, продлить, прекратить) — здесь, а не в строке реестра:
   // строка держит только «загрузить / создать / удалить», как у остальных документов.
@@ -833,7 +894,10 @@ function conForm(c){
     if(acts.length) body='<div class="fld" style="grid-column:1/-1"><label class="f">Действия по договору</label>'+
       '<div class="row">'+acts.join('')+'</div></div>'+body;
   }
-  dlg(c.id?'Правка договора — данные':'Новый договор — данные', body,
+  var conTail=docTail({ link:(hrIsEl(c.link)?c.link:''),
+    tpl:(c.kind==='контракт'||c.kind==='подряд'||c.kind==='обучение'),
+    onCreate:'saveCon(true)', onDrop:"dropElDoc('con','"+(c.id||'')+"')" });
+  dlg(c.id?'Карточка договора: '+esc(c.kind)+(c.num?(' № '+esc(c.num)):''):'Новый договор', body,
     function(){
       var d={id:c.id||'',emp:c.emp||CARD.emp.id};
       ['kind','num','date','end','pos','posCode','salary','tariff','advance','rate','termText','wStart','wBreak','wEnd',
@@ -842,33 +906,14 @@ function conForm(c){
       });
       busy(1); api({vapi:'hrsavecontract',data:JSON.stringify(d)}).then(function(r){ busy(0); apply(r,d.emp); });
     }, note,
-    c.id?'Правятся данные в системе. Уже созданный документ при этом НЕ меняется — при необходимости соберите его заново или приложите новый файл.'
-       :'Сначала сохраняем данные договора, затем создаём сам документ: собрать по шаблону или приложить готовый скан.',
-    function(){ saveCon(true); });
+    c.id?'Данные договора. Документ — кнопками ниже.'
+       :'Сначала сохраняем данные договора, затем собираем сам документ.',
+    conTail);
+
 }
 /* печать по шаблону — только когда заполнено всё; иначе система прямо говорит, чего не хватает */
 // Документ и данные — разные вещи: в системе хранится карточка записи, документ лежит в папке сотрудника.
 // Это меню объясняет выбор: собрать по шаблону (Google Docs, можно править и печатать) или приложить готовый скан.
-function docMenu(target,id){
-  var rec = target==='con' ? (DATA.contracts||[]).filter(function(x){return x.id===id;})[0]
-          : target==='ds' ? (DATA.ds||[]).filter(function(x){return x.id===id;})[0]
-          : (DATA.orders||[]).filter(function(x){return x.id===id;})[0];
-  if(!rec) return;
-  var title = target==='con' ? (rec.kind+' № '+rec.num) : (target==='ds' ? ('доп. соглашение № '+rec.num) : ('приказ № '+rec.num));
-  var canTpl = (target==='con' && (rec.kind==='контракт'||rec.kind==='подряд'||rec.kind==='обучение')) ||   // у НПД шаблона пока нет — только загрузка
-               (target==='order' && /при[её]м/i.test(rec.kind||'')) || target==='ds';
-  var h='<div class="card"><b>Документ: '+esc(title)+'</b>'+
-    '<div class="muted" style="margin:6px 0 10px;font-size:12.5px">Данные записи уже сохранены в системе. Здесь создаётся или прикладывается сам файл — он ляжет в папку сотрудника.</div>';
-  if(rec.link) h+='<div style="margin-bottom:8px">Сейчас приложен: <a href="'+esc(rec.link)+'" target="_blank">открыть документ</a></div>';
-  h+='<div class="row">'+
-    (canTpl?('<button class="btn pri" onclick="'+(target==='ds'?('genDs(\''+id+'\')'):('genDoc(\''+id+'\',\''+(target==='order'?'приказ-приём':'')+'\',\''+target+'\')'))+'">🖨 Собрать по шаблону</button>'):'')+
-    '<button class="btn" onclick="uploadDoc(\''+id+'\',\''+target+'\')">📎 Загрузить готовый (скан, фото, PDF)</button>'+
-    '<button class="btn" onclick="'+(CARD?'openCard(\''+CARD.emp.id+'\')':'render()')+'">Отмена</button></div>'+
-    (canTpl?'<div class="muted" style="margin-top:8px;font-size:12px">«Собрать по шаблону» создаёт документ Google с вашими данными — его можно доредактировать и распечатать. «Загрузить готовый» — для уже подписанных бумаг: файл сохранится как есть, редактировать его нельзя, только открыть и распечатать.</div>'
-           :'<div class="muted" style="margin-top:8px;font-size:12px">Для этого вида документа шаблона пока нет — приложите готовый файл.</div>')+
-    '</div>';
-  $('app').innerHTML=h;
-}
 function genDoc(conId,what,target){
   busy(1);
   api({vapi:'hrgendoc',con:conId,what:what||''}).then(function(r){ busy(0);
@@ -893,8 +938,10 @@ function uploadFiles(recId,target,label){
     function next(){
       if(i>=files.length){ busy(0);
         // «при загрузке документа нужно сделать распознавание» — но не молча: показываем,
-        // что прочитала система, и применяем только по кнопке
-        if(target==='edoc'){ load(1); recogDoc(recId); return; }
+        // что прочитала система, и применяем только по кнопке.
+        // ⚠ Плашку рисуем ПОСЛЕ перерисовки: раньше load(1) и recogDoc шли наперегонки,
+        // и предложение могло исчезнуть, не будучи показанным.
+        if(target==='edoc'){ load(1).then(function(){ recogDoc(recId); }); return; }
         load(1); if(last) alert('Загружено файлов: '+files.length); return; }
       var f=files[i], fr=new FileReader();
       fr.onload=function(){
@@ -928,10 +975,11 @@ function dsForm(d){
     '<div id="boxWt" style="display:none">'+fld('wStart','Начало рабочего дня',ch.wStart)+fld('wBreak','Перерыв',ch.wBreak)+fld('wEnd','Конец рабочего дня',ch.wEnd)+'</div>'+
     fld('reason','Основание изменений (текст в шапке)',d.reason)+fld('note','Примечание',d.note);
   CARD._dsEdit=d.id||'';
-  dlg(d.id?'Правка доп. соглашения — данные':'Новое доп. соглашение — данные', body,
+  dlg(d.id?'Карточка доп. соглашения'+(d.num?(' № '+esc(d.num)):''):'Новое доп. соглашение', body,
     function(){ saveDs(false); }, '',
-    'Заполняем НОВЫЕ условия — что и на сколько меняется. После сохранения документ: «собрать по шаблону» или «загрузить готовый подписанный».',
-    function(){ saveDs(true); });
+    'Заполняем НОВЫЕ условия — что и на сколько меняется.',
+    docTail({ link:(hrIsEl(d.link)?d.link:''), tpl:true,
+      onCreate:'saveDs(true)', onDrop:"dropElDoc('ds','"+(d.id||'')+"')" }));
   setTimeout(function(){ dsTypeToggle(); dsCur(); },0);
 }
 function dsTypeToggle(){ var t=$('f_ctype').value;
@@ -954,11 +1002,17 @@ function saveDs(then){
   if(t==='график'){ if(val('wStart'))ch.wStart=val('wStart'); if(val('wBreak'))ch.wBreak=val('wBreak'); if(val('wEnd'))ch.wEnd=val('wEnd'); }
   var x={id:CARD._dsEdit||'',emp:CARD.emp.id,con:val('con'),num:val('num'),date:val('date'),reason:val('reason'),
          note:val('note'),changes:JSON.stringify(ch)};
-  busy(1); api({vapi:'hrsaveds',data:JSON.stringify(x)}).then(function(r){ busy(0);
-    if(!apply(r,CARD.emp.id)) return;
-    if(then){ var mine=(r.ds||[]).filter(function(y){return y.num===x.num&&y.con===x.con;});
-      if(mine.length){ CARD._dsEdit=null; docMenu('ds',mine[mine.length-1].id); } }
-  });
+  busy(1); api({vapi:'hrsaveds',data:JSON.stringify(x)}).then(function(r){
+    if(!r||!r.ok){ busy(0); alert((r&&r.error)||'ошибка'); return; }
+    var mine=(r.ds||[]).filter(function(y){return y.num===x.num&&y.con===x.con;});
+    var id=x.id||(mine.length?mine[mine.length-1].id:'');
+    CARD._dsEdit=null;
+    if(!then||!id){ busy(0); apply(r,CARD.emp.id); backFromForm(); return; }
+    return api({vapi:'hrgends',ds:id}).then(function(r2){ busy(0);
+      if(!r2.ok){ alert(r2.error||'ошибка'); apply(r,CARD.emp.id); return; }
+      apply(r2,CARD.emp.id); backFromForm(); docDone(r2.url,r2.leftPlaceholders);
+    });
+  }).catch(function(e){ busy(0); alert('сеть: '+e.message); });
 }
 
 /* ─── реестр договоров ─── */
@@ -989,11 +1043,7 @@ function conRegView(){
       '<td>'+esc(e.fio||'—')+'</td><td>'+esc(c.pos||'—')+'</td><td>'+esc(c.end||'—')+'</td>'+
       '<td onclick="event.stopPropagation()"><select class="stsel" onchange="setConStatus(\''+c.id+'\',this.value)">'+
           ['действует','истёк','расторгнут','продлён'].map(function(o){ return '<option'+(o===(c.statusEff||c.status)?' selected':'')+'>'+o+'</option>'; }).join('')+'</select></td>'+
-      '<td onclick="event.stopPropagation()">'+
-        '<button class="btn sm" onclick="uploadDoc(\''+c.id+'\',\'con\')">⬆ загрузить</button> '+
-        (c.link?'<a class="btn sm" href="'+esc(c.link)+'" target="_blank">📄 эл. документ</a>'
-              :((c.kind==='контракт'||c.kind==='подряд'||c.kind==='обучение')
-                 ?'<button class="btn sm" onclick="genDoc(\''+c.id+'\',\'\',\'con\')">📄 создать</button>':''))+'</td></tr>';
+      '<td onclick="event.stopPropagation()" style="white-space:nowrap">'+conActs(c)+'</td></tr>';
   }).join('');
   return h+'</tbody></table>'+(l.length?'':'<div class="empty">Пусто.</div>')+'</div>';
 }
@@ -1002,89 +1052,83 @@ function dt(ru){ var p=String(ru||'').split('.'); return p.length===3?new Date(+
 /* ─── реестры ─── */
 function empOpts(v){ return '<div><label class="f">Сотрудник</label><select id="f_emp"><option value="">—</option>'+
   (DATA.list||[]).map(function(x){ return '<option value="'+x.emp.id+'"'+(x.emp.id===v?' selected':'')+'>'+esc(x.emp.fio)+'</option>'; }).join('')+'</select></div>'; }
-function ordDoc(o){ docMenu('order',o.id); }
 function ordForm(o){
   o=o||{};
-  var saveOrd=function(then){
+  saveOrd=function(then){
     var d={id:o.id||'',series:val('series'),num:val('num'),date:val('date'),kind:val('kind'),emp:val('emp'),
            pos:val('pos'),basis:val('basis'),link:val('link'),note:val('note')};
-    busy(1); api({vapi:'hrsaveorder',data:JSON.stringify(d)}).then(function(r){ busy(0);
-      if(!apply(r,CARD?CARD.emp.id:null)) return;
-      if(!CARD){ TAB='ord'; render(); }
-      if(then){ var mine=(r.orders||[]).filter(function(x){return (d.num&&x.num===d.num)||(!d.num&&x.emp===d.emp&&x.date===d.date);});
-        if(mine.length) docMenu('order',mine[mine.length-1].id); }
-    });
+    busy(1); api({vapi:'hrsaveorder',data:JSON.stringify(d)}).then(function(r){
+      if(!r||!r.ok){ busy(0); alert((r&&r.error)||'ошибка'); return; }
+      var mine=(r.orders||[]).filter(function(x){return (d.num&&x.num===d.num)||(!d.num&&x.emp===d.emp&&x.date===d.date);});
+      var id=d.id||(mine.length?mine[mine.length-1].id:'');
+      if(!then||!id){ busy(0); apply(r,CARD?CARD.emp.id:null); backFromForm(); return; }
+      return api({vapi:'hrgendoc',con:id,what:'приказ-приём'}).then(function(r2){ busy(0);
+        if(!r2.ok){ alert(r2.error||'ошибка'); apply(r,CARD?CARD.emp.id:null); return; }
+        apply(r2,CARD?CARD.emp.id:null); backFromForm(); docDone(r2.url,r2.leftPlaceholders);
+      });
+    }).catch(function(e){ busy(0); alert('сеть: '+e.message); });
   };
-  dlg(o.id?'Правка приказа — данные':'Новый приказ — данные',
+  dlg(o.id?'Карточка приказа'+(o.num?(' № '+esc(o.num)):''):'Новый приказ',
     sel('series','Серия',o.series||'кадровые',['кадровые','основная деятельность'])+
     fld('num','№ (пусто = следующий по счётчику)',o.num)+fld('date','Дата',o.date)+
     fld('kind','Вид приказа (напр.: о приёме на работу)',o.kind)+
     empOpts(o.emp)+fld('pos','Должность',o.pos)+fld('basis','Основание',o.basis)+fld('note','Примечание',o.note),
     function(){ saveOrd(false); }, '',
-    'Сохраняем данные приказа. Документ — кнопкой «Сохранить и перейти к документу»: собрать по шаблону (для приёма) или загрузить готовый.',
-    function(){ saveOrd(true); });
+    'Данные приказа. Документ — кнопками ниже.',
+    docTail({ link:(hrIsEl(o.link)?o.link:''), tpl:/при[её]м/i.test(o.kind||''),
+      onCreate:'saveOrd(true)', onDrop:"dropElDoc('order','"+(o.id||'')+"')" }));
 }
-function docView(){
-  var all=(DATA.edocs||[]).slice();
-  var fio={}; (DATA.list||[]).forEach(function(x){ fio[x.emp.id]=x.emp.fio; });
-  var kinds=[['all','Все'],['приказ','Приказы'],['дс','Доп. соглашения'],['личный','Личные'],
-             ['уведомление','Уведомления'],['прочее','Прочее']];
-  var groupOf=function(d){
-    if(d.src==='order') return 'приказ';
-    if(d.src==='ds') return 'дс';
-    var t=(DATA.dtypes||[]).filter(function(x){return x.key===d.type;})[0];
-    return (t&&t.group)||'прочее';
-  };
-  var q=DOCQ.toLowerCase();
-  var l=all.filter(function(d){
-    if(DOCF!=='all'&&groupOf(d)!==DOCF) return false;
+function docGroupOf(d){
+  if(d.src==='order') return 'приказ';
+  if(d.src==='ds') return 'дс';
+  var t=(DATA.dtypes||[]).filter(function(x){return x.key===d.type;})[0];
+  return (t&&t.group)||'прочее';
+}
+function docFioMap(){ var m={}; (DATA.list||[]).forEach(function(x){ m[x.emp.id]=x.emp.fio; }); return m; }
+function docFilterList(){
+  var fio=docFioMap(), q=DOCQ.toLowerCase();
+  return (DATA.edocs||[]).filter(function(d){
+    if(DOCF!=='all'&&docGroupOf(d)!==DOCF) return false;
     if(!q) return true;
     return ((fio[d.emp]||'')+' '+docTitle(d)+' '+(d.num||'')).toLowerCase().indexOf(q)>=0;
   });
-  var cnt={}; all.forEach(function(d){ var g=groupOf(d); cnt[g]=(cnt[g]||0)+1; });
+}
+// Реестр по всем сотрудникам. Чипы строятся ИЗ ГРУПП СПРАВОЧНИКА, а не из массива в коде:
+// добавленный владельцем вид сразу попадает в свой чип. Показываем все категории, даже пустые —
+// видно, чего в системе ещё нет.
+function docView(){
+  var all=(DATA.edocs||[]);
+  var order=['дс','приказ','заявление','уведомление','больничный','личный','договор','прочее'];
+  var cnt={}; all.forEach(function(d){ var g=docGroupOf(d); cnt[g]=(cnt[g]||0)+1; });
   var h='<div class="row" style="margin-bottom:8px;flex-wrap:wrap">'+
-    kinds.map(function(k){
-      var n=k[0]==='all'?all.length:(cnt[k[0]]||0);
-      return '<button class="btn sm'+(DOCF===k[0]?' pri':'')+'" onclick="docFilter(\''+k[0]+'\')">'+k[1]+' '+n+'</button>';
+    '<button class="btn sm'+(DOCF==='all'?' pri':'')+'" onclick="docFilter(\'all\')">Все '+all.length+'</button>'+
+    order.map(function(g){
+      var n=cnt[g]||0;
+      return '<button class="btn sm'+(DOCF===g?' pri':'')+'" onclick="docFilter(\''+g+'\')">'+
+        esc(GRPNAME[g]||g)+' <span'+(n?'':' class="muted"')+'>'+n+'</span></button>';
     }).join('')+
     '<input id="docq" placeholder="поиск по сотруднику, документу, №" value="'+esc(DOCQ)+'" '+
       'oninput="DOCQ=this.value;docRender()" style="flex:1;min-width:180px">'+
-    '</div><div id="docbody">'+docTable(l,fio)+'</div>';
-  // табели и ведомости живут отдельным листом и к сотруднику не привязаны — показываем, только если есть
-  if((DATA.docs||[]).length||false) h+=docSheetsBlock();
+    '</div><div id="docbody">'+docTable(docFilterList(),docFioMap())+'</div>';
+  if((DATA.docs||[]).length) h+=docSheetsBlock();
   h+='<div class="row" style="margin-top:8px"><button class="btn" onclick="docForm({})">+ табель / ведомость</button>'+
-     '<span class="muted" style="font-size:12px">документы сотрудников добавляются в его карточке</span></div>';
+     '<span class="muted" style="font-size:12px">документы сотрудника добавляются в его карточке</span></div>';
   return h;
 }
 function docTable(l,fio){
   if(!l.length) return '<div class="card"><div class="empty">Ничего не найдено.</div></div>';
   return '<div class="card tbwrap"><table><thead><tr><th>Сотрудник</th><th>Документ</th><th>№</th><th>Дата</th>'+
-    '<th>Статус</th><th>Файл</th></tr></thead><tbody>'+
+    '<th>Статус</th><th>Файл</th><th></th></tr></thead><tbody>'+
     l.map(function(d){
-      var st=String(d.status||'нужен');
-      return '<tr class="click" onclick="openCard(\''+d.emp+'\')"><td><b>'+esc(fio[d.emp]||'—')+'</b></td>'+
+      return '<tr><td class="click" onclick="openCard(\''+d.emp+'\')"><b>'+esc(fio[d.emp]||'—')+'</b></td>'+
         '<td>'+esc(docTitle(d))+'</td><td>'+esc(d.num||'—')+'</td><td>'+esc(d.date||'—')+'</td>'+
-        '<td><span class="pill '+(st==='подписан'?'p-ok':'p-amber')+'">'+esc(st)+'</span></td>'+
-        '<td onclick="event.stopPropagation()">'+filesCell(d)+'</td></tr>';
+        '<td>'+statusPill(String(d.status||'нужен'))+'</td>'+
+        '<td>'+filesCell(d)+'</td>'+
+        '<td style="white-space:nowrap">'+docActs(d)+'</td></tr>';
     }).join('')+'</tbody></table></div>';
 }
 // перерисовываем ТОЛЬКО таблицу — иначе поле поиска пересоздаётся и теряет фокус на каждой букве
-function docRender(){
-  var fio={}; (DATA.list||[]).forEach(function(x){ fio[x.emp.id]=x.emp.fio; });
-  var groupOf=function(d){
-    if(d.src==='order') return 'приказ';
-    if(d.src==='ds') return 'дс';
-    var t=(DATA.dtypes||[]).filter(function(x){return x.key===d.type;})[0];
-    return (t&&t.group)||'прочее';
-  };
-  var q=DOCQ.toLowerCase();
-  var l=(DATA.edocs||[]).filter(function(d){
-    if(DOCF!=='all'&&groupOf(d)!==DOCF) return false;
-    if(!q) return true;
-    return ((fio[d.emp]||'')+' '+docTitle(d)+' '+(d.num||'')).toLowerCase().indexOf(q)>=0;
-  });
-  var b=$('docbody'); if(b) b.innerHTML=docTable(l,fio);
-}
+function docRender(){ var b=$('docbody'); if(b) b.innerHTML=docTable(docFilterList(),docFioMap()); }
 function docFilter(k){ DOCF=k; render(); }
 function docSheetsBlock(){
   var l=DATA.docs||[];
