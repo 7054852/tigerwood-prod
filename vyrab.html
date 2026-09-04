@@ -60,6 +60,9 @@
   @keyframes twspin{ to{ transform:rotate(360deg) } }
   #twwait .wt{ font-weight:700; font-size:15px; }
   #twwait .wh{ font-size:12.5px; opacity:.6; margin-top:4px; }
+#askbox{position:fixed;left:0;top:0;right:0;bottom:0;background:rgba(0,0,0,.35);z-index:60;display:flex;align-items:flex-end}
+#askbox .ab{width:100%;margin:0;border-radius:14px 14px 0 0;padding:14px 16px 22px;box-sizing:border-box}
+#askbox .abt{font-weight:600;margin-bottom:8px;white-space:pre-line}
 </style>
 </head>
 <body>
@@ -151,8 +154,8 @@ window.onerror=function(msg,src,line){
   <div id="cutlog" style="margin-top:18px"></div>
 </div>
 <div id="pane-m" style="display:none">
-  <h2>На проверке</h2>
-  <div class="muted">Подтвердите, измените кол-во или отклоните — рабочий получит уведомление.</div>
+  <h2 id="mh2">На проверке</h2>
+  <div class="muted" id="mhint">Подтвердите, измените кол-во или отклоните — рабочий получит уведомление.</div>
   <div id="qcwait" style="margin-top:10px"></div>
   <div id="otkmine" style="margin-top:10px"></div>
   <div id="mlist" style="margin-top:10px">Загрузка…</div>
@@ -227,7 +230,7 @@ function roleCache(v){
     var raw=localStorage.getItem('tw_role_'+TGID); return raw?JSON.parse(raw):null;
   }catch(e){ return null; }
 }
-(function(){ var c=roleCache(); if(c){ DATA.canCheck=c.canCheck; DATA.canCut=c.canCut; DATA.worker=c.worker||''; } })();
+(function(){ var c=roleCache(); if(c){ DATA.canCheck=c.canCheck; DATA.canCut=c.canCut; DATA.canQC=c.canQC; DATA.role=c.role||''; DATA.worker=c.worker||''; } })();
 var MODE = 'my';
 function isMaster(){ return MODE==='master'; }
 // текущий работник для формы: в личном режиме — я; в режиме мастера — выбранный в списке (или я)
@@ -250,8 +253,18 @@ function applyMode(){
     lo.style.display = DATA.canQC ? '' : 'none';
     if(!DATA.canQC && document.getElementById('pane-o').style.display!=='none') showTab('w');
   }
-  if(isMaster()){ lw.textContent='✍️ Ввести за сотрудника'; lm.textContent='👏 Проверка'; lj.textContent='📋 Журнал (все)'; }
-  else { lw.textContent='✍️ Моя выработка'; lm.textContent='⏳ Мои на проверке'; lj.textContent='📋 Мой журнал'; }
+  if(isMaster()){ lw.textContent='✍️ Ввести за сотрудника'; lj.textContent='📋 Журнал (все)'; }
+  else { lw.textContent='✍️ Моя выработка'; lj.textContent='📋 Мой журнал'; }
+  // ⚠ список «На проверке» — по ПРАВАМ, а не по адресу: директор, открывший ?tab=otk, попадал
+  // в режим рабочего и видел чужие наряды с кнопками «поправить свой наряд» и «ждёт мастера».
+  lm.textContent = DATA.canCheck ? '👏 Проверка' : '⏳ Мои на проверке';
+  var mh=document.getElementById('mh2'), mhi=document.getElementById('mhint');
+  if(mh) mh.textContent = DATA.canCheck ? 'На проверке' : 'Мои наряды на проверке';
+  if(mhi) mhi.textContent = DATA.canCheck ? 'Подтвердите, измените кол-во или отклоните — рабочий получит уведомление.' : 'Пока мастер не подтвердил, количество можно поправить.';
+  // контролёр ОТК: только «Приёмка» — выработка, раскрой, проверка и журнал его не касаются
+  var qcOnly = (DATA.role==='контролёр') && !DATA.canCheck && !!DATA.canQC;
+  ['tab-w','tab-m','tab-j'].forEach(function(id){ var b=document.getElementById(id); if(b) b.style.display = qcOnly?'none':''; });
+  if(qcOnly){ if(lc) lc.style.display='none'; if(document.getElementById('pane-o').style.display==='none') showTab('o'); }
   fillJWorkers();
 }
 // фильтр журнала по сотруднику — только проверяющему (рабочему сервер и так отдаёт только его строки)
@@ -294,7 +307,7 @@ function load(){
   api({vapi:'data',tgid:TGID}).then(function(d){
     DATA=d||DATA;
     MODE = (WANT_CHECK && DATA.canCheck) ? 'master' : 'my';   // роль пришла с сервера
-    roleCache({ canCheck: !!DATA.canCheck, canCut: !!DATA.canCut, worker: DATA.worker || '' });
+    roleCache({ canCheck: !!DATA.canCheck, canCut: !!DATA.canCut, canQC: !!DATA.canQC, role: DATA.role || '', worker: DATA.worker || '' });
     applyMode();
     // стартовую вкладку выбираем ОДИН раз: load() зовётся и при обновлении из оболочки,
     // иначе экран посреди работы перескакивал на «Проверку»
@@ -637,18 +650,33 @@ function sendWork(){
     else wmsg('<span class="err">⚠️ '+esc((r&&r.error)||'ошибка')+'</span>');
   }).catch(function(){ sendLock(false); wmsg('<span class="err">Ошибка отправки — проверьте связь и нажмите ещё раз</span>'); });
 }
+// ⚠ системный диалог ввода в Telegram WebView на телефоне работает ненадёжно (у директора «замирал»
+// экран на карандаше) — числа и текст спрашиваем своей плашкой внизу экрана. Enter = ОК, тап мимо = отмена.
+function askInline(title, cur, cb, text){
+  var old=document.getElementById('askbox'); if(old) old.parentNode.removeChild(old);
+  var d=document.createElement('div'); d.id='askbox';
+  d.innerHTML='<div class="ab card"><div class="abt"></div><input id="askin" type="text"'+(text?'':' inputmode="decimal"')+' style="font-size:16px;width:100%;box-sizing:border-box">'
+    +'<div class="row" style="margin-top:8px"><button class="sm" id="askok">ОК</button><button class="sm gray" id="askno">Отмена</button></div></div>';
+  d.querySelector('.abt').textContent=title;
+  document.body.appendChild(d);
+  var inp=document.getElementById('askin'); inp.value=(cur==null?'':cur);
+  function close(){ if(d.parentNode) d.parentNode.removeChild(d); }
+  document.getElementById('askno').onclick=close;
+  document.getElementById('askok').onclick=function(){ var v=inp.value; close(); cb(v); };
+  inp.onkeydown=function(e){ if(e.key==='Enter'){ e.preventDefault(); document.getElementById('askok').onclick(); } };
+  d.onclick=function(e){ if(e.target===d) close(); };
+  setTimeout(function(){ try{ inp.focus(); inp.select(); }catch(e){} },50);
+}
+function askNum(title,cur,cb,min0){
+  askInline(title,cur,function(v){ var q=Number(String(v).replace(',','.')); if(min0?(isNaN(q)||q<0):!(q>0)){ alert(min0?'Введите число ≥ 0':'Введите число больше 0'); return; } cb(q); });
+}
+// свой наряд и мастерские правки идут через act(): у неё есть catch и защита от двойного нажатия
 function myEdit(id,cur){
-  var v=prompt('Новое количество:', cur); if(v===null) return;
-  var q=Number(String(v).replace(',','.')); if(!(q>0)){ alert('Введите число больше 0'); return; }
-  api({vapi:'workeredit',id:id,qty:q,worker:DATA.worker||''}).then(function(r){
-    if(r&&r.ok) loadPending(); else alert((r&&r.error)||'не удалось изменить');
-  });
+  askNum('Новое количество:', cur, function(q){ act({vapi:'workeredit',id:id,qty:q,worker:DATA.worker||''}, null); });
 }
 function myDel(id){
   if(!confirm('Убрать эту операцию из наряда?')) return;
-  api({vapi:'workerdel',id:id,worker:DATA.worker||''}).then(function(r){
-    if(r&&r.ok) loadPending(); else alert((r&&r.error)||'не удалось убрать');
-  });
+  act({vapi:'workerdel',id:id,worker:DATA.worker||''}, null);
 }
 function loadMySummary(){
   var worker=DATA.worker||'', box=document.getElementById('mysum'); if(!box) return;
@@ -741,10 +769,10 @@ function renderPending(r){
   // мастеру видно, сколько работы стоит у контролёра: автоприёмки по таймауту нет и не будет
   try {
     var qb=document.getElementById('qcwait');
-    if(qb&&isMaster()) qb.innerHTML = (r&&r.qcWait) ? ('<div class="card" style="background:#eef4ff;border-color:#c8d8f5"><div class="row"><b>🔎 В приёмке ОТК: '+r.qcWait+' поз.</b><span class="'+((r.qcOldestH||0)>48?'err':'muted')+'">самая давняя '+Math.round((r.qcOldestH||0)/24)+' дн</span></div><div class="muted" style="font-size:12px">Работа принята по количеству, но ещё не засчитана и не оплачена — ждёт контролёра.</div></div>') : '';
+    if(qb&&DATA.canCheck) qb.innerHTML = (r&&r.qcWait) ? ('<div class="card" style="background:#eef4ff;border-color:#c8d8f5"><div class="row"><b>🔎 В приёмке ОТК: '+r.qcWait+' поз.</b><span class="'+((r.qcOldestH||0)>48?'err':'muted')+'">самая давняя '+Math.round((r.qcOldestH||0)/24)+' дн</span></div><div class="muted" style="font-size:12px">Работа принята по количеству, но ещё не засчитана и не оплачена — ждёт контролёра.</div></div>') : '';
   } catch(e){}
   var el=document.getElementById('mlist'); if(!el) return;
-  var master=isMaster();
+  var master=!!DATA.canCheck;
   (function(){
     var reps=(r&&r.reports)||[];
     if(!reps.length){ el.innerHTML='<div class="muted">'+(master?'Нет нарядов на проверке.':'У вас нет нарядов на проверке — всё обработано.')+'</div>'; return; }
@@ -813,20 +841,20 @@ function renderPending(r){
 }
 // мастер ставит коэффициент на строку → сумма пересчитывается вверх/вниз
 function setKoef(id,cur){
-  var k=prompt('Коэффициент к сумме этой операции:\n1 = без изменений, 1.2 = +20%, 0.8 = −20%', cur||1);
-  if(k===null) return; k=Number(String(k).replace(',','.')); if(isNaN(k)||k<0){ alert('Введите число ≥ 0'); return; }
-  act({vapi:'setoutputkoef',id:id,koef:k,master:DATA.worker||'мастер'}, null, function(){
-    loadPending(); try{ if(document.getElementById('pane-j').style.display!=='none') loadJournal(); }catch(e){}
-  });
+  askNum('Коэффициент к сумме этой операции:\n1 = без изменений, 1.2 = +20%, 0.8 = −20%', cur||1, function(k){
+    act({vapi:'setoutputkoef',id:id,koef:k,master:DATA.worker||'мастер'}, null, function(){
+      loadPending(); try{ if(document.getElementById('pane-j').style.display!=='none') loadJournal(); }catch(e){}
+    });
+  }, true);
 }
 function setRepShift(rid,sh){
   act({vapi:'setreportshift',report:rid,shift:sh,master:DATA.worker||'мастер'}, document.getElementById('rm-'+rid));
 }
 // коэффициент на весь наряд (при проверке/одобрении)
 function setRepKoef(rid,cur){
-  var k=prompt('Коэффициент на весь наряд:\n1 = без изменений, 1.2 = +20%, 0.8 = −20%', cur||1);
-  if(k===null) return; k=Number(String(k).replace(',','.')); if(isNaN(k)||k<0){ alert('Введите число ≥ 0'); return; }
-  act({vapi:'setreportkoef',report:rid,koef:k,master:DATA.worker||'мастер'}, document.getElementById('rm-'+rid));
+  askNum('Коэффициент на весь наряд:\n1 = без изменений, 1.2 = +20%, 0.8 = −20%', cur||1, function(k){
+    act({vapi:'setreportkoef',report:rid,koef:k,master:DATA.worker||'мастер'}, document.getElementById('rm-'+rid));
+  }, true);
 }
 function apprRep(rid,ok){
   var m=document.getElementById('rm-'+rid); if(m) m.textContent='…';
@@ -845,22 +873,20 @@ function setOutTarget(id,target,sel){
 }
 // правка строки внутри наряда (кол-во сохраняется, статус не меняется)
 function editOut(id,cur){
-  var q=prompt('Изменить количество (было '+cur+'):', cur);
-  if(q===null) return; q=Number(q); if(!(q>0)){ alert('Кол-во должно быть > 0'); return; }
-  act({vapi:'updoutput',id:id,qty:q}, null);
+  askNum('Изменить количество (было '+cur+'):', cur, function(q){ act({vapi:'updoutput',id:id,qty:q}, null); });
 }
 // убрать/отклонить одну строку
 function appr(id,ok){
   act({vapi:'approve',id:id,master:DATA.worker||'мастер',ok:ok?1:0}, null);
 }
 function editJournal(id,curQty,curDate){
-  var q=prompt('Количество (было '+curQty+'):', curQty);
-  if(q===null) return; q=Number(q); if(!(q>0)){ alert('Кол-во должно быть > 0'); return; }
-  var d=prompt('Дата отчёта (дд.мм.гггг):', curDate||'');
-  if(d===null) return;
-  var m=document.getElementById('jm-'+id); if(m) m.textContent='…';
-  api({vapi:'updoutput',id:id,qty:q,date:(d||'').trim()}).then(function(r){
-    if(r&&r.ok){ loadJournal(); } else if(m){ m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; }
+  askNum('Количество (было '+curQty+'):', curQty, function(q){
+    askInline('Дата отчёта (дд.мм.гггг):', curDate||'', function(d){
+      var m=document.getElementById('jm-'+id); if(m) m.textContent='…';
+      api({vapi:'updoutput',id:id,qty:q,date:(d||'').trim()}).then(function(r){
+        if(r&&r.ok){ loadJournal(); } else if(m){ m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; }
+      }).catch(function(){ if(m) m.innerHTML='<span class="err">ошибка сети</span>'; });
+    }, true);
   });
 }
 function delJournal(id){
@@ -873,9 +899,9 @@ function delJournal(id){
 }
 // коэффициент/смена из журнала (мастер) — перезагружают журнал
 function setKoefJ(id,cur){
-  var k=prompt('Коэффициент к сумме этой операции:\n1 = без изменений, 1.2 = +20%, 0.8 = −20%', cur||1);
-  if(k===null) return; k=Number(String(k).replace(',','.')); if(isNaN(k)||k<0){ alert('Введите число ≥ 0'); return; }
-  api({vapi:'setoutputkoef',id:id,koef:k,master:DATA.worker||'мастер'}).then(function(r){ if(r&&r.ok){ loadJournal(); } else alert((r&&r.error)||'ошибка'); });
+  askNum('Коэффициент к сумме этой операции:\n1 = без изменений, 1.2 = +20%, 0.8 = −20%', cur||1, function(k){
+    api({vapi:'setoutputkoef',id:id,koef:k,master:DATA.worker||'мастер'}).then(function(r){ if(r&&r.ok){ loadJournal(); } else alert((r&&r.error)||'ошибка'); }).catch(function(){ alert('ошибка сети'); });
+  }, true);
 }
 // 🎁 премия рабочему за наряд: два поля — за что и сколько. Не сдельная база: надбавки на неё не начисляются.
 function bonKey(rid){ return String(rid).replace(/[^0-9A-Za-zА-Яа-яЁё_-]/g,'_'); }
@@ -949,10 +975,11 @@ function rejectRep(rid,worker,sum,cnt){
   apprRep(rid,0);
 }
 function editTimePay(id,cur,note){
-  var s=prompt('Сумма доплаты, руб.:', cur||'');
-  if(s===null) return; s=Number(String(s).replace(',','.')); if(!(s>0)){ alert('Введите сумму больше 0'); return; }
-  var n=prompt('За что доплата:', note||''); if(n===null) n=note||'';
-  api({vapi:'edittimepay',id:id,sum:s,note:n}).then(function(r){ if(r&&r.ok) loadJournal(); else alert((r&&r.error)||'ошибка'); });
+  askNum('Сумма доплаты, руб.:', cur||'', function(s){
+    askInline('За что доплата:', note||'', function(n){
+      api({vapi:'edittimepay',id:id,sum:s,note:n}).then(function(r){ if(r&&r.ok) loadJournal(); else alert((r&&r.error)||'ошибка'); }).catch(function(){ alert('ошибка сети'); });
+    }, true);
+  });
 }
 function setRepShiftJ(rid,sh){
   api({vapi:'setreportshift',report:rid,shift:sh,master:DATA.worker||'мастер'}).then(function(r){ if(r&&r.ok) loadJournal(); });
@@ -1074,7 +1101,7 @@ function renderJournal(){
         // след приёмки: кто принял и сколько вернул — видно и рабочему, и мастеру
         var qc = it.qcBy
           ? '<div class="muted" style="font-size:12px">🔎 принял '+esc(it.qcBy)+(it.qcAt?(' · '+esc(it.qcAt)):'')
-            +(it.qcBad>0?(' · <span class="err">вернул '+it.qcBad+' шт'+(it.qcWhy?(' — '+esc(it.qcWhy)):'')+'</span>'):'')+'</div>'
+            +(it.qcBad>0?(' · <span class="err">на переделку '+it.qcBad+' шт</span>'):'')+'</div>'
           : '';
         return '<div id="j-'+esc(it.id)+'" style="border-top:1px solid #eee;padding-top:5px">'
           +'<div class="row"><span>'+body+'</span><span>'+money+' '+acts+'</span></div>'+qc+'</div>';
@@ -1154,12 +1181,7 @@ function renderOtk(){
         ? '<div class="card" style="margin:6px 0 0;background:#fdf7f7">'
           +'<div class="row"><label style="flex:1">Принято<input id="ok-'+esc(l.id)+'" type="number" min="0" value="'+l.qty+'" style="font-size:16px"></label>'
           +'<label style="flex:1">Брак<input id="bad-'+esc(l.id)+'" type="number" min="0" value="0" style="font-size:16px"></label></div>'
-          +'<label>Причина брака<select id="why-'+esc(l.id)+'" style="font-size:16px">'
-          +((OTK.whys)||[]).map(function(w){return '<option value="'+esc(w)+'">'+esc(w)+'</option>';}).join('')+'</select></label>'
-          +'<div class="muted" style="font-size:12px;margin:4px 0">«'+esc((OTK&&OTK.whyWorker)||'вина рабочего')+'» — эти штуки не оплачиваются. По остальным причинам система сама начислит компенсацию отдельной строкой.</div>'
-          +'<label>Это переделка?<select id="redo-'+esc(l.id)+'" style="font-size:16px">'
-          +((OTK.redos)||['']).map(function(x){return '<option value="'+esc(x)+'">'+esc(x||'нет, обычная работа')+'</option>';}).join('')+'</select></label>'
-          +'<div class="muted" style="font-size:12px;margin:4px 0">Переделка своего брака не оплачивается. Чужого — оплачивается с коэффициентом '+((OTK&&OTK.redoKoef)||1)+'.</div>'
+          +'<div class="muted" style="font-size:12px;margin:4px 0">Брак не оплачивается и возвращается рабочему на переделку. Оплата — за принятое.</div>'
           +'<div class="row"><button class="sm" onclick="otkBadGo(\''+esc(l.id)+'\')">Провести приёмку</button>'
           +'<button class="sm gray" onclick="otkBadClose(\''+esc(l.id)+'\')">отмена</button>'
           +'<span class="msg" id="om-'+esc(l.id)+'"></span></div></div>'
@@ -1174,7 +1196,7 @@ function renderOtk(){
         +'<button class="sm gray" onclick="otkBadOpen(\''+esc(l.id)+'\')">⚠ брак</button></span></div>'
         +'<div class="muted" style="font-size:12px">📅 сдано <b>'+esc(l.date)+'</b> · '+esc(l.shift||'день')
         +' · <span class="'+(late?'err':'muted')+'">лежит '+otkAge(l.ageH)+'</span>'
-        +(l.waitMaster?' · ждёт мастера':'')+'</div></div>'+form;
+        +'</div></div>'+form;
     }).join('');
     // дата на самой карточке: одна — показываем её, разные — диапазон
     var ds={}, dl=[], amax=0;
@@ -1193,10 +1215,8 @@ function otkBadClose(id){ delete OTKOPEN[id]; renderOtk(); }
 function otkMsg(id,html){ var e=document.getElementById(id); if(e) e.innerHTML=html||''; }
 // ⚠ защита от повторного нажатия: ответ идёт 3-9 с, в цеху жмут ещё раз
 function otkGuard(){ if(OTKBUSY){ alert('Предыдущая приёмка ещё идёт — подождите.'); return false; } OTKBUSY=true; return true; }
-function otkDone(){ OTKBUSY=false; loadOtk(); }
 function otkOne(id){
   if(!otkGuard()) return;
-  otkMsg('om-'+id,'принимаю…');
   api({vapi:'otkaccept',id:id,ok:'',bad:0}).then(function(r){
     OTKBUSY=false;
     if(!r||!r.ok){ alert((r&&r.error)||'не удалось принять'); return; }
@@ -1206,15 +1226,11 @@ function otkOne(id){
 function otkBadGo(id){
   var ok=(document.getElementById('ok-'+id)||{}).value;
   var bad=(document.getElementById('bad-'+id)||{}).value||0;
-  var why=(document.getElementById('why-'+id)||{}).value||'';
-  if(Number(bad)>0 && !why){ otkMsg('om-'+id,'<span class="err">укажите причину</span>'); return; }
   if(!otkGuard()) return;
   otkMsg('om-'+id,'принимаю…');
-  var redo=(document.getElementById('redo-'+id)||{}).value||'';
-  api({vapi:'otkaccept',id:id,ok:ok,bad:bad,why:why,redo:redo}).then(function(r){
+  api({vapi:'otkaccept',id:id,ok:ok,bad:bad}).then(function(r){
     OTKBUSY=false;
     if(!r||!r.ok){ otkMsg('om-'+id,'<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'); return; }
-    if(r.comp) alert('Брак не по вине рабочего — начислена компенсация '+r.comp+' р. отдельной строкой.');
     delete OTKOPEN[id]; loadOtk();
   }).catch(function(){ OTKBUSY=false; otkMsg('om-'+id,'<span class="err">ошибка сети</span>'); });
 }
@@ -1253,10 +1269,8 @@ function renderOtkAdd(){
     +'<label>Деталь<select id="oa_d" style="font-size:16px" onchange="otkAddOp()"></select></label>'
     +'<label>Операция<select id="oa_o" style="font-size:16px" onchange="otkAddCalc()"></select></label>'
     +'<label>Принято, шт<input id="oa_q" type="number" min="0" inputmode="numeric" style="font-size:16px" oninput="otkAddCalc()"></label>'
-    +'<label>Не принято (брак), шт<input id="oa_bad" type="number" min="0" inputmode="numeric" value="0" style="font-size:16px" oninput="otkAddBad()"></label>'
-    +'<div id="oa_whybox" style="display:none"><label>Причина брака<select id="oa_why" style="font-size:16px">'
-    +  ((OTK&&OTK.whys)||[]).map(function(x){return opt(x);}).join('')+'</select></label>'
-    +  '<div class="muted" style="font-size:12px;margin:4px 0">«'+esc((OTK&&OTK.whyWorker)||'вина рабочего')+'» — эти штуки не оплачиваются. По остальным причинам система начислит компенсацию отдельной строкой.</div></div>'
+    +'<label>Не принято (брак), шт<input id="oa_bad" type="number" min="0" inputmode="numeric" value="0" style="font-size:16px"></label>'
+    +'<div class="muted" style="font-size:12px;margin:4px 0">Брак не оплачивается — детали возвращаются рабочему на переделку.</div>'
     +'<div class="sum" id="oa_sum">—</div>'
     +'<div class="row"><button id="oa_go" onclick="otkAddGo()">✅ Внести и принять</button><span class="msg" id="oa_msg"></span></div></div>';
   otkAddDet();
@@ -1284,29 +1298,23 @@ function otkAddCalc(){
   var e=document.getElementById('oa_sum'); if(!e) return;
   e.textContent = (q>0&&r>0) ? (Math.round(q*r*100)/100)+' руб.' : (r>0?'—':'нет расценки');
 }
-// поле причины показываем только когда брак есть — иначе лишний вопрос на каждой приёмке
-function otkAddBad(){
-  var bad=Number((document.getElementById('oa_bad')||{}).value||0);
-  var box=document.getElementById('oa_whybox'); if(box) box.style.display=bad>0?'':'none';
-}
 function otkAddGo(){
   var w=(document.getElementById('oa_w')||{}).value||'', b=(document.getElementById('oa_b')||{}).value||'';
   var eq=(document.getElementById('oa_e')||{}).value||'', d=(document.getElementById('oa_d')||{}).value||'';
   var o=(document.getElementById('oa_o')||{}).value||'', q=(document.getElementById('oa_q')||{}).value||'';
-  var bad=(document.getElementById('oa_bad')||{}).value||'0', why=(document.getElementById('oa_why')||{}).value||'';
+  var bad=(document.getElementById('oa_bad')||{}).value||'0';
   if(!w){ otkMsg('oa_msg','<span class="err">выберите сотрудника</span>'); return; }
   if(!(Number(q)>0)){ otkMsg('oa_msg','<span class="err">укажите принятое количество</span>'); return; }
-  if(Number(bad)>0 && !why){ otkMsg('oa_msg','<span class="err">укажите причину брака</span>'); return; }
-  if(!confirm('Внести за '+w+': '+d+' · '+o+'\nпринято '+q+' шт'+(Number(bad)>0?(', брак '+bad+' шт ('+why+')'):'')+'?')) return;
+  if(!confirm('Внести за '+w+': '+d+' · '+o+'\nпринято '+q+' шт'+(Number(bad)>0?(', на переделку '+bad+' шт'):'')+'?')) return;
   if(!otkGuard()) return;
   var btn=document.getElementById('oa_go'); if(btn){ btn.disabled=true; btn.textContent='вношу…'; }
-  api({vapi:'otkadd',worker:w,batch:b,equip:eq,detail:d,op:o,qty:q,bad:bad,why:why,date:todayRu(),shift:'день'}).then(function(r){
+  api({vapi:'otkadd',worker:w,batch:b,equip:eq,detail:d,op:o,qty:q,bad:bad,date:todayRu(),shift:'день'}).then(function(r){
     OTKBUSY=false; if(btn){ btn.disabled=false; btn.textContent='✅ Внести и принять'; }
     if(!r||!r.ok){ otkMsg('oa_msg','<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'); return; }
     otkMsg('oa_msg','<span class="ok">✅ внесено на '+r.sum+' р.'+(Number(bad)>0?(' · брак '+bad+' шт учтён'):'')+'</span>');
     var qf=document.getElementById('oa_q'); if(qf) qf.value='';
     var bf=document.getElementById('oa_bad'); if(bf) bf.value='0';
-    otkAddBad(); otkAddCalc(); loadOtk();
+    otkAddCalc(); loadOtk();
   }).catch(function(){ OTKBUSY=false; if(btn){ btn.disabled=false; btn.textContent='✅ Внести и принять'; } otkMsg('oa_msg','<span class="err">ошибка сети</span>'); });
 }
 function todayRu(){ var n=new Date(); return pad2(n.getDate())+'.'+pad2(n.getMonth()+1)+'.'+n.getFullYear(); }
@@ -1329,7 +1337,6 @@ function otkStatsLoad(){
   api({vapi:'otkstats',from:from,to:to}).then(function(r){
     if(seq!==OQSEQ) return;
     if(!r||!r.ok){ b.innerHTML='<div class="card err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
-    var why=(r.byWhy||[]).map(function(x){ return '<div class="row"><span>'+esc(x.name)+'</span><span>'+x.qty+' шт</span></div>'; }).join('')||'<div class="muted">брака не было</div>';
     var wrk=(r.byWorker||[]).slice(0,8).map(function(x){ return '<div class="row"><span>'+esc(x.name)+'</span><span>'+x.qty+' шт</span></div>'; }).join('');
     // по приёмщикам — их будет несколько, и планка у них не должна расходиться
     var qc=(r.byQc||[]).map(function(x){
@@ -1349,7 +1356,6 @@ function otkStatsLoad(){
       +'<div class="row"><span class="muted">забраковано</span><span>'+r.bad+' шт</span></div>'
       +(qc?('<div class="muted" style="margin-top:10px"><b>По приёмщикам:</b></div>'+qc)
           :'<div class="muted" style="margin-top:10px">За период приёмок не было — выберите период шире.</div>')
-      +'<div class="muted" style="margin-top:8px">Причины:</div>'+why
       +(wrk?('<div class="muted" style="margin-top:8px">По рабочим:</div>'+wrk):'')+'</div>';
   }).catch(function(){ b.innerHTML='<div class="card err">ошибка сети</div>'; });
 }
