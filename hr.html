@@ -177,6 +177,7 @@ function render(){
   $('app').innerHTML=h;
 }
 // человеческие названия групп справочника — и в чипах реестра, и в выборе типа
+function ordHasTpl(k){ return /при[её]м|назначени/i.test(String(k||'')); }
 function hrIsEl(u){ return /docs\.google\.com\/document/.test(String(u||'')); }
 var saveOrd=null, saveCon=null, CONSAVE=null;
 var GRPNAME={'дс':'Доп. соглашения','приказ':'Приказы','заявление':'Заявления',
@@ -287,7 +288,14 @@ function cardView(){
               c.files.map(function(u,i){return '<a href="'+esc(u)+'" target="_blank">'+(i+1)+'</a>';}).join(' ')
             : '<span class="muted" title="скан не приложен">📎 —</span>')+'</td>'+
         '<td style="white-space:nowrap">'+acts+'</td></tr>'+
-        '<tr><td></td><td colspan="8" class="muted" style="font-size:12px;border-bottom:1px solid var(--line)">'+esc((c.state||{}).msg||'')+
+        '<tr><td></td><td colspan="8" class="muted" style="font-size:12px;border-bottom:1px solid var(--line)">'+
+        // ⚠ Сообщение о сроке — единственное место, где видно, что с договором проблема, а действия
+        // («уведомить», «новый контракт», «прекращение») лежат в его карточке. Делаем текст ссылкой,
+        // иначе человек читает «нет даты прекращения и Акта» и не понимает, куда идти.
+        ((c.state||{}).msg
+          ? '<a class="dlink" onclick="openDoc(\'con\',\''+c.id+'\')" title="открыть карточку договора — там действия">'+
+            esc(c.state.msg)+' → что делать</a>'
+          : '')+
         (function(){ var mk=c.missingKeys||[]; if(!mk.length) return '';
           var inCon=mk.filter(function(x){return x.src==='con';}).map(function(x){return x.t;});
           var inEmp=mk.filter(function(x){return x.src==='emp';}).map(function(x){return x.t;});
@@ -1077,7 +1085,7 @@ function ordForm(o){
     empOpts(o.emp)+fld('pos','Должность',o.pos)+fld('basis','Основание',o.basis)+fld('note','Примечание',o.note),
     function(){ saveOrd(false); }, '',
     'Данные приказа. Документ — кнопками ниже.',
-    docTail({ link:(hrIsEl(o.link)?o.link:''), tpl:/при[её]м/i.test(o.kind||''),
+    docTail({ link:(hrIsEl(o.link)?o.link:''), tpl:ordHasTpl(o.kind),
       onCreate:'saveOrd(true)', onDrop:"dropElDoc('order','"+(o.id||'')+"')" }));
 }
 function docGroupOf(d){
