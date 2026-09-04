@@ -1062,7 +1062,9 @@ function ordForm(o){
       var mine=(r.orders||[]).filter(function(x){return (d.num&&x.num===d.num)||(!d.num&&x.emp===d.emp&&x.date===d.date);});
       var id=d.id||(mine.length?mine[mine.length-1].id:'');
       if(!then||!id){ busy(0); apply(r,CARD?CARD.emp.id:null); backFromForm(); return; }
-      return api({vapi:'hrgendoc',con:id,what:'приказ-приём'}).then(function(r2){ busy(0);
+      // ⚠ hrgendoc ждёт id ДОГОВОРА и создаёт НОВЫЙ приказ со следующим номером. Для уже
+      // заведённой записи нужен hrgenorder: он берёт её собственные номер и дату.
+      return api({vapi:'hrgenorder',doc:id}).then(function(r2){ busy(0);
         if(!r2.ok){ alert(r2.error||'ошибка'); apply(r,CARD?CARD.emp.id:null); return; }
         apply(r2,CARD?CARD.emp.id:null); backFromForm(); docDone(r2.url,r2.leftPlaceholders);
       });
