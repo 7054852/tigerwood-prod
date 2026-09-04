@@ -226,11 +226,13 @@ function cardView(){
      '<div class="row">'+(e.folder?'<a class="btn sm" href="'+esc(e.folder)+'" target="_blank">📁 папка</a>'
         :'<button class="btn sm" onclick="mkFolder()">📁 создать папку</button>')+
      '<button class="btn sm" onclick="recogPassport()" title="распознать паспортные данные из скана в папке">🪪 распознать паспорт</button>'+
+     (e.tgId?'':'<button class="btn sm" onclick="inviteEmp()" title="дать сотруднику доступ в приложение">✉ пригласить</button>')+
      '<button class="btn sm" onclick="editEmp()">✎ править</button></div></div>';
   h+='<div class="grid" style="margin-top:10px"><div class="kv"><div class="k">Идент. номер</div><div>'+esc(e.idnum||'—')+'</div>'+
      '<div class="k">Паспорт</div><div>'+esc(e.passport||'—')+'</div><div class="k">Р/с</div><div>'+esc(e.account||'—')+'</div></div>'+
      '<div class="kv"><div class="k">Принят</div><div>'+esc(e.hired||'—')+'</div><div class="k">Уволен</div><div>'+esc(e.fired||'—')+'</div>'+
-     '<div class="k">Telegram</div><div>'+esc(e.tgId||'—')+'</div></div></div>'+
+     '<div class="k">Telegram</div><div>'+(e.tgId?('<span class="pill p-ok">привязан</span> <span class="muted">'+esc(e.tgId)+'</span>')
+        :'<span class="muted">не привязан — доступа в приложение нет</span>')+'</div></div></div>'+
      (function(){
         var cur=(CARD.contracts||[]).filter(function(c){return c.kind==='контракт'&&c.status!=='расторгнут'&&c.status!=='продлён';})[0];
         if(!cur||!cur.effective) return '';
@@ -687,6 +689,43 @@ function passRecognize(n){
     passMsg(put.length? ('✓ распознано ('+r.pages+' стр.), заполнено полей: '+put.length+' — проверьте')
                       : 'ничего нового не распозналось — заполните поля руками');
   }).catch(function(e){ passMsg('<span style="color:var(--red)">сеть: '+esc(e.message)+'</span>'); });
+}
+// Приглашение именное: ссылка одноразовая и привязана к этой кадровой карточке — перешёл по ней
+// человек, представился в боте, и его Telegram сам встал в карточку. Обычные ссылки многоразовые,
+// по ним второй сотрудник привязался бы к чужой карточке.
+function inviteEmp(){
+  var e=CARD.emp;
+  REQKEYS={};
+  dlg('Пригласить в приложение: '+e.fio,
+    sel('role','Роль в приложении','рабочий',['рабочий','мастер','начальник','контролёр','бухгалтер','директор','маркетолог'])+
+    fld('master','Мастер (для рабочего, не обязательно)',''),
+    function(){
+      busy(1);
+      api({vapi:'createinvite',role:val('role'),master:val('master'),emp:e.id}).then(function(r){ busy(0);
+        if(!r.ok){ alert(r.error||'ошибка'); return; }
+        if(!r.link){ alert('Ссылка не собралась: бот не отвечает своим именем. Проверьте токен бота в настройках.'); return; }
+        inviteShow(e,r);
+      });
+    }, '', 'Ссылка одноразовая: как только сотрудник по ней зарегистрируется, она перестанет работать.');
+}
+function inviteShow(e,r){
+  $('app').innerHTML='<div class="card"><b>Приглашение для '+esc(e.fio)+'</b>'+
+    '<div class="muted" style="font-size:12.5px;margin:6px 0 10px">Отправьте ссылку сотруднику. Он откроет её в Telegram, '+
+    'представится боту — и его аккаунт сам привяжется к этой карточке. Роль: <b>'+esc(r.roleTitle||r.role)+'</b>. '+
+    'Ссылка <b>одноразовая</b>.</div>'+
+    '<div class="fld"><label class="f">Ссылка</label><input id="f_link" value="'+esc(r.link)+'" readonly onclick="this.select()"></div>'+
+    '<div class="row" style="margin-top:10px"><button class="btn pri" onclick="inviteCopy()">📋 Скопировать</button>'+
+    '<a class="btn" href="'+esc(r.link)+'" target="_blank">открыть в Telegram</a>'+
+    '<button class="btn" onclick="openCard(\''+e.id+'\')">Готово</button></div>'+
+    '<div id="invMsg" class="muted" style="font-size:12px;margin-top:8px"></div></div>';
+}
+function inviteCopy(){
+  var el=$('f_link'); el.select();
+  var okMsg=function(t){ var m=$('invMsg'); if(m) m.textContent=t; };
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(el.value).then(function(){ okMsg('✓ ссылка скопирована'); },
+      function(){ okMsg('скопируйте вручную: ссылка выделена'); });
+  } else { try{ document.execCommand('copy'); okMsg('✓ ссылка скопирована'); }catch(err){ okMsg('скопируйте вручную: ссылка выделена'); } }
 }
 function newCon(kind){
   var today=new Date(), d=('0'+today.getDate()).slice(-2)+'.'+('0'+(today.getMonth()+1)).slice(-2)+'.'+today.getFullYear();
