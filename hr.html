@@ -254,25 +254,27 @@ function cardView(){
           row('режим',(ef.wStart&&ef.wEnd)?(ef.wStart+'–'+ef.wEnd):'',chg.indexOf('wStart')>=0||chg.indexOf('wEnd')>=0)+'</div>';
      })()+'</div>';
 
-  // договоры
+  // Договор — такой же документ, как остальные: клик по виду правит данные, справа те же две
+  // кнопки «загрузить» и «создать» (после сборки — «эл. документ») плюс удаление. Уведомление,
+  // заявление, ДС и расторжение больше не живут в этой строке — они документы и лежат ниже.
   h+='<div class="sect">Договоры</div><div class="card tbwrap">';
   if(!CARD.contracts.length) h+='<div class="empty">Нет договоров.</div>';
-  else h+='<table><thead><tr><th></th><th>Вид</th><th>№</th><th>Дата</th><th>Окончание</th><th>Уведомление</th><th>Статус</th><th></th></tr></thead><tbody>'+
+  else h+='<table><thead><tr><th></th><th>Вид</th><th>№</th><th>Дата</th><th>Окончание</th><th>Статус</th><th>Файл</th><th></th></tr></thead><tbody>'+
     CARD.contracts.map(function(c){
-      var acts='<button class="btn sm" onclick=\'editCon('+JSON.stringify(c).replace(/'/g,"&#39;")+')\' title="изменить данные в системе">✎ данные</button>'+
-        (c.link?' <a class="btn sm" href="'+esc(c.link)+'" target="_blank">📄 договор</a> <button class="btn sm" onclick="docMenu(\'con\',\''+c.id+'\')">⋯</button>'
-              :' <button class="btn sm" onclick="docMenu(\'con\',\''+c.id+'\')">📄 договор…</button>')+
-        (c.kind==='контракт'?(c.appLink?' <a class="btn sm" href="'+esc(c.appLink)+'" target="_blank">📄 заявление</a>'
-                                        :' <button class="btn sm" onclick="uploadDoc(\''+c.id+'\',\'conapp\')" title="прикрепить заявление о приёме">📎 заявление</button>'):'')+
-        (((c.state||{}).needRenew)?' <button class="btn sm pri" onclick="renewForm(\''+c.id+'\')">⏭ новый контракт</button>':'')+
-        (isCivil(c.kind)&&String(c.status).toLowerCase()!=='расторгнут'?' <button class="btn sm pri" onclick="termForm(\''+c.id+'\')">⏹ прекращение</button>':'')+
-        ' <button class="btn sm" onclick="delRec(\'contract\',\''+c.id+'\',\''+esc(c.kind)+' № '+esc(c.num)+'\')" title="удалить договор">🗑</button>';
-      return '<tr><td>'+dot(c.missing)+sevPill((c.state||{}).sev)+'</td><td>'+esc(c.kind)+'</td><td><b>'+esc(c.num)+'</b></td><td>'+esc(c.date)+'</td>'+
-        '<td>'+esc(c.end||'—')+'</td>'+
-        '<td>'+(c.notify
-            ? ('<span class="pill p-ok">создано '+esc(c.notify)+'</span>'+(c.answer?'':' <button class="btn sm" onclick="signNotice(\''+c.id+'\')">✔ подписано</button>'))
-            : (c.kind==='контракт'?'<button class="btn sm" onclick="noticeForm(\''+c.id+'\')">✉ создать</button>':'—'))+'</td>'+'<td><select class="stsel" onchange="event.stopPropagation();setConStatus(\''+c.id+'\',this.value)" onclick="event.stopPropagation()">'+
+      var canTpl=(c.kind==='контракт'||c.kind==='подряд'||c.kind==='обучение');
+      var mkBtn=c.link?'<a class="btn sm" href="'+esc(c.link)+'" target="_blank">📄 эл. документ</a>'
+              :(canTpl?'<button class="btn sm" onclick="genDoc(\''+c.id+'\',\'\',\'con\')">📄 создать</button>':'');
+      var acts='<button class="btn sm" onclick="uploadDoc(\''+c.id+'\',\'con\')">⬆ загрузить</button> '+mkBtn+
+        ' <button class="btn sm" onclick="delRec(\'contract\',\''+c.id+'\',\''+esc(c.kind)+' № '+esc(c.num)+'\')" title="удалить договор и файлы с Google Диска">🗑</button>';
+      return '<tr><td>'+dot(c.missing)+sevPill((c.state||{}).sev)+'</td>'+
+        '<td><a class="dlink" onclick=\'editCon('+JSON.stringify(c).replace(/'/g,"&#39;")+')\' title="изменить данные и действия по договору"><b>'+esc(c.kind)+'</b></a></td>'+
+        '<td><b>'+esc(c.num)+'</b></td><td>'+esc(c.date)+'</td><td>'+esc(c.end||'—')+'</td>'+
+        '<td><select class="stsel" onchange="event.stopPropagation();setConStatus(\''+c.id+'\',this.value)" onclick="event.stopPropagation()">'+
           ['действует','истёк','расторгнут','продлён'].map(function(o){ return '<option'+(o===(c.statusEff||c.status)?' selected':'')+'>'+o+'</option>'; }).join('')+'</select></td>'+
+        '<td>'+((c.files&&c.files.length)
+            ? '<span class="pill p-ok" title="страниц: '+c.files.length+'">📎 '+c.files.length+'</span> '+
+              c.files.map(function(u,i){return '<a href="'+esc(u)+'" target="_blank">'+(i+1)+'</a>';}).join(' ')
+            : '<span class="muted" title="скан не приложен">📎 —</span>')+'</td>'+
         '<td style="white-space:nowrap">'+acts+'</td></tr>'+
         '<tr><td></td><td colspan="8" class="muted" style="font-size:12px;border-bottom:1px solid var(--line)">'+esc((c.state||{}).msg||'')+
         (function(){ var mk=c.missingKeys||[]; if(!mk.length) return '';
@@ -281,7 +283,6 @@ function cardView(){
           return '<div class="misline">'+
             (inCon.length?'● в договоре: <b>'+esc(inCon.join(', '))+'</b> ':'')+
             (inEmp.length?'● в карточке сотрудника: <b>'+esc(inEmp.join(', '))+'</b>':'')+'</div>'; })()+
-        ((c.files&&c.files.length)?'<div style="margin-top:2px">файлы: '+c.files.map(function(u,i){return '<a href="'+esc(u)+'" target="_blank">стр. '+(i+1)+'</a>';}).join(' · ')+'</div>':'')+
         '</td></tr>';
     }).join('')+'</tbody></table>';
   h+='<div class="row" style="margin-top:8px"><button class="btn" onclick="newCon(\'контракт\')">+ контракт (штат)</button>'+
@@ -408,6 +409,30 @@ function genEDoc(id){
 }
 // Пересоздать документ (данные исправили → собрать заново). В строке этой кнопки нет —
 // она живёт в карточке документа, чтобы в списке оставались ровно «загрузить» и «создать».
+// Распознавание приложенного скана: что это за документ, его номер и дата.
+function recogDoc(id){
+  var box=function(html){ var m=$('msgbar'); if(m){ m.innerHTML=html; return; }
+    var d=document.createElement('div'); d.id='msgbar'; d.className='card'; d.style.margin='8px 0'; d.innerHTML=html;
+    var app=$('app'); app.insertBefore(d, app.firstChild); };
+  box('<span class="muted">🔎 распознаю документ…</span>');
+  api({vapi:'hrrecogdoc',doc:id}).then(function(r){
+    if(!r.ok){ box('<span class="muted">Скан загружен. Распознать не удалось: '+esc(r.error||'')+' — заполните тип и № вручную.</span>'); return; }
+    var s=r.suggest||{};
+    if(!s.type&&!s.num&&!s.date){ box('<span class="muted">Скан загружен. Что это за документ — определить не получилось, укажите тип вручную.</span>'); return; }
+    box('<b>🔎 Похоже на:</b> '+esc(s.typeTitle||s.title||'—')+
+        (s.num?(' № '+esc(s.num)):'')+(s.date?(' от '+esc(s.date)):'')+
+        '<div class="row" style="margin-top:8px"><button class="btn pri" onclick="recogApply(\''+id+'\')">Применить</button>'+
+        '<button class="btn" onclick="recogClose()">Оставить как есть</button></div>');
+  }).catch(function(e){ box('<span class="muted">Скан загружен. Сеть: '+esc(e.message)+'</span>'); });
+}
+function recogApply(id){
+  busy(1);
+  api({vapi:'hrrecogdoc',doc:id,apply:1}).then(function(r){ busy(0);
+    if(!r.ok){ alert(r.error||'ошибка'); return; }
+    apply(r,CARD?CARD.emp.id:null);
+  });
+}
+function recogClose(){ var m=$('msgbar'); if(m) m.parentNode.removeChild(m); }
 function regenEDoc(id){
   if(!confirm('Собрать документ заново?\n\nСтарый файл уйдёт в корзину Google Drive, приложенные сканы останутся.')) return;
   busy(1);
@@ -793,6 +818,21 @@ function conForm(c){
           var id=d.id|| (mine.length?mine[mine.length-1].id:''); if(id) docMenu('con',id); }
       });
   };
+  // Действия по договору (уведомить, продлить, прекратить) — здесь, а не в строке реестра:
+  // строка держит только «загрузить / создать / удалить», как у остальных документов.
+  if(c.id){
+    var acts=[];
+    if(c.kind==='контракт'){
+      if(!c.notify) acts.push('<button class="btn sm" onclick="noticeForm(\''+c.id+'\')">✉ уведомление о продлении/непродлении</button>');
+      else acts.push('<span class="pill p-ok">уведомление создано '+esc(c.notify)+'</span>'+
+        (c.answer?'':' <button class="btn sm" onclick="signNotice(\''+c.id+'\')">✔ подписано работником</button>'));
+    }
+    if((c.state||{}).needRenew) acts.push('<button class="btn sm pri" onclick="renewForm(\''+c.id+'\')">⏭ заключить новый контракт</button>');
+    if(isCivil(c.kind)&&String(c.status).toLowerCase()!=='расторгнут')
+      acts.push('<button class="btn sm pri" onclick="termForm(\''+c.id+'\')">⏹ прекращение договора</button>');
+    if(acts.length) body='<div class="fld" style="grid-column:1/-1"><label class="f">Действия по договору</label>'+
+      '<div class="row">'+acts.join('')+'</div></div>'+body;
+  }
   dlg(c.id?'Правка договора — данные':'Новый договор — данные', body,
     function(){
       var d={id:c.id||'',emp:c.emp||CARD.emp.id};
@@ -838,23 +878,11 @@ function genDoc(conId,what,target){
   });
 }
 /* загрузка готового договора: фото/скан/PDF, несколько файлов; имена приводятся к понятному виду */
-function uploadDoc(recId,target){
-  target=target||'con';
-  var c = target==='con' ? ((DATA.contracts||[]).filter(function(x){return x.id===recId;})[0]||{})
-        : target==='ds' ? ((DATA.ds||[]).filter(function(x){return x.id===recId;})[0]||{})
-        : target==='edoc' ? ((DATA.edocs||[]).filter(function(x){return x.src==='edoc'&&x.id===recId;})[0]||{})
-        : ((DATA.orders||[]).filter(function(x){return x.id===recId;})[0]||{});
-  // у документа сотрудника имя файла собирает сервер по названию типа («Паспорт», «Паспорт 2») —
-  // подпись не спрашиваем, иначе в папке окажется десяток разнобойных имён
-  if(target==='edoc') return uploadFiles(recId,target,'');
-  var def = target==='con' ? ((c.kind==='подряд'?'Договор подряда':(c.kind==='обучение'?'Договор о производственном обучении':'Контракт'))+' № '+(c.num||'')+' от '+(c.date||''))
-          : target==='ds' ? ('Доп. соглашение № '+(c.num||'')+' от '+(c.date||''))
-          : target==='orderbasis' ? ('Заявление к приказу № '+(c.num||'')+' от '+(c.date||''))
-          : ('Приказ № '+(c.num||'')+' от '+(c.date||''));
-  var label=prompt('Как подписать документ в папке сотрудника?\n(например: «Приказ № 1/1-к от 12.01.2026 о зачислении»)', def);
-  if(label===null) return;
-  uploadFiles(recId,target,label);
-}
+// Загрузка одинакова для всего: договор, ДС, приказ, документ. Имя файла собирает СЕРВЕР
+// по самой записи («Контракт № 5 от 21.12.2025 — И.Р. Шамсеев»), у документов — по названию типа.
+// Раньше здесь спрашивали подпись через prompt: у документов не спрашивали, у договоров спрашивали,
+// и одна и та же кнопка вела себя по-разному.
+function uploadDoc(recId,target){ uploadFiles(recId,target||'con',''); }
 function uploadFiles(recId,target,label){
   var inp=document.createElement('input'); inp.type='file'; inp.multiple=true;
   inp.accept='image/*,application/pdf';
@@ -863,7 +891,11 @@ function uploadFiles(recId,target,label){
     busy(1);
     var i=0, last=null;
     function next(){
-      if(i>=files.length){ busy(0); load(1); if(last) alert('Загружено файлов: '+files.length); return; }
+      if(i>=files.length){ busy(0);
+        // «при загрузке документа нужно сделать распознавание» — но не молча: показываем,
+        // что прочитала система, и применяем только по кнопке
+        if(target==='edoc'){ load(1); recogDoc(recId); return; }
+        load(1); if(last) alert('Загружено файлов: '+files.length); return; }
       var f=files[i], fr=new FileReader();
       fr.onload=function(){
         var b64=String(fr.result).split(',')[1];
@@ -958,9 +990,10 @@ function conRegView(){
       '<td onclick="event.stopPropagation()"><select class="stsel" onchange="setConStatus(\''+c.id+'\',this.value)">'+
           ['действует','истёк','расторгнут','продлён'].map(function(o){ return '<option'+(o===(c.statusEff||c.status)?' selected':'')+'>'+o+'</option>'; }).join('')+'</select></td>'+
       '<td onclick="event.stopPropagation()">'+
-        (c.link?'<a class="btn sm" href="'+esc(c.link)+'" target="_blank">📄 открыть</a> <button class="btn sm" onclick="docMenu(\'con\',\''+c.id+'\')">⋯</button>'
-              :'<button class="btn sm" onclick="docMenu(\'con\',\''+c.id+'\')">📄 документ…</button>')+
-        (c.kind==='подряд'&&String(c.status).toLowerCase()!=='расторгнут'?' <button class="btn sm pri" onclick="event.stopPropagation();openCard(\''+c.emp+'\')" title="прекращение подряда — в карточке">⏹</button>':'')+'</td></tr>';
+        '<button class="btn sm" onclick="uploadDoc(\''+c.id+'\',\'con\')">⬆ загрузить</button> '+
+        (c.link?'<a class="btn sm" href="'+esc(c.link)+'" target="_blank">📄 эл. документ</a>'
+              :((c.kind==='контракт'||c.kind==='подряд'||c.kind==='обучение')
+                 ?'<button class="btn sm" onclick="genDoc(\''+c.id+'\',\'\',\'con\')">📄 создать</button>':''))+'</td></tr>';
   }).join('');
   return h+'</tbody></table>'+(l.length?'':'<div class="empty">Пусто.</div>')+'</div>';
 }
