@@ -43,6 +43,9 @@
   .mgrid td.nm.hl{ color:#2b7de9; }
   .mgrid td.nm, .mgrid th{ cursor:default; }
   .mgrid td:active{ filter:brightness(.9); }
+  /* выходные: колонка приглушена, число красным — чтобы суббота с воскресеньем читались без счёта по пальцам */
+  .mgrid td.we{ background:#eef0f5; } .mgrid th.we{ background:#eef0f5; color:var(--red); border-radius:6px; }
+  .mgrid tr:hover td.we{ background:#e2e6ef; }
   .cell-d{ background:#fff3d6; } .cell-n{ background:#e3e8ff; }
   .cell-out{ outline:2px solid #7fc78f; outline-offset:-2px; } .cell-no{ outline:2px solid #e88; outline-offset:-2px; text-decoration:line-through; }
   /* план на день */
@@ -344,7 +347,12 @@ function loadMonth(silent){
 }
 function renderMonth(){
   if(!M) return;
-  var thead='<tr><th></th>'; for(var d=1;d<=M.days;d++) thead+='<th>'+d+'</th>'; thead+='</tr>';
+  var y=Number(M.ym.split('-')[0]), mo=Number(M.ym.split('-')[1]);
+  var DOW=['вс','пн','вт','ср','чт','пт','сб'], we={};
+  for(var wd=1;wd<=M.days;wd++){ var dw=new Date(y,mo-1,wd).getDay(); we[wd]=(dw===0||dw===6); }
+  var thead='<tr><th></th>';
+  for(var d=1;d<=M.days;d++) thead+='<th class="'+(we[d]?'we':'')+'" title="'+DOW[new Date(y,mo-1,d).getDay()]+'">'+d+'</th>';
+  thead+='</tr>';
   var body=M.workers.map(function(w,wi){
     var tds=''; var cnt=0;
     for(var d=1;d<=M.days;d++){
@@ -355,13 +363,13 @@ function renderMonth(){
         cls=(sh==='ночь'?'cell-n':'cell-d')+(st==='вышел'?' cell-out':(st==='не вышел'?' cell-no':''));
         txt=(sh==='ночь'?'🌙':'☀️');
       }
-      tds+='<td class="'+cls+'" data-w="'+wi+'" data-d="'+d+'" title="'+esc(w)+' '+d+'.'+M.mon
+      tds+='<td class="'+(cls+(we[d]?((cls?' ':'')+'we'):''))+'" data-w="'+wi+'" data-d="'+d+'" title="'+esc(w)+' '+d+'.'+M.mon
         +(sh?' '+esc(sh)+(st&&st!=='план'?' · '+esc(st):''):'')+'">'+txt+'</td>';
     }
     return '<tr><td class="nm">'+esc(w)+' <span class="muted">('+cnt+')</span></td>'+tds+'</tr>';
   }).join('');
   $('pane').innerHTML='<div class="box"><div class="row"><button class="gho" onclick="shiftMonth(-1)">←</button><b>'+YM+'</b><button class="gho" onclick="shiftMonth(1)">→</button>'
-    +'<span class="muted">клик по клетке: ☀️ день → 🌙 ночь → пусто · зелёная рамка — вышел, красная — не вышел</span>'
+    +'<span class="muted">клик по клетке: ☀️ день → 🌙 ночь → пусто · зелёная рамка — вышел, красная — не вышел · серые колонки — выходные</span>'
     +'<span id="sv" class="muted"></span></div></div>'
     +'<div class="box mgrid" style="overflow-x:auto"><table id="mtbl"><colgroup>'+Array(M.days+2).join('<col>')+'</colgroup>'+thead+body+'</table></div>';
   var tbl=$('mtbl');
