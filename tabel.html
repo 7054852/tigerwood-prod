@@ -46,6 +46,9 @@
   /* выходные: колонка приглушена, число красным — чтобы суббота с воскресеньем читались без счёта по пальцам */
   .mgrid td.we{ background:#eef0f5; } .mgrid th.we{ background:#eef0f5; color:var(--red); border-radius:6px; }
   .mgrid tr:hover td.we{ background:#e2e6ef; }
+  /* праздник — тот же серый, но число с точкой: чтобы 7 января отличалось от обычной субботы */
+  .mgrid th.hol{ background:#fbe3e0; color:var(--red); font-weight:800; }
+  .mgrid td.hol{ background:#faeceb; } .mgrid tr:hover td.hol{ background:#f5dedc; }
   /* ⚠ смена важнее выходного: правило .mgrid td.we специфичнее голого .cell-d, и без .mgrid td
      здесь ☀️/🌙 в субботу теряли свой цвет и клетка выглядела пустой */
   .cell-d, .mgrid td.cell-d{ background:#fff3d6; } .cell-n, .mgrid td.cell-n{ background:#e3e8ff; }
@@ -343,17 +346,28 @@ function loadMonth(silent){
     if(!r||!r.ok){ if(!silent) $('pane').innerHTML='<div class="box err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
     var p=YM.split('-'), days=new Date(Number(p[0]),Number(p[1]),0).getDate();
     var map={}; r.entries.forEach(function(e){ map[e.worker+'|'+Number(e.date.slice(8))]=e; });
-    M={ym:YM, days:days, mon:p[1], map:map, workers:r.workers};
+    // производственный календарь приходит с сервера: праздники РБ + переносы из «Настроек»
+    var off={}, work={}; (r.off||[]).forEach(function(d){ off[d]=1; }); (r.work||[]).forEach(function(d){ work[d]=1; });
+    M={ym:YM, days:days, mon:p[1], map:map, workers:r.workers, off:off, work:work, hol:(r.holidayNames||{})};
     renderMonth();
   });
 }
 function renderMonth(){
   if(!M) return;
   var y=Number(M.ym.split('-')[0]), mo=Number(M.ym.split('-')[1]);
-  var DOW=['вс','пн','вт','ср','чт','пт','сб'], we={};
-  for(var wd=1;wd<=M.days;wd++){ var dw=new Date(y,mo-1,wd).getDay(); we[wd]=(dw===0||dw===6); }
+  var DOW=['вс','пн','вт','ср','чт','пт','сб'], we={}, hol={};
+  for(var wd=1;wd<=M.days;wd++){
+    var dw=new Date(y,mo-1,wd).getDay();
+    // сервер уже учёл переносы: рабочая суббота придёт в work, праздник — в off
+    we[wd]=M.off?!!M.off[wd]:(dw===0||dw===6);
+    hol[wd]=!!(M.hol&&M.hol[wd]);
+  }
   var thead='<tr><th></th>';
-  for(var d=1;d<=M.days;d++) thead+='<th class="'+(we[d]?'we':'')+'" title="'+DOW[new Date(y,mo-1,d).getDay()]+'">'+d+'</th>';
+  for(var d=1;d<=M.days;d++){
+    var dwn=DOW[new Date(y,mo-1,d).getDay()];
+    var tip=dwn+(hol[d]?(' · '+M.hol[d]):(M.work&&M.work[d]?' · рабочий по переносу':''));
+    thead+='<th class="'+(hol[d]?'we hol':(we[d]?'we':''))+'" title="'+tip+'">'+d+'</th>';
+  }
   thead+='</tr>';
   var body=M.workers.map(function(w,wi){
     var tds=''; var cnt=0;
@@ -365,13 +379,13 @@ function renderMonth(){
         cls=(sh==='ночь'?'cell-n':'cell-d')+(st==='вышел'?' cell-out':(st==='не вышел'?' cell-no':''));
         txt=(sh==='ночь'?'🌙':'☀️');
       }
-      tds+='<td class="'+(cls+(we[d]?((cls?' ':'')+'we'):''))+'" data-w="'+wi+'" data-d="'+d+'" title="'+esc(w)+' '+d+'.'+M.mon
+      tds+='<td class="'+(cls+((we[d]||hol[d])?((cls?' ':'')+(hol[d]?'we hol':'we')):''))+'" data-w="'+wi+'" data-d="'+d+'" title="'+esc(w)+' '+d+'.'+M.mon
         +(sh?' '+esc(sh)+(st&&st!=='план'?' · '+esc(st):''):'')+'">'+txt+'</td>';
     }
     return '<tr><td class="nm">'+esc(w)+' <span class="muted">('+cnt+')</span></td>'+tds+'</tr>';
   }).join('');
   $('pane').innerHTML='<div class="box"><div class="row"><button class="gho" onclick="shiftMonth(-1)">←</button><b>'+YM+'</b><button class="gho" onclick="shiftMonth(1)">→</button>'
-    +'<span class="muted">клик по клетке: ☀️ день → 🌙 ночь → пусто · зелёная рамка — вышел, красная — не вышел · серые колонки — выходные</span>'
+    +'<span class="muted">клик по клетке: ☀️ день → 🌙 ночь → пусто · зелёная рамка — вышел, красная — не вышел · серые колонки — выходные, розовые — праздники</span>'
     +'<span id="sv" class="muted"></span></div></div>'
     +'<div class="box mgrid" style="overflow-x:auto"><table id="mtbl"><colgroup>'+Array(M.days+2).join('<col>')+'</colgroup>'+thead+body+'</table></div>';
   var tbl=$('mtbl');
