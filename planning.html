@@ -35,6 +35,7 @@
   .chip .st{ color:var(--muted); font-size:11.5px; white-space:nowrap; }
   .chip .exp{ font-weight:800; color:#2f7a34; cursor:pointer; white-space:nowrap; }
   .chip .exp.own{ color:var(--amber); }
+  .chip .exp.fresh{ color:#8a93a6; }   /* новичок: 50 ₽ — оценка, а не факт */
   .chip.sel{ transform:translateY(-3px) scale(1.04); box-shadow:0 6px 18px rgba(43,125,233,.28); border-color:var(--accent); }
   .chip .x{ color:var(--muted); cursor:pointer; font-weight:800; padding:0 2px; }
   /* ── зона-участок ── */
@@ -181,11 +182,11 @@ function isNight(p){ return p.shift==='ночь'; }
 function sumExp(l){ var s=0; l.forEach(function(p){ s+=Number(p.expect)||0; }); return Math.round(s*100)/100; }
 function idxByName(n){ for(var i=0;i<(R.people||[]).length;i++) if(R.people[i].name===n) return i; return -1; }
 function chipHtml(p,i,inZone){
-  var own=(p.expectSrc==='своё');
+  var own=(p.expectSrc==='своё'), fresh=(p.expectSrc==='новичок 50 ₽');
   return '<span class="chip'+(SEL===p.name?' sel':'')+'" draggable="true" ondragstart="dragChip(event,'+i+')" onclick="event.stopPropagation();tapChip('+i+')">'
     +'<b>'+esc(p.name)+'</b>'
     +(p.topGroup?'<span class="st">⭐'+esc(p.topGroup)+'</span>':'')
-    +'<span class="exp'+(own?' own':'')+'" title="ожидаемая выработка за смену ('+esc(p.expectSrc||'')+') — нажмите, чтобы поправить" onclick="event.stopPropagation();editExpect('+i+')">⚡'+m0(p.expect)+'</span>'
+    +'<span class="exp'+(own?' own':(fresh?' fresh':''))+'" title="ожидаемая выработка за смену ('+esc(p.expectSrc||'')+') — нажмите, чтобы поправить" onclick="event.stopPropagation();editExpect('+i+')">⚡'+m0(p.expect)+'</span>'
     +(inZone?'<span class="x" title="вернуть на скамейку" onclick="event.stopPropagation();unassign('+i+')">✕</span>':'')+'</span>';
 }
 function renderDay(){
@@ -440,7 +441,7 @@ function renderHorizon(){
     +'<span><span class="k">Волн</span><b>'+(R.waves||[]).length+'</b></span>'
     +(o.plan?('<span><span class="k">Срок</span><b>'+esc(o.plan)+'</b>'+(o.dlDays!=null?(' <span class="muted" style="font-size:12px">через '+o.dlDays+' дн</span>'):'')+'</span>'):'')
     +(o.velocity?('<span><span class="k">Темп заказа</span><b>'+m0(o.velocity)+' ₽/день</b></span>'):'')
-    +'</div>';
+    +crewLine(R.forecast)+'</div>';
   var advice='';
   if(bn){
     var free=(w0.groups||[]).filter(function(g){ return g.group!==bn.group && g.days!=null && bn.days && g.days<bn.days*0.6; })
@@ -464,11 +465,27 @@ function renderHorizon(){
 /* ── КАРТА НЕДЕЛИ: участок × день ──
    Отвечает на вопрос, которого не было нигде: где будет провал и какой участок встанет.
    Цвет = утилизация (сколько участок реально сделает от своей мощности), красная рамка = фронта нет. */
+// СКОЛЬКО ЛЮДЕЙ ВЫЙДЕТ ПО ТАБЕЛЮ и во что это выльется — раньше горизонт молчал о людях,
+// хотя именно они определяют срок.
+function crewLine(f){
+  var d0=f&&f.days&&f.days[0]; if(!d0) return '';
+  var cap=0; ['Механика','Шлифовка','Покрытие','Сборка'].forEach(function(g){ cap+=Number((d0.byGroup[g]||{}).cap)||0; });
+  var un=Number(d0.unassigned)||0;
+  return '<span><span class="k">По табелю '+ruDate(d0.date)+'</span><b>'+(d0.people||0)+' чел</b>'
+    +' <span class="muted" style="font-size:12px">~'+m0(cap+un)+' ₽/день'
+    +(un?(' · '+m0(un)+' ₽ без участка'):'')+'</span></span>';
+}
 var HEATMODE='fc';   // 'fc' — что успеем при нынешнем составе; 'req' — что НУЖНО, чтобы успеть к сроку
 function setHeat(m){ HEATMODE=m; render(); }
 function heatBox(){
   var req=(HEATMODE==='req');
-  var f=req?R.required:R.forecast; if(!f||!f.days||!f.days.length) return req?heatBoxNoDl():'';
+  var all=req?R.required:R.forecast; if(!all||!all.days||!all.days.length) return req?heatBoxNoDl():'';
+  // ГОРИЗОНТ СЧИТАЕТСЯ НА МЕСЯЦ, а рисуем две недели: 31 колонка — это 1400 px, на телефоне
+  // бесполезно. Вердикт («закроется 24.09») берётся по ПОЛНОМУ горизонту, а не по нарисованному.
+  var HEATCOLS=14;
+  var f={ days: all.days.slice(0, HEATCOLS), gaps: all.gaps, finishDay: all.finishDay,
+          finishDate: all.finishDate, starve: all.starve, horizon: all.horizon,
+          daysToDl: all.daysToDl, totalLeft: all.totalLeft };
   var groups=['Механика','Шлифовка','Покрытие','Сборка'];
   var CW=46, CH=34, LW=88, TH=18, BH=26;
   var W=LW+CW*f.days.length, H=TH+CH*groups.length+BH;
@@ -479,6 +496,7 @@ function heatBox(){
     var wknd=(wd==='сб'||wd==='вс');
     heads+='<text x="'+(x+CW/2)+'" y="'+(TH-6)+'" text-anchor="middle" font-size="10" fill="'+(wknd?'#c0392b':'#8a93a6')+'">'+p[2]+'.'+p[1]+'</text>';
     labels+='<text x="'+(x+CW/2)+'" y="'+(H-9)+'" text-anchor="middle" font-size="9.5" fill="'+(wknd?'#c0392b':'#8a93a6')+'">'+wd+'</text>';
+    if(d.dayOff) labels+='<rect x="'+x+'" y="'+TH+'" width="'+CW+'" height="'+(CH*groups.length)+'" fill="#eef0f5" opacity=".75"/>';
     if(d.estimated) labels+='<rect x="'+x+'" y="'+TH+'" width="'+CW+'" height="'+(CH*groups.length)+'" fill="none" stroke="#c9d0e0" stroke-dasharray="3 3"/>';
     groups.forEach(function(g,gi){
       var b=(d.byGroup||{})[g]||{}, y=TH+gi*CH;
@@ -528,8 +546,9 @@ function heatBox(){
       +'<span><i style="background:#fdf1dc;outline:1px solid #e0a83a"></i>нужны люди</span>'
       +'<span><i style="background:#eef1f8"></i>ждёт задел</span><span>✓ — всё сделано</span>';
   } else {
-    if(f.finishDay) verdict='<b class="ok">Заказ закроется на '+f.finishDay+'-й день</b> — если мощности останутся такими.';
-    else { var last=f.days[f.days.length-1];
+    if(f.finishDay) verdict='<b class="ok">Заказ закроется '+(f.finishDate?ruDate(f.finishDate):('на '+f.finishDay+'-й день'))+'</b>'
+      +(f.finishDate?(' <span class="muted">— на '+f.finishDay+'-й рабочий день</span>'):'')+', если состав останется таким.';
+    else { var last=all.days[all.days.length-1];
       verdict='<b>За '+f.horizon+' дней заказ не закроется</b> — останется '+m0(last.leftRub)+' ₽ работы.'; }
     if(f.starve) verdict+='<div style="margin-top:4px;color:var(--red)">⛔ «'+esc(f.starve.group)+'» встанет '+ruDate(f.starve.date)
       +': фронта работ не будет — предыдущий участок не успеет дать задел.</div>';
@@ -537,9 +556,13 @@ function heatBox(){
       +'<span><i style="background:#e6f2e9"></i>наполовину</span><span><i style="background:#eef1f8"></i>простой</span>'
       +'<span><i style="background:#fdecea"></i>встал: фронта нет</span><span>✓ — всё сделано</span>';
   }
-  var est=f.days.some(function(d){ return d.estimated; })
-    ? '<div class="muted" style="margin-top:4px">Дни в пунктирной рамке — смены ещё не проставлены, численность взята по среднему. Проставьте смены во вкладке «🎯 День» — расчёт станет точным.</div>' : '';
-  return '<div class="box"><div class="row" style="margin-bottom:6px"><b>📅 '+(req?'Норма на день':'Неделя вперёд')+'</b>'
+  var est=(all.days.some(function(d){ return d.estimated; })
+    ? '<div class="muted" style="margin-top:4px">Пунктир — табель на эти дни ещё не заполнен, численность взята по среднему.</div>' : '')
+    + (all.days.some(function(d){ return d.dayOff; })
+    ? '<div class="muted" style="margin-top:2px">Серые столбцы — выходные по табелю: в эти дни никто не отмечен.</div>' : '')
+    + (all.days.length>HEATCOLS
+    ? ('<div class="muted" style="margin-top:2px">Показаны первые '+HEATCOLS+' дней из '+all.days.length+'; срок закрытия посчитан по всему месяцу.</div>') : '');
+  return '<div class="box"><div class="row" style="margin-bottom:6px"><b>📅 '+(req?'Норма на день':'Две недели вперёд')+'</b>'
     +'<span class="muted">— '+(req?'сколько участок обязан выдать, чтобы сдать в срок':'что каждый участок реально сделает за день')+'</span>'
     +'<span style="margin-left:auto"><button class="tgl'+(req?'':' on')+'" onclick="setHeat(\'fc\')">что успеем</button>'
     +'<button class="tgl'+(req?' on':'')+'" onclick="setHeat(\'req\')">что нужно</button></span></div>'
