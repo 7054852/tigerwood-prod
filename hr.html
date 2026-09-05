@@ -132,10 +132,21 @@ if(/[?&]embed=1/.test(location.search))document.documentElement.classList.add('e
 function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]*)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
 var TGID=qp('tgid')||'';
 try{ if(!TGID && window.Telegram && Telegram.WebApp && Telegram.WebApp.initDataUnsafe && Telegram.WebApp.initDataUnsafe.user) TGID=String(Telegram.WebApp.initDataUnsafe.user.id); }catch(e){}
-function api(p){ p.app=APP; if(TGID&&!p.tgid)p.tgid=TGID;
+// ⚠ ЛИЧНОСТЬ — ТОКЕНОМ, А НЕ АДРЕСОМ: ?tgid= в ссылке ничего не доказывает (Telegram ID виден
+// в списке сотрудников). Токен выдаётся после входа в сервис и лежит в localStorage этого браузера.
+function twTok(){ try{ return twQp('tok')||localStorage.getItem('tw_tok')||''; }catch(e){ return twQp('tok')||''; } }
+function twQp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
+(function(){ var t=twQp('tok'); if(t){ try{ localStorage.setItem('tw_tok',t); }catch(e){} } })();
+function twAuthWall(r){
+  if(r&&r.needAuth){ document.body.innerHTML='<div style="padding:28px;font:16px/1.55 -apple-system,Roboto,Segoe UI,Arial;color:#1b2333">'
+    +'<div style="font-size:20px;font-weight:800;margin-bottom:10px">🔒 Нужен вход</div>'
+    +'<div>'+String(r.error||'Откройте сервис из бота @TWOtchbot или войдите по личному коду.')+'</div></div>'; }
+  return r;
+}
+function api(p){ var _t=twTok(); if(_t) p.tok=_t; p.app=APP; if(TGID&&!p.tgid)p.tgid=TGID;
   var q=Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]==null?'':p[k]);}).join('&');
-  return fetch(BASE+'?'+q).then(function(r){return r.json();}); }
-function apiPost(p){ p.app=APP; if(TGID&&!p.tgid)p.tgid=TGID;
+  return fetch(BASE+'?'+q).then(function(r){return r.json();}).then(twAuthWall); }
+function apiPost(p){ var _t=twTok(); if(_t) p.tok=_t; p.app=APP; if(TGID&&!p.tgid)p.tgid=TGID;
   var body=Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]==null?'':p[k]);}).join('&');
   return fetch(BASE,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body}).then(function(r){return r.json();}); }
 function $(id){ return document.getElementById(id); }
