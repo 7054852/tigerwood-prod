@@ -86,6 +86,8 @@
   td.checked input:focus{ background:#fff; }
   td.derived input{ color:#1a4fa0; font-style:italic; }
   /* клетка закрыта на бумаге (писать туда нельзя), но работа за ней есть — подписываем операцию */
+  /* подтянутое по цепочке — бледной подписью под полем, а не цифрой в поле: поле принадлежит счётчику */
+  td .drv{ display:block; font-size:9px; line-height:1.1; color:#9aa4bb; text-align:center; }
   td.derived .opn{ display:block; font-size:8.5px; line-height:1.1; color:#4a7fd4; text-align:center;
                    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:-2px; }
   td.closedop{ height:34px; }
@@ -348,6 +350,10 @@ function drawLoad(){
     +'<span class="muted">загружено файлов: '+(d.head.files||0)+'</span></div>'
     +'<input type="file" id="pages" accept="image/*,application/pdf" multiple onchange="pickPages(this.files)">'
     +'<div class="mini" style="margin-top:5px">Можно по одной странице и в любом порядке. Незаполненные клетки программа пропускает сама.</div>'
+    +'<div class="row" style="margin-top:8px;gap:8px"><b>✍️ Вписывайте, сколько нашли на участке</b>'
+    +'<span class="mini">Серые цифры под полем — что программа подтянет по цепочке при проведении. Вписанное всегда главнее.</span>'
+    +'<span style="flex:1"></span><span id="invsave" class="mini"></span>'
+    +'<button class="sm gray" onclick="recalcDraft()">↻ пересчитать цепочку</button></div>'
     +'<div id="uplbox"></div>'
     +(RESUMED?('<div class="mini" style="margin-top:6px;color:#8a5a00"><b>Это уже начатый переучёт</b> — по заказу может быть только один незакрытый черновик. '
       +'Загруженные страницы лягут поверх того, что здесь уже есть. Чтобы считать с нуля, удалите черновик кнопкой ниже.</div>'):'')
@@ -400,7 +406,12 @@ function drawLoad(){
       // в поле подставлялось слово «null», и было непонятно, что там на самом деле пусто
       // у выведенной клетки в листе цифры нет (qty пустой) — показываем то, что вывела программа,
       // иначе на экране цветное пустое место и непонятно, что вообще применится
-      +'<input value="'+((c&&c.qty!==null&&c.qty!==undefined&&c.qty!=='')?c.qty:((c&&c.derived&&c.target)?c.target:''))+'" inputmode="numeric" onchange="setCell(\''+esc(k)+'\',this.value)">'+opn+'</td>';
+      // ⚠ В ПОЛЕ — ТОЛЬКО ТО, ЧТО ВПИСАЛ ЧЕЛОВЕК. Выведенное по цепочке раньше подставлялось в
+      // поле как обычная цифра: лист выглядел заполненным там, где никто не считал, и это мешало
+      // вводить. Теперь оно идёт бледной подписью под полем (и всё равно применяется при проведении).
+      +'<input value="'+((c&&c.qty!==null&&c.qty!==undefined&&c.qty!=='')?c.qty:'')+'" inputmode="numeric" onchange="setCell(\''+esc(k)+'\',this.value)">'
+      +((c&&c.derived&&c.target&&!(c.qty!==null&&c.qty!==undefined&&c.qty!==''))?('<span class="drv" title="подтянуто по цепочке — применится при проведении">'+c.target+'</span>'):'')
+      +opn+'</td>';
   }
 
   var grid=(d.products||[]).map(function(p){
@@ -447,9 +458,27 @@ function drawLoad(){
   box.innerHTML=checksHtml(d.checks, d.lost)+upl
     +((d.products||[]).length?(bar+'<div class="sheet">'+grid+'</div>'):'<div class="card muted">Загрузите страницы — здесь появится эта же ведомость с цифрами.</div>');
 }
+// ⚠ БЫСТРЫЙ ВВОД. Раньше каждая цифра тянула полный пересчёт листа: 12 секунд ожидания и 70 КБ
+// на КАЖДУЮ клетку — считать подряд было невозможно. Теперь пишем «налегке» (light=1), таблицу не
+// перерисовываем: цепочка стадий пересчитается на вкладке «Сверка» и при проведении.
+var SAVEQ=[], SAVING=0, DIRTY=0;
 function setCell(key,val){
-  api({vapi:'invsetrow',inv:INV,key:key,qty:val}).then(function(r){ if(r&&r.ok){ DRAFT=r; drawLoad(); } });
+  DIRTY=1; svShow('сохраняю…');
+  SAVEQ.push({key:key, qty:val}); pumpSave();
 }
+function pumpSave(){
+  if(SAVING||!SAVEQ.length) return;
+  var it=SAVEQ.shift(); SAVING=1;
+  api({vapi:'invsetrow',inv:INV,key:it.key,qty:it.qty,light:1}).then(function(r){
+    SAVING=0;
+    if(!r||!r.ok) svShow('<span class="err">не сохранилось: '+esc((r&&r.error)||'ошибка')+'</span>');
+    else svShow(SAVEQ.length?'сохраняю…':'✓ сохранено');
+    pumpSave();
+  }).catch(function(){ SAVING=0; svShow('<span class="err">нет связи — цифра не сохранена</span>'); pumpSave(); });
+}
+function svShow(h){ var e=document.getElementById('invsave'); if(e) e.innerHTML=h||''; }
+// пересчёт цепочки по требованию: человек досчитал участок и хочет увидеть, что подтянулось
+function recalcDraft(){ svShow('пересчитываю…'); loadDraft(); }
 function pickPages(files){
   if(!files||!files.length) return;
   for(var i=0;i<files.length;i++) UPQ.push({name:files[i].name, file:files[i], state:'ждёт'});
