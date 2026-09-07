@@ -58,6 +58,15 @@
   .mgrid td.hol{ background:#faeceb; } .mgrid tr:hover td.hol{ background:#f5dedc; }
   /* ⚠ смена важнее выходного: правило .mgrid td.we специфичнее голого .cell-d, и без .mgrid td
      здесь ☀️/🌙 в субботу теряли свой цвет и клетка выглядела пустой */
+  /* метка факта поверх значка смены: день/ночь остаётся видно, факт читается сразу */
+  .mgrid td .fk{ font-size:9px; vertical-align:super; margin-left:1px; }
+  .mgrid td .fk.ok{ color:#137333; } .mgrid td .fk.no{ color:#c0392b; }
+  .tabs.mmode button{ font-size:13px; }
+  /* на телефоне клетка — под палец: 20 px в режиме отметки означало бы попадание в соседний день */
+  @media (max-width:760px){
+    .mgrid td[data-d]{ min-width:30px; height:32px; font-size:13px; }
+    .tabs.mmode button{ flex:1; padding:9px 6px; }
+  }
   .cell-d, .mgrid td.cell-d{ background:#fff3d6; } .cell-n, .mgrid td.cell-n{ background:#e3e8ff; }
   .cell-out{ outline:2px solid #7fc78f; outline-offset:-2px; } .cell-no{ outline:2px solid #e88; outline-offset:-2px; text-decoration:line-through; }
   /* план на день */
@@ -229,7 +238,7 @@ function renderDayView(){
   }).join('');
   $('pane').innerHTML=head+'<div class="box">'+ (rows||'<div class="muted">нет активных сотрудников</div>') +'</div>';
 }
-function svShow(){ var e=$('sv'); if(e) e.textContent='💾 сохраняю…'; }
+function svShow(h){ var e=$('sv'); if(e){ if(h==null) e.textContent='💾 сохраняю…'; else e.innerHTML=h; } }
 function svDone(){ var e=$('sv'); if(e) e.textContent=''; }
 var CONVERGE=null, SAVEQ=Promise.resolve();
 function bgSave(p){
@@ -395,16 +404,24 @@ function renderMonth(){
       var cls='', txt='';
       if(sh){ cnt++;
         cls=(sh==='ночь'?'cell-n':'cell-d')+(st==='вышел'?' cell-out':(st==='не вышел'?' cell-no':''));
-        txt=(sh==='ночь'?'🌙':'☀️');
+        // значок смены остаётся (день это был или ночь — важно для надбавки), факт добавляется меткой
+        txt=(sh==='ночь'?'🌙':'☀️')+(st==='вышел'?'<b class="fk ok">✓</b>':(st==='не вышел'?'<b class="fk no">✕</b>':''));
       }
       tds+='<td class="'+(cls+((we[d]||hol[d])?((cls?' ':'')+(hol[d]?'we hol':'we')):''))+'" data-w="'+wi+'" data-d="'+d+'" title="'+esc(w)+' '+d+'.'+M.mon
         +(sh?' '+esc(sh)+(st&&st!=='план'?' · '+esc(st):''):'')+'">'+txt+'</td>';
     }
     return '<tr><td class="nm">'+esc(w)+' <span class="muted">('+cnt+')</span></td>'+tds+'</tr>';
   }).join('');
+  var modeBox='<div class="tabs mmode" style="margin:8px 0 0">'
+    +'<button class="'+(MMODE==='plan'?'active':'')+'" onclick="setMMode(\'plan\')">✏️ Ставлю график</button>'
+    +'<button class="'+(MMODE==='fact'?'active':'')+'" onclick="setMMode(\'fact\')">✅ Отмечаю выход</button></div>'
+    +'<div class="muted" style="font-size:12px;margin-top:4px">'
+    +(MMODE==='fact'
+      ? 'Клик по клетке: <b>по графику → ✓ вышел → ✕ не вышел</b>. Смену в этом режиме не меняем — только факт.'
+      : 'Клик по клетке: ☀️ день → 🌙 ночь → пусто · зелёная рамка — вышел, красная — не вышел · серые колонки — выходные, розовые — праздники')
+    +'</div>';
   $('pane').innerHTML='<div class="box"><div class="row"><button class="gho" onclick="shiftMonth(-1)">←</button><b>'+YM+'</b><button class="gho" onclick="shiftMonth(1)">→</button>'
-    +'<span class="muted">клик по клетке: ☀️ день → 🌙 ночь → пусто · зелёная рамка — вышел, красная — не вышел · серые колонки — выходные, розовые — праздники</span>'
-    +'<span id="sv" class="muted"></span></div></div>'
+    +'<span id="sv" class="muted"></span></div>'+modeBox+'</div>'
     +'<div class="box mgrid" style="overflow-x:auto"><table id="mtbl"><colgroup>'+Array(M.days+2).join('<col>')+'</colgroup>'+thead+body+'</table></div>';
   var tbl=$('mtbl');
   if(tbl){
@@ -425,6 +442,10 @@ function renderMonth(){
     });
   }
 }
+// ДВА РЕЖИМА ОДНОЙ СЕТКИ: график ставят заранее, факт отмечают по ходу дня. Разделены явными
+// кнопками, а не скрытым жестом (долгое нажатие на телефоне никто не найдёт и не объяснит сменщику).
+var MMODE='plan';
+function setMMode(m){ MMODE=m; renderMonth(); }
 function monthCellClick(ev){
   var td=ev.target.closest?ev.target.closest('td'):null;
   if(!td||!td.hasAttribute('data-w')) return;
@@ -432,6 +453,15 @@ function monthCellClick(ev){
   var w=M.workers[wi]; if(!w) return;
   var key=w+'|'+d, e=M.map[key];
   var sh=e?e.shift:'', st=e?e.status:'';
+  if(MMODE==='fact'){
+    // отмечать выход можно только там, где смена стоит: факт без смены сервер не примет
+    if(!sh){ svShow('<span class="muted">'+esc(w)+', '+d+'.'+M.mon+': смены нет — сначала поставьте график</span>'); return; }
+    var nf=(st==='вышел')?'не вышел':((st==='не вышел')?'план':'вышел');
+    M.map[key]={date:YM+'-'+pad2(d), worker:w, shift:sh, status:nf};
+    renderMonth();
+    bgSave({vapi:'tabelfact',date:YM+'-'+pad2(d),worker:w,status:nf,tgid:TGID});
+    return;
+  }
   var next=(sh==='')?'день':(sh==='день'?'ночь':'');
   // по смене уже отмечен ФАКТ выхода: снятие удалило бы строку вместе с фактом — не пускаем
   if(next==='' && st && st!=='план'){
