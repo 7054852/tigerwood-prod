@@ -501,8 +501,15 @@ function flushCells(){
       if(SAVET) clearTimeout(SAVET); SAVET=setTimeout(flushCells, 3000);
       return;
     }
-    keys.forEach(function(k){ markCell(taken[k].el,'ok'); });
-    svShow(cntPend()?(cntPend()+' в очереди'):'✓ записано в лист');
+    // очищенная клетка — не «записано», а «стёрто»: рамку снимаем совсем, иначе зелёная
+    // рамка на пустом поле читается как «ноль записан», а его там нет
+    keys.forEach(function(k){
+      var v=taken[k].qty;
+      if(v===''||v===null||v===undefined) markCell(taken[k].el,'');
+      else markCell(taken[k].el,'ok');
+    });
+    var cl=Number(r.cleared)||0;
+    svShow(cntPend()?(cntPend()+' в очереди'):(cl?('✓ очищено клеток: '+cl):'✓ записано в лист'));
     if(cntPend()) { if(SAVET) clearTimeout(SAVET); SAVET=setTimeout(flushCells, 300); }
   }).catch(function(){
     SAVING=0;
