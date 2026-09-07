@@ -87,6 +87,10 @@
   td.derived input{ color:#1a4fa0; font-style:italic; }
   /* клетка закрыта на бумаге (писать туда нельзя), но работа за ней есть — подписываем операцию */
   /* подтянутое по цепочке — бледной подписью под полем, а не цифрой в поле: поле принадлежит счётчику */
+  /* статус записи прямо на клетке: жёлтая — в очереди, зелёная — в листе, красная — не ушла */
+  td.cwait{ box-shadow: inset 0 0 0 2px #f0c36d; }
+  td.cok{ box-shadow: inset 0 0 0 2px #7fc78f; }
+  td.cerr{ box-shadow: inset 0 0 0 2px #e88; }
   td .drv{ display:block; font-size:9px; line-height:1.1; color:#9aa4bb; text-align:center; }
   td.derived .opn{ display:block; font-size:8.5px; line-height:1.1; color:#4a7fd4; text-align:center;
                    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:-2px; }
@@ -351,7 +355,8 @@ function drawLoad(){
     +'<input type="file" id="pages" accept="image/*,application/pdf" multiple onchange="pickPages(this.files)">'
     +'<div class="mini" style="margin-top:5px">Можно по одной странице и в любом порядке. Незаполненные клетки программа пропускает сама.</div>'
     +'<div class="row" style="margin-top:8px;gap:8px"><b>✍️ Вписывайте, сколько нашли на участке</b>'
-    +'<span class="mini">Серые цифры под полем — что программа подтянет по цепочке при проведении. Вписанное всегда главнее.</span>'
+    +'<span class="mini">Серые цифры под полем — что программа подтянет по цепочке при проведении. '
+    +'Рамка клетки: 🟡 в очереди · 🟢 записано в лист · 🔴 не ушло, повторю сам.</span>'
     +'<span style="flex:1"></span><span id="invsave" class="mini"></span>'
     +'<button class="sm gray" onclick="recalcDraft()">↻ пересчитать цепочку</button></div>'
     +'<div id="uplbox"></div>'
@@ -409,7 +414,7 @@ function drawLoad(){
       // ⚠ В ПОЛЕ — ТОЛЬКО ТО, ЧТО ВПИСАЛ ЧЕЛОВЕК. Выведенное по цепочке раньше подставлялось в
       // поле как обычная цифра: лист выглядел заполненным там, где никто не считал, и это мешало
       // вводить. Теперь оно идёт бледной подписью под полем (и всё равно применяется при проведении).
-      +'<input value="'+((c&&c.qty!==null&&c.qty!==undefined&&c.qty!=='')?c.qty:'')+'" inputmode="numeric" onchange="setCell(\''+esc(k)+'\',this.value)">'
+      +'<input value="'+((c&&c.qty!==null&&c.qty!==undefined&&c.qty!=='')?c.qty:'')+'" inputmode="numeric" onchange="setCell(\''+esc(k)+'\',this.value,this)">'
       +((c&&c.derived&&c.target&&!(c.qty!==null&&c.qty!==undefined&&c.qty!==''))?('<span class="drv" title="подтянуто по цепочке — применится при проведении">'+c.target+'</span>'):'')
       +opn+'</td>';
   }
@@ -461,20 +466,50 @@ function drawLoad(){
 // ⚠ БЫСТРЫЙ ВВОД. Раньше каждая цифра тянула полный пересчёт листа: 12 секунд ожидания и 70 КБ
 // на КАЖДУЮ клетку — считать подряд было невозможно. Теперь пишем «налегке» (light=1), таблицу не
 // перерисовываем: цепочка стадий пересчитается на вкладке «Сверка» и при проведении.
-var SAVEQ=[], SAVING=0, DIRTY=0;
-function setCell(key,val){
-  DIRTY=1; svShow('сохраняю…');
-  SAVEQ.push({key:key, qty:val}); pumpSave();
+// ⚠ ОДИН ЗАПРОС НА ПАЧКУ. Каждый вызов сервера стоит 6 секунд независимо от объёма: десять клеток
+// по одной — минута, десять пачкой — те же 6 секунд. Копим 700 мс после последней цифры и шлём разом.
+// Статус видно на САМОЙ клетке: жёлтая точка — в очереди, зелёная галочка — записано, красный «!» — нет.
+var PEND={}, SAVING=0, SAVET=null;
+function setCell(key,val,el){
+  PEND[key]={qty:val, el:(el||null)};
+  markCell(el,'wait');
+  if(SAVET) clearTimeout(SAVET);
+  SAVET=setTimeout(flushCells, 700);
+  svShow(cntPend()+' в очереди');
 }
-function pumpSave(){
-  if(SAVING||!SAVEQ.length) return;
-  var it=SAVEQ.shift(); SAVING=1;
-  api({vapi:'invsetrow',inv:INV,key:it.key,qty:it.qty,light:1}).then(function(r){
+function cntPend(){ var n=0; for(var k in PEND) if(PEND.hasOwnProperty(k)) n++; return n; }
+function markCell(el,state){
+  if(!el) return; var td=el.parentNode; if(!td) return;
+  td.classList.remove('cwait','cok','cerr');
+  if(state) td.classList.add(state==='wait'?'cwait':(state==='ok'?'cok':'cerr'));
+}
+function flushCells(){
+  if(SAVING) { if(SAVET) clearTimeout(SAVET); SAVET=setTimeout(flushCells, 400); return; }
+  var keys=[]; for(var k in PEND) if(PEND.hasOwnProperty(k)) keys.push(k);
+  if(!keys.length) return;
+  var batch=keys.map(function(k){
+    var p=k.split('|');
+    return { detail:p[0], variant:p[1]||'', stage:p[2], value:PEND[k].qty };
+  });
+  var taken={}; keys.forEach(function(k){ taken[k]=PEND[k]; delete PEND[k]; });
+  SAVING=1; svShow('записываю '+keys.length+'…');
+  api({vapi:'invsetcells',inv:INV,cells:JSON.stringify(batch)}).then(function(r){
     SAVING=0;
-    if(!r||!r.ok) svShow('<span class="err">не сохранилось: '+esc((r&&r.error)||'ошибка')+'</span>');
-    else svShow(SAVEQ.length?'сохраняю…':'✓ сохранено');
-    pumpSave();
-  }).catch(function(){ SAVING=0; svShow('<span class="err">нет связи — цифра не сохранена</span>'); pumpSave(); });
+    if(!r||!r.ok){
+      keys.forEach(function(k){ markCell(taken[k].el,'err'); PEND[k]=taken[k]; });   // вернули в очередь — цифра не потеряется
+      svShow('<span class="err">не записалось: '+esc((r&&r.error)||'ошибка')+' — повторю</span>');
+      if(SAVET) clearTimeout(SAVET); SAVET=setTimeout(flushCells, 3000);
+      return;
+    }
+    keys.forEach(function(k){ markCell(taken[k].el,'ok'); });
+    svShow(cntPend()?(cntPend()+' в очереди'):'✓ записано в лист');
+    if(cntPend()) { if(SAVET) clearTimeout(SAVET); SAVET=setTimeout(flushCells, 300); }
+  }).catch(function(){
+    SAVING=0;
+    keys.forEach(function(k){ markCell(taken[k].el,'err'); PEND[k]=taken[k]; });
+    svShow('<span class="err">нет связи — повторю через 3 с</span>');
+    if(SAVET) clearTimeout(SAVET); SAVET=setTimeout(flushCells, 3000);
+  });
 }
 function svShow(h){ var e=document.getElementById('invsave'); if(e) e.innerHTML=h||''; }
 // пересчёт цепочки по требованию: человек досчитал участок и хочет увидеть, что подтянулось
@@ -518,9 +553,10 @@ function applyInv(){
   // ⚠ ЖДАТЬ КАСКАДА НЕ НАДО — цепочку сервер считает сам при проведении. А вот ПОСЛЕДНЯЯ ВПИСАННАЯ
   // ЦИФРА должна успеть записаться: очередь идёт ~6 с на клетку, и нажатие «провести» на секунду
   // раньше просто потеряло бы её из переучёта.
-  if(SAVING||SAVEQ.length){
+  if(SAVING||cntPend()){
     var m0=document.getElementById('apmsg');
-    if(m0) m0.innerHTML='<span style="color:#8a5a00">дописываю последние цифры ('+(SAVEQ.length+(SAVING?1:0))+')… проведу сам</span>';
+    if(m0) m0.innerHTML='<span style="color:#8a5a00">дописываю последние цифры ('+(cntPend()+(SAVING?1:0))+')… проведу сам</span>';
+    if(cntPend()&&!SAVING) flushCells();
     setTimeout(applyInv, 800); return;
   }
   if(!confirm('Применить переучёт?\n\nИзменятся только начальные остатки заказа. Принятые наряды и ЗП не трогаются.\n\nЦепочку предыдущих стадий программа посчитает сама — ждать её на экране не нужно.')) return;
