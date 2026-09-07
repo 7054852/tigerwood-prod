@@ -515,7 +515,15 @@ function sendNext(i){
   fr.readAsDataURL(u.file);
 }
 function applyInv(){
-  if(!confirm('Применить переучёт?\n\nИзменятся только начальные остатки заказа. Принятые наряды и ЗП не трогаются.')) return;
+  // ⚠ ЖДАТЬ КАСКАДА НЕ НАДО — цепочку сервер считает сам при проведении. А вот ПОСЛЕДНЯЯ ВПИСАННАЯ
+  // ЦИФРА должна успеть записаться: очередь идёт ~6 с на клетку, и нажатие «провести» на секунду
+  // раньше просто потеряло бы её из переучёта.
+  if(SAVING||SAVEQ.length){
+    var m0=document.getElementById('apmsg');
+    if(m0) m0.innerHTML='<span style="color:#8a5a00">дописываю последние цифры ('+(SAVEQ.length+(SAVING?1:0))+')… проведу сам</span>';
+    setTimeout(applyInv, 800); return;
+  }
+  if(!confirm('Применить переучёт?\n\nИзменятся только начальные остатки заказа. Принятые наряды и ЗП не трогаются.\n\nЦепочку предыдущих стадий программа посчитает сама — ждать её на экране не нужно.')) return;
   var m=document.getElementById('apmsg'); if(m) m.textContent='применяю…';
   api({vapi:'invapply',inv:INV}).then(function(r){
     if(!r||!r.ok){ if(m) m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; return; }
