@@ -61,6 +61,10 @@
   /* метка факта поверх значка смены: день/ночь остаётся видно, факт читается сразу */
   .mgrid td .fk{ font-size:9px; vertical-align:super; margin-left:1px; }
   .mgrid td .fk.ok{ color:#137333; } .mgrid td .fk.no{ color:#c0392b; }
+  /* факт, выведенный из наряда: тот же зелёный, но полупрозрачный — видно, что это вывод,
+     а не отметка руководителя. ⚠ — наряд есть, а отмечено «не вышел»: противоречие, разобраться. */
+  .mgrid td .fk.auto{ color:#137333; opacity:.6; } .mgrid td .fk.warn{ color:#b06000; opacity:.9; }
+  .cell-work, .mgrid td.cell-work{ background:#eaf6ec; }
   .tabs.mmode button{ font-size:13px; }
   /* на телефоне клетка — под палец: 20 px в режиме отметки означало бы попадание в соседний день */
   @media (max-width:760px){
@@ -375,7 +379,9 @@ function loadMonth(silent){
     var map={}; r.entries.forEach(function(e){ map[e.worker+'|'+Number(e.date.slice(8))]=e; });
     // производственный календарь приходит с сервера: праздники РБ + переносы из «Настроек»
     var off={}, work={}; (r.off||[]).forEach(function(d){ off[d]=1; }); (r.work||[]).forEach(function(d){ work[d]=1; });
-    M={ym:YM, days:days, mon:p[1], map:map, workers:r.workers, off:off, work:work, hol:(r.holidayNames||{})};
+    // дни, за которые работник подал наряд: подал работу — значит был в цеху, даже если отметку забыли
+    var wk={}; (r.worked||[]).forEach(function(k){ wk[k]=1; });
+    M={ym:YM, days:days, mon:p[1], map:map, workers:r.workers, off:off, work:work, hol:(r.holidayNames||{}), wk:wk};
     renderMonth();
   });
 }
@@ -397,20 +403,34 @@ function renderMonth(){
   }
   thead+='</tr>';
   var body=M.workers.map(function(w,wi){
-    var tds=''; var cnt=0;
+    var tds=''; var cnt=0, was=0;
     for(var d=1;d<=M.days;d++){
       var e=M.map[w+'|'+d];
       var sh=e?e.shift:'', st=e?e.status:'';
-      var cls='', txt='';
+      // наряд за этот день = человек был в цеху. Отметку руководителя это не заменяет и в табель
+      // не пишется — только показывается зелёным, чтобы забытая отметка не читалась как невыход.
+      var did=!!(M.wk&&M.wk[w+'|'+d]);
+      var cls='', txt='', tip='';
       if(sh){ cnt++;
-        cls=(sh==='ночь'?'cell-n':'cell-d')+(st==='вышел'?' cell-out':(st==='не вышел'?' cell-no':''));
+        var out=(st==='вышел'), no=(st==='не вышел');
+        cls=(sh==='ночь'?'cell-n':'cell-d')+(out||(did&&!no)?' cell-out':(no?' cell-no':''));
         // значок смены остаётся (день это был или ночь — важно для надбавки), факт добавляется меткой
-        txt=(sh==='ночь'?'🌙':'☀️')+(st==='вышел'?'<b class="fk ok">✓</b>':(st==='не вышел'?'<b class="fk no">✕</b>':''));
+        txt=(sh==='ночь'?'🌙':'☀️')
+           +(out?'<b class="fk ok">✓</b>'
+             :(no?('<b class="fk no">✕</b>'+(did?'<b class="fk warn">!</b>':''))
+               :(did?'<b class="fk auto">✓</b>':'')));
+        if(out||did) was++;
+        tip=' '+esc(sh)+(st&&st!=='план'?' · '+esc(st):'')
+           +(did?(no?' · ⚠ но за этот день подан наряд':(out?'':' · был на работе (есть наряд)')):'');
+      } else if(did){                       // наряд есть, а смены в графике нет — тоже был на работе
+        cnt++; was++;
+        cls='cell-work cell-out';
+        txt='<b class="fk auto">✓</b>';
+        tip=' · был на работе (есть наряд), смена в графике не отмечена';
       }
-      tds+='<td class="'+(cls+((we[d]||hol[d])?((cls?' ':'')+(hol[d]?'we hol':'we')):''))+'" data-w="'+wi+'" data-d="'+d+'" title="'+esc(w)+' '+d+'.'+M.mon
-        +(sh?' '+esc(sh)+(st&&st!=='план'?' · '+esc(st):''):'')+'">'+txt+'</td>';
+      tds+='<td class="'+(cls+((we[d]||hol[d])?((cls?' ':'')+(hol[d]?'we hol':'we')):''))+'" data-w="'+wi+'" data-d="'+d+'" title="'+esc(w)+' '+d+'.'+M.mon+tip+'">'+txt+'</td>';
     }
-    return '<tr><td class="nm">'+esc(w)+' <span class="muted">('+cnt+')</span></td>'+tds+'</tr>';
+    return '<tr><td class="nm">'+esc(w)+' <span class="muted">('+cnt+(was?' · был '+was:'')+')</span></td>'+tds+'</tr>';
   }).join('');
   var modeBox='<div class="tabs mmode" style="margin:8px 0 0">'
     +'<button class="'+(MMODE==='plan'?'active':'')+'" onclick="setMMode(\'plan\')">✏️ Ставлю график</button>'
@@ -419,6 +439,7 @@ function renderMonth(){
     +(MMODE==='fact'
       ? 'Клик по клетке: <b>по графику → ✓ вышел → ✕ не вышел</b>. Смену в этом режиме не меняем — только факт.'
       : 'Клик по клетке: ☀️ день → 🌙 ночь → пусто · зелёная рамка — вышел, красная — не вышел · серые колонки — выходные, розовые — праздники')
+    +'<div class="muted" style="font-size:12px;margin-top:2px">Бледная <b class="fk auto" style="font-size:12px">✓</b> — отметки нет, но за этот день подан наряд: значит был на работе. Зелёная клетка без солнышка — наряд есть, а смена в графике не проставлена. <b class="fk warn" style="font-size:12px">!</b> — отмечен «не вышел», но наряд есть.</div>'
     +'</div>';
   $('pane').innerHTML='<div class="box"><div class="row"><button class="gho" onclick="shiftMonth(-1)">←</button><b>'+YM+'</b><button class="gho" onclick="shiftMonth(1)">→</button>'
     +'<span id="sv" class="muted"></span></div>'+modeBox+'</div>'
