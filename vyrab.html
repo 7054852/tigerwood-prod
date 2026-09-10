@@ -27,6 +27,7 @@
   .tabs button{ width:auto; margin:0; padding:8px 14px; background:#eef; color:#334; }
   .tabs button.active{ background:var(--accent); color:#fff; }
   .freeb{ display:inline-block; background:#eef4ff; color:#2b5fd9; border-radius:20px; padding:1px 9px; font-size:11.5px; font-weight:700; }
+  .cutb{ display:inline-block; background:#fdf1e0; color:#9a5b12; border-radius:20px; padding:1px 9px; font-size:11.5px; font-weight:700; }
   .kb{ display:inline-block; border-radius:20px; padding:1px 9px; font-size:11.5px; font-weight:700; }
   /* Панель отправки прибита к низу экрана: наряд бывает длинным, и на телефоне
      рабочий не мог долистать до кнопки «Отправить». Теперь она всегда под рукой. */
@@ -783,6 +784,14 @@ function act(p, msg, done){
     if(msg) msg.innerHTML='<span class="err">'+t+' <a href="javascript:void(0)" onclick="loadPending()">↻</a></span>'; else alert(t);
   });
 }
+// ⚠ Строка листа НИКОГДА не принадлежит заказу: с одного листа детали уходят в РАЗНЫЕ заказы,
+// поэтому оплату за раскрой нельзя приписать одному из них. Но «🧰 вне заказа» читалось как
+// потерянная работа — пишем прямо, что это раскрой. Смысл прежний, меняется только подпись.
+function isCutLine(x){ return !!(x && x.kind==='лист'); }
+function batchTag(x){
+  if(isCutLine(x)) return '<span class="cutb" title="раскрой листа: оплата за лист. В заказ идут детали, которые с него вышли">🪚 Раскрой</span>';
+  return (x && x.free) ? '<span class="freeb" title="работа не по заказу — в ЗП входит, на выполнение заказов не влияет">🧰 вне заказа</span>' : esc((x && x.batch) || '');
+}
 function renderPending(r){
   // мастеру видно, сколько работы стоит у контролёра: автоприёмки по таймауту нет и не будет
   try {
@@ -844,7 +853,9 @@ function renderPending(r){
         : '<div class="row" style="margin-top:8px">'
           +(rp.single?'':'<button class="sm" onclick="startAdd(\''+esc(rid)+'\',\''+esc(rp.date+' · '+rp.batch)+'\')">➕ Дополнить наряд</button>')
           +'<span class="muted" style="font-size:12px">⏳ ждёт подтверждения мастера</span></div>';
-      var bTag=rp.free?'<span class="freeb" title="работа не по заказу — в ЗП входит, на выполнение заказов не влияет">🧰 вне заказа</span>':esc(rp.batch);
+      var hasCut=(rp.lines||[]).some(isCutLine);
+      var bTag=hasCut?batchTag({kind:'лист'})
+        :(rp.mixed?'<span class="freeb" title="в наряде строки разных заказов">🧩 сборный</span>':batchTag(rp));
       // ⚠ ДАТА СМЕНЫ — ЗАМЕТНОЙ, а не серым хвостиком после ФИО. Мастеру важно, за какой день
       // наряд и сколько он уже лежит: вчерашний подтверждают не глядя, недельный — разбирают.
       var ageH=ruAgeH(rp.date), oldN=(ageH>48);
@@ -1148,7 +1159,7 @@ function renderJournal(){
       return '<div class="card"><div class="row"><b>'+esc(g.worker)+'</b>'
         +'<span style="font-size:13px">📅 <b>'+esc(g.date)+'</b> <span class="muted">'+(night?'🌙 ночь':'☀️ день')+'</span></span>'+bonBtn+'</div>'
         +'<div class="muted" style="font-size:12px">'+(g.submitted?'подан '+esc(g.submitted)+' · ':'')
-          +((g.lines[0]&&g.lines[0].free)?'<span class="freeb">🧰 вне заказа</span>':esc(g.batch))
+          +((g.lines||[]).some(isCutLine)?batchTag({kind:'лист'}):((g.lines[0]&&g.lines[0].free)?batchTag(g.lines[0]):esc(g.batch)))
           +(g.single?'':' · наряд')+' · '+g.lines.length+' оп.</div>'
         +'<div id="bonbox-j-'+bonKey(bonRid)+'"></div>'
         +shiftCtl+lines+qcNote+bdHtml+'</div>';
