@@ -146,7 +146,7 @@ window.onerror=function(msg,src,line){
 </div>
 <div id="pane-c" style="display:none">
   <h2>🪚 Раскрой на ЧПУ</h2>
-  <div class="muted">Указываете лист и что с него вышло. Оплата: за листы + за детали. Детали попадут в свои заказы.</div>
+  <div class="muted">Указываете лист и <b>обязательно</b> — что с него вышло. Оплата идёт за листы; детали попадут в свои заказы.</div>
   <div id="cutrate"></div>
   <div id="cutlist" style="margin-top:12px">Загрузка…</div>
   <div id="cutempty" class="muted" style="display:none;margin:10px 0">Листов пока нет — нажмите «＋ Добавить лист».</div>
@@ -643,6 +643,9 @@ function sendWork(){
       for(var k=0;k<(d.orders||[]).length;k++) if(d.orders[k].orderId===it.batch) eq=d.orders[k].eq;
       its.push({detail:it.detail, qty:it.qty, batch:it.batch, eq:eq||d.eq||''});
     }
+    // ⚠ лист без деталей бессмысленен: выход не посчитать, а работа не попадёт в заказ.
+    // Говорим до отправки, а не отказом сервера после трёх секунд ожидания.
+    if(!its.length){ wmsg('<span class="err">Лист «'+esc(sd.mat)+'»: укажите, какие детали с него вышли — кнопка «＋ деталь»</span>'); showTab('c'); return; }
     sheets.push({mat:sd.mat, qty:sd.qty, items:its});
   }
   if(!items.length && !sheets.length){ wmsg('<span class="err">Наряд пуст</span>'); return; }
