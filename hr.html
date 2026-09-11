@@ -1285,6 +1285,13 @@ function payMonth(p){ var m=['январь','февраль','март','апр�
   var x=String(p||'').split('-'); return x[1]?(m[Number(x[1])-1]+' '+x[0]):(p||'—'); }
 function payView(){
   if(PAYEDIT) return payEditView();
+  var sw='<div class="row" style="margin-bottom:8px;gap:6px">'+
+    '<button class="btn'+(PAYMODE==='docs'?' pri':'')+'" onclick="PAYMODE=\'docs\';render()">📄 Ведомости</button>'+
+    '<button class="btn'+(PAYMODE==='debt'?' pri':'')+'" onclick="PAYMODE=\'debt\';render()">📊 Долг по месяцам</button>'+
+    (PAYMODE==='debt'?'<button class="btn" onclick="DEBT=null;render()" title="пересчитать">⟳</button>':'')+'</div>';
+  return sw+(PAYMODE==='debt'?debtView():payDocsView());
+}
+function payDocsView(){
   if(!PAYDATA){
     if(!PAYLOADING){ PAYLOADING=1; api({vapi:'hrpaylist'}).then(function(r){ PAYLOADING=0; PAYDATA=r; if(TAB==='pay') render(); }); }
     return '<div class="center">Загрузка ведомостей…</div>'; }
@@ -1376,7 +1383,7 @@ function paySave(){
   busy(1);
   apiPost({vapi:'hrpaysave',data:JSON.stringify(PAYEDIT)}).then(function(r){ busy(0);
     if(!r||!r.ok){ alert((r&&r.error)||'не сохранено'); return; }
-    PAYDATA=r; PAYEDIT=null; render(); }).catch(function(e){ busy(0); alert('сеть: '+e.message); });
+    PAYDATA=r; PAYEDIT=null; DEBT=null; render(); }).catch(function(e){ busy(0); alert('сеть: '+e.message); });
 }
 function payEdit(doc){
   var d=(PAYDATA.docs||[]).filter(function(x){ return x.doc===doc; })[0]; if(!d) return;
@@ -1387,7 +1394,64 @@ function payEdit(doc){
 }
 function payDel(doc){
   if(!confirm('Удалить ведомость? Файл на Диске останется.')) return;
-  busy(1); api({vapi:'hrpaydel',doc:doc}).then(function(r){ busy(0); if(!r||!r.ok){ alert((r&&r.error)||'ошибка'); return; } PAYDATA=r; render(); });
+  busy(1); api({vapi:'hrpaydel',doc:doc}).then(function(r){ busy(0); if(!r||!r.ok){ alert((r&&r.error)||'ошибка'); return; } PAYDATA=r; DEBT=null; render(); });
+}
+// ─── 📊 Долг по месяцам: заработано по нарядам − ведомости (до вычета) − доплаты ───
+var PAYMODE='docs', DEBT=null, DEBTLOADING=0, DEBTOPEN={}, DEBTPAY=null;
+function debtToday(){ var d=new Date(); return ('0'+d.getDate()).slice(-2)+'.'+('0'+(d.getMonth()+1)).slice(-2)+'.'+d.getFullYear(); }
+function debtView(){
+  if(!DEBT){
+    if(!DEBTLOADING){ DEBTLOADING=1; api({vapi:'hrdebt'}).then(function(r){ DEBTLOADING=0; DEBT=r; if(TAB==='pay'&&PAYMODE==='debt') render(); }); }
+    return '<div class="center">Считаю: наряды, ведомости, выплаты…</div>'; }
+  if(!DEBT.ok) return '<div class="center">Ошибка: '+esc(DEBT.error||'')+'</div>';
+  var h='<div class="card"><b style="font-size:16px">Должны сотрудникам: '+money(DEBT.debtTotal)+'</b>'+
+    (DEBT.openDebt?' <span class="muted">· за текущий месяц набегает '+money(DEBT.openDebt)+'</span>':'')+
+    '<div class="muted" style="font-size:12.5px;margin-top:4px">Долг за месяц = заработано по нарядам − начислено по ведомостям (до вычета налогов) − доплачено наличными и отдельными выплатами. Если оклад больше нарядов, минус на следующий месяц не переносится.</div>'+
+    (DEBT.finErr?'<div style="color:#c5221f;font-size:12.5px;margin-top:4px">Фин.гений: '+esc(DEBT.finErr)+' — доплаты не учтены</div>':'')+'</div>';
+  return h+DEBT.months.map(function(m,mi){
+    var noDoc=!m.rows.some(function(r){ return r.accr>0; });
+    return '<div class="card"><b>'+esc(payMonth(m.ym))+'</b>'+(m.open?' <span class="muted">· месяц идёт</span>':'')+
+      ' · долг <b'+(m.debt?' style="color:#c5221f"':'')+'>'+money(m.debt)+'</b>'+
+      (noDoc&&m.rows.length?'<div class="muted" style="font-size:12px;margin-top:3px">⚠ ведомость за этот месяц не загружена — долг показан без неё</div>':'')+
+      (m.rows.length?'<div class="tbwrap" style="margin-top:8px"><table class="mob"><thead><tr><th>Сотрудник</th><th class="num">По нарядам</th>'+
+        '<th class="num">По ведомостям</th><th class="num">Доплачено</th><th class="num">Долг</th><th></th></tr></thead><tbody>'+
+        m.rows.map(function(r,ri){ return debtRow(m,mi,r,ri); }).join('')+'</tbody></table></div>'
+        :'<div class="muted" style="margin-top:6px">Нарядов и выплат нет.</div>')+'</div>';
+  }).join('');
+}
+function debtRow(m,mi,r,ri){
+  var k=m.ym+'|'+r.name, paying=DEBTPAY&&DEBTPAY.k===k;
+  var h='<tr><td><a href="#" onclick="debtToggle('+mi+','+ri+');return false"><b>'+esc(r.name)+'</b> '+(DEBTOPEN[k]?'▾':'▸')+'</a></td>'+
+    '<td class="num" data-l="По нарядам">'+money(r.earned)+'</td><td class="num" data-l="По ведомостям">'+money(r.accr)+'</td>'+
+    '<td class="num" data-l="Доплачено">'+money(r.paid)+'</td>'+
+    '<td class="num" data-l="Долг">'+(r.debt?'<b style="color:#c5221f">'+money(r.debt)+'</b>'
+      :(r.bal<0?'<span class="muted" title="оклад больше нарядов">'+money(r.bal)+'</span>':'—'))+'</td>'+
+    '<td class="acts">'+(r.debt&&!paying?'<button class="btn sm" onclick="debtPayOpen('+mi+','+ri+')">💵 Доплатить</button>':'')+'</td></tr>';
+  if(DEBTOPEN[k]) h+='<tr class="sub"><td colspan="6" style="font-size:12.5px">'+
+    (r.docs.length?r.docs.map(function(d){ return '📄 ведомость «'+esc(d.kind)+'»: начислено '+money(d.accr)+', к выдаче '+money(d.pay); }).join('<br>'):'📄 ведомостей нет')+'<br>'+
+    (r.pays.length?r.pays.map(function(p){ return '💵 '+esc(p.date)+' · '+esc(p.wallet)+' · '+money(p.sum)+(p.note?' <span class="muted">'+esc(p.note)+'</span>':''); }).join('<br>'):'💵 доплат нет')+'</td></tr>';
+  if(paying){
+    var cash=DEBT.wallets.cash||[], ws=cash.concat((DEBT.wallets.all||[]).filter(function(w){ return cash.indexOf(w)<0; }));
+    h+='<tr class="sub"><td colspan="6"><div class="row" style="gap:8px;flex-wrap:wrap;align-items:center;font-size:13px">'+
+      '<label>Сумма <input id="dp_sum" value="'+r.debt+'" style="width:90px"></label>'+
+      '<label>Кошелёк <select id="dp_wallet">'+ws.map(function(w){ return '<option>'+esc(w)+'</option>'; }).join('')+'</select></label>'+
+      '<label>Дата <input id="dp_date" value="'+debtToday()+'" style="width:100px"></label>'+
+      '<button class="btn pri sm" onclick="debtPaySave('+mi+','+ri+')">Записать выплату</button>'+
+      '<button class="btn sm" onclick="DEBTPAY=null;render()">Отмена</button></div>'+
+      '<div class="muted" style="font-size:12px;margin-top:4px">Запишется в Фин.гений оплаченным расходом (зарплата, отдел: '+esc(r.dept)+') за '+esc(payMonth(m.ym))+'.</div></td></tr>';
+  }
+  return h;
+}
+function debtToggle(mi,ri){ var m=DEBT.months[mi], k=m.ym+'|'+m.rows[ri].name; DEBTOPEN[k]=!DEBTOPEN[k]; render(); }
+function debtPayOpen(mi,ri){ var m=DEBT.months[mi]; DEBTPAY={k:m.ym+'|'+m.rows[ri].name}; render(); }
+function debtPaySave(mi,ri){
+  var m=DEBT.months[mi], r=m.rows[ri], sum=pnum($('dp_sum').value);
+  if(!(sum>0)){ alert('Укажите сумму'); return; }
+  if(sum>r.debt+0.005 && !confirm('Сумма больше долга за месяц ('+money(r.debt)+'). Записать всё равно?')) return;
+  busy(1);
+  apiPost({vapi:'hrpaycash',data:JSON.stringify({name:r.name,ym:m.ym,sum:sum,wallet:$('dp_wallet').value,date:$('dp_date').value,dept:r.dept})})
+    .then(function(x){ busy(0); if(!x||!x.ok){ alert((x&&x.error)||'не записано'); return; } DEBT=x; DEBTPAY=null; render(); })
+    .catch(function(e){ busy(0); alert('сеть: '+e.message); });
 }
 var TPLDATA=null;
 function tplView(){
