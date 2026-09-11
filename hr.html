@@ -1229,6 +1229,7 @@ function docFilterList(){
 // добавленный владельцем вид сразу попадает в свой чип. Показываем все категории, даже пустые —
 // видно, чего в системе ещё нет.
 function docView(){
+  if(FOLD) return foldView();
   var all=(DATA.edocs||[]);
   var order=['дс','приказ','заявление','уведомление','больничный','личный','договор','прочее'];
   var cnt={}; all.forEach(function(d){ var g=docGroupOf(d); cnt[g]=(cnt[g]||0)+1; });
@@ -1242,6 +1243,7 @@ function docView(){
         esc(GRPNAME[g]||g)+' <span'+(n?'':' class="muted"')+'>'+n+'</span></button>';
     }).join('')+
     '<button class="btn sm" onclick="docExport()" title="выгрузить текущий список в Excel (CSV)">⬇ Выгрузить</button>'+
+    '<button class="btn sm" onclick="foldOpen()" title="найти в папках сотрудников на Диске подписанные сканы и приложить к карточкам">📂 Разобрать папки</button>'+
     '<input id="docq" placeholder="поиск по сотруднику, документу, №" value="'+esc(DOCQ)+'" '+
       'oninput="DOCQ=this.value;docRender()" style="flex:1;min-width:180px">'+
     '</div><div id="docbody">'+docTable(docFilterList(),docFioMap())+'</div>';
@@ -1568,6 +1570,86 @@ function regExport(){
   var a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob(['﻿'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'}));
   a.download='реестр выплат '+REG.ym+'.csv'; document.body.appendChild(a); a.click(); a.remove();
+}
+// ─── 📂 Разбор папок сотрудников: подписанные сканы (PDF/фото) → в карточки. Файлы остаются на месте — пишется ссылка ───
+var FOLD=null, FOLDBUSY=0;
+function foldOpen(){
+  FOLD={loading:1}; TAB='doc'; CARD=null; render();
+  api({vapi:'hrfoldscan'}).then(function(r){
+    if(!r||!r.ok){ FOLD=null; alert((r&&r.error)||'ошибка'); render(); return; }
+    FOLD={emps:r.emps,skipped:r.skipped}; render();
+  }).catch(function(e){ FOLD=null; alert('сеть: '+e.message); render(); });
+}
+// куда можно положить файл: скан к существующему договору/приказу или новый документ нужного вида
+function foldTargets(empId){
+  var o=[];
+  (DATA.contracts||[]).filter(function(c){ return c.emp===empId; }).forEach(function(c){ o.push(['con:'+c.id,'скан договора: '+c.kind+' № '+c.num]); });
+  (DATA.orders||[]).filter(function(x){ return x.emp===empId; }).forEach(function(x){ o.push(['ord:'+x.id,'скан приказа № '+x.num+(x.kind?' — '+x.kind:'')]); });
+  o.push(['new:приказ','новый приказ (№ и дата справа)']);
+  (DATA.dtypes||[]).filter(function(t){ return t.group!=='дс'&&t.group!=='приказ'; }).forEach(function(t){ o.push(['new:'+t.key,'новый: '+t.title]); });
+  return o;
+}
+function foldView(){
+  if(FOLD.loading) return '<div class="center">Просматриваю папки сотрудников на Диске…</div>';
+  var n=0, unsure=0, sel=0;
+  FOLD.emps.forEach(function(e){ e.files.forEach(function(f){ n++; if(f.g.recog&&!f.g.done) unsure++; if(f.on) sel++; }); });
+  var h='<div class="card"><b>📂 Подписанные сканы в папках сотрудников, ещё не приложенные к карточкам: '+n+'</b>'+
+    '<div class="muted" style="font-size:12.5px;margin-top:3px">Черновики (Word, Google-документы) пропущены'+(FOLD.skipped?' — '+FOLD.skipped:'')+
+    '. Файлы остаются в папках, в карточку добавляется ссылка. Проверьте «Куда»; неясные — «Распознать» (читает Claude, ~10 с на файл). '+
+    'Галочки стоят у тех, что определены уверенно.</div>'+
+    '<div class="row" style="margin-top:8px;gap:6px;flex-wrap:wrap"><button class="btn" onclick="FOLD=null;render()">← к документам</button>'+
+    (unsure?'<button class="btn"'+(FOLDBUSY?' disabled':'')+' onclick="foldRecogAll()">🔎 Распознать неясные ('+unsure+')</button>':'')+
+    '<button class="btn pri"'+(FOLDBUSY||!sel?' disabled':'')+' onclick="foldAttach()">📎 Привязать отмеченные ('+sel+')</button></div></div>';
+  if(!n) return h+'<div class="card"><div class="empty">Всё подписанное уже приложено к карточкам.</div></div>';
+  return h+FOLD.emps.map(function(e,ei){
+    if(!e.files.length) return '';
+    var tg=foldTargets(e.emp);
+    return '<div class="card"><b>'+esc(e.fio)+'</b> <span class="muted">· '+e.files.length+'</span><div class="tbwrap"><table class="mob"><tbody>'+
+      e.files.map(function(f,fi){
+        var g=f.g, p='FOLD.emps['+ei+'].files['+fi+']', opts=tg.slice();
+        if(!opts.some(function(t){ return t[0]===g.to; })) opts.unshift([g.to,g.to]);
+        return '<tr><td style="width:26px"><input type="checkbox"'+(f.on?' checked':'')+' onchange="'+p+'.on=this.checked;render()"></td>'+
+          '<td><a href="'+esc(f.url)+'" target="_blank">'+esc(f.name)+'</a> <span class="muted" style="font-size:11.5px">'+esc(f.created)+'</span>'+
+            (g.note?'<div class="muted" style="font-size:11.5px">'+esc(g.note)+'</div>':'')+'</td>'+
+          '<td data-l="Куда"><select style="max-width:280px" onchange="'+p+'.g.to=this.value;render()">'+
+            opts.map(function(t){ return '<option value="'+esc(t[0])+'"'+(t[0]===g.to?' selected':'')+'>'+esc(t[1])+'</option>'; }).join('')+'</select></td>'+
+          '<td data-l="№ / дата" style="white-space:nowrap">'+(String(g.to).indexOf('new:')===0?
+            '<input value="'+esc(g.num||'')+'" placeholder="№" oninput="'+p+'.g.num=this.value" style="width:70px"> '+
+            '<input value="'+esc(g.date||'')+'" placeholder="дд.мм.гггг" oninput="'+p+'.g.date=this.value" style="width:96px">':'')+
+            (g.to==='new:акт'?' <input value="'+esc(g.sum||'')+'" placeholder="сумма" oninput="'+p+'.g.sum=this.value" style="width:70px">'+
+              ' <label style="font-size:12px"><input type="checkbox"'+(g.paid?' checked':'')+' onchange="'+p+'.g.paid=this.checked"> оплачен</label>':'')+'</td>'+
+          '<td data-l="Как определено" style="font-size:12px">'+(g.busy?'распознаю…':(g.done?'<span style="color:#188038">✓ распознано</span>':
+            (g.recog?'<span class="muted">не уверен</span>':'<span style="color:#188038">по названию</span>')))+'</td></tr>';
+      }).join('')+'</tbody></table></div></div>';
+  }).join('');
+}
+function foldRecogAll(){
+  var q=[]; FOLD.emps.forEach(function(e){ e.files.forEach(function(f){ if(f.g.recog&&!f.g.done) q.push([e,f]); }); });
+  FOLDBUSY=1; var i=0;
+  (function next(){
+    if(!FOLD||i>=q.length){ FOLDBUSY=0; render(); return; }
+    var e=q[i][0], f=q[i][1]; f.g.busy=1; render();
+    api({vapi:'hrfoldrecog',file:f.id,emp:e.emp}).then(function(r){
+      if(r&&r.ok){ var hint=f.g.note; f.g=r.guess; if(!f.g.note) f.g.note=hint; f.on=true; }
+      else f.g.note=(f.g.note?f.g.note+' · ':'')+'не распознано: '+((r&&r.error)||'');
+      f.g.busy=0; f.g.done=1; i++; next();
+    }).catch(function(){ f.g.busy=0; f.g.done=1; i++; next(); });
+  })();
+}
+function foldAttach(){
+  var items=[];
+  FOLD.emps.forEach(function(e){ e.files.forEach(function(f){ if(!f.on) return; var g=f.g;
+    items.push({file:f.id,url:f.url,emp:e.emp,to:g.to,num:g.num||'',date:g.date||'',sum:g.sum||'',paid:!!g.paid,note:g.note||''}); }); });
+  if(!items.length) return;
+  if(!confirm('Приложить к карточкам файлов: '+items.length+'? Файлы останутся в папках, в карточках появятся ссылки.')) return;
+  FOLDBUSY=1; render();
+  apiPost({vapi:'hrfoldattach',items:JSON.stringify(items)}).then(function(r){
+    FOLDBUSY=0;
+    if(!r||!r.ok){ alert((r&&r.error)||'ошибка'); render(); return; }
+    alert('Готово: к договорам и приказам приложено — '+r.linked+', новых документов — '+r.created+
+          (r.errors&&r.errors.length?'\nНе вышло: '+r.errors.join('; '):''));
+    FOLD=null; load(1);
+  }).catch(function(e){ FOLDBUSY=0; alert('сеть: '+e.message); render(); });
 }
 var TPLDATA=null;
 function tplView(){
