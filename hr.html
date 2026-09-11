@@ -507,18 +507,37 @@ function edocForm(d){
   var tail=docTail({ link:d.docLink||'', tpl:!!(t&&t.tpl),
     onCreate:"edocSave('"+(d.id||'')+"',1)", onDrop:"dropElDoc('edoc','"+(d.id||'')+"')" });
   EDOCDRAFT=d;
+  var af=d.fields||{}, actBox=ACT_TYPES.indexOf(cur)<0?'':
+    '<div class="fld"><label class="f">Сумма акта, ₽</label><input id="f_asum" value="'+esc(af.sum||'')+'" oninput="actAutoPay()"></div>'+
+    '<div class="fld"><label class="f">К выплате (расчёт), ₽</label><input id="f_apay" value="'+esc(af.pay||'')+'"'+(af.pay?' data-man="1"':'')+
+      ' oninput="this.dataset.man=1" title="по умолчанию: сумма − 13% подоходный − 1% пенсионный"></div>'+
+    '<div class="fld"><label class="f">Оплатить до (дата акта + 15 дней)</label><input id="f_adue" value="'+esc(actDue(d.date))+'" disabled></div>'+
+    '<div class="fld"><label class="f">Когда будет оплата</label><input id="f_aplan" value="'+esc(af.plan||'')+'" placeholder="дд.мм.гггг"></div>'+
+    '<div class="fld"><label class="f">Оплачен</label><div><label><input type="checkbox" id="f_apaid"'+(af.paid?' checked':'')+'> да</label>'+
+      ' <input id="f_apaidd" value="'+esc(af.paidDate||'')+'" placeholder="дата оплаты" style="width:120px"></div></div>';
   dlg(d.id?'Карточка документа: '+docTitle(d):'Новый документ',
-    '<div class="fld"><label class="f">Тип документа</label><select id="f_type">'+opts+
+    '<div class="fld"><label class="f">Тип документа</label><select id="f_type" onchange="edocTypeChange()">'+opts+
       '<option value="__new__">＋ добавить свой тип…</option></select></div>'+
     '<div class="fld"><label class="f">К договору (не обязательно)</label><select id="f_con">'+
       '<option value="">— к сотруднику, не к договору —</option>'+
       cons.map(function(c){ return '<option value="'+c.id+'"'+(c.id===d.con?' selected':'')+'>'+esc(c.kind+' № '+c.num)+'</option>'; }).join('')+
       '</select></div>'+
-    fld('num','№ документа',d.num)+fld('date','Дата',d.date)+fld('note','Примечание',d.note),
+    fld('num','№ документа',d.num)+fld('date','Дата',d.date)+fld('note','Примечание',d.note)+actBox,
     function(){ edocSave(d.id||'', d.docLink?1:0); },
     '', d.id?'Данные документа. Файл — кнопками ниже.':'Заводим карточку документа.', tail);
+  var de=$('f_date'); if(de&&$('f_adue')) de.addEventListener('input',function(){ $('f_adue').value=actDue(de.value); });
 }
 var EDOCDRAFT=null;
+// ─── Акт подряда: сумма, к выплате, срок оплаты = дата акта + 15 дней, факт оплаты ───
+var ACT_TYPES=['акт'];
+function actRuDate(d){ return ('0'+d.getDate()).slice(-2)+'.'+('0'+(d.getMonth()+1)).slice(-2)+'.'+d.getFullYear(); }
+function actParse(s){ var m=String(s||'').trim().match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/); return m?new Date(+m[3],m[2]-1,+m[1]):null; }
+function actDue(date){ var d=actParse(date); if(!d) return ''; d.setDate(d.getDate()+15); return actRuDate(d); }
+function actDays(s){ var d=actParse(s); if(!d) return null; var t=new Date(); t.setHours(0,0,0,0); return Math.round((d-t)/864e5); }
+function actAutoPay(){ var p=$('f_apay'); if(p&&!p.dataset.man){ var s=pnum($('f_asum').value); p.value=s?(Math.round(s*86)/100).toFixed(2):''; } }
+// сменили тип на «акт» — перерисовать карточку, чтобы появились поля суммы и оплаты
+function edocTypeChange(){ var v=val('type'); if(v==='__new__') return;
+  var d=JSON.parse(JSON.stringify(EDOCDRAFT||{})); d.type=v; d.con=val('con'); d.num=val('num'); d.date=val('date'); d.note=val('note'); edocForm(d); }
 // Одна функция на три сценария: просто сохранить, сохранить и собрать, сохранить и пересобрать.
 // gen=1 → после сохранения документ собирается по шаблону (прежний файл гасит сервер).
 function edocSave(id,gen){
@@ -526,6 +545,11 @@ function edocSave(id,gen){
   if(type==='__new__'){ addDocType(); return; }
   var rec={id:id||'',emp:CARD.emp.id,con:val('con'),type:type,num:val('num'),date:val('date'),
            note:val('note'),status:(EDOCDRAFT&&EDOCDRAFT.status)||'нужен'};
+  if(ACT_TYPES.indexOf(type)>=0&&$('f_asum')){
+    var paid=$('f_apaid').checked, pd=$('f_apaidd').value.trim();
+    if(paid&&!pd) pd=actRuDate(new Date());
+    rec.fields={sum:pnum($('f_asum').value),pay:pnum($('f_apay').value),plan:$('f_aplan').value.trim(),paid:paid,paidDate:paid?pd:''};
+  }
   busy(1);
   api({vapi:'hredocsave',data:JSON.stringify(rec)}).then(function(r){
     if(!r.ok){ busy(0); alert(r.error||'ошибка'); return; }
@@ -1195,7 +1219,8 @@ function docFioMap(){ var m={}; (DATA.list||[]).forEach(function(x){ m[x.emp.id]
 function docFilterList(){
   var fio=docFioMap(), q=DOCQ.toLowerCase();
   return (DATA.edocs||[]).filter(function(d){
-    if(DOCF!=='all'&&docGroupOf(d)!==DOCF) return false;
+    if(DOCF==='акт'){ if(ACT_TYPES.indexOf(d.type)<0) return false; }
+    else if(DOCF!=='all'&&docGroupOf(d)!==DOCF) return false;
     if(!q) return true;
     return ((fio[d.emp]||'')+' '+docTitle(d)+' '+(d.num||'')).toLowerCase().indexOf(q)>=0;
   });
@@ -1207,13 +1232,16 @@ function docView(){
   var all=(DATA.edocs||[]);
   var order=['дс','приказ','заявление','уведомление','больничный','личный','договор','прочее'];
   var cnt={}; all.forEach(function(d){ var g=docGroupOf(d); cnt[g]=(cnt[g]||0)+1; });
+  var nAct=all.filter(function(d){ return ACT_TYPES.indexOf(d.type)>=0; }).length;
   var h='<div class="row" style="margin-bottom:8px;flex-wrap:wrap">'+
     '<button class="btn sm'+(DOCF==='all'?' pri':'')+'" onclick="docFilter(\'all\')">Все '+all.length+'</button>'+
+    '<button class="btn sm'+(DOCF==='акт'?' pri':'')+'" onclick="docFilter(\'акт\')">🧾 Акты подряда <span'+(nAct?'':' class="muted"')+'>'+nAct+'</span></button>'+
     order.map(function(g){
       var n=cnt[g]||0;
       return '<button class="btn sm'+(DOCF===g?' pri':'')+'" onclick="docFilter(\''+g+'\')">'+
         esc(GRPNAME[g]||g)+' <span'+(n?'':' class="muted"')+'>'+n+'</span></button>';
     }).join('')+
+    '<button class="btn sm" onclick="docExport()" title="выгрузить текущий список в Excel (CSV)">⬇ Выгрузить</button>'+
     '<input id="docq" placeholder="поиск по сотруднику, документу, №" value="'+esc(DOCQ)+'" '+
       'oninput="DOCQ=this.value;docRender()" style="flex:1;min-width:180px">'+
     '</div><div id="docbody">'+docTable(docFilterList(),docFioMap())+'</div>';
@@ -1222,7 +1250,45 @@ function docView(){
      '<span class="muted" style="font-size:12px">документы сотрудника добавляются в его карточке</span></div>';
   return h;
 }
+// реестр актов подряда: сумма, к выплате, срок, оплата — и итог «не оплачено»
+function actTable(l,fio){
+  var unpaid=0, n=0, late=0;
+  var rows=l.map(function(d){
+    var f=d.fields||{}, due=actDue(d.date), dd=actDays(due);
+    if(!f.paid&&f.sum){ unpaid+=pnum(f.pay||f.sum); n++; if(dd!=null&&dd<0) late++; }
+    var st=f.paid?'<span style="color:#188038">✓ оплачен '+esc(f.paidDate||'')+'</span>'
+      :(!f.sum?'<span class="muted">сумма не указана</span>'
+      :(dd!=null&&dd<0?'<b style="color:#c5221f">просрочен на '+(-dd)+' дн.</b>':'ждёт оплаты'+(dd!=null?' · '+dd+' дн.':'')))+
+      (!f.paid&&f.plan?' <span class="muted">· будет '+esc(f.plan)+'</span>':'');
+    return '<tr><td class="click" onclick="openCard(\''+d.emp+'\')"><b>'+esc(fio[d.emp]||'—')+'</b></td>'+
+      '<td data-l="№">'+esc(d.num||'—')+'</td><td data-l="Дата">'+esc(d.date||'—')+'</td>'+
+      '<td class="num" data-l="Сумма акта">'+(f.sum?money(f.sum):'—')+'</td><td class="num" data-l="К выплате">'+(f.pay?money(f.pay):'—')+'</td>'+
+      '<td data-l="Оплатить до">'+esc(due||'—')+'</td><td data-l="Оплата">'+st+'</td>'+
+      '<td data-l="Файл">'+filesCell(d)+'</td><td class="acts" style="white-space:nowrap">'+docActs(d)+'</td></tr>';
+  }).join('');
+  return '<div class="card"><b>Не оплачено: '+n+' на '+money(unpaid)+'</b>'+(late?' · <b style="color:#c5221f">просрочено: '+late+'</b>':'')+
+    '<div class="muted" style="font-size:12.5px;margin-top:3px">Срок оплаты — 15 дней с даты акта. Сумму и отметку «оплачен» ставят в карточке акта (✎). Акт считается начислением подрядчику в «Долге по месяцам».</div></div>'+
+    (l.length?'<div class="card tbwrap"><table class="mob"><thead><tr><th>Подрядчик</th><th>№</th><th>Дата</th><th class="num">Сумма акта</th>'+
+      '<th class="num">К выплате</th><th>Оплатить до</th><th>Оплата</th><th>Файл</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+      :'<div class="card"><div class="empty">Актов нет. Акт добавляется в карточке подрядчика: «＋ документ» → «Акт сдачи-приёмки».</div></div>');
+}
+// выгрузка текущего списка реестра (по чипу и поиску) — CSV для Excel
+function docExport(){
+  var fio=docFioMap(), l=docFilterList(), act=DOCF==='акт';
+  var head=['Сотрудник','Документ','№','Дата','Статус'].concat(act?['Сумма акта','К выплате','Оплатить до','Оплачен','Дата оплаты','Когда будет']:[]);
+  var q=function(v){ v=String(v==null?'':v); return /[";\r\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; };
+  var n=function(v){ return v?String(v).replace('.',','):''; };
+  var lines=[head.join(';')].concat(l.map(function(d){
+    var f=d.fields||{}, a=[fio[d.emp]||'',docTitle(d),d.num||'',d.date||'',d.status||''];
+    if(act) a=a.concat([n(f.sum),n(f.pay),actDue(d.date),f.paid?'да':'нет',f.paidDate||'',f.plan||'']);
+    return a.map(q).join(';'); }));
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob(['﻿'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'}));
+  a.download=(act?'акты подряда':'документы')+' '+actRuDate(new Date())+'.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+}
 function docTable(l,fio){
+  if(DOCF==='акт') return actTable(l,fio);
   if(!l.length) return '<div class="card"><div class="empty">Ничего не найдено.</div></div>';
   return '<div class="card tbwrap"><table class="mob"><thead><tr><th>Сотрудник</th><th>Документ</th><th>№</th><th>Дата</th>'+
     '<th>Статус</th><th>Файл</th><th></th></tr></thead><tbody>'+
