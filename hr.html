@@ -161,7 +161,7 @@ function isCivil(k){ k=String(k||'').toLowerCase(); return k==='подряд'||k
 // Сроки — не вкладка, а уведомление: их читают раз в неделю, а место они занимали первым экраном.
 // Приказы и больничные — типы документов, поэтому живут в общем реестре «Документы», а не своими вкладками.
 var TABS=[{id:'emp',t:'👤 Сотрудники'},{id:'con',t:'📑 Договоры'},{id:'doc',t:'🗂 Документы'},
-          {id:'fuel',t:'⛽ Топливо'},{id:'tpl',t:'📋 Шаблоны'}];
+          {id:'pay',t:'💰 Ведомости'},{id:'fuel',t:'⛽ Топливо'},{id:'tpl',t:'📋 Шаблоны'}];
 var DLOPEN=false, DOCF='all', DOCQ='';
 
 // ВСЁ грузится одним запросом (вызов GAS стоит секунды) — вкладки и карточки дальше открываются мгновенно, без сети
@@ -208,6 +208,7 @@ function render(){
   else if(TAB==='emp') h+=empView();
   else if(TAB==='con') h+=conRegView();
   else if(TAB==='doc') h+=docView();
+  else if(TAB==='pay') h+=payView();
   else if(TAB==='fuel') h+=fuelView();
   else if(TAB==='tpl') h+=tplView();
   $('app').innerHTML=h;
@@ -1273,6 +1274,120 @@ function fuelForm(f){
       var d={id:f.id||'',kind:val('kind'),date:val('date'),num:val('num'),sum:val('sum'),emp:val('emp'),note:val('note')};
       busy(1); api({vapi:'hrsavefuel',data:JSON.stringify(d)}).then(function(r){ busy(0); TAB='fuel'; apply(r); });
     });
+}
+// ─── 💰 Ведомости расчёта зарплаты: Excel/фото → проверка → сохранение ───
+// Ведомость бывает на всех (зарплата за месяц) и на одного (подряд, премия). Фин.гений берёт отсюда «кому сколько».
+var PAYDATA=null, PAYLOADING=0, PAYEDIT=null, PAYOPEN={};
+var PAYKINDS=['зарплата','аванс','премия','подряд','другое'], PAYDEPTS=['администрация','рабочие','коммерческий отдел'];
+var PAYCOLS=[['accr','Начислено'],['pn','Подоходный'],['pens','Пенсионный'],['adv','Аванс'],['held','Удержано'],['pay','К выдаче']];
+function pnum(v){ return Number(String(v==null?'':v).replace(/[\s ]/g,'').replace(',','.'))||0; }
+function payMonth(p){ var m=['январь','февраль','март','апрель','май','июнь','июль','август','сентябрь','октябрь','ноябрь','декабрь'];
+  var x=String(p||'').split('-'); return x[1]?(m[Number(x[1])-1]+' '+x[0]):(p||'—'); }
+function payView(){
+  if(PAYEDIT) return payEditView();
+  if(!PAYDATA){
+    if(!PAYLOADING){ PAYLOADING=1; api({vapi:'hrpaylist'}).then(function(r){ PAYLOADING=0; PAYDATA=r; if(TAB==='pay') render(); }); }
+    return '<div class="center">Загрузка ведомостей…</div>'; }
+  if(!PAYDATA.ok) return '<div class="center">Ошибка: '+esc(PAYDATA.error||'')+'</div>';
+  var h='<div class="row" style="margin-bottom:8px"><button class="btn pri" onclick="payUpload()">⬆ Загрузить ведомость</button>'+
+    '<span class="muted">Excel, фото или PDF — на всех или на одного (подряд, премия)</span></div>';
+  var docs=PAYDATA.docs||[];
+  if(!docs.length) return h+'<div class="card"><div class="empty">Ведомостей пока нет.</div></div>';
+  return h+docs.map(function(d){
+    var t=d.total||{};
+    return '<div class="card"><div style="cursor:pointer" onclick="PAYOPEN[\''+d.doc+'\']=!PAYOPEN[\''+d.doc+'\'];render()">'+
+      '<b>'+esc(payMonth(d.period))+'</b> · '+esc(d.kind)+' · '+d.rows.length+' чел.'+(d.date?' · от '+esc(d.date):'')+
+      ' <span class="muted">'+(PAYOPEN[d.doc]?'▾':'▸')+'</span>'+
+      '<div style="font-size:13px;margin-top:3px">начислено '+money(t.accr)+(t.adv?' · аванс '+money(t.adv):'')+' · к выдаче <b>'+money(t.pay)+'</b></div></div>'+
+      '<div class="muted" style="font-size:12px;margin-top:3px">ПН '+money(t.pn)+' · ФСЗН '+money(t.fszn)+' · БГС '+money(t.bgs)+
+      (d.file?' · <a href="'+esc(d.file)+'" target="_blank">📎 файл</a>':'')+
+      ' · <a href="#" onclick="payEdit(\''+d.doc+'\');return false">✎ править</a> · <a href="#" onclick="payDel(\''+d.doc+'\');return false">🗑 удалить</a></div>'+
+      (PAYOPEN[d.doc]?payTable(d.rows):'')+'</div>';
+  }).join('');
+}
+function payTable(rows){
+  return '<div class="tbwrap" style="margin-top:8px"><table class="mob"><thead><tr><th>ФИО</th><th>Должность</th><th>Отдел</th>'+
+    PAYCOLS.map(function(c){ return '<th class="num">'+c[1]+'</th>'; }).join('')+'</tr></thead><tbody>'+
+    rows.map(function(r){ return '<tr><td><b>'+esc(r.fio)+'</b></td><td data-l="Должность">'+esc(r.pos||'—')+'</td><td data-l="Отдел">'+esc(r.dept)+'</td>'+
+      PAYCOLS.map(function(c){ return '<td class="num" data-l="'+c[1]+'">'+money(r[c[0]])+'</td>'; }).join('')+'</tr>'; }).join('')+
+    '</tbody></table></div>';
+}
+// арифметика: у каждого начислено − удержано = к выдаче, суммы строк = итог в файле
+function payWarnHtml(){
+  var d=PAYEDIT, w=[], s={pay:0,accr:0};
+  d.rows.forEach(function(r){
+    if(!String(r.fio||'').trim()) return;
+    var held=pnum(r.held)||(pnum(r.pn)+pnum(r.pens)+pnum(r.adv)), diff=pnum(r.accr)-held-pnum(r.pay);
+    if(pnum(r.accr) && Math.abs(diff)>0.011) w.push(esc(r.fio)+': начислено − удержано − к выдаче = '+money(diff));
+    s.pay+=pnum(r.pay); s.accr+=pnum(r.accr);
+  });
+  var ft=d.fileTotal;
+  if(ft){ if(Math.abs(s.pay-ft.pay)>0.011) w.push('сумма «к выдаче» по строкам '+money(s.pay)+' ≠ итог в файле '+money(ft.pay));
+          if(Math.abs(s.accr-ft.accr)>0.011) w.push('сумма «начислено» по строкам '+money(s.accr)+' ≠ итог в файле '+money(ft.accr)); }
+  return '<div class="muted" style="font-size:12.5px">итого: начислено '+money(s.accr)+' · к выдаче <b>'+money(s.pay)+'</b></div>'+
+    (w.length?'<div style="color:#c5221f;font-size:12.5px;margin-top:4px">⚠ '+w.join('<br>⚠ ')+'</div>'
+             :'<div style="color:#188038;font-size:12.5px;margin-top:4px">✓ арифметика сходится</div>');
+}
+function payRecheck(){ var e=$('payWarn'); if(e) e.innerHTML=payWarnHtml(); }
+function payEditView(){
+  var d=PAYEDIT; if(!d.taxes) d.taxes={};
+  var opt=function(list,v){ return list.map(function(x){ return '<option'+(x===v?' selected':'')+'>'+esc(x)+'</option>'; }).join(''); };
+  var inp=function(path,v,w){ return '<input value="'+esc(v==null?'':v)+'" oninput="'+path+'=this.value;payRecheck()" style="width:'+w+'px">'; };
+  return '<div class="card"><b>'+(d.doc?'Правка ведомости':'Проверьте ведомость перед сохранением')+'</b>'+
+    (d.src?'<div class="muted" style="font-size:12.5px;margin-top:3px">'+esc(d.src)+'</div>':'')+
+    '<div class="row" style="margin-top:9px;gap:10px;flex-wrap:wrap;align-items:center">'+
+      '<label>Вид <select onchange="PAYEDIT.kind=this.value">'+opt(PAYKINDS,d.kind)+'</select></label>'+
+      '<label>Месяц <input type="month" value="'+esc(d.period||'')+'" onchange="PAYEDIT.period=this.value"></label>'+
+      '<label>Дата '+inp('PAYEDIT.date',d.date,100)+'</label></div>'+
+    '<div class="tbwrap" style="margin-top:8px"><table><thead><tr><th>ФИО</th><th>Должность</th><th>Отдел</th>'+
+      PAYCOLS.map(function(c){ return '<th>'+c[1]+'</th>'; }).join('')+'<th></th></tr></thead><tbody>'+
+      d.rows.map(function(r,i){ var p='PAYEDIT.rows['+i+']';
+        return '<tr><td>'+inp(p+'.fio',r.fio,150)+'</td><td>'+inp(p+'.pos',r.pos,150)+'</td>'+
+          '<td><select onchange="'+p+'.dept=this.value">'+opt(PAYDEPTS,r.dept)+'</select></td>'+
+          PAYCOLS.map(function(c){ return '<td>'+inp(p+'.'+c[0],r[c[0]],80)+'</td>'; }).join('')+
+          '<td><button class="btn sm" onclick="PAYEDIT.rows.splice('+i+',1);render()">✕</button></td></tr>'; }).join('')+
+    '</tbody></table></div>'+
+    '<div class="row" style="margin-top:6px"><button class="btn sm" onclick="PAYEDIT.rows.push({fio:\'\',pos:\'\',dept:\'рабочие\'});render()">＋ строка</button></div>'+
+    '<div id="payWarn" style="margin-top:8px">'+payWarnHtml()+'</div>'+
+    '<div class="row" style="margin-top:8px;gap:10px;flex-wrap:wrap;align-items:center;font-size:13px">Налоги по ведомости: '+
+      '<label>ПН '+inp('PAYEDIT.taxes.pn',d.taxes.pn,80)+'</label><label>ФСЗН '+inp('PAYEDIT.taxes.fszn',d.taxes.fszn,80)+'</label>'+
+      '<label>БГС '+inp('PAYEDIT.taxes.bgs',d.taxes.bgs,70)+'</label></div>'+
+    '<div class="row" style="margin-top:10px"><button class="btn pri" onclick="paySave()">Сохранить ведомость</button>'+
+    '<button class="btn" onclick="PAYEDIT=null;render()">Отмена</button></div></div>';
+}
+function payUpload(){
+  var inp=document.createElement('input'); inp.type='file'; inp.accept='.xlsx,.xls,.ods,image/*,application/pdf';
+  inp.onchange=function(){
+    var f=inp.files[0]; if(!f) return;
+    var fr=new FileReader();
+    fr.onload=function(){
+      $('app').innerHTML='<div class="center">'+(/\.(xlsx?|ods)$/i.test(f.name)?'Читаю Excel…':'Распознаю ведомость (до минуты)…')+'</div>';
+      apiPost({vapi:'hrpayparse',name:f.name,mime:f.type,b64:String(fr.result).split(',')[1]}).then(function(r){
+        if(!r||!r.ok){ alert((r&&r.error)||'не прочитал файл'); render(); return; }
+        PAYEDIT=r.doc; TAB='pay'; CARD=null; render();
+      }).catch(function(e){ alert('сеть: '+e.message); render(); });
+    };
+    fr.readAsDataURL(f);
+  };
+  inp.click();
+}
+function paySave(){
+  if(!/^\d{4}-\d{2}$/.test(PAYEDIT.period||'')){ alert('Укажите месяц ведомости'); return; }
+  busy(1);
+  apiPost({vapi:'hrpaysave',data:JSON.stringify(PAYEDIT)}).then(function(r){ busy(0);
+    if(!r||!r.ok){ alert((r&&r.error)||'не сохранено'); return; }
+    PAYDATA=r; PAYEDIT=null; render(); }).catch(function(e){ busy(0); alert('сеть: '+e.message); });
+}
+function payEdit(doc){
+  var d=(PAYDATA.docs||[]).filter(function(x){ return x.doc===doc; })[0]; if(!d) return;
+  var t=d.total||{};
+  PAYEDIT={doc:d.doc,kind:d.kind,period:d.period,date:d.date,file:d.file,fileTotal:null,
+    rows:d.rows.map(function(r){ return JSON.parse(JSON.stringify(r)); }),taxes:{pn:t.pn,fszn:t.fszn,bgs:t.bgs}};
+  render();
+}
+function payDel(doc){
+  if(!confirm('Удалить ведомость? Файл на Диске останется.')) return;
+  busy(1); api({vapi:'hrpaydel',doc:doc}).then(function(r){ busy(0); if(!r||!r.ok){ alert((r&&r.error)||'ошибка'); return; } PAYDATA=r; render(); });
 }
 var TPLDATA=null;
 function tplView(){
