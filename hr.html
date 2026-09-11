@@ -1404,17 +1404,19 @@ function debtView(){
     if(!DEBTLOADING){ DEBTLOADING=1; api({vapi:'hrdebt'}).then(function(r){ DEBTLOADING=0; DEBT=r; if(TAB==='pay'&&PAYMODE==='debt') render(); }); }
     return '<div class="center">Считаю: наряды, ведомости, выплаты…</div>'; }
   if(!DEBT.ok) return '<div class="center">Ошибка: '+esc(DEBT.error||'')+'</div>';
-  var h='<div class="card"><b style="font-size:16px">Должны сотрудникам: '+money(DEBT.debtTotal)+'</b>'+
-    (DEBT.openDebt?' <span class="muted">· за текущий месяц набегает '+money(DEBT.openDebt)+'</span>':'')+
-    '<div class="muted" style="font-size:12.5px;margin-top:4px">Долг за месяц = заработано по нарядам − начислено по ведомостям (до вычета налогов) − доплачено наличными и отдельными выплатами. Если оклад больше нарядов, минус на следующий месяц не переносится.</div>'+
+  var h='<div class="card"><b style="font-size:16px">Должны сотрудникам: '+money(DEBT.debtNow)+'</b>'+
+    (DEBT.closedYm?' <span class="muted">· на конец месяца «'+esc(payMonth(DEBT.closedYm))+'»: '+money(DEBT.debtClosed)+'</span>':'')+
+    (DEBT.aheadNow?' <span class="muted">· заплачено наперёд: '+money(DEBT.aheadNow)+'</span>':'')+
+    '<div class="muted" style="font-size:12.5px;margin-top:4px">Итог = долг с прошлого месяца + заработано по нарядам − начислено по ведомостям (до вычета налогов) − доплачено. Если оклад больше нарядов, разница — заплачено наперёд и уменьшает долг следующих месяцев. Текущий месяц ещё идёт — наряды в нём растут.</div>'+
     (DEBT.finErr?'<div style="color:#c5221f;font-size:12.5px;margin-top:4px">Фин.гений: '+esc(DEBT.finErr)+' — доплаты не учтены</div>':'')+'</div>';
   return h+DEBT.months.map(function(m,mi){
     var noDoc=!m.rows.some(function(r){ return r.accr>0; });
     return '<div class="card"><b>'+esc(payMonth(m.ym))+'</b>'+(m.open?' <span class="muted">· месяц идёт</span>':'')+
       ' · долг <b'+(m.debt?' style="color:#c5221f"':'')+'>'+money(m.debt)+'</b>'+
+      (m.ahead?' <span class="muted">· наперёд '+money(m.ahead)+'</span>':'')+
       (noDoc&&m.rows.length?'<div class="muted" style="font-size:12px;margin-top:3px">⚠ ведомость за этот месяц не загружена — долг показан без неё</div>':'')+
-      (m.rows.length?'<div class="tbwrap" style="margin-top:8px"><table class="mob"><thead><tr><th>Сотрудник</th><th class="num">По нарядам</th>'+
-        '<th class="num">По ведомостям</th><th class="num">Доплачено</th><th class="num">Долг</th><th></th></tr></thead><tbody>'+
+      (m.rows.length?'<div class="tbwrap" style="margin-top:8px"><table class="mob"><thead><tr><th>Сотрудник</th><th class="num">С прошлого</th><th class="num">По нарядам</th>'+
+        '<th class="num">По ведомостям</th><th class="num">Доплачено</th><th class="num">Итог</th><th></th></tr></thead><tbody>'+
         m.rows.map(function(r,ri){ return debtRow(m,mi,r,ri); }).join('')+'</tbody></table></div>'
         :'<div class="muted" style="margin-top:6px">Нарядов и выплат нет.</div>')+'</div>';
   }).join('');
@@ -1422,17 +1424,19 @@ function debtView(){
 function debtRow(m,mi,r,ri){
   var k=m.ym+'|'+r.name, paying=DEBTPAY&&DEBTPAY.k===k;
   var h='<tr><td><a href="#" onclick="debtToggle('+mi+','+ri+');return false"><b>'+esc(r.name)+'</b> '+(DEBTOPEN[k]?'▾':'▸')+'</a></td>'+
+    '<td class="num" data-l="С прошлого">'+(r.carry?money(r.carry):'—')+'</td>'+
     '<td class="num" data-l="По нарядам">'+money(r.earned)+'</td><td class="num" data-l="По ведомостям">'+money(r.accr)+'</td>'+
     '<td class="num" data-l="Доплачено">'+money(r.paid)+'</td>'+
-    '<td class="num" data-l="Долг">'+(r.debt?'<b style="color:#c5221f">'+money(r.debt)+'</b>'
-      :(r.bal<0?'<span class="muted" title="оклад больше нарядов">'+money(r.bal)+'</span>':'—'))+'</td>'+
-    '<td class="acts">'+(r.debt&&!paying?'<button class="btn sm" onclick="debtPayOpen('+mi+','+ri+')">💵 Доплатить</button>':'')+'</td></tr>';
-  if(DEBTOPEN[k]) h+='<tr class="sub"><td colspan="6" style="font-size:12.5px">'+
+    '<td class="num" data-l="Итог">'+(r.debt?'<b style="color:#c5221f">долг '+money(r.debt)+'</b>'
+      :(r.ahead?'<span class="muted" title="оклад больше нарядов — заплачено наперёд">наперёд '+money(r.ahead)+'</span>':'—'))+'</td>'+
+    // платить — только из последнего месяца: итог нарастающий, старые месяцы уже в нём
+    '<td class="acts">'+(mi===0&&r.debt&&!paying?'<button class="btn sm" onclick="debtPayOpen('+mi+','+ri+')">💵 Доплатить</button>':'')+'</td></tr>';
+  if(DEBTOPEN[k]) h+='<tr class="sub"><td colspan="7" style="font-size:12.5px">за месяц: '+money(r.bal)+'<br>'+
     (r.docs.length?r.docs.map(function(d){ return '📄 ведомость «'+esc(d.kind)+'»: начислено '+money(d.accr)+', к выдаче '+money(d.pay); }).join('<br>'):'📄 ведомостей нет')+'<br>'+
     (r.pays.length?r.pays.map(function(p){ return '💵 '+esc(p.date)+' · '+esc(p.wallet)+' · '+money(p.sum)+(p.note?' <span class="muted">'+esc(p.note)+'</span>':''); }).join('<br>'):'💵 доплат нет')+'</td></tr>';
   if(paying){
     var cash=DEBT.wallets.cash||[], ws=cash.concat((DEBT.wallets.all||[]).filter(function(w){ return cash.indexOf(w)<0; }));
-    h+='<tr class="sub"><td colspan="6"><div class="row" style="gap:8px;flex-wrap:wrap;align-items:center;font-size:13px">'+
+    h+='<tr class="sub"><td colspan="7"><div class="row" style="gap:8px;flex-wrap:wrap;align-items:center;font-size:13px">'+
       '<label>Сумма <input id="dp_sum" value="'+r.debt+'" style="width:90px"></label>'+
       '<label>Кошелёк <select id="dp_wallet">'+ws.map(function(w){ return '<option>'+esc(w)+'</option>'; }).join('')+'</select></label>'+
       '<label>Дата <input id="dp_date" value="'+debtToday()+'" style="width:100px"></label>'+
