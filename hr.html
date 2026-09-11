@@ -1595,7 +1595,8 @@ function foldView(){
   FOLD.emps.forEach(function(e){ e.files.forEach(function(f){ n++; if(f.g.recog&&!f.g.done) unsure++; if(f.on) sel++; }); });
   var h='<div class="card"><b>📂 Подписанные сканы в папках сотрудников, ещё не приложенные к карточкам: '+n+'</b>'+
     '<div class="muted" style="font-size:12.5px;margin-top:3px">Черновики (Word, Google-документы) пропущены'+(FOLD.skipped?' — '+FOLD.skipped:'')+
-    '. Файлы остаются в папках, в карточку добавляется ссылка. Проверьте «Куда»; неясные — «Распознать» (читает Claude, ~10 с на файл). '+
+    '. Файлы остаются в папках, в карточку добавляется ссылка; несколько фото одного документа (страницы договора, акта) склеиваются в один PDF, фото уходят в подпапку «Оригиналы». '+
+    'Проверьте «Куда»; неясные — «Распознать» (читает Claude, ~10 с на файл). '+
     'Галочки стоят у тех, что определены уверенно.</div>'+
     '<div class="row" style="margin-top:8px;gap:6px;flex-wrap:wrap"><button class="btn" onclick="FOLD=null;render()">← к документам</button>'+
     (unsure?'<button class="btn"'+(FOLDBUSY?' disabled':'')+' onclick="foldRecogAll()">🔎 Распознать неясные ('+unsure+')</button>':'')+
@@ -1647,6 +1648,7 @@ function foldAttach(){
     FOLDBUSY=0;
     if(!r||!r.ok){ alert((r&&r.error)||'ошибка'); render(); return; }
     alert('Готово: к договорам и приказам приложено — '+r.linked+', новых документов — '+r.created+
+          (r.merged?', склеено в PDF из фото — '+r.merged:'')+
           (r.errors&&r.errors.length?'\nНе вышло: '+r.errors.join('; '):''));
     FOLD=null; load(1);
   }).catch(function(e){ FOLDBUSY=0; alert('сеть: '+e.message); render(); });
