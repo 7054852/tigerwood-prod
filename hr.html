@@ -1354,8 +1354,10 @@ function payView(){
   var sw='<div class="row" style="margin-bottom:8px;gap:6px">'+
     '<button class="btn'+(PAYMODE==='docs'?' pri':'')+'" onclick="PAYMODE=\'docs\';render()">📄 Ведомости</button>'+
     '<button class="btn'+(PAYMODE==='debt'?' pri':'')+'" onclick="PAYMODE=\'debt\';render()">📊 Долг по месяцам</button>'+
-    (PAYMODE==='debt'?'<button class="btn" onclick="DEBT=null;render()" title="пересчитать">⟳</button>':'')+'</div>';
-  return sw+(PAYMODE==='debt'?debtView():payDocsView());
+    '<button class="btn'+(PAYMODE==='reg'?' pri':'')+'" onclick="PAYMODE=\'reg\';render()">🧾 Реестр выплат</button>'+
+    (PAYMODE==='debt'?'<button class="btn" onclick="DEBT=null;render()" title="пересчитать">⟳</button>':'')+
+    (PAYMODE==='reg'?'<button class="btn" onclick="REG=null;render()" title="пересчитать">⟳</button>':'')+'</div>';
+  return sw+(PAYMODE==='debt'?debtView():PAYMODE==='reg'?regView():payDocsView());
 }
 function payDocsView(){
   if(!PAYDATA){
@@ -1449,7 +1451,7 @@ function paySave(){
   busy(1);
   apiPost({vapi:'hrpaysave',data:JSON.stringify(PAYEDIT)}).then(function(r){ busy(0);
     if(!r||!r.ok){ alert((r&&r.error)||'не сохранено'); return; }
-    PAYDATA=r; PAYEDIT=null; DEBT=null; render(); }).catch(function(e){ busy(0); alert('сеть: '+e.message); });
+    PAYDATA=r; PAYEDIT=null; DEBT=null; REG=null; render(); }).catch(function(e){ busy(0); alert('сеть: '+e.message); });
 }
 function payEdit(doc){
   var d=(PAYDATA.docs||[]).filter(function(x){ return x.doc===doc; })[0]; if(!d) return;
@@ -1460,7 +1462,7 @@ function payEdit(doc){
 }
 function payDel(doc){
   if(!confirm('Удалить ведомость? Файл на Диске останется.')) return;
-  busy(1); api({vapi:'hrpaydel',doc:doc}).then(function(r){ busy(0); if(!r||!r.ok){ alert((r&&r.error)||'ошибка'); return; } PAYDATA=r; DEBT=null; render(); });
+  busy(1); api({vapi:'hrpaydel',doc:doc}).then(function(r){ busy(0); if(!r||!r.ok){ alert((r&&r.error)||'ошибка'); return; } PAYDATA=r; DEBT=null; REG=null; render(); });
 }
 // ─── 📊 Долг по месяцам: заработано по нарядам − ведомости (до вычета) − доплаты ───
 var PAYMODE='docs', DEBT=null, DEBTLOADING=0, DEBTOPEN={}, DEBTPAY=null;
@@ -1520,8 +1522,52 @@ function debtPaySave(mi,ri){
   if(sum>r.debt+0.005 && !confirm('Сумма больше долга за месяц ('+money(r.debt)+'). Записать всё равно?')) return;
   busy(1);
   apiPost({vapi:'hrpaycash',data:JSON.stringify({name:r.name,ym:m.ym,sum:sum,wallet:$('dp_wallet').value,date:$('dp_date').value,dept:r.dept})})
-    .then(function(x){ busy(0); if(!x||!x.ok){ alert((x&&x.error)||'не записано'); return; } DEBT=x; DEBTPAY=null; render(); })
+    .then(function(x){ busy(0); if(!x||!x.ok){ alert((x&&x.error)||'не записано'); return; } DEBT=x; DEBTPAY=null; REG=null; render(); })
     .catch(function(e){ busy(0); alert('сеть: '+e.message); });
+}
+// ─── 🧾 Реестр выплат: кому, на каких условиях, в какой день, сколько — и сверка с выпиской ───
+var REG=null, REGYM='', REGLOADING=0;
+var REGST={paid:'✓ выплачено',bank:'✓ в реестре банка (не разнесено)',diff:'⚠ сверить сумму',late:'просрочено',wait:'к оплате'};
+var RECST={ok:'✓ есть в выписке',diff:'⚠ сумма в выписке другая',none:'✗ нет в выписке',wait:'ещё не срок'};
+function regYmShift(n){ var p=(REGYM||REG.ym).split('-'), d=new Date(+p[0],+p[1]-1+n,1);
+  REGYM=d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2); REG=null; render(); }
+function regView(){
+  if(!REG){
+    if(!REGLOADING){ REGLOADING=1; api({vapi:'hrpayreg',ym:REGYM}).then(function(r){ REGLOADING=0; REG=r; if(r&&r.ym) REGYM=r.ym; if(TAB==='pay'&&PAYMODE==='reg') render(); }); }
+    return '<div class="center">Собираю реестр: ведомости, акты, договоры, выписка…</div>'; }
+  if(!REG.ok) return '<div class="center">Ошибка: '+esc(REG.error||'')+'</div>';
+  var t=REG.totals||{}, col={paid:'#188038',bank:'#188038',ok:'#188038',diff:'#b06000',late:'#c5221f',none:'#c5221f'};
+  var pill=function(map,s){ return '<span style="color:'+(col[s]||'var(--muted)')+';font-weight:'+(col[s]&&s!=='paid'&&s!=='ok'&&s!=='bank'?700:400)+'">'+esc(map[s]||s)+'</span>'; };
+  var h='<div class="card"><div class="row" style="gap:8px;align-items:center"><button class="btn sm" onclick="regYmShift(-1)">◀</button>'+
+    '<b style="font-size:16px">'+esc(payMonth(REG.ym))+'</b><button class="btn sm" onclick="regYmShift(1)">▶</button><span style="flex:1"></span>'+
+    '<button class="btn sm" onclick="regExport()">⬇ Выгрузить</button></div>'+
+    '<div style="margin-top:6px;font-size:13px">к оплате <b>'+money(t.toPay)+'</b> · выплачено '+money(t.paid)+
+    (t.late?' · <b style="color:#c5221f">просрочено '+money(t.late)+'</b>':'')+'</div>'+
+    (REG.finErr?'<div style="color:#c5221f;font-size:12.5px;margin-top:4px">Фин.гений: '+esc(REG.finErr)+' — факт оплаты не проверен</div>':'')+'</div>';
+  h+='<div class="card"><b>🏦 Сверка с выпиской</b>'+(REG.recon.length?
+    '<div class="tbwrap" style="margin-top:6px"><table class="mob"><thead><tr><th>Что</th><th>Срок</th><th class="num">По документам</th><th>В выписке</th><th></th></tr></thead><tbody>'+
+    REG.recon.map(function(x){ return '<tr><td><b>'+esc(x.what)+'</b></td><td data-l="Срок">'+esc(x.due)+'</td>'+
+      '<td class="num" data-l="По документам">'+money(x.expected)+'</td>'+
+      '<td data-l="В выписке">'+(x.fact?esc(x.fact.date)+' · '+money(x.fact.sum)+(x.status==='diff'?' <span class="muted">(разница '+money(x.fact.sum-x.expected)+')</span>':''):'—')+'</td>'+
+      '<td>'+pill(RECST,x.status)+'</td></tr>'; }).join('')+'</tbody></table></div>'
+    :'<div class="muted" style="margin-top:4px">В этом месяце выплат по ведомостям нет — или ведомости не загружены.</div>')+
+    '<div class="muted" style="font-size:12px;margin-top:4px">Выплата реестром ищется в «Расходах» Фин.гения по сумме и дате: аванс — около 30-го, остаток — в течение месяца, налоги — по суммам из ведомости.</div></div>';
+  h+='<div class="card tbwrap"><table class="mob"><thead><tr><th>Срок</th><th>Кому</th><th>На каких условиях</th><th class="num">Сумма</th><th>Статус</th></tr></thead><tbody>'+
+    (REG.lines.length?REG.lines.map(function(l){ return '<tr><td><b>'+esc(l.due)+'</b></td><td data-l="Кому">'+esc(l.who)+'</td>'+
+      '<td data-l="Условия" style="font-size:12.5px">'+esc(l.terms)+'</td><td class="num" data-l="Сумма">'+money(l.sum)+'</td>'+
+      '<td data-l="Статус">'+pill(REGST,l.status)+(l.fact?' <span class="muted">'+esc(l.fact)+'</span>':'')+(l.plan?' <span class="muted">· будет '+esc(l.plan)+'</span>':'')+'</td></tr>'; }).join('')
+    :'<tr><td colspan="5" class="muted">Выплат на этот месяц нет.</td></tr>')+'</tbody></table></div>';
+  return h;
+}
+function regExport(){
+  var q=function(v){ v=String(v==null?'':v); return /[";\r\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; };
+  var lines=[['Срок','Кому','Условия','Сумма','Статус','Факт'].join(';')].concat(REG.lines.map(function(l){
+    return [l.due,l.who,l.terms,String(l.sum).replace('.',','),REGST[l.status]||l.status,(l.fact||'')+(l.plan?' будет '+l.plan:'')].map(q).join(';'); }));
+  lines.push(''); lines.push('Сверка с выпиской;Срок;По документам;В выписке;Статус');
+  REG.recon.forEach(function(x){ lines.push([x.what,x.due,String(x.expected).replace('.',','),x.fact?x.fact.date+' '+String(x.fact.sum).replace('.',','):'',RECST[x.status]||x.status].map(q).join(';')); });
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob(['﻿'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'}));
+  a.download='реестр выплат '+REG.ym+'.csv'; document.body.appendChild(a); a.click(); a.remove();
 }
 var TPLDATA=null;
 function tplView(){
