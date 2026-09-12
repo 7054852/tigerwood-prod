@@ -685,7 +685,9 @@ function sendWork(){
 function askInline(title, cur, cb, text){
   var old=document.getElementById('askbox'); if(old) old.parentNode.removeChild(old);
   var d=document.createElement('div'); d.id='askbox';
-  d.innerHTML='<div class="ab card"><div class="abt"></div><input id="askin" type="text"'+(text?'':' inputmode="decimal"')+' style="font-size:16px;width:100%;box-sizing:border-box">'
+  d.innerHTML='<div class="ab card"><div class="abt"></div>'
+    +(text?'<input id="askin" type="text"':'<input id="askin" type="number" step="1" min="0" inputmode="decimal"')
+    +' style="font-size:16px;width:100%;box-sizing:border-box">'
     +'<div class="row" style="margin-top:8px"><button class="sm" id="askok">ОК</button><button class="sm gray" id="askno">Отмена</button></div></div>';
   d.querySelector('.abt').textContent=title;
   document.body.appendChild(d);
@@ -781,7 +783,7 @@ function lineEditOpen(id, full, op, qty, kind, batchId){
   if(kind==='лист'){
     box.innerHTML='<div class="row" style="gap:6px;margin:4px 0 2px;flex-wrap:wrap">'
       +'<input id="le-mat-'+id+'" value="'+attr(det)+'" placeholder="материал листа" style="flex:1;min-width:160px">'
-      +'<input id="le-qty-'+id+'" value="'+qty+'" inputmode="decimal" style="width:70px">'
+      +'<input id="le-qty-'+id+'" type="number" step="1" min="0" value="'+qty+'" style="width:84px">'
       +'<button class="sm" onclick="lineEditSave(\''+id+'\',\'лист\')">Сохранить</button>'
       +'<button class="sm gray" onclick="leClose(\''+id+'\')">Отмена</button>'
       +'<span id="le-msg-'+id+'" class="msg"></span></div>';
@@ -793,7 +795,7 @@ function lineEditOpen(id, full, op, qty, kind, batchId){
     +'<select id="le-eq-'+id+'" onchange="lineEditDet(\''+id+'\')" style="max-width:180px">'+eqs.map(function(e){ return '<option'+(e===eq?' selected':'')+'>'+esc(e)+'</option>'; }).join('')+'</select>'
     +'<select id="le-det-'+id+'" onchange="lineEditOps(\''+id+'\')" style="max-width:230px"></select>'
     +'<select id="le-op-'+id+'" style="max-width:190px"></select>'
-    +'<input id="le-qty-'+id+'" value="'+qty+'" inputmode="decimal" style="width:70px">'
+    +'<input id="le-qty-'+id+'" type="number" step="1" min="0" value="'+qty+'" style="width:84px">'
     +'<select id="le-bt-'+id+'" style="max-width:170px"><option value=""'+(batchId?'':' selected')+'>🧰 вне заказа</option>'+bl+'</select>'
     +'<button class="sm" onclick="lineEditSave(\''+id+'\',\'\')">Сохранить</button>'
     +'<button class="sm gray" onclick="leClose(\''+id+'\')">Отмена</button>'
@@ -876,8 +878,7 @@ function renderPending(r){
         var dupb=l.dup?(' <span class="pill" style="background:#fdecea;color:#c0392b" title="'+esc(l.dup)+'">⚠ дубль</span>'):'';
         var acts='';
         if(master){
-          acts=' <button class="sm gray" onclick="lineEditOpen(\''+esc(l.id)+'\',\''+attr(l.detail)+'\',\''+attr(l.op)+'\','+l.qty+',\''+attr(l.kind||'')+'\',\''+attr(l.batchId||'')+'\')" title="изменить строку целиком: деталь, операцию, количество, заказ">✎</button>'
-            +'<button class="sm gray" onclick="editOut(\''+esc(l.id)+'\','+l.qty+')" title="изменить кол-во">✏️</button>'
+          acts=' <button class="sm gray" onclick="lineEditOpen(\''+esc(l.id)+'\',\''+attr(l.detail)+'\',\''+attr(l.op)+'\','+l.qty+',\''+attr(l.kind||'')+'\',\''+attr(l.batchId||'')+'\')" title="изменить строку: деталь, операция, количество, заказ">✏️</button>'
             +'<button class="sm gray" onclick="setKoef(\''+esc(l.id)+'\','+koef+')" title="коэффициент к сумме">×k</button>'
             +'<button class="sm gray" onclick="appr(\''+esc(l.id)+'\',0)" title="убрать эту строку из наряда">✖</button>';
         } else {   // свой наряд на проверке — можно поправить, пока мастер не подтвердил
@@ -967,9 +968,6 @@ function setOutTarget(id,target,sel){
   act({vapi:'setoutputtarget',id:id,target:target,master:DATA.worker||'мастер'}, null);
 }
 // правка строки внутри наряда (кол-во сохраняется, статус не меняется)
-function editOut(id,cur){
-  askNum('Изменить количество (было '+cur+'):', cur, function(q){ act({vapi:'updoutput',id:id,qty:q}, null); });
-}
 // убрать/отклонить одну строку
 function appr(id,ok){
   act({vapi:'approve',id:id,master:DATA.worker||'мастер',ok:ok?1:0}, null);
