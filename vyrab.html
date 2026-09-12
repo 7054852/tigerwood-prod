@@ -177,9 +177,11 @@ window.onerror=function(msg,src,line){
   <div id="ostat" style="margin-top:8px"></div>
   <div class="row" style="margin-top:8px">
     <button class="gray sm" onclick="otkAddToggle()">➕ Внести работу за рабочего</button>
+    <button class="gray sm" onclick="otkLogToggle()">🧾 Мои приёмки</button>
     <button class="gray sm" onclick="otkStatsToggle()">📊 Качество за месяц</button>
   </div>
   <div id="oadd" style="display:none"></div>
+  <div id="olog" style="display:none;margin-top:8px"></div>
   <div id="oqual" style="display:none;margin-top:8px"></div>
   <div id="olist">Загрузка…</div>
 </div>
@@ -1365,6 +1367,10 @@ function renderOtkAdd(){
   b.innerHTML='<div class="card"><b>Внести работу за рабочего</b>'
     +'<div class="muted" style="font-size:12px;margin:4px 0">Рабочий сложил детали в зону сдачи и не заводил наряд. Запись пойдёт отдельным нарядом с пометкой «внесён ОТК», ему придёт уведомление.</div>'
     +'<label>Сотрудник<select id="oa_w" style="font-size:16px">'+wopts+'</select></label>'
+    // ⚠ ДАТА ПРИЁМКИ. Контролёр часто вносит вчерашнюю смену (сдали под вечер, принял утром);
+    // без выбора даты работа падала на сегодня и портила табель и «выработку по дням».
+    +'<label>Дата приёмки<input id="oa_dt" type="date" value="'+attr(todayIso())+'" max="'+attr(todayIso())+'" style="font-size:16px"></label>'
+    +'<label>Смена<select id="oa_sh" style="font-size:16px"><option value="день">☀️ день</option><option value="ночь">🌙 ночь</option></select></label>'
     +'<label>Заказ<select id="oa_b" style="font-size:16px">'+bopts+'</select></label>'
     +'<label>Оборудование<select id="oa_e" style="font-size:16px" onchange="otkAddDet()">'+eqs.map(function(e){return opt(e);}).join('')+'</select></label>'
     +'<label>Деталь<select id="oa_d" style="font-size:16px" onchange="otkAddOp()"></select></label>'
@@ -1404,21 +1410,95 @@ function otkAddGo(){
   var eq=(document.getElementById('oa_e')||{}).value||'', d=(document.getElementById('oa_d')||{}).value||'';
   var o=(document.getElementById('oa_o')||{}).value||'', q=(document.getElementById('oa_q')||{}).value||'';
   var bad=(document.getElementById('oa_bad')||{}).value||'0';
+  var dt=(document.getElementById('oa_dt')||{}).value||'', sh=(document.getElementById('oa_sh')||{}).value||'день';
+  var dru=dt?ruOfIso(dt):todayRu();
   if(!w){ otkMsg('oa_msg','<span class="err">выберите сотрудника</span>'); return; }
   if(!(Number(q)>0)){ otkMsg('oa_msg','<span class="err">укажите принятое количество</span>'); return; }
-  if(!confirm('Внести за '+w+': '+d+' · '+o+'\nпринято '+q+' шт'+(Number(bad)>0?(', на переделку '+bad+' шт'):'')+'?')) return;
+  if(!confirm('Внести за '+w+' ('+dru+', '+sh+'): '+d+' · '+o+'\nпринято '+q+' шт'+(Number(bad)>0?(', на переделку '+bad+' шт'):'')+'?')) return;
   if(!otkGuard()) return;
   var btn=document.getElementById('oa_go'); if(btn){ btn.disabled=true; btn.textContent='вношу…'; }
-  api({vapi:'otkadd',worker:w,batch:b,equip:eq,detail:d,op:o,qty:q,bad:bad,date:todayRu(),shift:'день'}).then(function(r){
+  api({vapi:'otkadd',worker:w,batch:b,equip:eq,detail:d,op:o,qty:q,bad:bad,date:dru,shift:sh}).then(function(r){
     OTKBUSY=false; if(btn){ btn.disabled=false; btn.textContent='✅ Внести и принять'; }
     if(!r||!r.ok){ otkMsg('oa_msg','<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'); return; }
-    otkMsg('oa_msg','<span class="ok">✅ внесено на '+r.sum+' р.'+(Number(bad)>0?(' · брак '+bad+' шт учтён'):'')+'</span>');
+    if(OLOGOPEN) otkLogLoad();
+    otkMsg('oa_msg','<span class="ok">✅ внесено за '+esc(dru)+' на '+r.sum+' р.'+(Number(bad)>0?(' · брак '+bad+' шт учтён'):'')+'</span>');
     var qf=document.getElementById('oa_q'); if(qf) qf.value='';
     var bf=document.getElementById('oa_bad'); if(bf) bf.value='0';
     otkAddCalc(); loadOtk();
   }).catch(function(){ OTKBUSY=false; if(btn){ btn.disabled=false; btn.textContent='✅ Внести и принять'; } otkMsg('oa_msg','<span class="err">ошибка сети</span>'); });
 }
 function todayRu(){ var n=new Date(); return pad2(n.getDate())+'.'+pad2(n.getMonth()+1)+'.'+n.getFullYear(); }
+function todayIso(){ var n=new Date(); return n.getFullYear()+'-'+pad2(n.getMonth()+1)+'-'+pad2(n.getDate()); }
+function ruOfIso(s){ var p=String(s||'').split('-'); return p.length===3?(p[2]+'.'+p[1]+'.'+p[0]):todayRu(); }
+
+// ── ЖУРНАЛ ПРИЁМОК: что контролёр внёс за рабочих (поправить/удалить) ──
+// Ошибка приёмщика (не тот рабочий, не та дата, не то количество) раньше чинилась только
+// через мастера — своих записей он не видел вовсе.
+var OLOGOPEN=0, OLOGSEQ=0, OLOGEDIT={};
+function otkLogToggle(){ OLOGOPEN=!OLOGOPEN; var b=document.getElementById('olog');
+  b.style.display=OLOGOPEN?'':'none'; if(OLOGOPEN) otkLogLoad(); }
+function otkLogLoad(){
+  var b=document.getElementById('olog'); if(!b) return;
+  b.innerHTML='<div class="card muted">Загрузка…</div>';
+  var seq=++OLOGSEQ;
+  api({vapi:'otklog',days:30}).then(function(r){
+    if(seq!==OLOGSEQ) return;
+    if(!r||!r.ok){ b.innerHTML='<div class="card err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
+    OLOG=r; renderOtkLog();
+  }).catch(function(){ if(seq===OLOGSEQ) b.innerHTML='<div class="card err">ошибка сети</div>'; });
+}
+var OLOG=null;
+function renderOtkLog(){
+  var b=document.getElementById('olog'); if(!b||!OLOG) return;
+  var reps=OLOG.reports||[];
+  if(!reps.length){ b.innerHTML='<div class="card muted">За 30 дней вы ещё ничего не вносили за рабочих.</div>'; return; }
+  b.innerHTML='<div class="card"><b>🧾 Внесено вами за 30 дней: '+reps.length+' нарядов</b>'
+    +'<div class="muted" style="font-size:12px">Правится принятое и брак. Ошиблись рабочим или датой — удалите строку и внесите заново.</div></div>'
+    +reps.map(function(g){
+    var lines=g.lines.map(function(l){
+      var ed=!!OLOGEDIT[l.id];
+      var form=ed
+        ? '<div class="card" style="margin:6px 0 0;background:#fdf7f7">'
+          +'<div class="row"><label style="flex:1">Принято<input id="le-'+attr(l.id)+'" type="number" step="1" min="0" value="'+l.qty+'" style="font-size:16px"></label>'
+          +'<label style="flex:1">Брак<input id="lb-'+attr(l.id)+'" type="number" step="1" min="0" value="'+l.bad+'" style="font-size:16px"></label></div>'
+          +'<div class="row"><button class="sm" onclick="otkLogSave(\''+attr(l.id)+'\')">Сохранить</button>'
+          +'<button class="sm gray" onclick="otkLogEdit(\''+attr(l.id)+'\',0)">отмена</button>'
+          +'<span class="msg" id="lm-'+attr(l.id)+'"></span></div></div>'
+        : '';
+      return '<div style="border-top:1px solid #eee;padding-top:5px">'
+        +'<div class="row"><span>'+esc(l.detail)+' · '+esc(l.op)+' · <b>'+l.qty+' шт</b>'
+        +(l.bad>0?(' <span class="err">брак '+l.bad+'</span>'):'')+'</span>'
+        +'<span><b>'+l.sum+' р.</b> <button class="sm" onclick="otkLogEdit(\''+attr(l.id)+'\',1)">✏️</button>'
+        +'<button class="sm gray" onclick="otkLogDel(\''+attr(l.id)+'\')">✖</button></span></div>'
+        +'</div>'+form;
+    }).join('');
+    return '<div class="card"><div class="row"><b>'+esc(g.worker)+'</b><b>'+g.sum+' р.</b></div>'
+      +'<div class="muted" style="font-size:12px">📅 '+esc(g.date)+' · '+esc(g.shift)
+      +(OLOG.all&&g.by?(' · внёс '+esc(g.by)):'')
+      +(g.ack?(' · рабочий: '+esc(g.ack)):' · рабочий ещё не смотрел')+'</div>'+lines+'</div>';
+  }).join('');
+}
+function otkLogEdit(id,on){ if(on) OLOGEDIT[id]=1; else delete OLOGEDIT[id]; renderOtkLog(); }
+function otkLogSave(id){
+  var q=(document.getElementById('le-'+id)||{}).value||'', bad=(document.getElementById('lb-'+id)||{}).value||'0';
+  if(!(Number(q)>0)){ otkMsg('lm-'+id,'<span class="err">принято — число больше 0</span>'); return; }
+  if(!otkGuard()) return;
+  otkMsg('lm-'+id,'сохраняю…');
+  api({vapi:'otkeditrow',id:id,qty:q,bad:bad}).then(function(r){
+    OTKBUSY=false;
+    if(!r||!r.ok){ otkMsg('lm-'+id,'<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'); return; }
+    delete OLOGEDIT[id]; otkLogLoad(); loadOtk();
+  }).catch(function(){ OTKBUSY=false; otkMsg('lm-'+id,'<span class="err">ошибка сети</span>'); });
+}
+function otkLogDel(id){
+  if(!confirm('Удалить эту запись приёмки? Начисление рабочему снимется.')) return;
+  if(!otkGuard()) return;
+  api({vapi:'otkdelrow',id:id}).then(function(r){
+    OTKBUSY=false;
+    if(!r||!r.ok){ alert((r&&r.error)||'ошибка'); return; }
+    otkLogLoad(); loadOtk();
+  }).catch(function(){ OTKBUSY=false; alert('ошибка сети'); });
+}
 // ── отчёт по качеству ──
 var OQUAL=0, OQDAYS=0, OQSEQ=0;   // 0 — текущий месяц, иначе N последних дней
 function otkStatsToggle(){ OQUAL=!OQUAL; var b=document.getElementById('oqual');

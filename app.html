@@ -124,7 +124,7 @@ window.onerror=function(msg,src,line){
 <script>
 var BASE='https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';
 var APP='tw7prod', TGID='', ME=null, ROLE='', app=document.getElementById('app');
-var VER='20260912h';
+var VER='20260912i';
 var RUN=String(Date.now());   // одна метка на загрузку оболочки — сбивает кеш встроенных страниц   // бамп при изменении встраиваемых stat-страниц — сбивает кеш GitHub Pages в iframe
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
@@ -363,6 +363,7 @@ function usersView(box){
 function renderUsers(box,r){
   if(!r||!r.ok){ box.innerHTML='<div class="pad err">'+esc((r&&r.error)||'нет прав')+'</div>'; return; }
   var roles=r.roles||[], canEdit=r.canEdit, me=r.me||{}, isMaster=(me.role==='мастер');
+  var canInvite=(r.canInvite!==undefined)?r.canInvite:(canEdit||isMaster);   // менеджер по обеспечению зовёт рабочих, роли не раздаёт
   var pageTitle=isMaster?'👥 Моя бригада':'👥 Сотрудники и доступы';
   // список мастеров для выпадающего «Мастер/участок»
   var masters=(r.users||[]).filter(function(u){ return u.role==='мастер'; }).map(function(u){ return u.name; });
@@ -436,16 +437,17 @@ function renderUsers(box,r){
       +'</div>'
       +'<div id="invOut" style="margin-top:10px"></div>'
     +'</div>';
-  } else if(isMaster){
+  } else if(canInvite){
     invite='<div class="box" style="margin-bottom:14px;background:#f0f6ff;border-color:#d3e4fb">'
-      +'<div style="font-weight:700;margin-bottom:8px">➕ Пригласить рабочего в бригаду</div>'
-      +'<div class="muted" style="margin-bottom:8px">Получите ссылку и отправьте рабочему — он перейдёт, введёт ФИО и <b>сразу попадёт к вам в бригаду</b> как рабочий. Ссылка многоразовая.</div>'
+      +'<div style="font-weight:700;margin-bottom:8px">➕ Пригласить рабочего</div>'
+      +'<div class="muted" style="margin-bottom:8px">Получите ссылку и отправьте рабочему — он перейдёт, введёт ФИО и <b>сразу войдёт как рабочий</b>. Ссылка многоразовая.</div>'
       +'<button onclick="makeInvite(\'рабочий\',\'\')">Создать ссылку для рабочего</button>'
       +'<div id="invOut" style="margin-top:10px"></div>'
     +'</div>';
   }
   var intro=canEdit?'Все, кто зарегистрировался через бота. Приглашайте по ссылке (сразу под ролью) или правьте роль существующим — сохраняйте 💾.'
-    :(isMaster?'Ваши рабочие. Пригласите нового по ссылке — он сразу попадёт к вам в бригаду.':'Все, кто зарегистрировался через бота.');
+    :(isMaster?'Ваши рабочие. Пригласите нового по ссылке — он сразу попадёт к вам в бригаду.'
+    :(canInvite?'Сотрудники в системе. Пригласите нового рабочего по ссылке — роли назначает директор.':'Все, кто зарегистрировался через бота.'));
   box.innerHTML='<div class="pad"><div class="hi">'+pageTitle+'</div><p class="muted">'+intro+'</p>'+alert_+invite
     +'<div class="box" style="overflow-x:auto"><table>'+head+'<tbody>'+(rows||'<tr><td colspan=6 class="muted">пусто</td></tr>')+'</tbody></table></div>'
     +archBlock+'</div>';
