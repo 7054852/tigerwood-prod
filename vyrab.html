@@ -1442,6 +1442,12 @@ function sheetRateOf(mat){ var l=(CUT&&CUT.sheets)||[]; for(var i=0;i<l.length;i
 function detRateOf(det){ var d=CUT&&CUT.byDetail[det]; return d?(d.rate||0):0; }
 // с листа детали режет станок — их отдельно не оплачиваем (ЗП идёт за лист), но в заказ работа зачитывается
 function detPaid(det){ var d=CUT&&CUT.byDetail[det]; return !d || d.paid!==false; }
+function detPayMode(det){ var d=CUT&&CUT.byDetail[det]; return (d&&d.payMode)||''; }
+// лист оплачивается, пока хоть одна вышедшая с него деталь не помечена «за деталь» (правило sheetPaidWith_ на сервере)
+function sheetPaid(sd){ var any=false;
+  for(var i=0;i<sd.items.length;i++){ var det=sd.items[i].detail; if(!det) continue; any=true;
+    if(detPayMode(det)!=='за деталь') return true; }
+  return !any; }
 // ── структура: карточка листа и строка детали (собираются один раз, дальше только цифры) ──
 function sheetCardHtml(sd){
   return '<div class="card" id="s-'+sd.uid+'">'
@@ -1500,7 +1506,7 @@ function fillItemDom(sd,it){
 function recalcCut(){
   var total=0, needPick=false;
   for(var i=0;i<SHEETS.length;i++){
-    var sd=SHEETS[i], ss=Math.round((sd.qty||0)*sheetRateOf(sd.mat)*100)/100, out=0;
+    var sd=SHEETS[i], sp=sheetPaid(sd), ss=sp?Math.round((sd.qty||0)*sheetRateOf(sd.mat)*100)/100:0, out=0;
     total+=ss;
     for(var j=0;j<sd.items.length;j++){
       var it=sd.items[j], pd=detPaid(it.detail), ds=pd?(Math.round((it.qty||0)*detRateOf(it.detail)*100)/100):0;
@@ -1509,7 +1515,7 @@ function recalcCut(){
       txt('d-sum-'+sd.uid+'-'+it.uid, pd?(ds?(ds+' р.'):'') : (it.detail?'0 р. · оплачено листом':''));
     }
     txt('s-lbl-'+sd.uid,'Лист '+(i+1));
-    txt('s-sum-'+sd.uid, ss+' р.');
+    txt('s-sum-'+sd.uid, sp?(ss+' р.'):'0 р. · оплачено деталями');
     txt('s-out-'+sd.uid,'выход: '+out+' дет.');
   }
   CUTTOTAL=Math.round(total*100)/100; CUTNEEDPICK=needPick;
