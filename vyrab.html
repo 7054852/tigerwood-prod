@@ -426,9 +426,11 @@ function fillOps(){
     calc(); return;
   }
   var p=curProd(), name=document.getElementById('detail').value; var ops=(p.details||{})[name]||[];
-  document.getElementById('op').innerHTML=ops.map(function(o){ return opt(o.op, o.op+' — '+(opPaid(o)?(o.rate+' р.'):'оплата за лист')); }).join(''); calc(); }
-// «только ЧПУ» = деталь режет станок, человеку платит строка листа. Расценка остаётся (это трудоёмкость), ЗП — нет.
-function opPaid(o){ return !o || String(o.pay||'').toLowerCase()!=='только чпу'; }
+  document.getElementById('op').innerHTML=ops.map(function(o){ return opt(o.op, o.op+' — '+(opPaid(o)?(o.rate+' р.'):'0 р. — оплата за лист, подайте во вкладке «🪚 Раскрой»')); }).join(''); calc(); }
+// «только ЧПУ» и «за лист» = деталь режет станок, человеку платит строка листа. Расценка остаётся
+// (это трудоёмкость), ЗП — нет. ⚠ Эту же деталь надо подавать во вкладке «🪚 Раскрой» ВМЕСТЕ С ЛИСТОМ:
+// поданная обычной формой, она даёт ноль — так и получился наряд Гончара 11.09 на 0 р.
+function opPaid(o){ var p=String((o&&o.pay)||'').toLowerCase(); return !o || (p!=='только чпу' && p!=='за лист'); }
 function curOp(){ var op=document.getElementById('op').value;
   if(isProdMode()){ var mm=curPModel(); return ((mm&&mm.ops)||[]).filter(function(y){return y.op===op;})[0]||null; }
   var p=curProd(), name=document.getElementById('detail').value; return ((p.details||{})[name]||[]).filter(function(y){return y.op===op;})[0]||null; }
@@ -502,7 +504,7 @@ function renderCart(){
   var c=document.getElementById('cart');
   if(!CART.length){ c.innerHTML=''; renderTotals(); return; }
   c.innerHTML='<div class="card"><div class="row"><b>Операции: '+CART.length+'</b><span class="muted">'+esc(SHIFT==='ночь'?'🌙 ночь':'☀️ день')+'</span></div>'
-    +CART.map(function(x,i){ return '<div class="row" style="border-top:1px solid #eee;padding-top:5px"><span>'+esc(x.label||x.detail)+' · '+esc(x.op)+' · '+x.qty+' шт → '+(x.paid===false?'<span class="muted">0 р. · оплачено листом</span>':(x.sum+' р.'))
+    +CART.map(function(x,i){ return '<div class="row" style="border-top:1px solid #eee;padding-top:5px"><span>'+esc(x.label||x.detail)+' · '+esc(x.op)+' · '+x.qty+' шт → '+(x.paid===false?'<span class="muted">0 р. · оплата за лист — подайте во вкладке «🪚 Раскрой» вместе с листом</span>':(x.sum+' р.'))
       +' <span class="muted" style="font-size:11px">'+esc(x.batchName||'')+'</span></span><button class="sm gray" onclick="rmCart('+i+')">✕</button></div>'; }).join('')
     +'</div>';
   renderTotals();
@@ -640,6 +642,12 @@ function sendWork(){
       +'Так они попадут в зарплату, но не в выполнение заказа.\n'
       +'Если работа шла по заказу — отмените и выберите заказ в списке.\n\nВсё равно отправить?')) return;
   }
+  // ⚠ деталь, которую оплачивает лист, поданная обычной формой = ноль в наряде (так вышло 11.09)
+  var byLeaf=CART.filter(function(x){ return x.paid===false; });
+  if(byLeaf.length && !confirm('В наряде операций с оплатой ЗА ЛИСТ: '+byLeaf.length+'\n'
+    +byLeaf.slice(0,3).map(function(x){ return '· '+(x.label||x.detail)+' · '+x.op; }).join('\n')+(byLeaf.length>3?'\n· …':'')
+    +'\n\nЗа них начислится 0 р. Такие детали подают во вкладке «🪚 Раскрой» вместе с листом — тогда платит строка листа.'
+    +'\n\nВсё равно отправить?')) return;
   var sheets=[];
   for(var i=0;i<SHEETS.length;i++){
     var sd=SHEETS[i]; if(!sd.mat||!(sd.qty>0)) continue;
