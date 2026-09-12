@@ -24,14 +24,6 @@
   th,td{ padding:5px 8px; border-bottom:1px solid var(--line); text-align:left; vertical-align:middle; }
   th.num,td.num{ text-align:right; }
   /* строка сотрудника в табеле */
-  .wrow{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; border-bottom:1px solid var(--line); padding:7px 0; }
-  .wname{ font-weight:700; flex:1; min-width:150px; }
-  .sbtn{ border-radius:20px; padding:4px 11px; font-size:12.5px; background:#eef1f8; color:#556; }
-  .sbtn.on-day{ background:#fff3d6; color:#8a6d00; } .sbtn.on-night{ background:#e3e8ff; color:#3446a0; }
-  .fbtn{ border-radius:20px; padding:4px 10px; font-size:12px; background:#eef1f8; color:#556; }
-  .fbtn.on-out{ background:#e6f4ea; color:var(--green); } .fbtn.on-no{ background:#fdecea; color:var(--red); }
-  .gsel{ font-size:12.5px; padding:4px 6px; max-width:130px; }
-  .opsin{ font-size:12.5px; padding:4px 6px; width:150px; }
   /* месяц */
   .mgrid td,.mgrid th{ padding:3px 4px; font-size:11.5px; text-align:center; white-space:nowrap; }
   .mgrid td.nm{ text-align:left; font-weight:600; white-space:nowrap; }
@@ -177,7 +169,7 @@ function isoToday(d){ d=d||new Date(); return d.getFullYear()+'-'+pad2(d.getMont
 function ruDate(iso){ var p=String(iso||'').split('-'); return p.length===3?(p[2]+'.'+p[1]+'.'+p[0]):iso; }
 function dayName(iso){ try{ return ['вс','пн','вт','ср','чт','пт','сб'][new Date(iso+'T12:00:00').getDay()]; }catch(e){ return ''; } }
 
-var app=$('app'), TAB='t', DATE=isoToday(), D=null;
+var app=$('app'), TAB='m';
 
 function goPlan(){
   try{ window.top.postMessage({tw:'go',id:'prodplan'},'*'); }catch(e){}
@@ -188,71 +180,20 @@ function shell(){
   // кто вышел, месяц, ведомость заработка. Две половины планирования больше не живут в разных
   // разделах на разных датах.
   app.innerHTML='<div class="tabs">'
-    +'<button id="tb-t" onclick="showTab(\'t\')">📅 Табель</button>'
-    +'<button id="tb-m" onclick="showTab(\'m\')">🗓 Месяц</button>'
+    +'<button id="tb-m" onclick="showTab(\'m\')">📅 Табель</button>'
     +'<button id="tb-z" onclick="showTab(\'z\')">💰 Заработок</button></div>'
     +'<div class="box muted" style="padding:9px 12px">Расстановка по участкам и задания бойцам — в разделе '
     +'<a href="javascript:void(0)" onclick="goPlan()"><b>📊 Планирование</b></a>.</div>'
     +'<div id="pane"></div>';
   showTab(TAB);
 }
-function showTab(t){ TAB=t; ['t','m','z'].forEach(function(x){ var b=$('tb-'+x); if(b) b.className=(x===t?'active':''); });
-  if(t==='t') loadDay(); else if(t==='z') loadPay(); else loadMonth(); }
+function showTab(t){ TAB=t; ['m','z'].forEach(function(x){ var b=$('tb-'+x); if(b) b.className=(x===t?'active':''); });
+  if(t==='z') loadPay(); else loadMonth(); }
 
-/* ── ТАБЕЛЬ НА ДАТУ ──
-   Отклик мгновенный: кнопка меняется СРАЗУ (оптимистично), запись уходит в фоне;
-   при ошибке — предупреждение и перезагрузка с сервера. Даты кэшируются (навигация без ожидания). */
-var DAYCACHE={}, SAVING=0;
-function shiftDate(dd){ var d=new Date(DATE+'T12:00:00'); d.setDate(d.getDate()+dd); DATE=isoToday(d); loadDay(); }
-function loadDay(force){
-  var c=DAYCACHE[DATE], silent=(force==='silent');
-  if(c&&!force){ D=c; renderDayView(); }              // из кэша — мгновенно; свежее подтянется следом
-  else if(!silent) $('pane').innerHTML='<div class="center muted">Загрузка…</div>';
-  api({vapi:'tabelday',date:DATE,tgid:TGID}).then(function(r){
-    if(!r||!r.ok){ if(!c&&TAB==='t') $('pane').innerHTML='<div class="box err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
-    if(SAVING>0) return;                               // идёт фоновая запись — не затирать оптимистичное состояние
-    DAYCACHE[r.date]=r;                                // данные в кэш в любом случае
-    if(TAB!=='t'||r.date!==DATE) return;               // пользователь уже на другой вкладке/дате — экран не трогаем
-    D=r; renderDayView();
-  });
-}
-function recalcSum(){
-  var s={day:0,night:0,out:0,no:0};
-  D.workers.forEach(function(w){ if(w.shift==='день')s.day++; if(w.shift==='ночь')s.night++;
-    if(w.status==='вышел')s.out++; if(w.status==='не вышел')s.no++; });
-  D.summary=s;
-}
-function renderDayView(){
-  var r=D, isPast=DATE<=isoToday();
-  var head='<div class="box"><div class="row">'
-    +'<button class="gho" onclick="shiftDate(-1)">←</button>'
-    +'<input type="date" value="'+DATE+'" onchange="DATE=this.value;loadDay();">'
-    +'<button class="gho" onclick="shiftDate(1)">→</button>'
-    +'<b>'+ruDate(DATE)+' ('+dayName(DATE)+')</b>'
-    +'<span class="pill" style="background:#fff3d6;color:#8a6d00">☀️ '+r.summary.day+'</span>'
-    +'<span class="pill" style="background:#e3e8ff;color:#3446a0">🌙 '+r.summary.night+'</span>'
-    +(r.summary.out?'<span class="pill" style="background:#e6f4ea;color:#137333">вышло '+r.summary.out+'</span>':'')
-    +(r.summary.no?'<span class="pill" style="background:#fdecea;color:#c0392b">не вышло '+r.summary.no+'</span>':'')
-    +'<span class="muted" id="sv" style="font-size:12px"></span>'
-    +'</div><div class="muted" style="margin-top:4px">Нажмите ☀️/🌙 чтобы отметить смену; ещё раз — снять. '+(isPast?'Отметьте факт: ✓ вышел / ✗ не вышел.':'')+'</div></div>';
-  var gopts=function(cur){ return '<option value="">— участок —</option>'+D.groups.map(function(g){ return '<option'+(g===cur?' selected':'')+'>'+esc(g)+'</option>'; }).join(''); };
-  var rows=r.workers.map(function(w,i){
-    var fact = (w.shift && isPast)
-      ? ' <button class="fbtn'+(w.status==='вышел'?' on-out':'')+'" onclick="setFact('+i+',\'вышел\')">✓ вышел</button>'
-        +'<button class="fbtn'+(w.status==='не вышел'?' on-no':'')+'" onclick="setFact('+i+',\'не вышел\')">✗ не вышел</button>'
-      : '';
-    var assign = w.shift
-      ? ' <select class="gsel" onchange="setAssign('+i+',this.value,null)">'+gopts(w.group)+'</select>'
-        +'<input class="opsin" placeholder="операции (не обяз.)" value="'+esc(w.ops)+'" onchange="setAssign('+i+',null,this.value)">'
-      : '';
-    return '<div class="wrow"><span class="wname">'+esc(w.name)+(w.role!=='рабочий'?' <span class="muted" style="font-size:11px">'+esc(w.role)+'</span>':'')+'</span>'
-      +'<button class="sbtn'+(w.shift==='день'?' on-day':'')+'" onclick="setShift('+i+',\'день\')">☀️ день</button>'
-      +'<button class="sbtn'+(w.shift==='ночь'?' on-night':'')+'" onclick="setShift('+i+',\'ночь\')">🌙 ночь</button>'
-      +(w.shift?'<button class="gho" style="color:var(--red);font-weight:700" onclick="clearShift('+i+')" title="снять смену">✕ снять</button>':'')
-      +fact+assign+'</div>';
-  }).join('');
-  $('pane').innerHTML=head+'<div class="box">'+ (rows||'<div class="muted">нет активных сотрудников</div>') +'</div>';
-}
+/* ── ТАБЕЛЬ (месяц) ──
+   Отклик мгновенный: клетка меняется СРАЗУ (оптимистично), запись уходит в фоне;
+   при ошибке — предупреждение и перезагрузка с сервера. */
+var SAVING=0;
 function svShow(h){ var e=$('sv'); if(e){ if(h==null) e.textContent='💾 сохраняю…'; else e.innerHTML=h; } }
 function svDone(){ var e=$('sv'); if(e) e.textContent=''; }
 var CONVERGE=null, SAVEQ=Promise.resolve();
@@ -261,41 +202,16 @@ function bgSave(p){
   // записи уходят СТРОГО ПО ОЧЕРЕДИ кликов (иначе параллельные запросы могут обогнать друг друга)
   SAVEQ=SAVEQ.then(function(){ return api(p); }).then(function(r){
     SAVING--; if(SAVING<=0){ SAVING=0; svDone(); scheduleConverge(); }
-    if(!r||!r.ok){ alert((r&&r.error)||'не сохранилось — обновляю'); if(TAB==='m') loadMonth(); else loadDay(true); }
-  }).catch(function(){ SAVING--; if(SAVING<0)SAVING=0; alert('Нет связи — обновляю'); if(TAB==='m') loadMonth(); else loadDay(true); });
+    if(!r||!r.ok){ alert((r&&r.error)||'не сохранилось — обновляю'); loadMonth(); }
+  }).catch(function(){ SAVING--; if(SAVING<0)SAVING=0; alert('Нет связи — обновляю'); loadMonth(); });
 }
 // после того как все записи ушли — один тихий сверочный запрос (экран сходится с сервером)
 function scheduleConverge(){
   if(CONVERGE) clearTimeout(CONVERGE);
   CONVERGE=setTimeout(function(){ CONVERGE=null; if(SAVING!==0) return;
-    if(TAB==='t') loadDay('silent'); else if(TAB==='m') loadMonth(true); },1200);
-}
-function setShift(i,sh){
-  var w=D.workers[i]; var next=(w.shift===sh)?'':sh;   // повторный клик — снять смену
-  w.shift=next; if(!next){ w.status=''; w.group=''; w.ops=''; } else if(!w.status||w.status==='') w.status='план';
-  recalcSum(); renderDayView();                         // мгновенно на экране
-  bgSave({vapi:'tabelset',date:DATE,worker:w.name,shift:next,tgid:TGID});
+    if(TAB==='m') loadMonth(true); },1200);
 }
 // явное снятие смены (кнопка ✕ — то же, что повторный клик по активной смене)
-function clearShift(i){
-  var w=D.workers[i];
-  w.shift=''; w.status=''; w.group=''; w.ops='';
-  recalcSum(); renderDayView();
-  bgSave({vapi:'tabelset',date:DATE,worker:w.name,shift:'',tgid:TGID});
-}
-function setFact(i,st){
-  var w=D.workers[i]; var next=(w.status===st)?'план':st;   // повторный клик — сброс к «план»
-  w.status=next; recalcSum(); renderDayView();
-  bgSave({vapi:'tabelfact',date:DATE,worker:w.name,status:next,tgid:TGID});
-}
-function setAssign(i,group,ops){
-  var w=D.workers[i];
-  if(group!=null) w.group=group; if(ops!=null) w.ops=ops;   // локально сразу; без перерисовки — фокус не теряем
-  var p={vapi:'tabelassign',date:DATE,worker:w.name,tgid:TGID};
-  if(group!=null) p.group=group; if(ops!=null) p.ops=ops;
-  bgSave(p);
-}
-
 /* ── ЗАРАБОТОК: ведомость «рабочий × день месяца» ── */
 var ZYM=isoToday().slice(0,7), PAY=null;
 function shiftZ(d){ var p=ZYM.split('-'); var dt=new Date(Number(p[0]),Number(p[1])-1+d,1); ZYM=dt.getFullYear()+'-'+pad2(dt.getMonth()+1); loadPay(); }
@@ -513,7 +429,7 @@ function monthCellClick(ev){
   var next=(sh==='')?'день':(sh==='день'?'ночь':'');
   // по смене уже отмечен ФАКТ выхода: снятие удалило бы строку вместе с фактом — не пускаем
   if(next==='' && st && st!=='план'){
-    alert(w+' '+d+'.'+M.mon+': выход уже отмечен («'+st+'») — снять смену можно только вместе с фактом во вкладке «Табель».');
+    alert(w+' '+d+'.'+M.mon+': выход уже отмечен («'+st+'»). Чтобы снять смену, переключитесь в «✅ Отмечаю выход», верните клетку в «план» и снимите смену.');
     return;
   }
   if(next==='') delete M.map[key];
@@ -526,7 +442,7 @@ shell();
 // авто-обновление: оболочка шлёт «refresh» при возврате на раздел — перечитываем данные без перезагрузки страницы
 (function(){
   try{ var m=/[?&]twsec=([^&]+)/.exec(location.search); window.top.postMessage({tw:'hello',sec:m?decodeURIComponent(m[1]):''},'*'); }catch(e){}
-  window.addEventListener('message',function(e){ var d=e&&e.data; if(d&&d.tw==='refresh'){ try{ DAYCACHE={}; if(TAB==='z')loadPay(); else if(TAB==='t')loadDay(true); else loadMonth(); }catch(err){} } });
+  window.addEventListener('message',function(e){ var d=e&&e.data; if(d&&d.tw==='refresh'){ try{ if(TAB==='z')loadPay(); else loadMonth(); }catch(err){} } });
 })();
 
 // ─────── ПОКАЗЫВАЕМ, ЧТО ИДЁТ РАБОТА ───────
