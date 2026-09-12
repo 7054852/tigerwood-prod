@@ -297,6 +297,7 @@ function fillJWorkers(){
 function actWorkers(){
   return (DATA.workers||[]).filter(function(w){ return w.active===undefined || w.active; });
 }
+function payNote(l){ return (l&&l.kind==='лист') ? 'оплачено деталями' : 'оплачено листом'; }
 function showTab(t){
   ['w','c','o','m','j'].forEach(function(x){
     document.getElementById('pane-'+x).style.display = x===t?'':'none';
@@ -835,7 +836,7 @@ function renderPending(r){
         }
         return '<div style="border-top:1px solid #eee;padding-top:5px">'
           +'<div class="row"><span>'+kindBadge(l)+esc(l.detail)+' · '+esc(l.op)+' · '+l.qty+' шт'+kbadge+dupb+'</span>'
-          +'<span>'+(l.paid===false?'<span class="muted">0 р. · оплачено листом</span>':(l.sum+' р.'))+acts+'</span></div>'
+          +'<span>'+(l.paid===false?'<span class="muted">0 р. · '+payNote(l)+'</span>':(l.sum+' р.'))+acts+'</span></div>'
           +vsel+'</div>';
       }).join('');
       var night=(rp.shift==='ночь');
@@ -1129,7 +1130,7 @@ function renderJournal(){
             : kindBadge(it)+esc(it.detail)+' · '+esc(it.op)+' · '+it.qty+' шт'+kbadge;
         var money = (it.status==='ждёт ОТК')
           ? '<span class="muted">🔎 ждёт приёмку ОТК</span>'
-          : '<span class="'+(it.paid===false?'muted':'ok')+'">'+(it.paid===false?'0 р · оплачено листом':(it.sum+' р'))+'</span>';
+          : '<span class="'+(it.paid===false?'muted':'ok')+'">'+(it.paid===false?'0 р · '+payNote(it):(it.sum+' р'))+'</span>';
         // след приёмки: кто принял и сколько вернул — видно и рабочему, и мастеру
         var qc = it.qcBy
           ? '<div class="muted" style="font-size:12px">🔎 принял '+esc(it.qcBy)+(it.qcAt?(' · '+esc(it.qcAt)):'')
