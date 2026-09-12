@@ -297,6 +297,8 @@ function fillJWorkers(){
 function actWorkers(){
   return (DATA.workers||[]).filter(function(w){ return w.active===undefined || w.active; });
 }
+// значение внутри onclick='...' — апостроф обязателен к экранированию, иначе строка ломает разметку
+function attr(s){ return esc(s).replace(/'/g,'&#39;'); }
 function payNote(l){ return (l&&l.kind==='лист') ? 'оплачено деталями' : 'оплачено листом'; }
 function showTab(t){
   ['w','c','o','m','j'].forEach(function(x){
@@ -762,6 +764,60 @@ function loadPending(){
 }
 // ДЕЙСТВИЯ МАСТЕРА идут через одну обёртку: без неё ошибка сети уходила в никуда
 // (ноль реакции), а повторное нажатие слало второй такой же запрос.
+// ─── полная правка строки наряда (проверяющий): деталь, операция, количество, заказ ───
+// Рабочий ошибается не только в количестве — бывает, выбрал не ту операцию. Раньше строку
+// приходилось удалять и вводить заново, теряя наряд и дату; теперь меняются все её части.
+function lev(id){ var e=document.getElementById(id); return e?String(e.value||'').trim():''; }
+function leClose(id){ var b=document.getElementById('le-'+id); if(b) b.innerHTML=''; }
+function lineEditOpen(id, full, op, qty, kind, batchId){
+  var box=document.getElementById('le-'+id); if(!box) return;
+  if(box.innerHTML){ box.innerHTML=''; return; }                       // повторное нажатие — закрыть
+  var p=String(full||'').split(' — '), eq=p[0]||'', det=p.slice(1).join(' — ');
+  if(kind==='лист'){
+    box.innerHTML='<div class="row" style="gap:6px;margin:4px 0 2px;flex-wrap:wrap">'
+      +'<input id="le-mat-'+id+'" value="'+attr(det)+'" placeholder="материал листа" style="flex:1;min-width:160px">'
+      +'<input id="le-qty-'+id+'" value="'+qty+'" inputmode="decimal" style="width:70px">'
+      +'<button class="sm" onclick="lineEditSave(\''+id+'\',\'лист\')">Сохранить</button>'
+      +'<button class="sm gray" onclick="leClose(\''+id+'\')">Отмена</button>'
+      +'<span id="le-msg-'+id+'" class="msg"></span></div>';
+    return;
+  }
+  var eqs=(DATA.equipments||[]).slice(); if(eq && eqs.indexOf(eq)<0) eqs.unshift(eq);
+  var bl=(DATA.batches||[]).map(function(b){ return '<option value="'+attr(b.id)+'"'+(b.id===batchId?' selected':'')+'>'+esc(b.num+' · '+b.name)+'</option>'; }).join('');
+  box.innerHTML='<div class="row" style="gap:6px;margin:4px 0 2px;flex-wrap:wrap">'
+    +'<select id="le-eq-'+id+'" onchange="lineEditDet(\''+id+'\')" style="max-width:180px">'+eqs.map(function(e){ return '<option'+(e===eq?' selected':'')+'>'+esc(e)+'</option>'; }).join('')+'</select>'
+    +'<select id="le-det-'+id+'" onchange="lineEditOps(\''+id+'\')" style="max-width:230px"></select>'
+    +'<select id="le-op-'+id+'" style="max-width:190px"></select>'
+    +'<input id="le-qty-'+id+'" value="'+qty+'" inputmode="decimal" style="width:70px">'
+    +'<select id="le-bt-'+id+'" style="max-width:170px"><option value=""'+(batchId?'':' selected')+'>🧰 вне заказа</option>'+bl+'</select>'
+    +'<button class="sm" onclick="lineEditSave(\''+id+'\',\'\')">Сохранить</button>'
+    +'<button class="sm gray" onclick="leClose(\''+id+'\')">Отмена</button>'
+    +'<span id="le-msg-'+id+'" class="msg"></span></div>';
+  lineEditDet(id, det, op);
+}
+function lineEditDet(id, det, op){
+  var pk=(DATA.comp||{})[lev('le-eq-'+id)]||{order:[],details:{}};
+  var list=(pk.order&&pk.order.length)?pk.order:Object.keys(pk.details||{});
+  if(det && list.indexOf(det)<0) list=[det].concat(list);
+  var ds=document.getElementById('le-det-'+id); if(!ds) return;
+  ds.innerHTML=list.map(function(d){ return '<option'+(d===det?' selected':'')+'>'+esc(d)+'</option>'; }).join('');
+  lineEditOps(id, op);
+}
+function lineEditOps(id, op){
+  var pk=(DATA.comp||{})[lev('le-eq-'+id)]||{details:{}}, ops=(pk.details||{})[lev('le-det-'+id)]||[];
+  var os=document.getElementById('le-op-'+id); if(!os) return;
+  os.innerHTML=ops.map(function(o){
+    return '<option value="'+attr(o.op)+'"'+(o.op===op?' selected':'')+'>'+esc(o.op)+' · '+o.rate+' р.'+(o.pay?(' · '+esc(o.pay)):'')+'</option>'; }).join('')
+    || '<option value="">нет расценок на эту деталь</option>';
+}
+function lineEditSave(id, kind){
+  var msg=document.getElementById('le-msg-'+id), d={qty:lev('le-qty-'+id)};
+  if(kind==='лист') d.detail=lev('le-mat-'+id);
+  else { d.equip=lev('le-eq-'+id); d.detail=lev('le-det-'+id); d.op=lev('le-op-'+id); d.batch=lev('le-bt-'+id); }
+  if(!(Number(String(d.qty).replace(',','.'))>0)){ if(msg) msg.textContent='кол-во должно быть больше нуля'; return; }
+  if(kind!=='лист' && !d.op){ if(msg) msg.textContent='выберите операцию'; return; }
+  act({vapi:'editoutline',id:id,data:JSON.stringify(d)}, msg);
+}
 var BUSYACT=0;
 function act(p, msg, done){
   if(BUSYACT){ if(msg) msg.innerHTML='<span class="muted">подождите — предыдущее действие ещё идёт</span>'; return; }
@@ -815,7 +871,8 @@ function renderPending(r){
         var dupb=l.dup?(' <span class="pill" style="background:#fdecea;color:#c0392b" title="'+esc(l.dup)+'">⚠ дубль</span>'):'';
         var acts='';
         if(master){
-          acts=' <button class="sm gray" onclick="editOut(\''+esc(l.id)+'\','+l.qty+')" title="изменить кол-во">✏️</button>'
+          acts=' <button class="sm gray" onclick="lineEditOpen(\''+esc(l.id)+'\',\''+attr(l.detail)+'\',\''+attr(l.op)+'\','+l.qty+',\''+attr(l.kind||'')+'\',\''+attr(l.batchId||'')+'\')" title="изменить строку целиком: деталь, операцию, количество, заказ">✎</button>'
+            +'<button class="sm gray" onclick="editOut(\''+esc(l.id)+'\','+l.qty+')" title="изменить кол-во">✏️</button>'
             +'<button class="sm gray" onclick="setKoef(\''+esc(l.id)+'\','+koef+')" title="коэффициент к сумме">×k</button>'
             +'<button class="sm gray" onclick="appr(\''+esc(l.id)+'\',0)" title="убрать эту строку из наряда">✖</button>';
         } else {   // свой наряд на проверке — можно поправить, пока мастер не подтвердил
@@ -837,7 +894,7 @@ function renderPending(r){
         return '<div style="border-top:1px solid #eee;padding-top:5px">'
           +'<div class="row"><span>'+kindBadge(l)+esc(l.detail)+' · '+esc(l.op)+' · '+l.qty+' шт'+kbadge+dupb+'</span>'
           +'<span>'+(l.paid===false?'<span class="muted">0 р. · '+payNote(l)+'</span>':(l.sum+' р.'))+acts+'</span></div>'
-          +vsel+'</div>';
+          +vsel+'<div id="le-'+esc(l.id)+'"></div></div>';
       }).join('');
       var night=(rp.shift==='ночь');
       var koefs=rp.lines.map(function(l){return l.koef||1;});
