@@ -299,7 +299,12 @@ function actWorkers(){
 }
 // значение внутри onclick='...' — апостроф обязателен к экранированию, иначе строка ломает разметку
 function attr(s){ return esc(s).replace(/'/g,'&#39;'); }
-function payNote(l){ return (l&&l.kind==='лист') ? 'оплачено деталями' : 'оплачено листом'; }
+function payNote(l){
+  if(l&&l.kind==='лист') return 'оплачено деталями';
+  // деталь оплачивается листом, а листа в наряде нет — это ошибка ввода, а не «так и задумано»
+  if(l&&!l.sheet) return 'оплата за лист — листа в наряде нет';
+  return 'оплачено листом';
+}
 function showTab(t){
   ['w','c','o','m','j'].forEach(function(x){
     document.getElementById('pane-'+x).style.display = x===t?'':'none';
