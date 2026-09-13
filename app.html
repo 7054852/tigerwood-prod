@@ -124,7 +124,7 @@ window.onerror=function(msg,src,line){
 <script>
 var BASE='https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';
 var APP='tw7prod', TGID='', ME=null, ROLE='', app=document.getElementById('app');
-var VER='20260913d';
+var VER='20260913e';
 var RUN=String(Date.now());   // одна метка на загрузку оболочки — сбивает кеш встроенных страниц   // бамп при изменении встраиваемых stat-страниц — сбивает кеш GitHub Pages в iframe
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
@@ -162,7 +162,7 @@ function isDir(){ return ROLE==='директор'||ROLE==='админ'; }
 var GROUPS=[
   { key:'sales',   title:'Продажи',               items:['deals','clients','invoices','contracts','docs','price'] },
   { key:'catalog', title:'Каталог и расценки',     items:['products','catalog','ops','cost'] },
-  { key:'prod',    title:'Производство',           items:['boss','plan','prodplan','wipstore','vyrab','vcheck','vjournal','otk','tabel','stats','myteam'] },
+  { key:'prod',    title:'Производство',           items:['boss','plan','prodplan','wipstore','vyrab','vcheck','otk','tabel','stats','myteam'] },
   { key:'supply',  title:'Снабжение и материалы',  items:['indocs','materials','snab'] },
   { key:'hr',      title:'Кадры',                 items:['hr'] },
   { key:'admin',   title:'Администрирование',      items:['dash','company','access','users'] }
@@ -396,6 +396,13 @@ function renderUsers(box,r){
     var otkCell=otkByRole ? '<span class="muted" style="font-size:12px">по роли</span>'
       : (canEdit ? '<label style="font-size:12px;white-space:nowrap"><input type="checkbox" id="ot'+i+'"'+(u.otk?' checked':'')+(self?' disabled':'')+' onchange="saveUser('+i+',\''+esc(tg)+'\')"> 🔎</label>'
                  : (u.otk?'🔎':'—'));
+    // ПОДТВЕРЖДЕНИЕ НАРЯДОВ — галочка, а не роль: поставил/снял конкретному человеку.
+    // Показываем фактическое право (u.appr), подпись говорит, откуда оно взялось.
+    var apprSrc=u.apprSet?('задано вручную: '+u.apprSet):'по роли '+(r.roleTitles[u.role]||u.role);
+    var apprCell=(canEdit&&!self)
+      ? '<label style="font-size:12px;white-space:nowrap" title="'+esc(apprSrc)+'"><input type="checkbox" id="ap'+i+'"'+(u.appr?' checked':'')+' onchange="saveUser('+i+',\''+esc(tg)+'\')"> ✅</label>'
+        +(u.apprSet?'<div class="muted" style="font-size:10px">вручную</div>':'')
+      : (u.appr?'✅':'—');
     var acts='';
     if(canManage) acts+='<button class="sm" title="переименовать (Фамилия Имя)" onclick="renameWorker(\''+tg+'\',\''+nm+'\')">✎</button> ';
     if(canManage&&u.tgId) acts+='<button class="sm" title="сменить код входа" onclick="setCode(\''+tg+'\',\''+esc(u.code||'')+'\')">🔑</button> ';
@@ -411,7 +418,7 @@ function renderUsers(box,r){
       :archived?'<span class="pill" style="background:#eceff4;color:#77808f">в архиве</span>'
       :(u.tgId?'<span class="pill" style="background:#e7f5ea;color:#137333">в системе</span>':'<span class="pill" style="background:#fdeee7;color:#b9770e">без Telegram</span>');
     var codeCell=u.tgId?'<br><span class="muted" style="font-size:12px">🔑 код: <b>'+esc(u.code||'—')+'</b></span>':'';
-    return '<tr'+(archived?' style="opacity:.6"':'')+'><td><b>'+esc(u.name)+'</b><br><span class="muted" style="font-size:11px">'+esc(u.tgId||'')+'</span>'+codeCell+'</td><td>'+roleCell+'</td><td>'+masterCell+'</td><td>'+cutCell+'</td><td>'+otkCell+'</td><td>'+reg+'</td><td><span class="msg" id="um'+i+'"></span> '+acts+'</td></tr>';
+    return '<tr'+(archived?' style="opacity:.6"':'')+'><td><b>'+esc(u.name)+'</b><br><span class="muted" style="font-size:11px">'+esc(u.tgId||'')+'</span>'+codeCell+'</td><td>'+roleCell+'</td><td>'+masterCell+'</td><td>'+cutCell+'</td><td>'+otkCell+'</td><td>'+apprCell+'</td><td>'+reg+'</td><td><span class="msg" id="um'+i+'"></span> '+acts+'</td></tr>';
   }
   // архивные — из общего списка вон, отдельным свёрнутым блоком внизу.
   // ⚠ индекс i сквозной по ulist: на нём завязаны id полей (ro/ma/cu/um) и saveUser(i,…)
@@ -420,7 +427,7 @@ function renderUsers(box,r){
     if(!isActiveJs(u.active) && !isPendingJs(u.active)){ archRows+=rowHtml(u,i); nArch++; }
     else rows+=rowHtml(u,i);
   });
-  var head='<thead><tr><th>Сотрудник</th><th>Роль</th><th>Мастер/участок</th><th title="доступ к вкладке «Раскрой»">Раскрой</th><th title="принимает работу по качеству">ОТК</th><th>Статус</th><th></th></tr></thead>';
+  var head='<thead><tr><th>Сотрудник</th><th>Роль</th><th>Мастер/участок</th><th title="доступ к вкладке «Раскрой»">Раскрой</th><th title="принимает работу по качеству">ОТК</th><th title="подтверждает наряды рабочих — сильнее роли">Наряды</th><th>Статус</th><th></th></tr></thead>';
   var archBlock=nArch?('<div class="box" style="margin-top:12px;padding:0">'
       +'<div id="uarchhead" onclick="toggleUArch()" style="cursor:pointer;padding:10px 12px;font-weight:700">🗄 Архив: '+nArch
       +' <span class="muted" style="font-weight:normal">— доступа нет, история ЗП сохранена</span> <span id="uarchcar" class="muted">▸</span></div>'
@@ -453,7 +460,7 @@ function renderUsers(box,r){
     :(isMaster?'Ваши рабочие. Пригласите нового по ссылке — он сразу попадёт к вам в бригаду.'
     :(canInvite?'Сотрудники в системе. Пригласите нового рабочего по ссылке — роли назначает директор.':'Все, кто зарегистрировался через бота.'));
   box.innerHTML='<div class="pad"><div class="hi">'+pageTitle+'</div><p class="muted">'+intro+'</p>'+alert_+invite
-    +'<div class="box" style="overflow-x:auto"><table>'+head+'<tbody>'+(rows||'<tr><td colspan=6 class="muted">пусто</td></tr>')+'</tbody></table></div>'
+    +'<div class="box" style="overflow-x:auto"><table>'+head+'<tbody>'+(rows||'<tr><td colspan=8 class="muted">пусто</td></tr>')+'</tbody></table></div>'
     +archBlock+'</div>';
 }
 function toggleUArch(){
@@ -485,6 +492,7 @@ function saveUser(i,tgid){
   var cb=document.getElementById('cu'+i), p={vapi:'setuser',tgid:TGID,target:tgid,role:role,master:master};
   if(cb) p.cut=cb.checked?'1':'0';   // доступ к раскрою
   var ob=document.getElementById('ot'+i); if(ob) p.otk=ob.checked?'1':'0';   // приёмка качества
+  var ab=document.getElementById('ap'+i); if(ab) p.appr=ab.checked?'1':'0';   // подтверждение нарядов
   api(p).then(function(r){ m.innerHTML=(r&&r.ok)?'<span class="ok">✅</span>':'<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; }).catch(function(e){ m.innerHTML='<span class="err">ошибка</span>'; });
 }
 function isActiveJs(v){ var s=String(v==null?'':v).trim().toLowerCase(); return !(s==='нет'||s==='архив'||s==='ожидает'||s==='no'||s==='false'||s==='0'||s==='off'); }
