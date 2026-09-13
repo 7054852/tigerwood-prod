@@ -38,11 +38,13 @@
      заполняет, и на каждой странице печати (thead повторяется), а не один раз в легенде сверху */
   th .hint{ display:block; font-weight:500; font-size:9px; line-height:1.15; color:#5a6478;
             margin-top:3px; white-space:normal; }
-  th.det{ text-align:left; width:32%; }
+  th.det{ text-align:left; width:24%; }
   td.det{ height:26px; font-weight:600; }
   td.n{ text-align:center; width:52px; color:#4a5468; }
-  td.cell{ width:8.4%; height:26px; }
-  td.no{ background:repeating-linear-gradient(135deg,#f2f4f8,#f2f4f8 4px,#e6eaf2 4px,#e6eaf2 8px); }
+  td.cell{ width:5.9%; height:26px; }
+  /* ⚠ td.cell.no, а не td.no: «tr.vrow td{background}» специфичнее и перекрашивал штриховку
+     во всех строках цветов в белый — клетки без операции выглядели как обычные */
+  td.no,td.cell.no{ background:repeating-linear-gradient(135deg,#f2f4f8,#f2f4f8 4px,#e6eaf2 4px,#e6eaf2 8px); }
   td.acc{ text-align:center; color:#8a93a6; font-size:11px; }
   tr:nth-child(even) td.det, tr:nth-child(even) td.n{ background:#fafbfd; }
   .sh{ font-size:10px; color:#8a5a00; font-weight:700; }
@@ -106,12 +108,18 @@
   .pb{ font-size:10px; color:#2b6ef6; font-weight:700; }
   td.vd{ padding-left:16px; font-weight:600; color:#4a5468; font-size:11.5px; }
   tr.hasv td.det{ border-bottom:0; }
-  td.down,td.up{ background:#f2f4f8; text-align:center; color:#aeb6c6; font-size:10px; }
+  td.down,td.up,td.cell.down,td.cell.up{ background:#f2f4f8; text-align:center; color:#aeb6c6; font-size:10px; }
+  th.qc{ font-size:10.5px; }
+  th.qc.w{ background:#fdf1dc; }
+  th.qc.a{ background:#e3f3e7; }
   tr.vrow td{ background:#fcfdff; }
   .foot{ margin-top:10px; font-size:12px; color:#4a5468; display:flex; gap:24px; flex-wrap:wrap; }
 
   @media print{
     body{ background:#fff; }
+    /* без print-color-adjust браузер при печати выкидывает фоны — штриховка пропадала */
+    td.cell.no,td.cell.up,td.cell.down,th{ -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    td.cell.no{ background:repeating-linear-gradient(135deg,#fff,#fff 3px,#bcc3d1 3px,#bcc3d1 5px) !important; }
     .wrap{ max-width:none; padding:0; }
     .noprint{ display:none !important; }
     .sheet{ border:0; border-radius:0; padding:0; }
@@ -126,13 +134,13 @@
     body.port .legend,body.port .sline{ font-size:10px; }
     body.port .gt{ font-size:12.5px; }
     body.port td.n{ width:34px; }
-    body.port th.det{ width:27%; }
-    body.port td.cell{ width:7.8%; }
+    body.port th.det{ width:22%; }
+    body.port td.cell{ width:5.6%; }
     body.port .foot{ font-size:10.5px; }
   }
 </style>
 
-<style id="pagecss">@page{ size:A4 portrait; margin:9mm; }</style>
+<style id="pagecss">@page{ size:A4 landscape; margin:10mm; }</style>
 <div class="wrap">
   <div class="bar noprint">
     <b>📋 Переучёт</b>
@@ -204,7 +212,7 @@ function checksHtml(c, lost){
 }
 
 // ориентацию печати меняем подменой правила @page — иначе браузер печатает как задано в CSS.
-// В книжной те же 8 колонок, поэтому вместе с @page включаем более плотную вёрстку (body.port).
+// В книжной те же колонки, поэтому вместе с @page включаем более плотную вёрстку (body.port).
 function setOrient(v){
   v=(v==='landscape')?'landscape':'portrait';
   document.getElementById('pagecss').textContent='@page{ size:A4 '+v+'; margin:'+(v==='portrait'?'9mm':'10mm')+'; }';
@@ -212,8 +220,8 @@ function setOrient(v){
   try{ localStorage.setItem('tw_inv_orient',v); }catch(e){}
 }
 function initOrient(){
-  var v='portrait';
-  try{ v=localStorage.getItem('tw_inv_orient')||'portrait'; }catch(e){}
+  var v='landscape';   // 11 колонок стадий: в книжную влезает только мелким шрифтом
+  try{ v=localStorage.getItem('tw_inv_orient')||'landscape'; }catch(e){}
   document.getElementById('orient').value=v; setOrient(v);
 }
 function today(){ var d=new Date(), p=function(n){ return (n<10?'0':'')+n; }; return p(d.getDate())+'.'+p(d.getMonth()+1)+'.'+d.getFullYear(); }
@@ -238,6 +246,27 @@ function load(){
   }).catch(function(){ msg('сеть недоступна', true); });
 }
 
+// Шапка стадий. У точек контроля ОТК пара колонок под общим именем: «ждёт ОТК | принято ✓».
+// Близнец идёт в списке ПЕРЕД базовой стадией — порядок задаёт сервер (INV_STAGES).
+var QCW=': ждёт ОТК';
+function stageHeads(ST,hints,hshort){
+  var top='', bot='';
+  ST.forEach(function(s){
+    var h=hints[s]||'', sh=hshort[s]||h;
+    if(s.indexOf(QCW)>0){
+      var base=s.slice(0,s.indexOf(QCW));
+      top+='<th colspan="2" title="'+esc(base+': сделано → приёмка ОТК')+'">'+esc(base)+'</th>';
+      bot+='<th class="qc w" title="'+esc(h)+'">ждёт ОТК'+(sh?('<span class="hint">'+esc(sh)+'</span>'):'')+'</th>';
+      return;
+    }
+    if(ST.indexOf(s+QCW)>=0){
+      bot+='<th class="qc a" title="'+esc(h)+'">принято ✓'+(sh?('<span class="hint">'+esc(sh)+'</span>'):'')+'</th>';
+      return;
+    }
+    top+='<th rowspan="2" title="'+esc(s+' — '+h)+'">'+esc(s)+(sh?('<span class="hint">'+esc(sh)+'</span>'):'')+'</th>';
+  });
+  return {top:top, bot:bot};
+}
 function draw(){
   if(!R) return;
   var warn=checksHtml(R.checks, null);
@@ -249,16 +278,16 @@ function draw(){
     +'Пишите, сколько деталей <b>сейчас физически лежит</b> в этом состоянии — каждую деталь считаем один раз, в самой поздней пройденной стадии. '
     +'Заштрихованная клетка — такой операции у детали нет, писать в неё не нужно. '
     +'<b>Пустая клетка — не считали</b>: в программе останется как есть. Если реально ноль — так и напишите цифру 0.'
+    +' У шлифовки, перетирки и покраски <b>две клетки</b>: «ждёт ОТК» — сделано, но контролёр ещё не принял; «принято ✓» — после приёмки. Деталь пишем в одну из них.'
     +' Строка с пометкой <b>изделие</b> — само собранное изделие: его не пилят и не красят, физически считают только упакованные коробки.'
     +(R.mode==='detail'?('<br>До грунтовки деталь одна на все цвета — её считаем в строке детали. '
       +'С грунта она расходится по вариантам (грунт под лак и под цвет разный), поэтому ниже идут строки по каждому цвету: '
       +'<b>↓</b> — считать в строках ниже, <b>↑</b> — уже посчитано в строке детали.'):'')
     +'</div>';
   // в колонке — короткое пояснение (шире не влезет), полное — в подсказке при наведении
-  function th_(s){ var h=R.hints[s]||'', sh=(R.hintsShort||{})[s]||h;
-    return '<th title="'+esc(s+' — '+h)+'">'+esc(s)+(sh?('<span class="hint">'+esc(sh)+'</span>'):'')+'</th>'; }
-  var head='<tr><th class="det">Деталь</th><th>Нужно<br>по заказу<span class="hint">справочно — не исправлять</span></th>'
-    +ST.map(th_).join('')+'<th>Заметка</th></tr>';
+  var SH=stageHeads(ST,R.hints||{},R.hintsShort||{});
+  var head='<tr><th class="det" rowspan="2">Деталь</th><th rowspan="2">Нужно<br>по заказу<span class="hint">справочно — не исправлять</span></th>'
+    +SH.top+'<th rowspan="2">Заметка</th></tr><tr>'+SH.bot+'</tr>';
 
   var groups=R.products.map(function(p){
     var title=(R.mode==='detail') ? esc(p.title||p.eq||'Детали заказа')
@@ -365,9 +394,8 @@ function drawLoad(){
     +'</div>';
 
   var hints=d.hints||{}, hshort=d.hintsShort||{};
-  var head='<tr><th class="det">Деталь</th><th>Нужно<br>по заказу</th>'
-    +ST.map(function(x){ var h=hints[x]||'', sh=hshort[x]||h;
-      return '<th title="'+esc(x+' — '+h)+'">'+esc(x)+(sh?('<span class="hint">'+esc(sh)+'</span>'):'')+'</th>'; }).join('')+'</tr>';
+  var SH=stageHeads(ST,hints,hshort);
+  var head='<tr><th class="det" rowspan="2">Деталь</th><th rowspan="2">Нужно<br>по заказу</th>'+SH.top+'</tr><tr>'+SH.bot+'</tr>';
 
   function cellHtml(det,mod,stage,stg,isVar){
     var k=ikey(det,mod,stage), c=C[k], nf=(!c&&INFO[k])?INFO[k]:null;
