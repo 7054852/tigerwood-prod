@@ -965,13 +965,20 @@ function hrs(min){ var h=Math.floor(min/60), m=Math.round(min%60); return (h?h+'
 function compRender(){
   var box=$('compSec'); if(!box) return;
   var p=prodBy(CARD); if(!p){ box.innerHTML=''; return; }
-  if(EMODE){ box.innerHTML=editHtml(); return; }
+  if(EMODE){
+    box.innerHTML=editHtml();
+    // «＋ завести» из карточки: редактор открылся — сразу показываем форму добавления
+    if(PACKAUTO){ var k=PACKAUTO; PACKAUTO=null; setTimeout(function(){ packAdd(k); },0); }
+    return;
+  }
   // заранее, пока человек смотрит карточку: состав для редактора и справочник деталей —
   // тогда «✎ Редактировать» открывается мгновенно, а не двумя запросами по 4 секунды
   if(!EDC[pkey(p.sku)] && p.equip && p.model){
     EDC[pkey(p.sku)]='loading';
     api({vapi:'izdcomp',eq:p.equip,mod:p.model,artikul:p.sku}).then(function(r){
       EDC[pkey(p.sku)]=(r&&r.ok)?r:null;
+      // блок упаковки в карточке строится по составу с уровнями строк — дорисовываем, когда он пришёл
+      var cur=prodBy(CARD); if(!EMODE && cur && pkey(cur.sku)===pkey(p.sku)) compRender();
     }).catch(function(){ EDC[pkey(p.sku)]=null; });
   }
   if(!IZDREF) izdRefEnsure(function(){});
@@ -1002,6 +1009,7 @@ function compRender(){
     +(ci.price?' · цена <b style="color:var(--accent)">'+ci.price.toLocaleString('ru-RU')+' р.</b>':' · цена —')
     +(ci.laborShare!=null?' · труд <b style="color:var(--amber)">'+ci.laborShare+'%</b> цены':'')
     +' · '+(ci.detailsCount||c.details.length)+' дет. · '+(ci.opsCount||'')+' оп.</div>';
+  h+=packCardHtml(p);
   var mx=1; (c.stages||[]).forEach(function(st){ if(st.cost>mx) mx=st.cost; });
   h+='<div style="margin-top:8px">'+(c.stages||[]).map(function(st){
     return '<div class="row" style="gap:8px;font-size:12px;margin:2px 0"><span class="dim" style="width:150px;color:var(--muted)">'+esc(st.op)+'</span>'
@@ -1089,7 +1097,7 @@ function emBuild(r){
     var d=row.detail;
     if(!by[d]){ by[d]={qty:(Number(row.qty)||1), level:row.level||'деталь', seq:[]}; order.push(d); }
     if(String(row.level||'')==='изделие') by[d].level='изделие';
-    by[d].seq.push({op:row.op, rate:Number(row.rate)||0, on:true});
+    by[d].seq.push({op:row.op, rate:Number(row.rate)||0, on:true, orig:Number(row.rate)||0});
   });
   var refOps=r.refOps||{};
   return order.map(function(d){
@@ -1113,69 +1121,205 @@ function emRecalc(){
   var e=$('edTot'); if(e) e.textContent=emTotal().toLocaleString('ru-RU',{minimumFractionDigits:2})+' р.';
   EM.forEach(function(d,di){ var s2=$('edSum_'+di); if(s2) s2.textContent=emDetSum(d).toLocaleString('ru-RU',{minimumFractionDigits:2})+' р.'; });
 }
-/* блок «Сборка и упаковка изделия»: строки уровня «изделие» живут здесь, не в общем списке */
-function packBlockHtml(){
-  var pi=-1; EM.forEach(function(d,i){ if(d.level==='изделие') pi=i; });
-  var inner;
-  if(pi>=0){
-    var d=EM[pi];
-    inner=d.ops.map(function(o,oi){
-      return '<label style="display:inline-flex;gap:5px;align-items:center;margin:2px 12px 2px 0;font-size:12.5px;cursor:pointer">'
-        +'<input type="checkbox" style="width:14px;height:14px" '+(o.on?'checked':'')+' onchange="EM['+pi+'].ops['+oi+'].on=this.checked;emRecalc()">'
-        +esc(o.op)+' <span class="muted">'+(o.rate>0?o.rate+' р.':'⚠')+'</span></label>';
-    }).join('')
-    +'<div class="muted" style="font-size:11px">строка изделия: <b>'+esc(d.detail)+'</b> · 1 шт на товар '
-    +'<button class="btn sm" style="padding:0 6px;font-size:11px" onclick="emUnsetProd('+pi+')" title="вернуть строку в обычные детали">снять пометку</button></div>';
-  } else {
-    // подсказываем готового кандидата: чаще всего строка уже есть, просто заведена деталью
-    var ci=-1;
-    EM.forEach(function(x,i){
-      if(ci>=0) return;
-      var op=(x.ops||[]).filter(function(o){ return pkey(o.op)===pkey('Упаковка')||pkey(o.op)===pkey('Упаковка после сборки'); }).length;
-      var dt=pkey(x.detail);
-      if(op && dt.indexOf('фурнитура')!==0 && dt.indexOf('коробка')!==0) ci=i;
+/* ═══ УПАКОВКА ИЗДЕЛИЯ ═══
+   Три строки состава, которые есть у каждого товара и которые раньше приходилось искать:
+   упаковка самого товара (уровень «изделие» — по ней считаются упакованные штуки, отгрузка,
+   склад и деньги начальника), фурнитура и коробка. Ставка — рубли за штуку, её источник —
+   справочник «Расценки»: запись туда сама расходится во все товары, где есть такая строка. */
+var PACK_KINDS=['product','furn','box'];
+var PACK_TITLES={product:'Упаковка товара', furn:'Фурнитура', box:'Коробка'};
+var PACK_HINTS={
+  product:'Это сам товар целиком, а не деталь: по этой строке считаются упакованные штуки, отгрузка партии, склад и деньги начальника за упаковку. В товаре она одна.',
+  furn:'Пакет с фурнитурой к товару.',
+  box:'Сборка коробки под товар.'
+};
+var PACKFORM=null, PACKAUTO=null, PACKEDIT=null;
+function packKindOf(detail,level){
+  if(String(level||'')==='изделие') return 'product';
+  var k=pkey(detail);
+  if(k.indexOf('фурнитура')===0) return 'furn';
+  if(k.indexOf('коробка')===0) return 'box';
+  return '';
+}
+function rub(x){ return (Number(x)||0).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:4}); }
+
+/* карточка товара: что заведено и сколько стоит, правка ставки в один клик */
+function packCardHtml(p){
+  var r=EDC[pkey(p.sku)];
+  var h='<div style="background:var(--grid);border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-top:8px">'
+    +'<b style="font-size:13px">📦 Упаковка изделия</b>';
+  if(!r||r==='loading') return h+'<div class="muted" style="font-size:12px;margin-top:4px">⏳ загружаю…</div></div>';
+  var by={};
+  (r.rows||[]).forEach(function(x){
+    var k=packKindOf(x.detail,x.level); if(!k) return;
+    if(!by[k]) by[k]={detail:x.detail, ops:[]};
+    if(pkey(by[k].detail)===pkey(x.detail)) by[k].ops.push({op:x.op, rate:Number(x.rate)||0});
+  });
+  PACK_KINDS.forEach(function(kind){
+    var it=by[kind];
+    h+='<div class="row" style="gap:8px;margin:5px 0;font-size:12.5px;align-items:center;flex-wrap:wrap">'
+      +'<b style="width:130px">'+PACK_TITLES[kind]+'</b>';
+    if(!it){
+      // упаковка уже есть, но заведена обычной деталью — не плодим вторую, а подсказываем, что отметить
+      var cand=null;
+      if(kind==='product') (r.rows||[]).forEach(function(x){
+        if(cand||packKindOf(x.detail,x.level)) return;
+        if(pkey(x.op)===pkey('Упаковка')||pkey(x.op)===pkey('Упаковка после сборки')) cand=x.detail;
+      });
+      if(cand){
+        h+='<span style="flex:1;color:var(--amber)">⚠ упаковка есть, но заведена обычной деталью «'+esc(cand)+'» — отметьте её упаковкой товара</span>'
+          +'<button class="btn sm pri" onclick="editOpen()">✎ открыть и отметить</button></div>';
+        return;
+      }
+      h+='<span style="flex:1;'+(kind==='product'?'color:var(--amber)':'color:var(--muted)')+'">'
+        +(kind==='product'?'⚠ не заведена — без неё не работают отгрузка, склад, переучёт и мотивация начальника':'нет в составе')+'</span>'
+        +'<button class="btn sm'+(kind==='product'?' pri':'')+'" onclick="packStart(\''+kind+'\')">＋ завести</button></div>';
+      return;
+    }
+    h+='<span style="flex:1">'+esc(it.detail)+'</span>';
+    it.ops.forEach(function(o,oi){
+      var ed=PACKEDIT&&PACKEDIT.sku===pkey(p.sku)&&PACKEDIT.kind===kind&&PACKEDIT.oi===oi;
+      h+='<span class="muted">'+esc(o.op)+'</span>';
+      if(ed){
+        h+='<input id="pcRate" type="number" step="0.01" min="0" value="'+o.rate+'" style="width:84px;padding:3px 6px" onkeydown="if(event.key===\'Enter\')packRateSave()"> ₽/шт'
+          +'<button class="btn sm pri" onclick="packRateSave()">Сохранить</button>'
+          +'<button class="btn sm" onclick="PACKEDIT=null;compRender()">Отмена</button>';
+      } else {
+        h+='<b>'+rub(o.rate)+' ₽</b><button class="btn sm" onclick="packRateEdit(\''+kind+'\','+oi+')" title="поменять ставку за штуку">✎ ставка</button>';
+      }
     });
-    inner='<div style="color:var(--amber);font-size:12.5px">У модели нет строки уровня «изделие». Без неё не работают отгрузка партии, склад деталей, переучёт и мотивация начальника за упаковку.</div>'
-      +(ci>=0?'<div style="margin-top:5px;font-size:12.5px">Похоже, это <b>'+esc(EM[ci].detail)+'</b> — у неё есть операция упаковки. '
-        +'<button class="btn sm pri" style="padding:1px 8px" onclick="emSetProd('+ci+')">отметить изделием</button></div>':'');
+    h+='</div>';
+  });
+  return h+'<div class="muted" style="font-size:11px">Ставка меняется сразу в справочнике расценок и во всех вариантах товара, где есть эта строка. Уже поданные наряды не пересчитываются.</div></div>';
+}
+function packRateEdit(kind,oi){
+  var p=prodBy(CARD); if(!p) return;
+  PACKEDIT={sku:pkey(p.sku), kind:kind, oi:oi}; compRender();
+  var e=$('pcRate'); if(e){ e.focus(); e.select(); }
+}
+function packRateSave(){
+  var p=prodBy(CARD), pe=PACKEDIT; if(!p||!pe) return;
+  var r=EDC[pkey(p.sku)]; if(!r||r==='loading') return;
+  var it=null;
+  (r.rows||[]).forEach(function(x){
+    if(packKindOf(x.detail,x.level)!==pe.kind) return;
+    if(!it) it={detail:x.detail, ops:[]};
+    if(pkey(it.detail)===pkey(x.detail)) it.ops.push(x.op);
+  });
+  if(!it||!it.ops[pe.oi]) return;
+  var rate=Math.round((Number(String($('pcRate').value).replace(',','.'))||0)*100)/100;
+  if(!(rate>0)){ msg('⚠ ставка должна быть больше нуля'); return; }
+  var op=it.ops[pe.oi];
+  twSay('Сохраняю ставку…');
+  run(api({vapi:'addoprate',detail:it.detail,op:op,rate:rate}), function(res){
+    PACKEDIT=null;
+    Object.keys(COMP).forEach(function(k){ delete COMP[k]; });      // ставка разошлась по всем вариантам
+    Object.keys(EDC).forEach(function(k){ delete EDC[k]; });
+    msg('✓ «'+esc(it.detail)+' · '+esc(op)+'» — '+rub(rate)+' ₽/шт. Обновлено в справочнике и в товарах: '+(res.izd||0),1);
+    compRender(); load(true);
+  });
+}
+// «＋ завести» из карточки: открыть редактор и сразу форму добавления
+function packStart(kind){ PACKAUTO=kind; editOpen(); }
+
+/* редактор состава */
+function packBlockHtml(){
+  var h='<div style="background:var(--grid);border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin:7px 0">'
+    +'<b style="font-size:13px">📦 Упаковка изделия</b>'
+    +'<div class="muted" style="font-size:11.5px;margin:2px 0 4px">Ставка — рубли за одну штуку. Изменённая здесь ставка при «💾 Сохранить состав» запишется в товар и в справочник расценок.</div>';
+  PACK_KINDS.forEach(function(kind){
+    var di=-1; EM.forEach(function(d,i){ if(di<0 && packKindOf(d.detail,d.level)===kind) di=i; });
+    h+='<div class="row" style="gap:8px;margin:5px 0;font-size:12.5px;align-items:center;flex-wrap:wrap"><b style="width:130px">'+PACK_TITLES[kind]+'</b>';
+    if(di<0){
+      if(PACKFORM&&PACKFORM.kind===kind){ h+='</div>'+packFormHtml(); return; }
+      h+='<span style="flex:1;'+(kind==='product'?'color:var(--amber)':'color:var(--muted)')+'">'
+        +(kind==='product'?'⚠ не заведена':'нет в составе')+'</span>'
+        +'<button class="btn sm'+(kind==='product'?' pri':'')+'" onclick="packAdd(\''+kind+'\')">＋ добавить</button></div>';
+      return;
+    }
+    var d=EM[di];
+    h+='<span style="flex:1">'+esc(d.detail)+'</span>';
+    d.ops.forEach(function(o,oi){
+      if(!o.on) return;
+      h+='<span class="muted">'+esc(o.op)+'</span>'
+        +'<input type="number" step="0.01" min="0" value="'+o.rate+'" style="width:84px;padding:3px 6px" oninput="EM['+di+'].ops['+oi+'].rate=Number(this.value)||0;emRecalc()"> ₽';
+    });
+    h+=(kind==='product'
+        ?'<button class="btn sm" onclick="emUnsetProd('+di+')" title="это не товар целиком — вернуть строку в обычные детали">снять пометку</button>'
+        :'<button class="btn sm danger" onclick="EM.splice('+di+',1);compRender()" title="убрать из состава">✕</button>')
+      +'</div>';
+  });
+  // упаковки товара нет, но похожая строка уже заведена деталью — подсказываем
+  if(!EM.some(function(d){ return d.level==='изделие'; }) && !(PACKFORM&&PACKFORM.kind==='product')){
+    var ci=-1;
+    EM.forEach(function(x,i){ if(ci<0 && emCanBeProd(x)) ci=i; });
+    if(ci>=0) h+='<div style="font-size:12.5px;margin-top:4px">Похоже, упаковка уже есть деталью <b>'+esc(EM[ci].detail)+'</b>. '
+      +'<button class="btn sm pri" style="padding:1px 8px" onclick="emSetProd('+ci+')">это упаковка товара</button></div>';
   }
-  return '<div style="background:var(--grid);border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin:7px 0">'
-    +'<b style="font-size:13px">📦 Сборка и упаковка изделия</b><div style="margin-top:4px">'+inner+'</div>'
-    +'<div class="row" style="margin-top:6px">'
-    +(pi>=0?'':'<button class="btn sm" onclick="packAdd(\'product\')">＋ упаковка изделия</button>')
-    +'<button class="btn sm" onclick="packAdd(\'furn\')">＋ фурнитура</button>'
-    +'<button class="btn sm" onclick="packAdd(\'box\')">＋ коробка</button>'
-    +'</div></div>';
+  return h+'</div>';
+}
+function packFormHtml(){
+  var f=PACKFORM;
+  return '<div style="border:1px dashed var(--line);border-radius:8px;padding:8px;margin:0 0 6px">'
+    +'<div class="muted" style="font-size:11.5px;margin-bottom:6px">'+esc(PACK_HINTS[f.kind])+'</div>'
+    +'<div class="row" style="gap:6px;align-items:center;font-size:12.5px;flex-wrap:wrap">'
+    +'<span>Строка</span><input id="pfDet" value="'+esc(f.detail)+'" style="flex:1;min-width:160px">'
+    +'<span>операция <b>'+esc(f.op)+'</b></span>'
+    +'<span>ставка</span><input id="pfRate" type="number" step="0.01" min="0" value="'+(f.rate>0?f.rate:'')+'" style="width:84px" onkeydown="if(event.key===\'Enter\')packFormGo()"> ₽/шт'
+    +'<button class="btn sm pri" onclick="packFormGo()">Добавить</button>'
+    +'<button class="btn sm" onclick="PACKFORM=null;compRender()">Отмена</button></div>'
+    +(f.rate>0
+      ?'<div class="muted" style="font-size:11px;margin-top:4px">название и ставка подставлены '+(f.sample?'как у варианта «'+esc(f.sample)+'»':'из справочника')+' — можно поправить</div>'
+      :'<div style="font-size:11px;margin-top:4px;color:var(--amber)">в справочнике ставки нет — впишите, она там заведётся</div>')
+    +'</div>';
 }
 function packAdd(kind){
-  msg('⏳ подбираю по образцу других моделей…',1);
+  msg('⏳ подбираю название и ставку по другим вариантам…',1);
   api({vapi:'packtemplate',eq:EDEQ,mod:EDMOD,art:EDART}).then(function(t){
     if(!t||!t.ok){ msg('⚠ '+esc((t&&t.error)||'нет ответа')); return; }
     var spec=(kind==='product')?t.product:(kind==='furn'?t.furn:t.box);
     if(!spec){ msg('⚠ нечего добавить'); return; }
-    if(EM.some(function(d){ return pkey(d.detail)===pkey(spec.detail); })){ msg('⚠ «'+esc(spec.detail)+'» уже есть в составе — смотрите в списке'); return; }
-    if(spec.rate>0){ packAddDo(kind,spec,spec.rate,t); return; }
-    // расценки в справочнике нет — спрашиваем прямо в строке сообщений
-    window.__packCtx={kind:kind,spec:spec,t:t};
-    msg('Расценка за «'+esc(spec.detail)+' · '+esc(spec.op)+'», ₽/шт: '
-      +'<input id="packRate" value="0.15" style="width:80px;display:inline-block;margin:0 6px">'
-      +'<button class="btn pri sm" onclick="packRateGo()">Добавить</button><button class="btn sm" onclick="msgOff()">Отмена</button>');
-    var e=$('packRate'); if(e){ e.focus(); e.select(); }
+    msgOff();
+    PACKFORM={kind:kind, detail:spec.detail, op:spec.op, rate:Number(spec.rate)||0, sample:t.sample||'', t:t};
+    compRender();
+    var e=$(PACKFORM.rate>0?'pfDet':'pfRate'); if(e){ e.focus(); e.select(); }
   }).catch(function(e){ msg('⚠ '+esc(e.message||e)); });
 }
-function packRateGo(){
-  var c=window.__packCtx; if(!c) return;
-  var rate=Number(String($('packRate').value).replace(',','.'))||0;
-  if(!(rate>0)){ msg('⚠ расценка должна быть больше нуля'); return; }
-  msgOff(); packAddDo(c.kind,c.spec,rate,c.t);
+function packFormGo(){
+  var f=PACKFORM; if(!f) return;
+  var det=($('pfDet').value||'').trim();
+  var rate=Math.round((Number(String($('pfRate').value).replace(',','.'))||0)*100)/100;
+  if(!det){ msg('⚠ впишите название строки'); return; }
+  if(!(rate>0)){ msg('⚠ ставка должна быть больше нуля'); return; }
+  if(EM.some(function(d){ return pkey(d.detail)===pkey(det); })){ msg('⚠ «'+esc(det)+'» уже есть в составе'); return; }
+  PACKFORM=null;
+  packAddDo(f.kind,{detail:det, op:f.op},rate,f.t);
 }
 function packAddDo(kind,spec,rate,t){
   api({vapi:'packrate',detail:spec.detail,op:spec.op,rate:rate,pdet:(t.product&&t.product.detail)||'',eqname:EDEQ}).then(function(rr){
     if(!rr||!rr.ok){ msg('⚠ '+esc((rr&&rr.error)||'ошибка')); return; }
-    EM.push({detail:spec.detail, qty:1, level:(kind==='product'?'изделие':'деталь'), ops:[{op:spec.op, rate:rate, on:true}]});
+    // orig:null — при сохранении ставка уйдёт в справочник, даже если строка там уже была с другой
+    EM.push({detail:spec.detail, qty:1, level:(kind==='product'?'изделие':'деталь'), ops:[{op:spec.op, rate:rate, on:true, orig:null}]});
     compRender();
-    msg('✓ добавлено: '+esc(spec.detail)+' · '+esc(spec.op)+' · '+rate+' р.'+(rr.existed?'':' (расценка заведена в справочнике)')+'. Не забудьте «💾 Сохранить состав».',1);
+    msg('✓ добавлено: '+esc(spec.detail)+' · '+esc(spec.op)+' · '+rub(rate)+' ₽. Нажмите «💾 Сохранить состав».',1);
   }).catch(function(e){ msg('⚠ '+esc(e.message||e)); });
+}
+// после сохранения состава: изменённые ставки упаковки — в справочник (он разнесёт их по вариантам)
+function packPushRates(done){
+  var q=[];
+  EM.forEach(function(d){
+    if(!packKindOf(d.detail,d.level)) return;
+    d.ops.forEach(function(o){
+      if(o.on && o.rate>0 && (o.orig===null || o.orig===undefined || Math.abs(o.rate-o.orig)>0.00001)) q.push({detail:d.detail, op:o.op, rate:o.rate});
+    });
+  });
+  if(!q.length){ done(0); return; }
+  var i=0;
+  (function next(){
+    if(i>=q.length){ done(q.length); return; }
+    var x=q[i++];
+    api({vapi:'addoprate',detail:x.detail,op:x.op,rate:x.rate}).then(next).catch(next);   // ⚠ по очереди: каждая запись трогает лист составов
+  })();
 }
 function editHtml(){
   var h='<div class="card"><div class="row" style="justify-content:space-between">'
@@ -1187,7 +1331,7 @@ function editHtml(){
     +'<div class="muted" style="font-size:11.5px;margin:4px 0">Деталь приносит все свои операции — галочка включает в состав, стрелки ↑↓ задают техпорядок этой модели. «новая» — операция появилась в справочнике позже: поставьте галочку, если она нужна этой модели.</div>'
     +packBlockHtml();
   EM.forEach(function(d,di){
-    if(d.level==='изделие') return;   // строки изделия — в блоке упаковки выше
+    if(packKindOf(d.detail,d.level)) return;   // упаковка товара, фурнитура и коробка — в блоке упаковки выше
     h+='<div style="border:1px solid var(--line);border-radius:10px;padding:7px 10px;margin:7px 0;background:var(--bg)">'
       +'<div class="row"><b style="flex:1;font-size:13px">'+esc(d.detail)+'</b>'
       +'<b class="muted" style="font-size:11.5px"><span id="edSum_'+di+'">'+emDetSum(d).toLocaleString('ru-RU',{minimumFractionDigits:2})+' р.</span></b>'
@@ -1277,6 +1421,14 @@ function editSave(){
   run(apiPost({vapi:'savemodel',eq:EDEQ,mod:EDMOD,rows:JSON.stringify(rows),art:EDART}), function(r){
     EDWARNS=r.warns||[];
     delete COMP[pkey(EDART)]; delete EDC[pkey(EDART)];
+    // ⚠ строго ПОСЛЕ сохранения: и savemodel, и запись ставки пишут в лист составов
+    packPushRates(function(n){
+      if(!n) return;
+      Object.keys(COMP).forEach(function(k){ delete COMP[k]; });
+      Object.keys(EDC).forEach(function(k){ delete EDC[k]; });
+      msg('✓ состав сохранён, ставки упаковки обновлены в справочнике и во всех вариантах товара ('+n+')',1);
+      if(!EMODE) compRender();
+    });
     if(EDWARNS.length){
       var w=$('edWarn'); if(w) w.innerHTML=warnHtml(EDWARNS);
       msg('Сохранено, но есть замечания к порядку операций — смотрите жёлтую плашку',1);
