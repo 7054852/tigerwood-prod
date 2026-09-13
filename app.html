@@ -124,7 +124,7 @@ window.onerror=function(msg,src,line){
 <script>
 var BASE='https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';
 var APP='tw7prod', TGID='', ME=null, ROLE='', app=document.getElementById('app');
-var VER='20260913a';
+var VER='20260913b';
 var RUN=String(Date.now());   // одна метка на загрузку оболочки — сбивает кеш встроенных страниц   // бамп при изменении встраиваемых stat-страниц — сбивает кеш GitHub Pages в iframe
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
@@ -182,7 +182,9 @@ function buildItems(){
   // EXTRAS по роли
   Object.keys(EXTRAS).forEach(function(k){ var e=EXTRAS[k]; if(e.roles.indexOf(ROLE)>=0) map[k]={ id:k, title:e.title, url:e.url }; });
   // реорг-метки директора/начальника
-  if(map.plan) map.plan.title = isDir()? '🏭 Управление производством' : '🏭 Производство';
+  // ⚠ plan НЕ переименовываем: раньше директор видел в меню «Управление производством», а в
+  //   матрице доступа тот же раздел назывался «План и наличие» — его там попросту не находили.
+  //   Теперь имя одно и живёт в sectionsCfg_ («🏭 Заказы производства»).
   if(map.boss) map.boss.title = isDir()? '💰 Мотивация начальника' : '💰 Мои деньги';
   return map;
 }
@@ -362,7 +364,7 @@ function usersView(box){
 }
 function renderUsers(box,r){
   if(!r||!r.ok){ box.innerHTML='<div class="pad err">'+esc((r&&r.error)||'нет прав')+'</div>'; return; }
-  var roles=r.roles||[], canEdit=r.canEdit, me=r.me||{}, isMaster=(me.role==='мастер');
+  var roles=r.roles||[], canEdit=r.canEdit, me=r.me||{}, isMaster=(me.role==='мастер'), isSupply=(me.role==='обеспечение');
   var canInvite=(r.canInvite!==undefined)?r.canInvite:(canEdit||isMaster);   // менеджер по обеспечению зовёт рабочих, роли не раздаёт
   var pageTitle=isMaster?'👥 Моя бригада':'👥 Сотрудники и доступы';
   // список мастеров для выпадающего «Мастер/участок»
@@ -377,7 +379,9 @@ function renderUsers(box,r){
     var archived=!isActiveJs(u.active), pending=isPendingJs(u.active);
     var self=!!u.tgId && String(u.tgId)===myTg;
     // мастер управляет своими — и ничейными новичками, которых ещё никто не подтвердил
-    var canManage=canEdit||(isMaster&&(u.master===me.name||(!String(u.master||'').trim()&&(pending||archived))));
+    // менеджер по обеспечению ведёт рабочих: подтвердить, переименовать, в архив, удалить
+    var canManage=canEdit||(isSupply&&u.role==='рабочий')
+      ||(isMaster&&(u.master===me.name||(!String(u.master||'').trim()&&(pending||archived))));
     var nm=String(u.name).replace(/[\\']/g,''), tg=String(u.tgId||'');
     var chg=(canEdit&&!self)?' onchange="saveUser('+i+',\''+esc(tg)+'\')"':'';   // авто-сохранение при выборе — не нужно отдельно жать 💾
     var roleCell=canEdit?'<select id="ro'+i+'"'+chg+'>'+roles.map(function(x){return '<option value="'+x+'"'+(x===u.role?' selected':'')+'>'+esc(r.roleTitles[x]||x)+'</option>';}).join('')+'</select>':'<span class="pill">'+esc(r.roleTitles[u.role]||u.role)+'</span>';
@@ -402,7 +406,7 @@ function renderUsers(box,r){
       : archived
       ? '<button class="sm" title="вернуть из архива" onclick="restoreWorker(\''+tg+'\',\''+nm+'\')">↩</button> '
       : '<button class="sm" title="в архив — доступ пропадёт, история ЗП сохранится" onclick="archiveWorker(\''+tg+'\',\''+nm+'\')">🗄</button> '; }
-    if(canEdit&&!self) acts+='<button class="sm" style="color:#c0392b" title="удалить (только без выработки)" onclick="deleteWorker(\''+tg+'\',\''+nm+'\')">🗑</button>';
+    if(canManage&&!self) acts+='<button class="sm" style="color:#c0392b" title="удалить (только без выработки)" onclick="deleteWorker(\''+tg+'\',\''+nm+'\')">🗑</button>';
     var reg=pending?'<span class="pill" style="background:#fff3cd;color:#8a6d1f">⏳ ждёт подтверждения</span>'
       :archived?'<span class="pill" style="background:#eceff4;color:#77808f">в архиве</span>'
       :(u.tgId?'<span class="pill" style="background:#e7f5ea;color:#137333">в системе</span>':'<span class="pill" style="background:#fdeee7;color:#b9770e">без Telegram</span>');
