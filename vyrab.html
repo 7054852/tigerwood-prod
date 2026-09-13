@@ -696,7 +696,8 @@ function askInline(title, cur, cb, text){
   var old=document.getElementById('askbox'); if(old) old.parentNode.removeChild(old);
   var d=document.createElement('div'); d.id='askbox';
   d.innerHTML='<div class="ab card"><div class="abt"></div>'
-    +(text?'<input id="askin" type="text"':'<input id="askin" type="number" step="1" min="0" inputmode="decimal"')
+    +(text==='date'?('<input id="askin" type="date" max="'+attr(todayIso())+'"')
+      :(text?'<input id="askin" type="text"':'<input id="askin" type="number" step="1" min="0" inputmode="decimal"'))
     +' style="font-size:16px;width:100%;box-sizing:border-box">'
     +'<div class="row" style="margin-top:8px"><button class="sm" id="askok">ОК</button><button class="sm gray" id="askno">Отмена</button></div></div>';
   d.querySelector('.abt').textContent=title;
@@ -919,7 +920,8 @@ function renderPending(r){
       var ctrls = master
         ? '<div class="tabs" style="margin:6px 0 0;flex-wrap:wrap">'
           +(rp.single?'':'<button class="sm '+(night?'':'active')+'" onclick="setRepShift(\''+esc(rid)+'\',\'день\')">☀️ День</button><button class="sm '+(night?'active':'')+'" onclick="setRepShift(\''+esc(rid)+'\',\'ночь\')">🌙 Ночь</button>')
-          +'<button class="sm gray" onclick="setRepKoef(\''+esc(rid)+'\','+(uniK!=null?uniK:1)+')">'+koefLbl+'</button></div>'
+          +'<button class="sm gray" onclick="setRepKoef(\''+esc(rid)+'\','+(uniK!=null?uniK:1)+')">'+koefLbl+'</button>'
+          +'<button class="sm gray" onclick="setRepDate(\''+esc(rid)+'\',\''+esc(rp.date)+'\',loadPending)" title="за какой день работа">📅 дата</button></div>'
         : (night?'<div class="muted" style="font-size:12px">🌙 ночная смена</div>':'');
       var footer = master
         ? '<div id="bonbox-m-'+bonKey(rid)+'"></div>'
@@ -956,6 +958,20 @@ function setKoef(id,cur){
 function setRepShift(rid,sh){
   act({vapi:'setreportshift',report:rid,shift:sh,master:DATA.worker||'мастер'}, document.getElementById('rm-'+rid));
 }
+// ── ДАТА НАРЯДА. Меняется целиком: строки одной смены по разным дням не разъезжаются.
+// Кто может: проверяющие (админ/директор/диспетчер/начальник/мастер) — любой наряд, в том числе
+// уже принятый ОТК; контролёр — свои приёмки. Решает сервер, кнопку рисуем по правам экрана.
+function setRepDate(rid,cur,after){
+  var iso=isoOfRu(cur)||todayIso();
+  askInline('Дата наряда (за какой день работа):', iso, function(val){
+    var ru=ruOfIso(val); if(!ru){ alert('дата не распознана'); return; }
+    api({vapi:'setreportdate',report:rid,date:ru}).then(function(r){
+      if(!r||!r.ok){ alert((r&&r.error)||'ошибка'); return; }
+      if(after) after(r);
+    }).catch(function(){ alert('ошибка сети'); });
+  }, 'date');
+}
+function isoOfRu(s){ var p=String(s||'').split('.'); return p.length===3?(p[2]+'-'+p[1]+'-'+p[0]):''; }
 // коэффициент на весь наряд (при проверке/одобрении)
 function setRepKoef(rid,cur){
   askNum('Коэффициент на весь наряд:\n1 = без изменений, 1.2 = +20%, 0.8 = −20%', cur||1, function(k){
@@ -1150,7 +1166,9 @@ function fillJDetails(){
 // перерисовка без запроса к серверу: фильтры по заказу, операции и детали применяются к уже полученным строкам
 function renderJournal(){
   var lst=document.getElementById('jlist'), pay=document.getElementById('jpay');
-  var r=JRESP||{items:[]}, master=isMaster();
+  // ⚠ правки в журнале — по ПРАВАМ, а не по режиму экрана: директор/диспетчер, открывший журнал
+  //    не из «Проверки», иначе не мог поправить ни дату, ни количество (сервер-то его пускает).
+  var r=JRESP||{items:[]}, master=!!DATA.canCheck;
   var bf=(document.getElementById('jbatch')||{}).value||'', of=(document.getElementById('jop')||{}).value||'', df=(document.getElementById('jdet')||{}).value||'';
   // ⚠ «ждёт ОТК» ОБЯЗАН быть виден: иначе рабочий, чей наряд мастер одобрил, откроет журнал
   // и увидит пусто. В деньги эти строки не идут — они ещё не засчитаны.
@@ -1211,9 +1229,11 @@ function renderJournal(){
       }).join('');
       var bonRid = rep||('_'+g.lines[0].id);
       var bonBtn = master ? '<button class="sm gray" onclick="addBonus(\''+esc(bonRid)+'\',\''+esc(g.worker)+'\',\'j\')" title="премия за наряд">🎁 + премия</button>' : '';
+      var dateBtn = master ? '<button class="sm gray" onclick="setRepDate(\''+esc(g.key)+'\',\''+esc(g.date)+'\',loadJournal)" title="за какой день работа">📅 дата</button>' : '';
       var shiftCtl = (master && !g.single && rep)
-        ? '<div class="tabs" style="margin:6px 0 0"><button class="sm '+(night?'':'active')+'" onclick="setRepShiftJ(\''+esc(rep)+'\',\'день\')">☀️ День</button><button class="sm '+(night?'active':'')+'" onclick="setRepShiftJ(\''+esc(rep)+'\',\'ночь\')">🌙 Ночь</button></div>'
-        : (night?'<div class="muted" style="font-size:12px">🌙 ночная</div>':'');
+        ? '<div class="tabs" style="margin:6px 0 0;flex-wrap:wrap"><button class="sm '+(night?'':'active')+'" onclick="setRepShiftJ(\''+esc(rep)+'\',\'день\')">☀️ День</button><button class="sm '+(night?'active':'')+'" onclick="setRepShiftJ(\''+esc(rep)+'\',\'ночь\')">🌙 Ночь</button>'+dateBtn+'</div>'
+        : (master?('<div class="tabs" style="margin:6px 0 0">'+(night?'<span class="muted" style="font-size:12px;margin-right:6px">🌙 ночная</span>':'')+dateBtn+'</div>')
+                 : (night?'<div class="muted" style="font-size:12px">🌙 ночная</div>':''));
       var effBase=0, gbon=0;
       for(var q=0;q<g.lines.length;q++){ var L=g.lines[q];
         if(L.status==='ждёт ОТК') continue;   // ещё не засчитано — в разбивку наряда не берём
@@ -1472,12 +1492,14 @@ function renderOtkLog(){
         +'<button class="sm gray" onclick="otkLogDel(\''+attr(l.id)+'\')">✖</button></span></div>'
         +'</div>'+form;
     }).join('');
-    return '<div class="card"><div class="row"><b>'+esc(g.worker)+'</b><b>'+g.sum+' р.</b></div>'
+    return '<div class="card"><div class="row"><b>'+esc(g.worker)+'</b>'
+      +'<span><button class="sm gray" onclick="setRepDate(\''+attr(g.report)+'\',\''+attr(g.date)+'\',otkLogAfterDate)" title="за какой день приёмка">📅 дата</button> <b>'+g.sum+' р.</b></span></div>'
       +'<div class="muted" style="font-size:12px">📅 '+esc(g.date)+' · '+esc(g.shift)
       +(OLOG.all&&g.by?(' · внёс '+esc(g.by)):'')
       +(g.ack?(' · рабочий: '+esc(g.ack)):' · рабочий ещё не смотрел')+'</div>'+lines+'</div>';
   }).join('');
 }
+function otkLogAfterDate(){ otkLogLoad(); loadOtk(); }
 function otkLogEdit(id,on){ if(on) OLOGEDIT[id]=1; else delete OLOGEDIT[id]; renderOtkLog(); }
 function otkLogSave(id){
   var q=(document.getElementById('le-'+id)||{}).value||'', bad=(document.getElementById('lb-'+id)||{}).value||'0';
