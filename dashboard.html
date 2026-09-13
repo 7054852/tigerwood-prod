@@ -6,11 +6,6 @@
 <script src="tw-theme.js"></script>
 <title>Тигервуд — директорский дашборд</title>
 <style>
-  /* период */
-  .period{ display:flex; align-items:center; gap:var(--s-3); margin:0 0 var(--s-4); }
-  .period button{ width:var(--h-ctl); padding:0; font-size:16px; }
-  .period .lbl{ font:var(--t-heading); min-width:150px; text-align:center; }
-
   /* пульс — плитки темы; стрелка тренда и «в риске» красят цифру поверх цвета темы */
   .tile .v.down, .tile .v small.down{ color:var(--red); }
   .tile .v small.up{ color:var(--green); }
@@ -29,8 +24,9 @@
   .obody{ display:none; padding:0 var(--s-4) var(--s-4); } .ocard.open .obody{ display:block; }
   .ohead .bar{ display:block; flex:1; min-width:60px; max-width:150px; }
   .kv{ display:flex; gap:var(--s-2); flex-wrap:wrap; margin:var(--s-2) 0; }
-  .kv .k{ font:var(--t-small); background:var(--grey-bg); border-radius:var(--r-pill); padding:var(--s-1) var(--s-3); color:var(--fg2); }
-  .kv .k b{ color:var(--fg); font-variant-numeric:tabular-nums; }
+  /* капсулы KPI заказа — текстом .meta (размер, цвет, цифры), фон капсулы — нейтральная подложка */
+  .kv .k{ background:var(--grey-bg); border-radius:var(--r-pill); padding:var(--s-1) var(--s-3); }
+  .kv .k b{ color:var(--fg); font-weight:600; }
   .subh{ font:var(--t-label); text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:var(--s-4) 0 var(--s-2); }
 
   /* горизонтальные бары ЗП */
@@ -129,7 +125,7 @@ function barChart(data, todayIso, unit){
   var base='<line x1="'+pad+'" y1="'+baseY+'" x2="'+(W-pad)+'" y2="'+baseY+'" stroke="var(--line)" stroke-width="1"/>';
   var lab='<div class="xlabels"><span>'+ddmm(data[0].d)+'</span>'+(n>2?'<span>'+ddmm(data[Math.floor(n/2)].d)+'</span>':'')+'<span>'+ddmm(data[n-1].d)+'</span></div>';
   return '<div class="chart"><svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="выработка по дням">'+grid+base+bars+vlab+'</svg></div>'+lab
-    +'<div class="muted" style="font:var(--t-small);margin-top:var(--s-1)">макс '+money(max)+' '+(unit||'₽')+'/день</div>';
+    +'<div class="meta" style="margin-top:var(--s-1)">макс'+money(max)+' '+(unit||'₽')+'/день</div>';
 }
 // ── burndown: линия остатка ₽ к дням, с заливкой и точкой-концом ──
 function burndown(data){
@@ -163,9 +159,9 @@ function render(){
   var trendSym=p.trend==='up'?'↑':(p.trend==='down'?'↓':'→'), trendCls=p.trend==='up'?'up':(p.trend==='down'?'down':'flat');
   // период
   var futureNext=(CY>now.getFullYear())||(CY===now.getFullYear()&&CM>=now.getMonth());
-  var html='<div class="period"><button class="sec" onclick="stepMonth(-1)">‹</button>'
+  var html='<div class="toolbar"><div class="pnav"><button onclick="stepMonth(-1)">‹</button>'
     +'<span class="lbl">'+MONTHS[CM]+' '+CY+'</span>'
-    +'<button class="sec" onclick="stepMonth(1)"'+(futureNext?' disabled':'')+'>›</button></div>';
+    +'<button onclick="stepMonth(1)"'+(futureNext?' disabled':'')+'>›</button></div></div>';
   // пульс
   html+='<div class="tiles">'
     +'<div class="tile"><div class="t">Сегодня</div><div class="v">'+money(p.today)+' <small>₽ труда</small></div></div>'
@@ -203,7 +199,7 @@ function orderCard(b){
       +riskPill(b)
     +'</div>'
     +'<div class="obody">'
-      +'<div class="kv">'
+      +'<div class="kv meta">'
         +'<span class="k">Осталось <b>'+m0(b.leftRub)+' ₽</b></span>'
         +'<span class="k">Темп <b>'+money(b.velocity)+' ₽/д</b></span>'
         +(b.deadline?'<span class="k">Срок <b>'+esc(b.deadline)+'</b></span>':'')

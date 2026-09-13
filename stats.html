@@ -7,13 +7,9 @@
 <title>Тигервуд — статистика</title>
 <style>
   .muted{ font-size:13px; }
-  #upd{ margin:0 0 var(--s-4); }
   .box{ overflow-x:auto; }
   .box + .box{ margin-top:0; }
-  .kpis{ display:flex; gap:var(--s-3); flex-wrap:wrap; }
-  .kpi{ flex:1; min-width:130px; background:var(--card); border:1px solid var(--line); border-radius:var(--r-card); padding:var(--s-4); box-shadow:var(--shadow-card); }
-  .kpi .l{ font:var(--t-small); color:var(--muted); margin-top:var(--s-1); }
-  .kpi.ok .n{ color:var(--green);} .kpi.no .n{ color:var(--red);} .kpi.ac .n{ color:var(--accent-text);}
+  .tile.ok .v{ color:var(--green);} .tile.no .v{ color:var(--red);} .tile.ac .v{ color:var(--accent-text);}
   .barwrap{ height:8px; background:var(--grid); border-radius:var(--r-pill); overflow:hidden; display:flex; margin:var(--s-3) 0 var(--s-1); }
   .barwrap i{ display:block; height:100%; } .barwrap .g{ background:var(--green);} .barwrap .r{ background:var(--heat-stop);}
   /* текст на цветных сегментах — цветом листа: читается и днём, и ночью */
@@ -33,7 +29,10 @@
 <div id="twload"><i></i></div>
 <div id="twwait"><div class="wb"><div class="sp"></div><div class="wt" id="twwt">Отправляю…</div><div class="wh">идёт обмен с сервером — не нажимайте</div></div></div>
 <div class="hi">📊 Статистика</div>
-<div class="muted" id="upd">загрузка…</div>
+<div class="toolbar">
+  <span class="meta" id="upd">загрузка…</span>
+  <div class="end"><button id="snapBtn" onclick="doSnap()">📸 Снять срез</button></div>
+</div>
 <div id="app"><div class="center muted">Загрузка…</div></div>
 <script>
 var BASE='https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';
@@ -71,6 +70,8 @@ function doSnap(){ var b=$('snapBtn'); if(b){b.textContent='…';b.disabled=true
 function render(){
  Promise.all([api({vapi:'stats'}), api({vapi:'statshist'})]).then(function(res){
   var r=res[0], hist=(res[1]&&res[1].rows)||[];
+  // кнопка среза теперь в панели действий (не перерисовывается) — возвращаем ей вид после doSnap
+  var sb=$('snapBtn'); if(sb){ sb.textContent='📸 Снять срез'; sb.disabled=false; }
   if(!r||!r.ok){ $('app').innerHTML='<div class="center err">Ошибка</div>'; return; }
   var c=r.catalog, o=r.ops;
   var st=o.byStatus, tot=o.rates||1, curChecked=st.chief+st.master;
@@ -80,13 +81,13 @@ function render(){
   // Динамика
   var dyn='';
   if(last){
-    dyn='<div class="box" style="margin-bottom:12px"><div class="muted">Динамика с последнего среза · '+esc(last.date)+'</div><div class="chips" style="margin-top:8px">'
+    dyn='<div class="box" style="margin-bottom:var(--s-3)"><div class="meta">Динамика с последнего среза · '+esc(last.date)+'</div><div class="chips">'
       +'<span class="chip">собрано изделий: <b>'+c.assembled+'</b>'+delta(c.assembled,last.assembled)+spark(hist.map(function(x){return x.assembled;}).concat([c.assembled]),'var(--green)')+'</span>'
       +'<span class="chip">проверено расценок: <b>'+curChecked+'</b>'+delta(curChecked,last.checked)+spark(hist.map(function(x){return x.checked;}).concat([curChecked]),'var(--accent)')+'</span>'
       +'<span class="chip">расценок: <b>'+o.rates+'</b>'+delta(o.rates,last.rates)+'</span>'
       +'<span class="chip">деталей: <b>'+o.details+'</b>'+delta(o.details,last.details)+'</span>'
       +'</div></div>';
-  } else { dyn='<div class="muted" style="margin-bottom:12px">Срезов пока нет — нажми «Снять срез», чтобы зафиксировать точку отсчёта.</div>'; }
+  } else { dyn='<div class="note">Срезов пока нет — нажми «Снять срез», чтобы зафиксировать точку отсчёта.</div>'; }
 
   var brand=c.byBrand.map(function(b){ return '<tr><td>'+esc(b.brand)+'</td><td class="num">'+b.total+'</td><td class="num" style="color:var(--green)">'+b.assembled+'</td><td class="num" style="color:var(--red)">'+b.notAssembled+'</td><td class="num">'+pct(b.assembled,b.total)+'%</td></tr>'; }).join('');
   var notChips=c.notList.slice(0,200).map(function(x){
@@ -98,26 +99,25 @@ function render(){
     return '<tr class="clk" title="открыть расценки этого оборудования" onclick="navFocus(\'ops\',{focus:\''+jesc(e.equip)+'\'})"><td>'+esc(e.equip)+'</td><td class="num">'+e.details+'</td><td class="num">'+e.rates+'</td><td class="num">'+e.checked+' <span class="muted">('+e.checkedPct+'%)</span></td><td>'+bar+'</td></tr>'; }).join('');
 
   $('app').innerHTML=
-    '<div style="text-align:right;margin-bottom:var(--s-3)"><button id="snapBtn" onclick="doSnap()">📸 Снять срез</button></div>'
-    +dyn
+    dyn
     +'<div class="sect">Каталог изделий — собрано / не собрано</div>'
-    +'<div class="kpis">'
-      +'<div class="kpi ac"><div class="n">'+c.total+'</div><div class="l">всего изделий (артикулов)</div></div>'
-      +'<div class="kpi ok"><div class="n">'+c.assembled+'</div><div class="l">собрано (есть состав)</div></div>'
-      +'<div class="kpi no"><div class="n">'+c.notAssembled+'</div><div class="l">не собрано</div></div>'
+    +'<div class="tiles">'
+      +'<div class="tile ac"><div class="t">всего изделий (артикулов)</div><div class="v">'+c.total+'</div></div>'
+      +'<div class="tile ok"><div class="t">собрано (есть состав)</div><div class="v">'+c.assembled+'</div></div>'
+      +'<div class="tile no"><div class="t">не собрано</div><div class="v">'+c.notAssembled+'</div></div>'
     +'</div>'
     +'<div class="barwrap"><i class="g" style="width:'+pct(c.assembled,c.total)+'%"></i><i class="r" style="width:'+(100-pct(c.assembled,c.total))+'%"></i></div>'
-    +'<div class="muted">'+pct(c.assembled,c.total)+'% каталога собрано</div>'
-    +'<div class="box" style="margin-top:12px"><table><thead><tr><th>Бренд</th><th class="num">Всего</th><th class="num">Собрано</th><th class="num">Не собрано</th><th class="num">%</th></tr></thead><tbody>'+brand+'</tbody></table>'
+    +'<div class="meta">'+pct(c.assembled,c.total)+'% каталога собрано</div>'
+    +'<div class="box" style="margin-top:var(--s-3)"><table><thead><tr><th>Бренд</th><th class="num">Всего</th><th class="num">Собрано</th><th class="num">Не собрано</th><th class="num">%</th></tr></thead><tbody>'+brand+'</tbody></table>'
       +'<details><summary>Показать не собранные ('+c.notList.length+')</summary><div class="chips">'+notChips+(c.notList.length>200?'<span class="chip">…</span>':'')+'</div></details></div>'
 
     +'<div class="sect">Операции и расценки — сколько работы заведено</div>'
-    +'<div class="kpis">'
-      +'<div class="kpi ac"><div class="n">'+o.rates+'</div><div class="l">всего расценок</div></div>'
-      +'<div class="kpi"><div class="n">'+o.details+'</div><div class="l">деталей</div></div>'
-      +'<div class="kpi"><div class="n">'+o.operations+'</div><div class="l">видов операций</div></div>'
+    +'<div class="tiles">'
+      +'<div class="tile ac"><div class="t">всего расценок</div><div class="v">'+o.rates+'</div></div>'
+      +'<div class="tile"><div class="t">деталей</div><div class="v">'+o.details+'</div></div>'
+      +'<div class="tile"><div class="t">видов операций</div><div class="v">'+o.operations+'</div></div>'
     +'</div>'
-    +'<div class="box" style="margin-top:12px"><div class="muted">Статус проверки расценок</div>'
+    +'<div class="box" style="margin-top:var(--s-3)"><div class="meta">Статус проверки расценок</div>'
       +'<div class="stbar">'
         +'<i class="p-chief" style="width:'+pct(st.chief,tot)+'%;background:var(--green)" title="начальник">'+(st.chief||'')+'</i>'
         +'<i class="p-master" style="width:'+pct(st.master,tot)+'%;background:var(--amber)" title="мастер">'+(st.master||'')+'</i>'
@@ -126,7 +126,7 @@ function render(){
       +'<div class="chips"><span class="chip">🟢 начальник: '+st.chief+'</span><span class="chip">🟡 мастер: '+st.master+'</span><span class="chip">⚪ не подтверждено: '+st.none+'</span></div>'
     +'</div>'
     +'<div class="sect">По оборудованию — расценки и проверка</div>'
-    +'<div class="muted" style="margin:0 0 var(--s-3)">Сколько деталей и расценок заведено по каждому оборудованию и сколько из них проверено.</div>'
+    +'<div class="note">Сколько деталей и расценок заведено по каждому оборудованию и сколько из них проверено.</div>'
     +'<div class="box"><table><thead><tr><th>Оборудование</th><th class="num">Деталей</th><th class="num">Расценок</th><th class="num">Проверено</th><th></th></tr></thead><tbody>'+equip+'</tbody></table></div>'
     +'<div id="rateaudit"></div>'
     +'<div id="linkaudit"></div>';
@@ -144,7 +144,7 @@ function loadRateAudit(){
 function renderAudit(){
   var box=$('rateaudit'); if(!box||!AUD) return;
   var vs=AUD.variants||[];
-  if(!vs.length){ box.innerHTML='<div class="sect">Проверка расценок в составах</div><div class="box" style="border-color:transparent;background:var(--green-bg);color:var(--green)">✓ расценки во всех составах совпадают со справочником</div>'; return; }
+  if(!vs.length){ box.innerHTML='<div class="sect">Проверка расценок в составах</div><div class="note ok">✓ расценки во всех составах совпадают со справочником</div>'; return; }
   var totalDelta=vs.reduce(function(s,x){return s+x.delta;},0);
   var rows=vs.map(function(x,i){
     var dcol=x.delta<0?'var(--red)':'var(--green)';
@@ -160,9 +160,9 @@ function renderAudit(){
       +'<div id="audb'+i+'" style="display:none;margin-top:var(--s-3);overflow-x:auto"><table><thead><tr><th>Деталь</th><th>Операция</th><th class="num">Кол-во</th><th class="num">Было</th><th class="num">Станет</th></tr></thead><tbody>'+diffs+'</tbody></table></div>'
     +'</div>';
   }).join('');
-  box.innerHTML='<div class="sect">Проверка расценок в составах <span style="text-transform:none;font-weight:400;color:var(--red)">'+vs.length+' с расхождением · себест. '+money(totalDelta)+' р</span></div>'
-    +'<div class="muted" style="margin:0 0 var(--s-3)">Расценка в составе не совпадает со справочником «Расценки» (кривой импорт). «Подтянуть» заменит на справочник; операции без справочника (упаковка) не трогаются.</div>'
-    +'<div style="text-align:right;margin-bottom:var(--s-3)"><button class="danger" onclick="fixVar(\'ALL\',\'все варианты\')">Исправить все ('+vs.length+')</button></div>'
+  box.innerHTML='<div class="sect">Проверка расценок в составах <span class="n err">'+vs.length+' с расхождением · себест. '+money(totalDelta)+' р</span></div>'
+    +'<div class="note">Расценка в составе не совпадает со справочником «Расценки» (кривой импорт). «Подтянуть» заменит на справочник; операции без справочника (упаковка) не трогаются.</div>'
+    +'<div class="toolbar"><div class="end"><button class="danger" onclick="fixVar(\'ALL\',\'все варианты\')">Исправить все ('+vs.length+')</button></div></div>'
     +rows;
 }
 // ── целостность связей (linkaudit) ──
@@ -175,7 +175,7 @@ function loadLinkAudit(){
     if(!d||!d.ok){ box.innerHTML='<div class="sect">Целостность связей</div><div class="box err">'+esc((d&&d.error)||'ошибка')+'</div>'; return; }
     if(d.clean){
       box.innerHTML='<div class="sect">Целостность связей</div>'
-        +'<div class="box" style="border-color:transparent;background:var(--green-bg);color:var(--green)">✓ разрывов нет — составы, справочники, склад и привязки ссылаются друг на друга без потерь</div>';
+        +'<div class="note ok">✓ разрывов нет — составы, справочники, склад и привязки ссылаются друг на друга без потерь</div>';
       return;
     }
     var rows=(d.checks||[]).filter(function(c){return c.count;}).map(function(c,i){
@@ -194,8 +194,8 @@ function loadLinkAudit(){
           +'<div style="overflow-x:auto"><table><tbody>'+items+'</tbody></table></div>'
         +'</div></div>';
     }).join('');
-    box.innerHTML='<div class="sect">Целостность связей <span style="text-transform:none;font-weight:400;color:var(--red)">'+d.total+' разрыв(ов)</span></div>'
-      +'<div class="muted" style="margin:0 0 var(--s-3)">Запись ссылается на имя, которого больше нет: правки до неё не доходят, а на экранах она выглядит нормально. Обычно это след переименования или опечатки.</div>'
+    box.innerHTML='<div class="sect">Целостность связей <span class="n err">'+d.total+' разрыв(ов)</span></div>'
+      +'<div class="note">Запись ссылается на имя, которого больше нет: правки до неё не доходят, а на экранах она выглядит нормально. Обычно это след переименования или опечатки.</div>'
       +rows;
   }).catch(function(){ box.innerHTML=''; });
 }

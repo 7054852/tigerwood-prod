@@ -10,7 +10,6 @@
   /* ⚠ showTab/setBar пишут document.body.className='hasbar'|'' и стирают класс w-narrow —
      поэтому ширину узкой колонки держим прямо на body, а не только классом */
   body{ --page-w:880px; }
-  h2{ font:var(--t-heading); margin:var(--s-4) 0 var(--s-1); }
   label{ display:block; font:var(--t-small); color:var(--muted); margin:var(--s-3) 0 var(--s-1); }
   select, input{ width:100%; }
   select.vsel{ width:auto; flex:1; min-width:120px; }
@@ -29,6 +28,14 @@
      и последняя уезжала вправо вместе со всей страницей */
   .tabs{ flex-wrap:wrap; }
   .tabs button{ width:auto; margin-top:0; font:var(--t-strong); }
+  /* панель действий и сегмент — общие из темы; здесь только снимаем «кнопку во всю ширину» цеха */
+  .toolbar>label{ flex:0 0 100%; margin:0; }
+  .toolbar select, .toolbar input{ width:auto; flex:1 1 160px; }
+  .toolbar button{ width:auto; margin-top:0; }
+  .seg button{ width:auto; margin-top:0; font:var(--t-strong); min-height:var(--h-ctl); }
+  .toolbar .seg{ display:flex; flex:1 1 200px; }
+  .toolbar .seg button{ flex:1; }
+  .sect:first-child{ margin-top:0; }
   /* Панель отправки прибита к низу экрана: наряд бывает длинным, и на телефоне
      рабочий не мог долистать до кнопки «Отправить». Теперь она всегда под рукой. */
   #workbar{ position:fixed; left:0; right:0; bottom:0; background:var(--card); border-top:1px solid var(--line);
@@ -85,30 +92,33 @@ window.onerror=function(msg,src,line){
 };
 </script>
 
-<div id="wsel-top"></div>
-<div id="whobar"></div>
-<div id="whead">
-  <label>За какую смену — дата начала</label>
-  <div class="row" style="gap:var(--s-2)"><input id="wdate" type="date" style="flex:1" onchange="updateWhen()"><button class="sm sec" type="button" onclick="setDate(0)">Сегодня</button><button class="sm sec" type="button" onclick="setDate(-1)">Вчера</button></div>
-  <div class="tabs" style="margin:var(--s-2) 0 0">
-    <button id="shift-day" class="active" onclick="setShift('день')">☀️ День</button>
-    <button id="shift-night" onclick="setShift('ночь')">🌙 Ночь</button>
-  </div>
-  <div class="muted" style="font-size:13px;margin-top:var(--s-1)">🌙 Ночная смена с 23 на 24 — ставьте <b>23</b> (день, когда смена началась).</div>
+<div class="tabs">
+  <button id="tab-w" class="active" onclick="showTab('w')">Выработка</button>
+  <button id="tab-c" onclick="showTab('c')" style="display:none">Раскрой</button>
+  <button id="tab-o" onclick="showTab('o')" style="display:none">Приёмка</button>
+  <button id="tab-m" onclick="showTab('m')">Проверка</button>
+  <button id="tab-j" onclick="showTab('j')">Журнал</button>
 </div>
-<div class="tabs" style="margin-top:var(--s-3)">
-  <button id="tab-w" class="active" onclick="showTab('w')">✍️ Выработка</button>
-  <button id="tab-c" onclick="showTab('c')" style="display:none">🪚 Раскрой</button>
-  <button id="tab-o" onclick="showTab('o')" style="display:none">🔎 Приёмка</button>
-  <button id="tab-m" onclick="showTab('m')">👏 Проверка</button>
-  <button id="tab-j" onclick="showTab('j')">📋 Журнал</button>
+<!-- выбор «за кого», дата и смена нужны только вкладкам «Выработка» и «Раскрой»: #whead показывает showTab -->
+<div id="whead">
+  <div id="wsel-top"></div>
+  <div class="toolbar">
+    <label for="wdate">За какую смену — дата начала</label>
+    <input id="wdate" type="date" onchange="updateWhen()"><button class="sm sec" type="button" onclick="setDate(0)">Сегодня</button><button class="sm sec" type="button" onclick="setDate(-1)">Вчера</button>
+    <div class="seg">
+      <button id="shift-day" class="active" onclick="setShift('день')">☀️ День</button>
+      <button id="shift-night" onclick="setShift('ночь')">🌙 Ночь</button>
+    </div>
+  </div>
+  <div id="whobar"></div>
+  <div class="note">🌙 Ночная смена с 23 на 24 — ставьте <b>23</b> (день, когда смена началась).</div>
 </div>
 <div id="pane-w">
+  <div id="addbanner"></div>
   <div id="mysum"></div>
   <div id="myshifts"></div>
-  <div id="addbanner"></div>
-  <h2>Новый наряд</h2>
-  <div class="muted" id="who"></div>
+  <div class="sect">Новый наряд</div>
+  <div class="meta" id="who"></div>
   <div id="wsel"></div>
   <label>Партия / вне заказа</label><select id="batch" onchange="onBatchChange()"></select>
   <div id="freenote" style="margin-top:var(--s-2)"></div>
@@ -122,21 +132,21 @@ window.onerror=function(msg,src,line){
   <div id="cart" style="margin-top:var(--s-3)"></div>
 </div>
 <div id="pane-c" style="display:none">
-  <h2>🪚 Раскрой на ЧПУ</h2>
-  <div class="muted">Указываете лист и <b>обязательно</b> — что с него вышло. Оплата идёт за листы; детали попадут в свои заказы.</div>
+  <div class="note">Указываете лист и <b>обязательно</b> — что с него вышло. Оплата идёт за листы; детали попадут в свои заказы.</div>
   <div id="cutrate"></div>
-  <div id="cutlist" style="margin-top:var(--s-3)">Загрузка…</div>
-  <div id="cutempty" class="muted" style="display:none;margin:var(--s-3) 0">Листов пока нет — нажмите «＋ Добавить лист».</div>
+  <div class="sect">🪚 Раскрой на ЧПУ</div>
+  <div id="cutlist">Загрузка…</div>
+  <div id="cutempty" class="empty" style="display:none">Листов пока нет — нажмите «＋ Добавить лист».</div>
   <button class="sec" onclick="addSheet()">＋ Добавить лист</button>
   <button class="sec" id="cutlike" style="display:none;margin-top:var(--s-2)" onclick="addSheetLikeLast()">📋 Как предыдущий лист</button>
   <div id="cutlog" style="margin-top:var(--s-4)"></div>
 </div>
 <div id="pane-m" style="display:none">
-  <h2 id="mh2">На проверке</h2>
-  <div class="muted" id="mhint">Подтвердите, измените кол-во или отклоните — рабочий получит уведомление.</div>
-  <div id="qcwait" style="margin-top:var(--s-3)"></div>
-  <div id="otkmine" style="margin-top:var(--s-3)"></div>
-  <div id="mlist" style="margin-top:var(--s-3)">Загрузка…</div>
+  <div class="note" id="mhint">Подтвердите, измените кол-во или отклоните — рабочий получит уведомление.</div>
+  <div id="qcwait"></div>
+  <div id="otkmine"></div>
+  <div class="sect" id="mh2">На проверке</div>
+  <div id="mlist">Загрузка…</div>
   <div id="rejlist" style="margin-top:var(--s-4)"></div>
 </div>
 <div id="workfoot" style="display:none">
@@ -149,37 +159,35 @@ window.onerror=function(msg,src,line){
   <button onclick="sendWork()" id="worksend">📨 Отправить наряд мастеру</button>
 </div>
 <div id="pane-o" style="display:none">
-  <h2>Приёмка по качеству</h2>
-  <div class="muted">Зона сдачи: что рабочие сдали и ждёт вашей проверки. Принимаете — работа засчитывается и оплачивается.</div>
-  <div id="ostat" style="margin-top:var(--s-2)"></div>
-  <div class="row" style="margin-top:var(--s-2)">
+  <div class="toolbar"><div class="end">
     <button class="sec sm" onclick="otkAddToggle()">➕ Внести работу за рабочего</button>
     <button class="sec sm" onclick="otkLogToggle()">🧾 Мои приёмки</button>
     <button class="sec sm" onclick="otkStatsToggle()">📊 Качество за месяц</button>
-  </div>
+  </div></div>
+  <div class="note">Зона сдачи: что рабочие сдали и ждёт вашей проверки. Принимаете — работа засчитывается и оплачивается.</div>
+  <div id="ostat"></div>
   <div id="oadd" style="display:none"></div>
   <div id="olog" style="display:none;margin-top:var(--s-2)"></div>
   <div id="oqual" style="display:none;margin-top:var(--s-2)"></div>
+  <div class="sect">Приёмка по качеству</div>
   <div id="olist">Загрузка…</div>
 </div>
 <div id="pane-j" style="display:none">
-  <h2>Журнал выработки</h2>
-  <div class="row" style="margin-top:var(--s-2)">
-    <input id="jfrom" type="date" style="width:auto;flex:1">
-    <input id="jto" type="date" style="width:auto;flex:1">
+  <div class="toolbar">
+    <input id="jfrom" type="date">
+    <input id="jto" type="date">
     <button class="sm" onclick="loadJournal()">Показать</button>
   </div>
-  <div class="row" id="jwrow" style="margin-top:var(--s-2);display:none">
-    <select id="jworker" style="width:auto;flex:1" onchange="loadJournal()"></select>
+  <div class="toolbar" id="jwrow" style="display:none">
+    <select id="jworker" onchange="loadJournal()"></select>
   </div>
-  <div class="row" style="margin-top:var(--s-2)">
-    <select id="jbatch" style="width:auto;flex:1" onchange="renderJournal()"></select>
-    <select id="jop" style="width:auto;flex:1" onchange="renderJournal()"></select>
+  <div class="toolbar">
+    <select id="jbatch" onchange="renderJournal()"></select>
+    <select id="jop" onchange="renderJournal()"></select>
+    <select id="jdet" onchange="renderJournal()"></select>
   </div>
-  <div class="row" style="margin-top:var(--s-2)">
-    <select id="jdet" style="width:auto;flex:1" onchange="renderJournal()"></select>
-  </div>
-  <div id="jpay" style="margin-top:var(--s-3)"></div>
+  <div class="sect">Журнал выработки</div>
+  <div id="jpay"></div>
   <div id="jlist" style="margin-top:var(--s-3)"></div>
 </div>
 <script>
@@ -244,11 +252,11 @@ function applyMode(){
     lo.style.display = DATA.canQC ? '' : 'none';
     if(!DATA.canQC && document.getElementById('pane-o').style.display!=='none') showTab('w');
   }
-  if(isMaster()){ lw.textContent='✍️ Ввести за сотрудника'; lj.textContent='📋 Журнал (все)'; }
-  else { lw.textContent='✍️ Моя выработка'; lj.textContent='📋 Мой журнал'; }
+  if(isMaster()){ lw.textContent='Ввести за сотрудника'; lj.textContent='Журнал (все)'; }
+  else { lw.textContent='Моя выработка'; lj.textContent='Мой журнал'; }
   // ⚠ список «На проверке» — по ПРАВАМ, а не по адресу: директор, открывший ?tab=otk, попадал
   // в режим рабочего и видел чужие наряды с кнопками «поправить свой наряд» и «ждёт мастера».
-  lm.textContent = DATA.canCheck ? '👏 Проверка' : '⏳ Мои на проверке';
+  lm.textContent = DATA.canCheck ? 'Проверка' : 'Мои на проверке';
   var mh=document.getElementById('mh2'), mhi=document.getElementById('mhint');
   if(mh) mh.textContent = DATA.canCheck ? 'На проверке' : 'Мои наряды на проверке';
   if(mhi) mhi.textContent = DATA.canCheck ? 'Подтвердите, измените кол-во или отклоните — рабочий получит уведомление.' : 'Пока мастер не подтвердил, количество можно поправить.';
@@ -336,8 +344,8 @@ function load(){
       var keepW=(wsOld&&wsOld.value)||DRAFT.worker||DATA.worker||'';   // НЕ теряем, за кого вводим: свернул приложение — вернулся, тот же сотрудник
       var opts=actWorkers().map(function(w){return '<option value="'+esc(w.name)+'">'+esc(w.name)+'</option>';}).join('');
       document.getElementById('wsel').innerHTML='';
-      // селектор общий для всех вкладок (выработка и раскрой) — поэтому живёт над ними
-      if(!wsOld) document.getElementById('wsel-top').innerHTML='<label>Сотрудник (за кого наряд)</label><select id="worker" onchange="onWorkerChange()">'+(opts||opt('','нет сотрудников'))+'</select>';
+      // селектор общий для вкладок «Выработка» и «Раскрой» — один элемент в #whead под вкладками
+      if(!wsOld) document.getElementById('wsel-top').innerHTML='<div class="toolbar"><label for="worker">Сотрудник (за кого наряд)</label><select id="worker" onchange="onWorkerChange()">'+(opts||opt('','нет сотрудников'))+'</select></div>';
       var ws=document.getElementById('worker');
       if(ws){ if(!wsOld) ws.innerHTML=opts||opt('','нет сотрудников');
               if(keepW){ ws.value=keepW; if(!ws.value) ws.value=DATA.worker||''; } }
@@ -353,9 +361,9 @@ function onBatchChange(){
   var note=document.getElementById('freenote');
   if(bid===FREE){                       // вне заказа — весь каталог деталей/операций (расценки те же)
     COMP=DATA.comp||{}; PROD=DATA.prod||{}; EQUIPS=DATA.equipments||[];
-    if(note) note.innerHTML='<div class="card" style="background:var(--blue-bg);padding:var(--s-2) var(--s-3)">'
-      +'🧰 <b>Работа вне заказа</b><div class="muted" style="margin-top:var(--s-1)">Задел на будущее, переделка, помощь другому участку. '
-      +'Оплата — по обычным расценкам, войдёт в вашу зарплату. На выполнение заказов такая работа не влияет.</div></div>';
+    if(note) note.innerHTML='<div class="note info"><div>'
+      +'🧰 <b>Работа вне заказа</b><div style="margin-top:var(--s-1)">Задел на будущее, переделка, помощь другому участку. '
+      +'Оплата — по обычным расценкам, войдёт в вашу зарплату. На выполнение заказов такая работа не влияет.</div></div></div>';
     refillEquip(); return;
   }
   if(note) note.innerHTML='';
@@ -568,9 +576,9 @@ function renderWhoBar(){
   if(!isMaster()){ el.innerHTML=''; return; }
   var ws=document.getElementById('worker'), w=(ws&&ws.value)||'';
   var self=(!w || w===DATA.worker);
-  el.innerHTML = '<div class="card" style="margin:var(--s-2) 0;background:'+(self?'var(--bg2)':'var(--amber-bg)')+'">'
-    +'<div class="row"><span>'+(self?'✍️ Наряд <b>за себя</b>':'👤 Наряд за <b>'+esc(w)+'</b>')+'</span>'
-    +(self?'':'<button class="sm sec" onclick="backToSelf()">за себя</button>')+'</div></div>';
+  el.innerHTML = '<div class="note'+(self?'':' warn')+'" style="align-items:center">'
+    +'<span style="flex:1">'+(self?'✍️ Наряд <b>за себя</b>':'👤 Наряд за <b>'+esc(w)+'</b>')+'</span>'
+    +(self?'':'<button class="sm sec" onclick="backToSelf()">за себя</button>')+'</div>';
 }
 function backToSelf(){ var ws=document.getElementById('worker'); if(ws){ ws.value=DATA.worker||''; onWorkerChange(); } }
 function onWorkerChange(){ renderWhoBar(); renderTotals(); saveDraft(); }
@@ -586,9 +594,9 @@ function cancelAdd(){ ADDTO=''; ADDINFO=''; renderAddBanner(); renderCart(); }
 function renderAddBanner(){
   var el=document.getElementById('addbanner'); if(!el) return;
   el.innerHTML = ADDTO
-    ? '<div class="card" style="background:var(--amber-bg)"><div class="row"><span>➕ <b>Дополняете наряд</b> '+esc(ADDINFO)+'</span>'
+    ? '<div class="note warn"><div style="flex:1"><div class="row"><span>➕ <b>Дополняете наряд</b> '+esc(ADDINFO)+'</span>'
       +'<button class="sm sec" onclick="cancelAdd()">отмена</button></div>'
-      +'<div class="muted" style="margin-top:var(--s-1)">Партия, дата и смена берутся из наряда — просто добавьте операции.</div></div>'
+      +'<div style="margin-top:var(--s-1)">Партия, дата и смена берутся из наряда — просто добавьте операции.</div></div></div>'
     : '';
   renderTotals();
 }
@@ -851,7 +859,7 @@ function renderPending(r){
   // мастеру видно, сколько работы стоит у контролёра: автоприёмки по таймауту нет и не будет
   try {
     var qb=document.getElementById('qcwait');
-    if(qb&&DATA.canCheck) qb.innerHTML = (r&&r.qcWait) ? ('<div class="card" style="background:var(--blue-bg)"><div class="row"><b>🔎 В приёмке ОТК: '+r.qcWait+' поз.</b><span class="'+((r.qcOldestH||0)>48?'err':'muted')+'">самая давняя '+Math.round((r.qcOldestH||0)/24)+' дн</span></div><div class="muted" style="font-size:13px">Работа принята по количеству, но ещё не засчитана и не оплачена — ждёт контролёра.</div></div>') : '';
+    if(qb&&DATA.canCheck) qb.innerHTML = (r&&r.qcWait) ? ('<div class="note info"><div style="flex:1"><div class="row"><b>🔎 В приёмке ОТК: '+r.qcWait+' поз.</b><span class="'+((r.qcOldestH||0)>48?'err':'muted')+'">самая давняя '+Math.round((r.qcOldestH||0)/24)+' дн</span></div><div>Работа принята по количеству, но ещё не засчитана и не оплачена — ждёт контролёра.</div></div></div>') : '';
   } catch(e){}
   var el=document.getElementById('mlist'); if(!el) return;
   var master=!!DATA.canCheck;
@@ -896,7 +904,7 @@ function renderPending(r){
       var koefLbl='коэффициент'+(uniK!=null?(uniK!==1?' ×'+uniK:''):' (разный)');
       var ctrls = master
         ? '<div class="row" style="margin:var(--s-2) 0 0;justify-content:flex-start">'
-          +(rp.single?'':'<button class="sm sec '+(night?'':'active')+'" onclick="setRepShift(\''+esc(rid)+'\',\'день\')">☀️ День</button><button class="sm sec '+(night?'active':'')+'" onclick="setRepShift(\''+esc(rid)+'\',\'ночь\')">🌙 Ночь</button>')
+          +(rp.single?'':'<div class="seg"><button class="'+(night?'':'on')+'" onclick="setRepShift(\''+esc(rid)+'\',\'день\')">☀️ День</button><button class="'+(night?'on':'')+'" onclick="setRepShift(\''+esc(rid)+'\',\'ночь\')">🌙 Ночь</button></div>')
           +'<button class="sm sec" onclick="setRepKoef(\''+esc(rid)+'\','+(uniK!=null?uniK:1)+')">'+koefLbl+'</button>'
           +'<button class="sm sec" onclick="setRepDate(\''+esc(rid)+'\',\''+esc(rp.date)+'\',loadPending)" title="за какой день работа">📅 дата</button></div>'
         : (night?'<div class="muted" style="font-size:13px">🌙 ночная смена</div>':'');
@@ -1208,7 +1216,7 @@ function renderJournal(){
       var bonBtn = master ? '<button class="sm sec" onclick="addBonus(\''+esc(bonRid)+'\',\''+esc(g.worker)+'\',\'j\')" title="премия за наряд">🎁 + премия</button>' : '';
       var dateBtn = master ? '<button class="sm sec" onclick="setRepDate(\''+esc(g.key)+'\',\''+esc(g.date)+'\',loadJournal)" title="за какой день работа">📅 дата</button>' : '';
       var shiftCtl = (master && !g.single && rep)
-        ? '<div class="row" style="margin:var(--s-2) 0 0;justify-content:flex-start"><button class="sm sec '+(night?'':'active')+'" onclick="setRepShiftJ(\''+esc(rep)+'\',\'день\')">☀️ День</button><button class="sm sec '+(night?'active':'')+'" onclick="setRepShiftJ(\''+esc(rep)+'\',\'ночь\')">🌙 Ночь</button>'+dateBtn+'</div>'
+        ? '<div class="row" style="margin:var(--s-2) 0 0;justify-content:flex-start"><div class="seg"><button class="'+(night?'':'on')+'" onclick="setRepShiftJ(\''+esc(rep)+'\',\'день\')">☀️ День</button><button class="'+(night?'on':'')+'" onclick="setRepShiftJ(\''+esc(rep)+'\',\'ночь\')">🌙 Ночь</button></div>'+dateBtn+'</div>'
         : (master?('<div class="row" style="margin:var(--s-2) 0 0;justify-content:flex-start">'+(night?'<span class="muted" style="font-size:13px;margin-right:var(--s-2)">🌙 ночная</span>':'')+dateBtn+'</div>')
                  : (night?'<div class="muted" style="font-size:13px">🌙 ночная</div>':''));
       var effBase=0, gbon=0;
@@ -1267,7 +1275,7 @@ function renderOtk(){
   var st=document.getElementById('ostat'), el=document.getElementById('olist');
   var s=(OTK&&OTK.stat)||{rows:0,qty:0,oldestH:0};
   var warn=(OTK&&OTK.unknown&&OTK.unknown.length)
-    ? '<div class="card" style="background:var(--amber-bg)"><b>⚠ В списке точек контроля есть операции, которых нет в справочнике:</b> '+OTK.unknown.map(esc).join(', ')+'<div class="muted">Проверьте написание — иначе приёмка по ним не сработает.</div></div>'
+    ? '<div class="note warn"><div><b>⚠ В списке точек контроля есть операции, которых нет в справочнике:</b> '+OTK.unknown.map(esc).join(', ')+'<div>Проверьте написание — иначе приёмка по ним не сработает.</div></div></div>'
     : '';
   st.innerHTML=warn+'<div class="card"><div class="row"><b>В зоне сдачи</b><b>'+s.rows+' поз. · '+s.qty+' шт</b></div>'
     +(s.oldestH>0?('<div class="row"><span class="muted">самая давняя ждёт</span><span class="'+(s.oldestH>48?'err':'muted')+'">'+otkAge(s.oldestH)+'</span></div>'):'')+'</div>';
@@ -1527,10 +1535,10 @@ function otkStatsLoad(){
         +(x.added?'<div class="row"><span class="muted">из них завёл сам</span><span>'+x.added+' поз.</span></div>':'')
         +'</div>';
     }).join('');
-    var per='<div class="row" style="margin:var(--s-2) 0 0;justify-content:flex-start">'
-      +'<button class="sm sec '+(OQDAYS===0?'active':'')+'" onclick="otkStatsDays(0)">Месяц</button>'
-      +'<button class="sm sec '+(OQDAYS===30?'active':'')+'" onclick="otkStatsDays(30)">30 дней</button>'
-      +'<button class="sm sec '+(OQDAYS===90?'active':'')+'" onclick="otkStatsDays(90)">90 дней</button></div>';
+    var per='<div class="row" style="margin:var(--s-2) 0 0;justify-content:flex-start"><div class="seg">'
+      +'<button class="'+(OQDAYS===0?'on':'')+'" onclick="otkStatsDays(0)">Месяц</button>'
+      +'<button class="'+(OQDAYS===30?'on':'')+'" onclick="otkStatsDays(30)">30 дней</button>'
+      +'<button class="'+(OQDAYS===90?'on':'')+'" onclick="otkStatsDays(90)">90 дней</button></div></div>';
     b.innerHTML='<div class="card"><div class="row"><b>Качество '+title+'</b><b class="'+(r.badPct>5?'err':'ok')+'">'+r.badPct+'% брака</b></div>'+per
       +'<div class="row"><span class="muted">принято</span><span>'+r.accepted+' шт</span></div>'
       +'<div class="row"><span class="muted">забраковано</span><span>'+r.bad+' шт</span></div>'
@@ -1581,8 +1589,8 @@ function renderCutRateBox(){
   var box=document.getElementById('cutrate'); if(!box) return;
   var no=!(CUT.sheets||[]).length;
   box.innerHTML = no
-    ? '<div class="card" style="background:var(--amber-bg)">Нет расценок за раскрой листа.'
-      +(CUT.canCheck?' Заведите их в разделе <b>🧰 Операции и расценки</b> → вкладка <b>🪚 Раскрой ЧПУ</b>.':' Попросите начальника завести.')+'</div>'
+    ? '<div class="note warn"><div>Нет расценок за раскрой листа.'
+      +(CUT.canCheck?' Заведите их в разделе <b>🧰 Операции и расценки</b> → вкладка <b>🪚 Раскрой ЧПУ</b>.':' Попросите начальника завести.')+'</div></div>'
     : '';
 }
 function sheetRateOf(mat){ var l=(CUT&&CUT.sheets)||[]; for(var i=0;i<l.length;i++) if(l[i].name===mat) return l[i].rate; return 0; }
@@ -1742,7 +1750,7 @@ function loadCutLog(){
     var list=(r&&r.sheets)||[];
     if(!list.length){ el.innerHTML=''; return; }
     var avg=(r.byMat||[]).map(function(m){ return '<div class="row"><span>'+esc(m.mat)+'</span><span class="muted">'+m.sheets+' лист(ов) · в среднем '+m.avg+' дет./лист</span></div>'; }).join('');
-    el.innerHTML='<h2>Выход с листа</h2>'+(avg?'<div class="card">'+avg+'</div>':'')
+    el.innerHTML='<div class="sect">Выход с листа</div>'+(avg?'<div class="card">'+avg+'</div>':'')
       +list.slice(0,12).map(function(g){
         var warn=(g.dev<=-15)?' <span class="pill warn" title="меньше обычного — проверьте брак">⚠ '+g.dev+'%</span>':'';
         var dets=g.details.map(function(x){ return '<div class="row"><span>'+esc(x.detail)+' · '+x.qty+' шт</span><span class="muted">'+(x.free?'🧰 вне заказа':esc(x.batch))+'</span></div>'; }).join('');

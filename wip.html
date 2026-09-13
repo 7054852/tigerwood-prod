@@ -6,7 +6,9 @@
 <title>Тигервуд — склады</title>
 <script src="tw-theme.js"></script>
 <style>
-  #tiles .tile{ flex:1 1 130px; }
+  #tiles{ margin-bottom:var(--s-4); }
+  #log{ margin-top:var(--s-4); }
+  .note:has(#hint:empty):has(#foot:empty){ display:none; }   /* до загрузки подсказок нет — не показываем пустой блок */
   .tbwrap td{ white-space:nowrap; }
   #tbl th, #tbl td{ padding-left:var(--s-2); padding-right:var(--s-2); }
   input.q{ width:64px; text-align:right; font-variant-numeric:tabular-nums; }
@@ -25,31 +27,33 @@
 <div class="hi">🏬 Склады</div>
 <div class="muted sub0">Незавершённые детали из закрытых заказов и упакованный товар, который ещё не увезли.</div>
 
+<!-- каркас: вкладки → панель действий → уведомление → плитки → таблица в карточке -->
 <div class="tabs noprint">
-  <button id="tb_wip" class="on" onclick="setTab('wip')">🧩 Детали</button>
-  <button id="tb_fg" onclick="setTab('fg')">📦 Готовая продукция</button>
+  <button id="tb_wip" class="on" onclick="setTab('wip')">Детали</button>
+  <button id="tb_fg" onclick="setTab('fg')">Готовая продукция</button>
 </div>
 
-<div class="row" style="margin-top:var(--s-3)" id="tiles"></div>
-
-<div class="box" style="margin-top:var(--s-3)">
-  <div class="row noprint">
-    <button class="sec sm" onclick="load()">↻ Обновить</button>
-    <button class="sec sm" onclick="window.print()">🖨 Печать ведомости</button>
-    <span class="muted" id="hint"></span>
-    <span class="msg" id="msg" style="margin-left:auto"></span>
-  </div>
-  <div class="tbwrap"><table id="tbl"><thead id="thd"></thead><tbody id="tb"></tbody></table></div>
-  <div class="row noprint" style="margin-top:var(--s-3)">
+<div class="toolbar noprint">
+  <span class="meta" id="chg"></span>
+  <span class="msg" id="msg"></span>
+  <div class="end">
+    <button class="sec" onclick="load()">Обновить</button>
+    <button class="sec" onclick="window.print()">🖨 Печать ведомости</button>
+    <button class="sec" onclick="load()">отменить правки</button>
+    <button class="sec" id="issue" onclick="issueMode()" style="display:none">🚚 Отгрузить со склада</button>
     <button id="save" onclick="saveCount()" disabled>💾 Провести пересчёт</button>
-    <button class="sec sm" onclick="load()">отменить правки</button>
-    <button class="sec sm" id="issue" onclick="issueMode()" style="display:none">🚚 Отгрузить со склада</button>
-    <span class="muted" id="chg"></span>
   </div>
-  <div class="muted noprint" style="margin-top:var(--s-2)" id="foot"></div>
 </div>
 
-<div id="log" style="margin-top:var(--s-3)"></div>
+<div class="note noprint"><div><div id="hint"></div><div id="foot"></div></div></div>
+
+<div class="tiles" id="tiles"></div>
+
+<div class="card">
+  <div class="tbwrap"><table id="tbl"><thead id="thd"></thead><tbody id="tb"></tbody></table></div>
+</div>
+
+<div id="log"></div>
 
 <script>
 function qp(k){ var m=new RegExp('[?&]'+k+'=([^&]*)').exec(location.search); return m?decodeURIComponent(m[1]):''; }

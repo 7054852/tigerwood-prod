@@ -13,9 +13,10 @@
   label.f{ display:block; font:var(--t-small); color:var(--muted); margin-bottom:var(--s-1); }
   input, select, textarea{ width:100%; }
   input[type=color]{ height:var(--h-sm); min-height:var(--h-sm); flex:none; }
-  .back{ cursor:pointer; color:var(--accent-text); font:500 13px/18px var(--font); }
-  /* сообщения вместо alert */
-  #msg{ display:none; margin:var(--s-2) 0; padding:var(--s-2) var(--s-3); border-radius:var(--r-ctl); font:500 13px/18px var(--font); }
+  /* сообщения вместо alert — выглядят как .note каркаса, место: под панелью действий */
+  #msg{ display:none; margin:0 0 var(--s-4); padding:var(--s-3) var(--s-4); border-radius:var(--r-card); font:var(--t-small); }
+  .chips{ margin:0 0 var(--s-4); }
+  .card>.toolbar{ margin-bottom:var(--s-2); }
   #msg.ok{ display:block; background:var(--green-bg); color:var(--green); }
   #msg.err{ display:block; background:var(--red-bg); color:var(--red); }
   #msg .btn{ margin-left:var(--s-2); }
@@ -205,21 +206,31 @@ function boot(){
 }
 
 /* ══ Каркас: тулбар и вкладки рисуются один раз — поиск не теряет фокус ══ */
+// порядок каркаса: вкладки → панель действий → сообщение → содержимое.
+// Счётчик и кнопки реестра (#regmeta, #regtools) дорисовывает regView — панель при этом не пересоздаётся.
 function renderShell(){
-  var h='<div class="row" style="margin-bottom:var(--s-1)">'
-    +'<input id="q" placeholder="🔎 поиск: артикул, модель, наименование" style="flex:1;min-width:180px" oninput="Q=this.value;renderBody()">'
+  var h='<div class="tabs" id="tabsrow"></div>'
+    +'<div class="toolbar">'
+    +'<input id="q" type="search" class="search" placeholder="🔎 поиск: артикул, модель, наименование" style="flex:1" oninput="Q=this.value;renderBody()">'
     +'<select id="grpf" style="width:auto" onchange="GRPF=this.value;renderBody()"></select>'
     +'<select id="grpby" style="width:auto" title="как группировать список" onchange="GRPBY=this.value;defaultCollapse();renderBody()">'
     +'<option value="group">по группам</option><option value="equip">по оборудованию</option></select>'
+    +'<span class="meta" id="regmeta"></span>'
+    +'<div class="end">'
+    +'<button class="btn sec" onclick="load(true);msg(\'⟳ обновляю с сервера…\',1)" title="перечитать с сервера">Обновить</button>'
+    +'<span id="regtools" style="display:contents"></span>'
+    +'<button class="btn sec" onclick="doExport(this)" title="выгрузить в Google-таблицу, лист «Прохаб: выгрузка»">⬆️ В Google-реестр</button>'
+    +'<button class="btn sec" onclick="askImport()" title="импорт из Google-реестра — перезапишет правки системы">⋯</button>'
     +'<button class="btn pri" onclick="openCard(\'\')">＋ Товар</button>'
-    +'<button class="btn" onclick="doExport(this)" title="выгрузить в Google-таблицу, лист «Прохаб: выгрузка»">⬆️ В Google-реестр</button>'
-    +'<button class="btn" onclick="askImport()" title="импорт из Google-реестра — перезапишет правки системы">⋯</button>'
-    +'</div>'
+    +'</div></div>'
     +'<div id="msg"></div>'
-    +'<div class="tabs" id="tabsrow"></div>'
     +'<div id="tabbody"></div>';
   $('app').innerHTML=h;
   fillGrpFilter(); renderTabs(); renderBody();
+}
+function regBar(meta,tools){
+  var m=$('regmeta'), t=$('regtools');
+  if(m) m.innerHTML=meta; if(t) t.innerHTML=tools;
 }
 function fillGrpFilter(){
   var known={}; GF.forEach(function(g){ known[g.name]=1; });
@@ -228,15 +239,16 @@ function fillGrpFilter(){
   $('grpf').innerHTML='<option value="">все группы</option>'+opts.map(function(g){
     return '<option'+(g===GRPF?' selected':'')+'>'+esc(g)+'</option>'; }).join('');
 }
-var TABS=[{id:'reg',t:'📋 Реестр'},{id:'grp',t:'🗂 Группы'},{id:'art',t:'⚙️ Артикул'},{id:'stat',t:'📈 Сводка'}];
+var TABS=[{id:'reg',t:'Реестр'},{id:'grp',t:'Группы'},{id:'art',t:'Артикул'},{id:'stat',t:'Сводка'}];
 function renderTabs(){
   $('tabsrow').innerHTML=TABS.map(function(t){
     return '<button class="'+(TAB===t.id&&!CARD?'on':'')+'" onclick="go(\''+t.id+'\')">'+t.t+'</button>';
-  }).join('')+'<button onclick="load(true);msg(\'⟳ обновляю с сервера…\',1)" title="перечитать с сервера">⟳</button>';
+  }).join('');
 }
 function go(tab){ TAB=tab; CARD=null; CMPV=null; PENDCONF=null; renderTabs(); renderBody(); }
 function renderBody(){
   var b=$('tabbody'); if(!b) return;
+  regBar('','');                   // счётчик и «колонки / развернуть» — только на самом реестре
   if(CMPV){ b.innerHTML=compareHtml(); return; }
   if(CARD!==null){ b.innerHTML=cardView(); compRender(); return; }
   if(TAB==='reg') b.innerHTML=regView();
@@ -324,20 +336,21 @@ function regView(){
   if(SORT.k){ var sc=REGCOLS.filter(function(c){return c.k===SORT.k;})[0];
     chips+='<span class="pill warn" style="cursor:pointer" onclick="SORT={k:\'\',dir:1};renderBody()" title="убрать сортировку — вернуть группы">сортировка: '+esc(sc?sc.t:SORT.k)+(SORT.dir===1?' ▲':' ▼')+' ✕ — вернуть группы</span>'; }
   if(Q.trim()) chips+='<span class="pill mute" style="cursor:pointer" onclick="Q=\'\';$(\'q\').value=\'\';renderBody()">поиск: «'+esc(Q.trim())+'» ✕</span>';
-  var h='<div class="row" style="margin-bottom:var(--s-2)">'
-    +'<span class="muted" style="font-size:13px">товаров: '+list.length+'</span>'+chips
-    +'<span style="position:relative;display:inline-block">'
-    +'<button class="btn sm" onclick="var m=$(\'colsMenu\');m.style.display=m.style.display===\'none\'?\'\':\'none\'">⚙ колонки</button>'
-    +'<span id="colsMenu" style="display:none;position:absolute;top:36px;left:0;background:var(--card);border:1px solid var(--line);border-radius:var(--r-ctl);box-shadow:var(--shadow-pop);padding:var(--s-2);z-index:20;min-width:170px">'
+  if(chips) chips='<div class="chips">'+chips+'</div>';
+  // счётчик и кнопки реестра живут в общей панели действий (renderShell)
+  regBar('товаров: '+list.length,
+    '<span style="position:relative;display:inline-flex">'
+    +'<button class="btn sec" onclick="var m=$(\'colsMenu\');m.style.display=m.style.display===\'none\'?\'\':\'none\'">⚙ колонки</button>'
+    +'<span id="colsMenu" style="display:none;position:absolute;top:calc(100% + var(--s-1));right:0;background:var(--card);border:1px solid var(--line);border-radius:var(--r-ctl);box-shadow:var(--shadow-pop);padding:var(--s-2);z-index:20;min-width:170px">'
     +REGCOLS.map(function(c){ return '<label style="display:flex;gap:var(--s-2);align-items:center;padding:var(--s-1) var(--s-2);cursor:pointer;font-size:13px"><input type="checkbox" style="width:auto" '+(HIDE[c.k]?'':'checked')+' onchange="colTgl(\''+c.k+'\')">'+esc(c.t)+'</label>'; }).join('')
     +'</span></span>'
     +(!sorted?(function(){
         var any=Object.keys(CLOSED).some(function(k){return CLOSED[k];});
-        return any?'<button class="btn sm" onclick="CLOSED={};renderBody()" title="раскрыть все группы и оборудование">⊞ развернуть всё</button>'
-                  :'<button class="btn sm" onclick="collapseAll()" title="сжать весь каталог до заголовков">⊟ свернуть всё</button>';
-      })():'')
-    +'<span class="muted" style="font-size:13px">двойной клик по ячейке — правка · клик по артикулу — карточка · клик по заголовку — сортировка</span>'
-    +'</div>';
+        return any?'<button class="btn sec" onclick="CLOSED={};renderBody()" title="раскрыть все группы и оборудование">⊞ развернуть всё</button>'
+                  :'<button class="btn sec" onclick="collapseAll()" title="сжать весь каталог до заголовков">⊟ свернуть всё</button>';
+      })():''));
+  var h=chips
+    +'<div class="note">двойной клик по ячейке — правка · клик по артикулу — карточка · клик по заголовку — сортировка</div>';
   h+='<div class="card tbwrap" style="padding:0"><table class="regtbl"><colgroup>'
     +Array(cols.length+2).join('<col>')+'</colgroup><tr>'
     +'<th style="cursor:default"><input type="checkbox" '+(selN&&selN>=list.length?'checked':'')+' onclick="selAll(this.checked)" title="выбрать все видимые"></th>'
@@ -396,7 +409,7 @@ function regView(){
       }).join('')+'</tr>';
   });
   h+='</table></div>';
-  if(!list.length) h='<div class="center">Ничего не найдено</div>';
+  if(!list.length) h=chips+'<div class="center">Ничего не найдено</div>';
   if(!sorted && !Q.trim() && !GRPF) h+=orphanBlock();
   if(selN){
     h+='<div id="massbar">выбрано: <b>'+selN+'</b>'
@@ -489,7 +502,7 @@ function asmTgl(sku){
 function grpView(){
   if(!GF.length) return '<div class="center">Групп нет — добавьте первую ниже</div>'+grpAddRow();
   var cnt={}; P.forEach(function(p){ cnt[p.group]=(cnt[p.group]||0)+1; });
-  var h='<div class="muted" style="font-size:13px;margin-bottom:var(--s-2)">Перетащите карточку (или: тап по группе → тап по месту). Клик по имени — переименовать. Порядок используется в реестре и выгрузке.</div>';
+  var h='<div class="note">Перетащите карточку (или: тап по группе → тап по месту). Клик по имени — переименовать. Порядок используется в реестре и выгрузке.</div>';
   h+=GF.map(function(g,i){
     var gc=g.bg||g.fg||'';
     return '<div class="gcard'+(GSEL===g.name?' sel':'')+(GSEL&&GSEL!==g.name?' target':'')+'" draggable="true"'
@@ -593,7 +606,7 @@ function gDelDo(i){
 
 /* ══════ ⚙️ АРТИКУЛ (настройки кодов) ══════ */
 function artView(){
-  var h='<div class="muted" style="font-size:13px;margin-bottom:var(--s-2)">Буквенные коды, из которых собирается артикул. Клик по чипу — править значение, ✕ — удалить. Для BusyKids артикул выдаёт партнёр — вводится вручную.</div>';
+  var h='<div class="note">Буквенные коды, из которых собирается артикул. Клик по чипу — править значение, ✕ — удалить. Для BusyKids артикул выдаёт партнёр — вводится вручную.</div>';
   ARTTYPES.forEach(function(t){
     var list=codesOf(t[0]);
     h+='<div class="card"><b>'+esc(t[1])+'</b> <span class="muted" style="font-size:13px">('+list.length+')</span><div style="margin-top:var(--s-2)">'
@@ -768,10 +781,15 @@ function cardView(){
   SKUAUTO=isNew;
   var h=dlOptions('brand','brand')+dlOptions('equip','equip')+dlOptions('model','model')
     +dlOptions('size','size')+dlOptions('color','color')+dlOptions('pack','kit');
-  h+='<div class="row" style="margin-bottom:var(--s-2)"><span class="back" onclick="CARD=null;renderTabs();renderBody()">← к реестру</span>'
+  h+='<div class="toolbar"><button class="btn sec" onclick="CARD=null;renderTabs();renderBody()">← к реестру</button>'
     +'<b style="font:var(--t-heading)">'+(isNew?'Новый товар':esc(d.sku))+'</b>'
     +(d.src==='хаб'?'<span class="reghub">хаб</span>':'')
-    +'</div>';
+    +'<div class="end">'
+    +(!isNew?'<button class="btn sec" onclick="cardFolder()">'+(d.folder?'📁 Папка':'📁 Создать папку')+'</button>':'')
+    +(!isNew?'<button class="btn sec" onclick="eqRenameAsk()" title="переименовать оборудование везде: товары, составы, заказы, выработка, склад">✎ Оборудование</button>':'')
+    +(!isNew?'<button class="btn danger" onclick="cardDelAsk()">🗑 Удалить</button>':'')
+    +'<button class="btn pri" onclick="cardSave()">💾 Сохранить</button>'
+    +'</div></div>';
   h+='<div class="card"><b>Основное</b><div class="grid" style="margin-top:var(--s-2)">'
     +'<div><label class="f">Артикул *</label><div class="row" style="gap:var(--s-1)"><input id="c_sku" value="'+esc(d.sku||'')+'" placeholder="выберите поля — соберётся сам" oninput="skuManual()">'
     +'<button class="btn sm" onclick="cardArtTgl()" title="собрать артикул из кодов вручную">🔧</button></div>'
@@ -804,13 +822,7 @@ function cardView(){
     +fld('palNet','Паллета: нетто, кг',d.palNet)
     +fld('palGross','Паллета: брутто, кг',d.palGross)
     +'</div></div>';
-  h+='<div class="row">'
-    +'<button class="btn pri" onclick="cardSave()">💾 Сохранить</button>'
-    +(!isNew?'<button class="btn" onclick="cardFolder()">'+(d.folder?'📁 Папка':'📁 Создать папку')+'</button>':'')
-    +(!isNew?'<button class="btn" onclick="eqRenameAsk()" title="переименовать оборудование везде: товары, составы, заказы, выработка, склад">✎ Оборудование</button>':'')
-    +(!isNew?'<button class="btn danger" onclick="cardDelAsk()">🗑 Удалить</button>':'')
-    +'</div>';
-  if(!isNew) h+='<div id="compSec" style="margin-top:var(--s-3)"></div>';
+  if(!isNew) h+='<div id="compSec"></div>';
   return h;
 }
 function cardArtTgl(){
@@ -901,7 +913,7 @@ var CMPV=null;
 function openCompare(){
   var skus=Object.keys(SEL).slice(0,6);
   if(skus.length<2){ msg('⚠ отметьте хотя бы два товара'); return; }
-  CMPV=skus; CARD=null; renderTabs();
+  CMPV=skus; CARD=null; renderTabs(); regBar('','');
   $('tabbody').innerHTML=compareHtml();
   window.scrollTo(0,0);
 }
@@ -910,7 +922,7 @@ function compareHtml(){
   var allStages={}, order=[];
   items.forEach(function(it){ (it.ci.stages||[]).forEach(function(st){ if(!allStages[st.op]){ allStages[st.op]=1; order.push(st.op); } }); });
   function row(label,fn){ return '<tr><td class="dim" style="color:var(--muted)">'+label+'</td>'+items.map(function(it){ return '<td class="num">'+fn(it)+'</td>'; }).join('')+'</tr>'; }
-  var h='<div class="row" style="margin-bottom:var(--s-2)"><span class="back" onclick="CMPV=null;renderBody()">← к реестру</span><b style="font:var(--t-heading)">⚖ Сравнение</b></div>';
+  var h='<div class="toolbar"><button class="btn sec" onclick="CMPV=null;renderBody()">← к реестру</button><b style="font:var(--t-heading)">⚖ Сравнение</b></div>';
   h+='<div class="card tbwrap"><table><tr><th>Показатель</th>'+items.map(function(it){ return '<th>'+esc(it.p.equip)+'<br><span class="muted" style="font-weight:400">'+esc(it.p.model)+'</span></th>'; }).join('')+'</tr>'
     +row('Себестоимость труда',function(it){ return it.ci.cost?it.ci.cost.toLocaleString('ru-RU',{minimumFractionDigits:2})+' р.':'—'; })
     +row('Нормо-часы',function(it){ return it.ci.hours?hrs(it.ci.hours*60):'—'; })
@@ -959,13 +971,13 @@ function compRender(){
     return;
   }
   var ci=CATIDX[pkey(p.sku)]||{};
-  var h='<div class="card"><div class="row" style="justify-content:space-between">'
+  var h='<div class="card"><div class="toolbar">'
     +'<b>🧩 Состав и операции</b>'
-    +'<span class="row">'
+    +'<div class="end">'
     +'<span class="pill '+(ci.assembled?'ok':'mute')+'" style="cursor:pointer" onclick="asmTgl(\''+jsq(p.sku)+'\');compRender()" title="отметка директора — видна и в заказах">'+(ci.assembled?'✔ собрано':'☐ отметить собранным')+'</span>'
-    +'<button class="btn sm pri" onclick="editOpen()">✎ Редактировать состав</button>'
     +(ci.hasComp?'<button class="btn sm danger" onclick="compDelAsk()">🗑</button>':'')
-    +'</span></div>';
+    +'<button class="btn sm pri" onclick="editOpen()">✎ Редактировать состав</button>'
+    +'</div></div>';
   if(!c.ok || !(c.details&&c.details.length)){
     h+='<div class="empty" style="margin-top:var(--s-2)">Состав не задан — операции этого товара не попадут в заказы.'
       +(cloneSibs(p).length?' Можно скопировать с другого варианта:':'')+'</div>'+cloneBtns(p);
@@ -1289,13 +1301,13 @@ function packPushRates(done){
   })();
 }
 function editHtml(){
-  var h='<div class="card"><div class="row" style="justify-content:space-between">'
+  var h='<div class="card"><div class="toolbar">'
     +'<b>✎ Состав: '+esc(EDMOD)+'</b>'
-    +'<span class="row"><b class="muted" style="font-size:13px">труд: <span id="edTot" style="color:var(--green)">'+emTotal().toLocaleString('ru-RU',{minimumFractionDigits:2})+' р.</span></b>'
-    +'<button class="btn sm pri" onclick="editSave()">💾 Сохранить состав</button>'
-    +'<button class="btn sm" onclick="EMODE=false;compRender()">отмена</button></span></div>'
+    +'<b class="meta">труд: <span id="edTot" style="color:var(--green)">'+emTotal().toLocaleString('ru-RU',{minimumFractionDigits:2})+' р.</span></b>'
+    +'<div class="end"><button class="btn sm" onclick="EMODE=false;compRender()">отмена</button>'
+    +'<button class="btn sm pri" onclick="editSave()">💾 Сохранить состав</button></div></div>'
     +'<div id="edWarn">'+warnHtml(EDWARNS)+'</div>'
-    +'<div class="muted" style="font-size:13px;margin:var(--s-1) 0">Деталь приносит все свои операции — галочка включает в состав, стрелки ↑↓ задают техпорядок этой модели. «новая» — операция появилась в справочнике позже: поставьте галочку, если она нужна этой модели.</div>'
+    +'<div class="note">Деталь приносит все свои операции — галочка включает в состав, стрелки ↑↓ задают техпорядок этой модели. «новая» — операция появилась в справочнике позже: поставьте галочку, если она нужна этой модели.</div>'
     +packBlockHtml();
   EM.forEach(function(d,di){
     if(packKindOf(d.detail,d.level)) return;   // упаковка товара, фурнитура и коробка — в блоке упаковки выше
@@ -1327,10 +1339,10 @@ function editHtml(){
   return h;
 }
 function warnHtml(w){
-  if(!w||!w.length) return '<div class="pill ok" style="margin-top:var(--s-1)">✓ порядок операций выглядит логично</div>';
-  return '<div style="background:var(--amber-bg);color:var(--amber);border-radius:var(--r-ctl);padding:var(--s-2) var(--s-3);margin-top:var(--s-1);font-size:13px">'
+  if(!w||!w.length) return '<div class="pill ok" style="margin:0 0 var(--s-2)">✓ порядок операций выглядит логично</div>';
+  return '<div class="note warn"><div>'
     +w.map(function(x){ return '⚠ '+esc(x.detail||'')+': '+esc(x.msg||x.op||''); }).join('<br>')
-    +'<br><span style="opacity:.8">поправьте порядок стрелками ↑↓ и сохраните ещё раз</span></div>';
+    +'<br><span style="opacity:.8">поправьте порядок стрелками ↑↓ и сохраните ещё раз</span></div></div>';
 }
 // может ли эта строка быть товаром целиком: у неё есть операция упаковки и это не фурнитура/коробка
 function emCanBeProd(d){

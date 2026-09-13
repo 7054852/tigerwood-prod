@@ -23,7 +23,7 @@
   .mgrid td.nm, .mgrid th:first-child{ position:sticky; left:0; z-index:2; background:var(--card); box-shadow:2px 0 0 var(--line); }
   /* ⚠ у скролл-контейнера НЕ должно быть боковых отступов: прилипшая колонка встаёт по краю
      padding-box, а прокручиваемая таблица видна в самом padding — числа подглядывали слева от ФИО */
-  .box.mgrid{ padding-left:0; padding-right:0; }
+  .card.mgrid{ padding-left:0; padding-right:0; }
   .mgrid td.nm{ padding-left:var(--s-3); } .mgrid th:first-child{ padding-left:var(--s-3); }
   .mgrid td:active{ filter:brightness(.9); }
   /* выходные: колонка приглушена, число красным — чтобы суббота с воскресеньем читались без счёта по пальцам */
@@ -44,14 +44,15 @@
   /* на телефоне клетка — под палец: 20 px в режиме отметки означало бы попадание в соседний день */
   @media (max-width:640px){
     .mgrid td[data-d]{ min-width:30px; height:32px; font-size:13px; }
-    .tabs.mmode button{ flex:1; padding:0 var(--s-2); }
+    /* режим «ставлю график / отмечаю выход» — во всю ширину и 40 px под палец */
+    .toolbar .end{ width:100%; }
+    .seg.mmode{ display:flex; width:100%; }
+    .seg.mmode button{ flex:1; min-height:var(--h-ctl); padding:0 var(--s-2); }
   }
   .cell-d, .mgrid td.cell-d{ background:var(--amber-bg); } .cell-n, .mgrid td.cell-n{ background:var(--blue-bg); }
   .cell-out{ outline:2px solid var(--green); outline-offset:-2px; } .cell-no{ outline:2px solid var(--red); outline-offset:-2px; text-decoration:line-through; }
-  /* сводка месяца */
-  .kpi{ display:flex; gap:var(--s-5); flex-wrap:wrap; }
-  .kpi b{ font:var(--t-heading); font-variant-numeric:tabular-nums; }
-  .kpi .k{ display:block; font:var(--t-small); color:var(--muted); }
+  /* сводка месяца — плитки темы */
+  .tiles{ margin-bottom:var(--s-4); }
   /* ── ведомость заработка: ровная сетка «рабочий × дни месяца» ── */
   .paywrap{ overflow-x:auto; border:1px solid var(--line); border-radius:var(--r-card); background:var(--card); }
   table.pay{ border-collapse:separate; border-spacing:0; table-layout:fixed; font-size:13px;
@@ -139,13 +140,15 @@ function shell(){
   // кто вышел, месяц, ведомость заработка. Две половины планирования больше не живут в разных
   // разделах на разных датах.
   app.innerHTML='<div class="tabs">'
-    +'<button id="tb-m" onclick="showTab(\'m\')">📅 Табель</button>'
-    +'<button id="tb-z" onclick="showTab(\'z\')">💰 Заработок</button></div>'
-    +'<div class="box muted" style="padding:var(--s-2) var(--s-3)">Расстановка по участкам и задания бойцам — в разделе '
-    +'<a href="javascript:void(0)" onclick="goPlan()"><b>📊 Планирование</b></a>.</div>'
+    +'<button id="tb-m" onclick="showTab(\'m\')">Табель</button>'
+    +'<button id="tb-z" onclick="showTab(\'z\')">Заработок</button></div>'
     +'<div id="pane"></div>';
   showTab(TAB);
 }
+// подсказка про планирование рисуется в каждой вкладке ПОД панелью действий (порядок каркаса: вкладки → панель → уведомления)
+var PLANNOTE='<div class="note info"><div>Расстановка по участкам и задания бойцам — в разделе '
+  +'<a href="javascript:void(0)" onclick="goPlan()"><b>📊 Планирование</b></a>.</div></div>';
+var MN=['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 function showTab(t){ TAB=t; ['m','z'].forEach(function(x){ var b=$('tb-'+x); if(b) b.className=(x===t?'active':''); });
   if(t==='z') loadPay(); else loadMonth(); }
 
@@ -187,7 +190,6 @@ var ZONLY=true;   // показывать только дни с выработ�
 function togZOnly(){ ZONLY=!ZONLY; renderPay(); }
 function renderPay(){
   var r=PAY, dim=r.daysInMonth, ym=r.ym.split('-');
-  var MN=['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
   var mLabel=MN[Number(ym[1])-1]+' '+ym[0];
   var todayD=(r.today.slice(0,7)===r.ym)?Number(r.today.slice(8)):0;
   // какие дни показываем
@@ -201,23 +203,23 @@ function renderPay(){
   // сводка сверху
   var avgPer=r.workers.length?Math.round(r.grand/r.workers.length):0;
   var bestD=0,bestV=0; cols.forEach(function(d){ if((r.dayTotals[d]||0)>bestV){ bestV=r.dayTotals[d]; bestD=d; } });
-  var head='<div class="box"><div class="row">'
-    +'<button class="gho" onclick="shiftZ(-1)" title="предыдущий месяц">←</button>'
-    +'<b style="font:var(--t-heading);min-width:130px;text-align:center">'+esc(mLabel)+'</b>'
-    +'<button class="gho" onclick="shiftZ(1)" title="следующий месяц">→</button>'
-    +'<span style="flex:1"></span>'
-    +'<button class="sec sm" onclick="togZOnly()">'+(ZONLY?'📅 показать весь месяц':'⚡ только дни с работой')+'</button>'
-    +'</div>'
-    +'<div class="kpi" style="margin-top:var(--s-3)">'
-      +'<span><span class="k">Зарплата за месяц (подтверждено)</span><b style="color:var(--green)">'+money(r.grand)+' ₽</b></span>'
-      +'<span><span class="k">Рабочих</span><b>'+r.workers.length+'</b></span>'
-      +'<span><span class="k">В среднем на человека</span><b>'+money(avgPer)+' ₽</b></span>'
-      +(bestD?'<span><span class="k">Лучший день</span><b>'+bestD+'.'+ym[1]+' — '+money(bestV)+' ₽</b></span>':'')
-      +(r.sheetTotal>0?'<span><span class="k">🪚 Раскрой листов</span><b style="color:var(--amber)" title="оплата за раскрой листов на ЧПУ: платим за лист, а детали с него уходят в свои заказы">'+money(r.sheetTotal)+' ₽</b></span>':'')
-      +(r.freeTotal>0?'<span><span class="k">Из них вне заказа</span><b style="color:var(--accent-text)">'+money(r.freeTotal)+' ₽</b></span>':'')
-      +(r.pendingTotal>0?'<span><span class="k">Ждёт подтверждения</span><b style="color:var(--amber)">'+money(r.pendingTotal)+' ₽</b></span>':'')
-    +'</div></div>';
-  if(!r.workers.length){ $('pane').innerHTML=head+'<div class="box muted">За этот месяц подтверждённой выработки нет.</div>'; return; }
+  var top='<div class="toolbar"><div class="pnav">'
+    +'<button onclick="shiftZ(-1)" title="предыдущий месяц">‹</button>'
+    +'<span class="lbl">'+esc(mLabel)+'</span>'
+    +'<button onclick="shiftZ(1)" title="следующий месяц">›</button></div>'
+    +'<div class="end"><button class="sec" onclick="togZOnly()">'+(ZONLY?'📅 показать весь месяц':'⚡ только дни с работой')+'</button></div>'
+    +'</div>'+PLANNOTE;
+  var tile=function(t,v,st,tip){ return '<div class="tile"><div class="t">'+t+'</div><div class="v"'+(st?(' style="color:'+st+'"'):'')+(tip?(' title="'+tip+'"'):'')+'>'+v+'</div></div>'; };
+  var tiles='<div class="tiles">'
+      +tile('Зарплата за месяц (подтверждено)', money(r.grand)+' <small>₽</small>', 'var(--green)')
+      +tile('Рабочих', r.workers.length)
+      +tile('В среднем на человека', money(avgPer)+' <small>₽</small>')
+      +(bestD?tile('Лучший день', money(bestV)+' <small>₽ · '+bestD+'.'+ym[1]+'</small>'):'')
+      +(r.sheetTotal>0?tile('🪚 Раскрой листов', money(r.sheetTotal)+' <small>₽</small>', 'var(--amber)', 'оплата за раскрой листов на ЧПУ: платим за лист, а детали с него уходят в свои заказы'):'')
+      +(r.freeTotal>0?tile('Из них вне заказа', money(r.freeTotal)+' <small>₽</small>', 'var(--accent-text)'):'')
+      +(r.pendingTotal>0?tile('Ждёт подтверждения', money(r.pendingTotal)+' <small>₽</small>', 'var(--amber)'):'')
+    +'</div>';
+  if(!r.workers.length){ $('pane').innerHTML=top+tiles+'<div class="empty">За этот месяц подтверждённой выработки нет.</div>'; return; }
   // ⚠ Инициал вместо второго слова терял ФАМИЛИЮ у половины людей: в «Работниках» имя записано
   // и как «Фамилия Имя», и как «Имя Фамилия», поэтому «Олег Ш.» и «Сергей Ш.» — два разных
   // человека, и в ведомости их не различить. Показываем два слова целиком, отчество убираем.
@@ -255,10 +257,10 @@ function renderPay(){
     +cols.map(function(d){ var t=r.dayTotals[d];
       return '<td class="'+(d===todayD?'tdy':(wkd(d)?'wknd':''))+(t?'':' zero')+'">'+(t?rub(t):'·')+'</td>'; }).join('')
     +'</tr></tfoot>';
-  var note='<div class="muted" style="margin:var(--s-2) var(--s-1) 0;font-size:13px">В клетках — заработок за день, целыми рублями (точная сумма — при наведении). '
+  var note='<div class="note"><div>В клетках — заработок за день, целыми рублями (точная сумма — при наведении). '
     +'🌙 — была ночная смена. Колонка «Итого ₽» и строка «ВСЕГО» — с копейками.'
-    +(hidden>0&&ZONLY?(' Скрыто дней без выработки: '+hidden+'.'):'')+'</div>';
-  $('pane').innerHTML=head+'<div class="paywrap" id="paywrap"><table class="pay">'+cg+th+body+ft+'</table></div>'+note;
+    +(hidden>0&&ZONLY?(' Скрыто дней без выработки: '+hidden+'.'):'')+'</div></div>';
+  $('pane').innerHTML=top+note+tiles+'<div class="paywrap" id="paywrap"><table class="pay">'+cg+th+body+ft+'</table></div>';
   setTimeout(function(){   // прокрутить к сегодняшнему дню; если его нет — к последним дням с работой
     var wrap=$('paywrap'); if(!wrap) return;
     var cell=wrap.querySelector('thead th.tdy');
@@ -334,18 +336,19 @@ function renderMonth(){
     }
     return '<tr><td class="nm">'+esc(w)+' <span class="muted">('+cnt+(was?' · был '+was:'')+')</span></td>'+tds+'</tr>';
   }).join('');
-  var modeBox='<div class="tabs mmode" style="margin:var(--s-2) 0 0">'
-    +'<button class="'+(MMODE==='plan'?'active':'')+'" onclick="setMMode(\'plan\')">✏️ Ставлю график</button>'
-    +'<button class="'+(MMODE==='fact'?'active':'')+'" onclick="setMMode(\'fact\')">✅ Отмечаю выход</button></div>'
-    +'<div class="muted" style="font-size:13px;margin-top:var(--s-1)">'
+  var modeSeg='<div class="seg mmode">'
+    +'<button class="'+(MMODE==='plan'?'on':'')+'" onclick="setMMode(\'plan\')">✏️ Ставлю график</button>'
+    +'<button class="'+(MMODE==='fact'?'on':'')+'" onclick="setMMode(\'fact\')">✅ Отмечаю выход</button></div>';
+  var legend='<div class="note"><div>'
     +(MMODE==='fact'
       ? 'Клик по клетке: <b>по графику → ✓ вышел → ✕ не вышел</b>. Смену в этом режиме не меняем — только факт.'
       : 'Клик по клетке: ☀️ день → 🌙 ночь → пусто · зелёная рамка — вышел, красная — не вышел · серые колонки — выходные, розовые — праздники')
-    +'<div class="muted" style="font-size:13px;margin-top:var(--s-1)">Бледная <b class="fk auto" style="font-size:13px">✓</b> — отметки нет, но за этот день подан наряд: значит был на работе. Зелёная клетка без солнышка — наряд есть, а смена в графике не проставлена. <b class="fk warn" style="font-size:13px">!</b> — отмечен «не вышел», но наряд есть.</div>'
-    +'</div>';
-  $('pane').innerHTML='<div class="box"><div class="row"><button class="gho" onclick="shiftMonth(-1)">←</button><b>'+YM+'</b><button class="gho" onclick="shiftMonth(1)">→</button>'
-    +'<span id="sv" class="muted"></span></div>'+modeBox+'</div>'
-    +'<div class="box mgrid" style="overflow-x:auto"><table id="mtbl"><colgroup>'+Array(M.days+2).join('<col>')+'</colgroup>'+thead+body+'</table></div>';
+    +'<div style="margin-top:var(--s-1)">Бледная <b class="fk auto" style="font-size:13px">✓</b> — отметки нет, но за этот день подан наряд: значит был на работе. Зелёная клетка без солнышка — наряд есть, а смена в графике не проставлена. <b class="fk warn" style="font-size:13px">!</b> — отмечен «не вышел», но наряд есть.</div>'
+    +'</div></div>';
+  $('pane').innerHTML='<div class="toolbar"><div class="pnav"><button onclick="shiftMonth(-1)">‹</button><span class="lbl">'+esc(MN[mo-1]+' '+y)+'</span><button onclick="shiftMonth(1)">›</button></div>'
+    +'<span id="sv" class="meta"></span><div class="end">'+modeSeg+'</div></div>'
+    +PLANNOTE+legend
+    +'<div class="card mgrid" style="overflow-x:auto"><table id="mtbl"><colgroup>'+Array(M.days+2).join('<col>')+'</colgroup>'+thead+body+'</table></div>';
   var tbl=$('mtbl');
   if(tbl){
     tbl.addEventListener('click', monthCellClick);

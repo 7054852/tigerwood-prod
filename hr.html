@@ -11,6 +11,10 @@
   .tabs button .b{ display:inline-block; background:var(--red); color:var(--on-accent); border-radius:var(--r-pill); padding:0 var(--s-1);
                    margin-left:var(--s-1); font:var(--t-label); font-variant-numeric:tabular-nums; }
   .tabs .b.amber{ background:var(--amber); }
+  .tabs .bell{ margin-left:auto; }
+  .chips{ margin:0 0 var(--s-4); }
+  .chips button.chip:hover{ background:var(--card2); color:var(--fg); }
+  .chips button.chip.on:hover{ background:var(--accent-bg); color:var(--accent-text); }
   select.stsel{ width:auto; min-height:var(--h-sm); padding:0 var(--s-2); font:var(--t-small); border-radius:var(--r-xs); }
   td.num, th.num{ white-space:nowrap; }
   tr.click:hover td{ background:var(--card2); cursor:pointer; }
@@ -100,8 +104,8 @@ var TAB='emp', DATA=null, CARD=null;
 function isCivil(k){ k=String(k||'').toLowerCase(); return k==='подряд'||k==='нпд'; }
 // Сроки — не вкладка, а уведомление: их читают раз в неделю, а место они занимали первым экраном.
 // Приказы и больничные — типы документов, поэтому живут в общем реестре «Документы», а не своими вкладками.
-var TABS=[{id:'emp',t:'👤 Сотрудники'},{id:'con',t:'📑 Договоры'},{id:'doc',t:'🗂 Документы'},
-          {id:'pay',t:'💰 Ведомости'},{id:'fuel',t:'⛽ Топливо'},{id:'tpl',t:'📋 Шаблоны'}];
+var TABS=[{id:'emp',t:'Сотрудники'},{id:'con',t:'Договоры'},{id:'doc',t:'Документы'},
+          {id:'pay',t:'Ведомости'},{id:'fuel',t:'Топливо'},{id:'tpl',t:'Шаблоны'}];
 var DLOPEN=false, DOCF='all', DOCQ='';
 
 // ВСЁ грузится одним запросом (вызов GAS стоит секунды) — вкладки и карточки дальше открываются мгновенно, без сети
@@ -139,19 +143,29 @@ function render(){
   var h='<div class="tabs">'+TABS.map(function(t){
     return '<button class="'+(TAB===t.id?'on':'')+'" onclick="go(\''+t.id+'\')">'+t.t+'</button>';
   }).join('')+
-  '<button class="'+(DLOPEN?'on':'')+'" onclick="toggleDl()" title="сроки и напоминания">🔔'+
-    (dl.length?('<span class="b'+(red?'':' amber')+'">'+dl.length+'</span>'):'')+'</button>'+
-  '<button onclick="load(1)" title="перечитать с сервера">⟳</button>'+
-  (DATA.cached?'<span class="muted" style="align-self:center;font-size:13px">данные из кеша</span>':'')+'</div>';
-  if(DLOPEN) h+=dlView();
-  if(CARD) h+=cardView();
-  else if(TAB==='emp') h+=empView();
-  else if(TAB==='con') h+=conRegView();
-  else if(TAB==='doc') h+=docView();
-  else if(TAB==='pay') h+=payView();
-  else if(TAB==='fuel') h+=fuelView();
-  else if(TAB==='tpl') h+=tplView();
-  $('app').innerHTML=h;
+  '<button class="bell'+(DLOPEN?' on':'')+'" onclick="toggleDl()" title="сроки и напоминания" aria-label="сроки и напоминания">🔔'+
+    (dl.length?('<span class="b'+(red?'':' amber')+'">'+dl.length+'</span>'):'')+'</button></div>';
+  DLDONE=false;
+  var body='';
+  if(CARD) body=cardView();
+  else if(TAB==='emp') body=empView();
+  else if(TAB==='con') body=conRegView();
+  else if(TAB==='doc') body=docView();
+  else if(TAB==='pay') body=payView();
+  else if(TAB==='fuel') body=fuelView();
+  else if(TAB==='tpl') body=tplView();
+  if(DLOPEN&&!DLDONE) body=dlView()+body;   // экран без панели действий (загрузка, правка ведомости) — сроки сразу под вкладками
+  $('app').innerHTML=h+body;
+}
+// Панель действий раздела (каркас): слева счётчики и фильтры, справа «Обновить» первой, основная кнопка — последней.
+// Под панелью — строка чипов (extra), затем панель сроков 🔔: это уведомление, его место под панелью действий.
+var DLDONE=false;
+function tb(left,right,extra){
+  var h='<div class="toolbar">'+(left||'')+
+    (DATA&&DATA.cached?'<span class="meta">данные из кеша</span>':'')+
+    '<div class="end"><button class="btn sec" onclick="load(1)" title="перечитать с сервера">Обновить</button>'+(right||'')+'</div></div>'+(extra||'');
+  if(DLOPEN&&!DLDONE){ DLDONE=true; h+=dlView(); }
+  return h;
 }
 // человеческие названия групп справочника — и в чипах реестра, и в выборе типа
 function ordHasTpl(k){ return /при[её]м|назначени/i.test(String(k||'')); }
@@ -163,9 +177,10 @@ var GRPNAME={'дс':'Доп. соглашения','приказ':'Приказ�
 // плашка поверх экрана (документ собран, результат распознавания) — одна на всё приложение
 function msgBox(html){
   var m=$('msgbar');
-  if(!m){ m=document.createElement('div'); m.id='msgbar'; m.className='card'; m.style.margin='8px 0';
-          var app=$('app'); app.insertBefore(m, app.firstChild); }
-  m.innerHTML=html;
+  // вид — .note каркаса, место — под панелью действий (на экране без панели — первой строкой, как раньше)
+  if(!m){ m=document.createElement('div'); m.id='msgbar'; m.className='note';
+          var app=$('app'), bar=app.querySelector('.toolbar'); app.insertBefore(m, bar?bar.nextSibling:app.firstChild); }
+  m.innerHTML='<div>'+html+'</div>';
 }
 function msgClose(){ var m=$('msgbar'); if(m&&m.parentNode) m.parentNode.removeChild(m); }
 function toggleDl(){ DLOPEN=!DLOPEN; render(); }
@@ -201,9 +216,9 @@ function empView(){
   });
   var hid=all.filter(function(x){ return isHidden(x.emp); });
   var l=SHOWHIDDEN?all:all.filter(function(x){ return !isHidden(x.emp); });
-  var h='<div class="row" style="margin-bottom:var(--s-2)"><button class="btn pri" onclick="newEmp()">+ Сотрудник</button>'+
-        '<span class="muted">активных: '+(all.length-hid.length)+'</span>'+
-        (hid.length?'<span class="sw'+(SHOWHIDDEN?' on':'')+'" onclick="toggleHidden()"><i></i>показать скрытых ('+hid.length+')</span>':'')+'</div>';
+  var h=tb('<span class="meta">активных: '+(all.length-hid.length)+'</span>'+
+        (hid.length?'<span class="sw'+(SHOWHIDDEN?' on':'')+'" onclick="toggleHidden()"><i></i>показать скрытых ('+hid.length+')</span>':''),
+        '<button class="btn pri" onclick="newEmp()">+ Сотрудник</button>');
   h+='<div class="card tbwrap"><table class="emplist"><thead><tr><th></th><th>ФИО</th><th>Тип</th><th>Должность</th><th>Договор</th><th>Окончание</th><th>Оформление</th><th>Статус</th></tr></thead><tbody>';
   h+=l.map(function(x){
     var e=x.emp,c=x.contract||{},p=x.steps||{};
@@ -221,16 +236,15 @@ function openCard(id){ CARD=buildCard(id); if(!CARD){ alert('сотрудник 
 function closeCard(){ CARD=null; render(); }
 function cardView(){
   var e=CARD.emp;
-  var h='<div class="back" onclick="closeCard()">← к списку</div>';
-  h+='<div class="card" style="margin-top:var(--s-2)"><div class="row" style="justify-content:space-between">'+
-     '<div><div style="font:var(--t-heading)">'+esc(e.fio)+'</div>'+
+  var h=tb('<button class="btn sec" onclick="closeCard()">← к списку</button>',
+     (e.folder?'<a class="btn sec" href="'+esc(e.folder)+'" target="_blank">📁 папка</a>'
+        :'<button class="btn sec" onclick="mkFolder()">📁 создать папку</button>')+
+     '<button class="btn sec" onclick="recogPassport()" title="распознать паспортные данные из скана в папке">🪪 распознать паспорт</button>'+
+     (e.tgId?'':'<button class="btn sec" onclick="inviteEmp()" title="дать сотруднику доступ в приложение">✉ пригласить</button>')+
+     '<button class="btn sec" onclick="editEmp()">✎ править</button>');
+  h+='<div class="card"><div style="font:var(--t-heading)">'+esc(e.fio)+'</div>'+
      '<div class="muted">'+esc(e.type||'тип по договору не определён')+' · '+esc(e.pos||'должность не указана')+(e.posCode?' ('+esc(e.posCode)+')':'')+' · '+esc(e.status||'')+
-     ' <span class="small">(из договора)</span></div></div>'+
-     '<div class="row">'+(e.folder?'<a class="btn sm" href="'+esc(e.folder)+'" target="_blank">📁 папка</a>'
-        :'<button class="btn sm" onclick="mkFolder()">📁 создать папку</button>')+
-     '<button class="btn sm" onclick="recogPassport()" title="распознать паспортные данные из скана в папке">🪪 распознать паспорт</button>'+
-     (e.tgId?'':'<button class="btn sm" onclick="inviteEmp()" title="дать сотруднику доступ в приложение">✉ пригласить</button>')+
-     '<button class="btn sm" onclick="editEmp()">✎ править</button></div></div>';
+     ' <span class="small">(из договора)</span></div>';
   h+='<div class="grid" style="margin-top:var(--s-3)"><div class="kv"><div class="k">Идент. номер</div><div>'+esc(e.idnum||'—')+'</div>'+
      '<div class="k">Паспорт</div><div>'+esc(e.passport||'—')+'</div><div class="k">Р/с</div><div>'+esc(e.account||'—')+'</div></div>'+
      '<div class="kv"><div class="k">Принят</div><div>'+esc(e.hired||'—')+'</div><div class="k">Уволен</div><div>'+esc(e.fired||'—')+'</div>'+
@@ -1099,10 +1113,10 @@ function conRegView(){
     return (dt(a.date)||0)-(dt(b.date)||0);
   });
   var byEmp={}; (DATA.list||[]).forEach(function(x){ byEmp[x.emp.id]=x.emp; });
-  var h='<div class="row" style="margin-bottom:var(--s-2)">'+
-    ['all','контракт','подряд','обучение'].map(function(v){ return '<button class="btn'+(CONFILTER===v?' pri':'')+'" onclick="conFilter(\''+v+'\')">'+
-      (v==='all'?'все':(v==='контракт'?'контракты':(v==='подряд'?'подряд':'обучение')))+'</button>'; }).join('')+
-    '<span class="muted">всего: '+all.length+'</span></div>';
+  var h=tb('<div class="seg">'+
+    ['all','контракт','подряд','обучение'].map(function(v){ return '<button class="'+(CONFILTER===v?'on':'')+'" onclick="conFilter(\''+v+'\')">'+
+      (v==='all'?'все':(v==='контракт'?'контракты':(v==='подряд'?'подряд':'обучение')))+'</button>'; }).join('')+'</div>'+
+    '<span class="meta">всего: '+all.length+'</span>','');
   h+='<div class="card tbwrap"><table class="mob"><thead><tr><th></th><th>№</th><th>Дата</th><th>Вид</th><th>ФИО</th><th>Должность / работа</th><th>Окончание</th><th>Статус</th><th>Документ</th></tr></thead><tbody>';
   h+=l.map(function(c){
     var e=byEmp[c.emp]||{};
@@ -1175,19 +1189,19 @@ function docView(){
   var order=['дс','приказ','заявление','уведомление','больничный','личный','договор','прочее'];
   var cnt={}; all.forEach(function(d){ var g=docGroupOf(d); cnt[g]=(cnt[g]||0)+1; });
   var nAct=all.filter(function(d){ return ACT_TYPES.indexOf(d.type)>=0; }).length;
-  var h='<div class="row" style="margin-bottom:var(--s-2);flex-wrap:wrap">'+
-    '<button class="btn sm'+(DOCF==='all'?' pri':'')+'" onclick="docFilter(\'all\')">Все '+all.length+'</button>'+
-    '<button class="btn sm'+(DOCF==='акт'?' pri':'')+'" onclick="docFilter(\'акт\')">🧾 Акты подряда <span'+(nAct?'':' class="muted"')+'>'+nAct+'</span></button>'+
+  var h=tb('<input id="docq" type="search" class="search" placeholder="поиск по сотруднику, документу, №" value="'+esc(DOCQ)+'" '+
+      'oninput="DOCQ=this.value;docRender()" style="flex:1">',
+    '<button class="btn sec" onclick="docExport()" title="выгрузить текущий список в Excel (CSV)">⬇ Выгрузить</button>'+
+    '<button class="btn sec" onclick="foldOpen()" title="найти в папках сотрудников на Диске подписанные сканы и приложить к карточкам">📂 Разобрать папки</button>',
+    '<div class="chips">'+
+    '<button class="chip'+(DOCF==='all'?' on':'')+'" onclick="docFilter(\'all\')">Все '+all.length+'</button>'+
+    '<button class="chip'+(DOCF==='акт'?' on':'')+'" onclick="docFilter(\'акт\')">🧾 Акты подряда <span'+(nAct?'':' class="muted"')+'>'+nAct+'</span></button>'+
     order.map(function(g){
       var n=cnt[g]||0;
-      return '<button class="btn sm'+(DOCF===g?' pri':'')+'" onclick="docFilter(\''+g+'\')">'+
+      return '<button class="chip'+(DOCF===g?' on':'')+'" onclick="docFilter(\''+g+'\')">'+
         esc(GRPNAME[g]||g)+' <span'+(n?'':' class="muted"')+'>'+n+'</span></button>';
-    }).join('')+
-    '<button class="btn sm" onclick="docExport()" title="выгрузить текущий список в Excel (CSV)">⬇ Выгрузить</button>'+
-    '<button class="btn sm" onclick="foldOpen()" title="найти в папках сотрудников на Диске подписанные сканы и приложить к карточкам">📂 Разобрать папки</button>'+
-    '<input id="docq" placeholder="поиск по сотруднику, документу, №" value="'+esc(DOCQ)+'" '+
-      'oninput="DOCQ=this.value;docRender()" style="flex:1;min-width:180px">'+
-    '</div><div id="docbody">'+docTable(docFilterList(),docFioMap())+'</div>';
+    }).join('')+'</div>')+
+    '<div id="docbody">'+docTable(docFilterList(),docFioMap())+'</div>';
   if((DATA.docs||[]).length) h+=docSheetsBlock();
   h+='<div class="row" style="margin-top:var(--s-2)"><button class="btn" onclick="docForm({})">+ табель / ведомость</button>'+
      '<span class="muted" style="font-size:13px">документы сотрудника добавляются в его карточке</span></div>';
@@ -1267,8 +1281,8 @@ function docForm(d){
 }
 function fuelView(){
   var l=DATA.fuel||[], t=DATA.fuelTotals||{};
-  var h='<div class="row" style="margin-bottom:var(--s-2)"><button class="btn pri" onclick="fuelForm({})">+ Запись</button>'+
-        '<span class="muted">акты: '+money(t.acts)+' · выплаты: '+money(t.pays)+'</span></div>';
+  var h=tb('<span class="meta">акты: '+money(t.acts)+' · выплаты: '+money(t.pays)+'</span>',
+        '<button class="btn pri" onclick="fuelForm({})">+ Запись</button>');
   h+='<div class="card tbwrap"><table class="mob"><thead><tr><th>Вид</th><th>Дата</th><th>№ акта</th><th>ФИО</th><th class="num">Сумма</th><th></th></tr></thead><tbody>';
   h+=l.map(function(f){ return '<tr><td><b>'+esc(f.kind)+'</b></td><td data-l="Дата">'+esc(f.date||'—')+'</td>'+
     '<td data-l="№ акта">'+esc(f.num||'—')+'</td><td data-l="ФИО">'+esc(f.fio||'—')+'</td>'+
@@ -1294,21 +1308,28 @@ function payMonth(p){ var m=['январь','февраль','март','апр�
   var x=String(p||'').split('-'); return x[1]?(m[Number(x[1])-1]+' '+x[0]):(p||'—'); }
 function payView(){
   if(PAYEDIT) return payEditView();
-  var sw='<div class="row" style="margin-bottom:var(--s-2);gap:var(--s-2)">'+
-    '<button class="btn'+(PAYMODE==='docs'?' pri':'')+'" onclick="PAYMODE=\'docs\';render()">📄 Ведомости</button>'+
-    '<button class="btn'+(PAYMODE==='debt'?' pri':'')+'" onclick="PAYMODE=\'debt\';render()">📊 Долг по месяцам</button>'+
-    '<button class="btn'+(PAYMODE==='reg'?' pri':'')+'" onclick="PAYMODE=\'reg\';render()">🧾 Реестр выплат</button>'+
-    (PAYMODE==='debt'?'<button class="btn" onclick="DEBT=null;render()" title="пересчитать">⟳</button>':'')+
-    (PAYMODE==='reg'?'<button class="btn" onclick="REG=null;render()" title="пересчитать">⟳</button>':'')+'</div>';
-  return sw+(PAYMODE==='debt'?debtView():PAYMODE==='reg'?regView():payDocsView());
+  var body=PAYMODE==='debt'?debtView():PAYMODE==='reg'?regView():payDocsView();
+  // листалка месяца, выгрузка, загрузка ведомости — в панели действий; видны там же, где раньше (когда данные пришли)
+  var reg=PAYMODE==='reg'&&REG&&REG.ok, docs=PAYMODE==='docs'&&PAYDATA&&PAYDATA.ok;
+  return tb('<div class="seg">'+
+      '<button class="'+(PAYMODE==='docs'?'on':'')+'" onclick="PAYMODE=\'docs\';render()">📄 Ведомости</button>'+
+      '<button class="'+(PAYMODE==='debt'?'on':'')+'" onclick="PAYMODE=\'debt\';render()">📊 Долг по месяцам</button>'+
+      '<button class="'+(PAYMODE==='reg'?'on':'')+'" onclick="PAYMODE=\'reg\';render()">🧾 Реестр выплат</button></div>'+
+      (reg?'<div class="pnav"><button onclick="regYmShift(-1)" title="предыдущий месяц" aria-label="предыдущий месяц">‹</button>'+
+        '<span class="lbl">'+esc(payMonth(REG.ym))+'</span>'+
+        '<button onclick="regYmShift(1)" title="следующий месяц" aria-label="следующий месяц">›</button></div>':'')+
+      (docs?'<span class="meta">Excel, фото или PDF — на всех или на одного (подряд, премия)</span>':''),
+    (PAYMODE==='debt'?'<button class="btn sec" onclick="DEBT=null;render()" title="пересчитать">⟳</button>':'')+
+    (PAYMODE==='reg'?'<button class="btn sec" onclick="REG=null;render()" title="пересчитать">⟳</button>':'')+
+    (reg?'<button class="btn sec" onclick="regExport()">⬇ Выгрузить</button>':'')+
+    (docs?'<button class="btn pri" onclick="payUpload()">⬆ Загрузить ведомость</button>':''))+body;
 }
 function payDocsView(){
   if(!PAYDATA){
     if(!PAYLOADING){ PAYLOADING=1; api({vapi:'hrpaylist'}).then(function(r){ PAYLOADING=0; PAYDATA=r; if(TAB==='pay') render(); }); }
     return '<div class="center">Загрузка ведомостей…</div>'; }
   if(!PAYDATA.ok) return '<div class="center">Ошибка: '+esc(PAYDATA.error||'')+'</div>';
-  var h='<div class="row" style="margin-bottom:var(--s-2)"><button class="btn pri" onclick="payUpload()">⬆ Загрузить ведомость</button>'+
-    '<span class="muted">Excel, фото или PDF — на всех или на одного (подряд, премия)</span></div>';
+  var h='';   // кнопка загрузки и подсказка — в панели действий (payView)
   var docs=PAYDATA.docs||[];
   if(!docs.length) return h+'<div class="card"><div class="empty">Ведомостей пока нет.</div></div>';
   return h+docs.map(function(d){
@@ -1481,10 +1502,8 @@ function regView(){
   if(!REG.ok) return '<div class="center">Ошибка: '+esc(REG.error||'')+'</div>';
   var t=REG.totals||{}, col={paid:'var(--green)',bank:'var(--green)',ok:'var(--green)',diff:'var(--amber)',late:'var(--red)',none:'var(--red)'};
   var pill=function(map,s){ return '<span style="color:'+(col[s]||'var(--muted)')+';font-weight:'+(col[s]&&s!=='paid'&&s!=='ok'&&s!=='bank'?600:400)+'">'+esc(map[s]||s)+'</span>'; };
-  var h='<div class="card"><div class="row" style="gap:var(--s-2);align-items:center"><button class="btn sm" onclick="regYmShift(-1)">◀</button>'+
-    '<b style="font-size:16px">'+esc(payMonth(REG.ym))+'</b><button class="btn sm" onclick="regYmShift(1)">▶</button><span style="flex:1"></span>'+
-    '<button class="btn sm" onclick="regExport()">⬇ Выгрузить</button></div>'+
-    '<div style="margin-top:var(--s-2);font-size:13px">к оплате <b>'+money(t.toPay)+'</b> · выплачено '+money(t.paid)+
+  // листалка месяца и выгрузка — в панели действий (payView)
+  var h='<div class="card"><div style="font-size:13px">к оплате <b>'+money(t.toPay)+'</b> · выплачено '+money(t.paid)+
     (t.late?' · <b style="color:var(--red)">просрочено '+money(t.late)+'</b>':'')+'</div>'+
     (REG.finErr?'<div style="color:var(--red);font-size:13px;margin-top:var(--s-1)">Фин.гений: '+esc(REG.finErr)+' — факт оплаты не проверен</div>':'')+'</div>';
   h+='<div class="card"><b>🏦 Сверка с выпиской</b>'+(REG.recon.length?
@@ -1534,14 +1553,14 @@ function foldView(){
   if(FOLD.loading) return '<div class="center">Просматриваю папки сотрудников на Диске…</div>';
   var n=0, unsure=0, sel=0;
   FOLD.emps.forEach(function(e){ e.files.forEach(function(f){ n++; if(f.g.recog&&!f.g.done) unsure++; if(f.on) sel++; }); });
-  var h='<div class="card"><b>📂 Подписанные сканы в папках сотрудников, ещё не приложенные к карточкам: '+n+'</b>'+
-    '<div class="muted" style="font-size:13px;margin-top:var(--s-1)">Черновики (Word, Google-документы) пропущены'+(FOLD.skipped?' — '+FOLD.skipped:'')+
+  var h=tb('<button class="btn sec" onclick="FOLD=null;render()">← к документам</button>',
+    (unsure?'<button class="btn sec"'+(FOLDBUSY?' disabled':'')+' onclick="foldRecogAll()">🔎 Распознать неясные ('+unsure+')</button>':'')+
+    '<button class="btn pri"'+(FOLDBUSY||!sel?' disabled':'')+' onclick="foldAttach()">📎 Привязать отмеченные ('+sel+')</button>')+
+    '<div class="note"><div><b>📂 Подписанные сканы в папках сотрудников, ещё не приложенные к карточкам: '+n+'</b>'+
+    '<div style="margin-top:var(--s-1)">Черновики (Word, Google-документы) пропущены'+(FOLD.skipped?' — '+FOLD.skipped:'')+
     '. Файлы остаются в папках, в карточку добавляется ссылка; несколько фото одного документа (страницы договора, акта) склеиваются в один PDF, фото уходят в подпапку «Оригиналы». '+
     'Проверьте «Куда»; неясные — «Распознать» (читает Claude, ~10 с на файл). '+
-    'Галочки стоят у тех, что определены уверенно.</div>'+
-    '<div class="row" style="margin-top:var(--s-2);gap:var(--s-2);flex-wrap:wrap"><button class="btn" onclick="FOLD=null;render()">← к документам</button>'+
-    (unsure?'<button class="btn"'+(FOLDBUSY?' disabled':'')+' onclick="foldRecogAll()">🔎 Распознать неясные ('+unsure+')</button>':'')+
-    '<button class="btn pri"'+(FOLDBUSY||!sel?' disabled':'')+' onclick="foldAttach()">📎 Привязать отмеченные ('+sel+')</button></div></div>';
+    'Галочки стоят у тех, что определены уверенно.</div></div></div>';
   if(!n) return h+'<div class="card"><div class="empty">Всё подписанное уже приложено к карточкам.</div></div>';
   return h+FOLD.emps.map(function(e,ei){
     if(!e.files.length) return '';
@@ -1602,9 +1621,9 @@ function tplView(){
   var hint={gen:'Эти шаблоны система заполняет сама при нажатии «собрать по шаблону» в карточке. Здесь — только для просмотра и правки самого шаблона.',
             hand:'Чистые бланки: откройте, распечатайте или заполните вручную. Например договор подряда чаще заполняется работником от руки.',
             lna:'Локальные нормативные акты и порядки — для ознакомления сотрудников.'};
-  var h='';
-  (TPLDATA.sections||[]).forEach(function(sec){
-    h+='<div class="sect" style="display:flex;justify-content:space-between;align-items:baseline">'+esc(sec.title)+
+  var h=tb('','');
+  (TPLDATA.sections||[]).forEach(function(sec,si){
+    h+='<div class="sect" style="display:flex;justify-content:space-between;align-items:baseline'+(si?'':';margin-top:0')+'">'+esc(sec.title)+
        '<a class="back" href="'+esc(sec.folderUrl)+'" target="_blank" style="text-transform:none;font-weight:400">открыть папку ↗</a></div>';
     h+='<div class="muted" style="font-size:13px;margin:0 var(--s-1) var(--s-2)">'+esc(hint[sec.key]||'')+'</div>';
     if(!sec.groups.length){ h+='<div class="card"><div class="empty">Пусто.</div></div>'; return; }

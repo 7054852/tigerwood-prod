@@ -7,7 +7,8 @@
 <title>Тигервуд — входящие документы</title>
 <style>
   .muted{ font-size:13px; }
-  .tbar{ margin:var(--s-3) 0; }
+  #cnt{ margin:0 0 var(--s-2); }
+  #filters{ margin:0 0 var(--s-4); }
   /* документ — карточкой: в таблице поставщик и номер уезжали за край */
   .doc{ border:1px solid var(--line); border-radius:var(--r-card); background:var(--card); box-shadow:var(--shadow-card); padding:var(--s-3) var(--s-4); margin-bottom:var(--s-2); cursor:pointer; transition:border-color .15s var(--ease); }
   .doc:hover{ border-color:var(--muted); }
@@ -38,23 +39,23 @@
 <div id="twload"><i></i></div>
 <div id="twwait"><div class="wb"><div class="sp"></div><div class="wt" id="twwt">Отправляю…</div><div class="wh">идёт обмен с сервером — не нажимайте</div></div></div>
 <div class="hi">📑 Входящие документы</div>
-<div class="muted" id="cnt">загрузка…</div>
-
-<div class="row tbar">
+<div class="toolbar">
   <span class="muted">с</span><input type="date" id="from" onchange="load()">
   <span class="muted">по</span><input type="date" id="to" onchange="load()">
-  <input class="search" id="q" placeholder="поставщик или № документа…" oninput="draw()" style="min-width:180px">
-  <button class="sec" onclick="load()">↻ Обновить</button>
-  <button onclick="document.getElementById('upl').click()" title="накладные, акты, УПД, чеки — сразу несколько файлов">⬆️ Загрузить документы</button>
-  <input type="file" id="upl" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.doc,.docx,.xls,.xlsx" style="display:none" onchange="uploadPicked(this.files)">
-  <button class="sec" onclick="scanNow()" title="распознать ближайшие документы прямо сейчас, не дожидаясь фонового прогона">⚡ Распознать сейчас</button>
-  <button class="sec" onclick="exportDocs()" title="файл со всеми реквизитами — бухгалтеру останется загрузить его в 1С">⬇️ Выгрузить для 1С</button>
-  <button class="sec" onclick="showFixes()" title="что бухгалтер чаще всего исправляет за распознаванием — по этому списку уточняется промпт">📊 Что чаще правят</button>
+  <input type="search" class="search" id="q" placeholder="поставщик или № документа…" oninput="draw()">
   <span class="msg" id="smsg"></span>
+  <div class="end">
+    <button class="sec" onclick="load()">Обновить</button>
+    <button class="sec" onclick="scanNow()" title="распознать ближайшие документы прямо сейчас, не дожидаясь фонового прогона">⚡ Распознать сейчас</button>
+    <button class="sec" onclick="exportDocs()" title="файл со всеми реквизитами — бухгалтеру останется загрузить его в 1С">⬇️ Выгрузить для 1С</button>
+    <button class="sec" onclick="showFixes()" title="что бухгалтер чаще всего исправляет за распознаванием — по этому списку уточняется промпт">📊 Что чаще правят</button>
+    <button onclick="document.getElementById('upl').click()" title="накладные, акты, УПД, чеки — сразу несколько файлов">⬆️ Загрузить документы</button>
+    <input type="file" id="upl" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.doc,.docx,.xls,.xlsx" style="display:none" onchange="uploadPicked(this.files)">
+  </div>
 </div>
 <div id="uplbox" class="box" style="display:none;margin-bottom:var(--s-3)"></div>
+<div class="meta" id="cnt">загрузка…</div>
 <div class="chips" id="filters"></div>
-<div style="height:12px"></div>
 <div id="list"><div class="center muted">Загрузка…</div></div>
 
 <div class="scrim ov" id="ov"><div class="modal" id="modal"></div></div>
@@ -124,10 +125,10 @@ function draw(){
   $('cnt').textContent=list.length+' из '+ROWS.length+' документов · на проверке: '+(STAT.check||0)+' · разнести: '+(STAT.todo||0)+' · ждут распознавания: '+(STAT.noscan||0);
   var need=list.filter(function(r){ return r.needCheck; }), rest=list.filter(function(r){ return !r.needCheck; });
   $('list').innerHTML=
-    (need.length? '<div class="lbl" style="margin:var(--s-1) 0 var(--s-2)">🔔 На проверке — '+need.length
-        +' <span class="muted" style="font-weight:normal;text-transform:none">проверьте реквизиты и нажмите «Подтвердить», после этого документ уйдёт в общий список</span></div>'
+    (need.length? '<div class="note warn"><div><b>🔔 На проверке — '+need.length+'</b>'
+        +' проверьте реквизиты и нажмите «Подтвердить», после этого документ уйдёт в общий список</div></div>'
       +need.map(docCard).join('')
-      +(rest.length?'<div class="lbl" style="margin:var(--s-4) 0 var(--s-2)">Все документы — '+rest.length+'</div>':'') : '')
+      +(rest.length?'<div class="sect">Все документы — '+rest.length+'</div>':'') : '')
     +rest.map(docCard).join('')
     || '<div class="center muted">ничего не найдено</div>';
 }

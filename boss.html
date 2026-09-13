@@ -6,11 +6,9 @@
 <title>Тигервуд — начальник производства</title>
 <script src="tw-theme.js"></script>
 <style>
-  /* месяц — крупные плитки на утопленном лотке */
-  .month{ background:var(--bg2); border:1px solid var(--line); border-radius:var(--r-card); padding:var(--s-4); }
-  .mrow{ display:flex; gap:var(--s-3); flex-wrap:wrap; align-items:stretch; }
-  .mrow .tile{ flex:1 1 130px; }
+  /* месяц — сетка плиток темы, без лотка */
   .tile .v.big{ color:var(--green); }
+  .tiles + .note{ margin-top:var(--s-4); }
   /* карточка заказа */
   .ocard{ background:var(--card); border:1px solid var(--line); border-radius:var(--r-card); margin-bottom:var(--s-3); box-shadow:var(--shadow-card); overflow:hidden; }
   .ohead{ display:flex; align-items:center; gap:var(--s-3); padding:var(--s-3) var(--s-4); cursor:pointer; flex-wrap:wrap; }
@@ -69,21 +67,23 @@ function load(){
 }
 function render(){
   var app=$('app'), mo=MO;
-  var month='<div class="sect">Этот месяц ('+esc(mo.month||'')+')'+(DIR?' — начальник производства':'')+'</div>'
-    +'<div class="month"><div class="mrow">'
+  // каркас: панель действий → уведомление → плитки месяца → группа заказов
+  var month='<div class="toolbar"><span class="meta">Этот месяц ('+esc(mo.month||'')+')'+(DIR?' — начальник производства':'')+'</span>'
+    +(DIR? '<div class="end"><span class="msg" id="rrMsg"></span><button class="sec" onclick="recalcRates()" title="пересчитать базовые ставки от текущего труда изделий">↻ Пересчитать ставки от труда</button></div>' : '')
+    +'</div>'
+    +(mo.packedNoVariant? '<div class="note warn"><div>⚠ '+mo.packedNoVariant+' шт упаковки без указанного варианта — мастер не проставил изделие, мотивация по ним не начислена.</div></div>':'')
+    +'<div class="tiles">'
     +'<div class="tile"><div class="t">Оклад</div><div class="v">'+money(mo.salary)+' <small>р</small></div></div>'
     +'<div class="tile"><div class="t">Мотивация за упаковку</div><div class="v big">'+money(mo.motivation)+' <small>р</small></div></div>'
     +'<div class="tile"><div class="t">Итого за месяц</div><div class="v">'+money(mo.total)+' <small>р</small></div></div>'
     +'<div class="tile"><div class="t">Упаковано изделий</div><div class="v">'+(mo.packed||0)+'</div></div>'
     +'</div>'
-    +(mo.packedNoVariant? '<div class="muted" style="margin-top:var(--s-2)">⚠ '+mo.packedNoVariant+' шт упаковки без указанного варианта — мастер не проставил изделие, мотивация по ним не начислена.</div>':'')
-    +'</div>';
+    ;
   var pot=ORDERS.reduce(function(s,o){return s+(o.potential||0);},0);
   var earn=ORDERS.reduce(function(s,o){return s+(o.earned||0);},0);
   var hint=DIR? 'ставки ₽/шт можно менять — базовая берётся из справочника' : 'потенциал '+money(pot)+' · заработано '+money(earn)+' р';
-  var orders='<div class="sect">'+(DIR?'Заказы — ставки и деньги начальника':'Заказы в работе — деньги для меня')+' <span class="n muted">'+hint+'</span></div>'
-    +(DIR? '<div style="margin:0 0 var(--s-3)"><button class="sec" onclick="recalcRates()" title="пересчитать базовые ставки от текущего труда изделий">↻ Пересчитать ставки от труда</button> <span class="msg" id="rrMsg"></span></div>' : '')
-    +(ORDERS.length? ORDERS.map(orderCard).join('') : '<div class="box muted">активных заказов нет</div>');
+  var orders='<div class="sect">'+(DIR?'Заказы — ставки и деньги начальника':'Заказы в работе — деньги для меня')+' <span class="n">'+hint+'</span></div>'
+    +(ORDERS.length? ORDERS.map(orderCard).join('') : '<div class="empty">активных заказов нет</div>');
   app.innerHTML=month+orders;
   Object.keys(OPEN).forEach(function(id){ if(OPEN[id]){ var c=$('oc_'+id); if(c) c.classList.add('open'); } });
 }

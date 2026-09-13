@@ -9,10 +9,10 @@
   .muted{ font-size:13px; }
   .box{ margin-bottom:var(--s-3); }
   .box + .box{ margin-top:0; }
-  #head .tabs{ margin:var(--s-3) 0 0; }
-  .kpi{ display:flex; gap:var(--s-5); flex-wrap:wrap; font-weight:600; }
-  .kpi b{ font:var(--t-heading); font-variant-numeric:tabular-nums; }
-  .kpi .k{ font:var(--t-label); text-transform:uppercase; letter-spacing:.06em; color:var(--muted); display:block; }
+  /* показатели — плитки темы */
+  .tiles{ margin-bottom:var(--s-4); }
+  .tile .v.ok{ color:var(--green); }
+  .tile .meta{ margin-top:var(--s-1); }
   /* ── чипы бойцов: .chip темы + то, что нужно доске ── */
   .zrow{ display:flex; flex-wrap:wrap; gap:var(--s-2); align-items:center; padding:var(--s-1) var(--s-3); }
   .sh{ width:18px; }
@@ -32,7 +32,8 @@
   .zh{ display:flex; align-items:center; gap:var(--s-2); padding:var(--s-3) var(--s-3) var(--s-2); font-weight:600; flex-wrap:wrap; }
   .zh .zn{ font:var(--t-heading); }
   .zbar{ position:relative; height:16px; background:var(--grid); border-radius:var(--r-xs); display:flex; margin:var(--s-4) var(--s-3) 0; }
-  .zbar .seg{ height:100%; }
+  /* ⚠ отрезки шкалы — .zseg, а не .seg: .seg в теме — сегментный переключатель (рамка, отступы) */
+  .zbar .zseg{ height:100%; }
   .zbar .s-done{ background:var(--green); border-radius:var(--r-xs) 0 0 var(--r-xs); }
   .zbar .s-av{ background:var(--bar); position:relative; }
   .zbar .s-av > i{ display:block; height:100%; background:repeating-linear-gradient(45deg,var(--accent),var(--accent) 5px,var(--accent-hover) 5px,var(--accent-hover) 10px); }
@@ -44,12 +45,6 @@
   .zlegend{ padding:var(--s-2) var(--s-3) 0; }
   .legend{ margin-top:var(--s-3); }
   .zlegend i, .legend i{ display:inline-block; width:12px; height:12px; border-radius:3px; margin-right:6px; vertical-align:-1px; box-shadow:inset 0 0 0 1px var(--line); }
-  /* переключатель режима карты — компактный сегмент, а не две основные кнопки */
-  button.tgl{ min-height:var(--h-sm); padding:0 var(--s-3); background:var(--card); color:var(--muted); border:1px solid var(--line2);
-              font:500 13px/18px var(--font); border-radius:var(--r-ctl); }
-  button.tgl:hover{ background:var(--card2); color:var(--fg); }
-  button.tgl+button.tgl{ margin-left:var(--s-1); }
-  button.tgl.on{ background:var(--accent-bg); border-color:transparent; color:var(--accent-text); }
   .zcap{ font:var(--t-small); padding:var(--s-2) var(--s-3); background:var(--card2); border-top:1px dashed var(--line); }
   .zfoot{ font:var(--t-small); padding:var(--s-2) var(--s-3) var(--s-3); }
   .warnbar{ margin:var(--s-2) var(--s-3) 0; padding:var(--s-2) var(--s-3); border-radius:var(--r-ctl); background:var(--amber-bg); color:var(--amber); font:500 13px/18px var(--font); }
@@ -141,15 +136,18 @@ function setView(v){ VIEW=v; SEL=''; PICK=''; load(); }
 function setDate(v){ DATE=v; SEL=''; PICK=''; load(); }
 function renderHead(){
   var opts=(R.orders||[]).map(function(b){ return '<option value="'+esc(b.id)+'"'+(b.id===OID?' selected':'')+'>'+esc(b.num)+' · '+esc(b.name||'')+'</option>'; }).join('');
-  var tabs=[['horizon','🗺 Горизонт'],['day','🎯 День'],['crew','👷 Люди']].map(function(t){
+  var tabs=[['horizon','Горизонт'],['day','День'],['crew','Люди']].map(function(t){
     return '<button class="'+(VIEW===t[0]?'active':'')+'" onclick="setView(\''+t[0]+'\')">'+t[1]+'</button>'; }).join('');
-  $('head').innerHTML='<div class="box" style="padding:var(--s-3) var(--s-4)"><div class="row">'
-    +'<button class="gho" onclick="setDate(shiftDate(DATE,-1))">←</button>'
+  // каркас: вкладки первыми → панель действий (дата, заказ, справа действия вида)
+  $('head').innerHTML='<div class="tabs">'+tabs+'</div>'
+    +'<div class="toolbar">'
+    +'<div class="pnav"><button onclick="setDate(shiftDate(DATE,-1))">‹</button>'
+    +'<span class="lbl">'+ruDate(DATE)+' ('+dayName(DATE)+')</span>'
+    +'<button onclick="setDate(shiftDate(DATE,1))">›</button></div>'
     +'<input type="date" value="'+DATE+'" onchange="setDate(this.value)">'
-    +'<b>'+ruDate(DATE)+' ('+dayName(DATE)+')</b>'
-    +'<button class="gho" onclick="setDate(shiftDate(DATE,1))">→</button>'
-    +'<span class="muted">заказ:</span><select onchange="OID=this.value;PLAN=null;load()">'+opts+'</select>'
-    +'</div><div class="tabs">'+tabs+'</div></div>';
+    +'<span class="meta">заказ:</span><select onchange="OID=this.value;PLAN=null;load()">'+opts+'</select>'
+    +(VIEW==='crew'?'<div class="end"><button class="sec" onclick="sendAll()">📨 Разослать задания</button></div>':'')
+    +'</div>';
 }
 function render(){
   if(VIEW==='horizon') return renderHorizon();
@@ -175,13 +173,13 @@ function renderDay(){
   var allD=people.filter(function(p){ return !isNight(p); }), allN=people.filter(isNight);
   var y=R.yesterday||{};
   var yline=(y.planRub>0||y.factRub>0)
-    ? ('<span><span class="k">Вчера ('+ruDate(y.date)+')</span><b>'+m0(y.factRub)+' ₽</b>'
-       +(y.planRub>0?(' <span class="muted">из плана '+m0(y.planRub)+(y.pct!=null?(' · '+y.pct+'%'):'')+'</span>'):'')+'</span>')
+    ? ('<div class="tile"><div class="t">Вчера ('+ruDate(y.date)+')</div><div class="v">'+m0(y.factRub)+' <small>₽</small></div>'
+       +(y.planRub>0?('<div class="meta">из плана '+m0(y.planRub)+(y.pct!=null?(' · '+y.pct+'%'):'')+'</div>'):'')+'</div>')
     : '';
-  var kpi='<div class="box kpi">'
-    +'<span><span class="k">Бойцов в смене</span><b>'+people.length+'</b> <span class="muted">☀️'+allD.length+' · 🌙'+allN.length+(bench.length?(' · скамейка '+bench.length):'')+'</span></span>'
-    +'<span><span class="k">Ожидаем за день</span><b class="ok">'+m0(sumExp(people))+' ₽</b></span>'
-    +(R.bottleneck?('<span><span class="k">Узкое место</span><b style="color:var(--red)">'+esc(R.bottleneck)+'</b> <span class="muted">работы на '+(R.bottleneckDays||'?')+' дн</span></span>'):'')
+  var kpi='<div class="tiles">'
+    +'<div class="tile"><div class="t">Бойцов в смене</div><div class="v">'+people.length+'</div><div class="meta">☀️'+allD.length+' · 🌙'+allN.length+(bench.length?(' · скамейка '+bench.length):'')+'</div></div>'
+    +'<div class="tile"><div class="t">Ожидаем за день</div><div class="v ok">'+m0(sumExp(people))+' <small>₽</small></div></div>'
+    +(R.bottleneck?('<div class="tile"><div class="t">Узкое место</div><div class="v" style="color:var(--red)">'+esc(R.bottleneck)+'</div><div class="meta">работы на '+(R.bottleneckDays||'?')+' дн</div></div>'):'')
     +yline+'</div>';
   var fbtn=function(v,l){ return '<button class="sec sm'+(SHIFTF===v?' on':'')+'" onclick="SHIFTF=(SHIFTF===\''+v+'\'?\'\':\''+v+'\');render()">'+l+'</button>'; };
   var showD=(SHIFTF!=='ночь'), showN=(SHIFTF!=='день');
@@ -190,8 +188,9 @@ function renderDay(){
       +'<span class="muted" style="font-size:11px;margin-left:auto">'+lbl+': '+list.length+' · ~'+m0(sumExp(list))+' ₽</span></div>'; };
   var benchInner=(showD?brow(bench.filter(function(p){return !isNight(p);}),'☀️','день'):'')
                 +(showN?brow(bench.filter(isNight),'🌙','ночь'):'');
-  var benchBox='<div class="box" style="padding:var(--s-3) 0 var(--s-2)"><div class="row" style="padding:0 var(--s-3) var(--s-1)"><b>🪑 Скамейка</b>'
-    +'<span class="drophint">— нажмите бойца, потом участок (или перетащите)</span>'
+  var benchBox='<div class="sect">🪑 Скамейка</div>'
+    +'<div class="box" style="padding:var(--s-3) 0 var(--s-2)"><div class="row" style="padding:0 var(--s-3) var(--s-1)">'
+    +'<span class="drophint">нажмите бойца, потом участок (или перетащите)</span>'
     +'<span style="flex:1"></span>'+fbtn('день','☀️')+fbtn('ночь','🌙')+'</div>'
     +(benchInner||'<div class="zrow"><span class="muted">'+(bench.length?'скрыто фильтром':(people.length?'все расставлены 👍':'на эту дату никто не отмечен'))+'</span></div>')+'</div>';
   $('pane').innerHTML=kpi+benchBox+markBox()+(R.groups||[]).map(zoneHtml).join('')+capBox();
@@ -235,9 +234,9 @@ function zoneHtml(g){
     +'<div class="zh"><span>'+(ZICON[g.group]||'')+'</span><span class="zn">'+esc(g.group)+'</span>'+badges
     +'<span style="flex:1"></span><span class="muted" style="font-weight:600">'+ppl.length+' чел</span></div>'
     +(tot?('<div class="zbar">'
-        +'<span class="seg s-done" style="width:'+pD+'%"></span>'
-        +'<span class="seg s-av" style="width:'+pA+'%"><i style="width:'+fill+'%"></i></span>'
-        +'<span class="seg s-bl" style="width:'+pB+'%"></span>'
+        +'<span class="zseg s-done" style="width:'+pD+'%"></span>'
+        +'<span class="zseg s-av" style="width:'+pA+'%"><i style="width:'+fill+'%"></i></span>'
+        +'<span class="zseg s-bl" style="width:'+pB+'%"></span>'
         +(capPos>0?('<span class="capmark" style="left:'+capPos+'%"></span>'):'')+'</div>'
       +'<div class="zlegend"><span><i style="background:var(--green)"></i>сделано '+m0(dn)+'</span>'
         +'<span><i style="background:var(--bar)"></i>можно сейчас <b>'+m0(av)+'</b></span>'
@@ -308,11 +307,11 @@ function editExpect(i){
 function renderCrew(){
   var people=R.people||[], fact=R.fact||{};
   var totalPlan=0; people.forEach(function(p){ totalPlan+=Number(p.planRub)||0; });
-  var kpi='<div class="box kpi">'
-    +'<span><span class="k">Бойцов</span><b>'+people.length+'</b></span>'
-    +'<span><span class="k">Задано работы</span><b class="ok">'+m0(totalPlan)+' ₽</b></span>'
-    +'<span><span class="k">Работ доступно</span><b>'+((R.catalog||[]).length)+'</b></span>'
-    +'<span style="margin-left:auto"><button class="sec" onclick="sendAll()">📨 Разослать задания</button></span></div>';
+  // «📨 Разослать задания» — в панели действий (renderHead), справа
+  var kpi='<div class="tiles">'
+    +'<div class="tile"><div class="t">Бойцов</div><div class="v">'+people.length+'</div></div>'
+    +'<div class="tile"><div class="t">Задано работы</div><div class="v ok">'+m0(totalPlan)+' <small>₽</small></div></div>'
+    +'<div class="tile"><div class="t">Работ доступно</div><div class="v">'+((R.catalog||[]).length)+'</div></div></div>';
   var cards=people.map(function(p,i){
     var exp=Number(p.expect)||0, plan=Number(p.planRub)||0;
     var pct=exp>0?Math.min(100,Math.round(plan/exp*100)):0, over=plan>exp*1.05;
@@ -342,7 +341,7 @@ function renderCrew(){
       +(PICK===p.name?pickerHtml(p,i):'')
       +'<div class="row" style="padding:0 var(--s-3) var(--s-3)"><button class="gho" onclick="sendOne('+i+')">📨 отправить задание в Telegram</button></div></div>';
   }).join('');
-  var empty=people.length?'':'<div class="box muted">На эту дату никто не отмечен в табеле — отметьте смены во вкладке «🎯 День».</div>';
+  var empty=people.length?'':'<div class="empty">На эту дату никто не отмечен в табеле — отметьте смены во вкладке «🎯 День».</div>';
   $('pane').innerHTML=kpi+cards+empty;
 }
 function togglePick(n){ PICK=(PICK===n)?'':n; render(); }
@@ -411,22 +410,22 @@ function sendAll(){ twSay('Рассылаю задания…');
 
 /* ═══════════ ВИД «ГОРИЗОНТ» ═══════════ */
 function renderHorizon(){
-  if(!R.waves){ $('pane').innerHTML='<div class="box muted">Выберите заказ — появятся волны запуска и узкие места.'
+  if(!R.waves){ $('pane').innerHTML='<div class="empty">Выберите заказ — появятся волны запуска и узкие места.'
       +(R.error2?('<br>'+esc(R.error2)):'')+'</div>'; return; }
   var o=R.order||{};
   var w0=(R.waves||[]).filter(function(w){ return w.groups&&w.groups.length; })[0];
   var bn=w0?(w0.groups.filter(function(g){ return g.bottleneck; })[0]):null;
-  var kpi='<div class="box kpi">'
-    +'<span><span class="k">Осталось труда</span><b>'+m0(R.grandRub)+' ₽</b></span>'
-    +'<span><span class="k">Волн</span><b>'+(R.waves||[]).length+'</b></span>'
-    +(o.plan?('<span><span class="k">Срок</span><b>'+esc(o.plan)+'</b>'+(o.dlDays!=null?(' <span class="muted">через '+o.dlDays+' дн</span>'):'')+'</span>'):'')
-    +(o.velocity?('<span><span class="k">Темп заказа</span><b>'+m0(o.velocity)+' ₽/день</b></span>'):'')
+  var kpi='<div class="tiles">'
+    +'<div class="tile"><div class="t">Осталось труда</div><div class="v">'+m0(R.grandRub)+' <small>₽</small></div></div>'
+    +'<div class="tile"><div class="t">Волн</div><div class="v">'+(R.waves||[]).length+'</div></div>'
+    +(o.plan?('<div class="tile"><div class="t">Срок</div><div class="v">'+esc(o.plan)+'</div>'+(o.dlDays!=null?('<div class="meta">через '+o.dlDays+' дн</div>'):'')+'</div>'):'')
+    +(o.velocity?('<div class="tile"><div class="t">Темп заказа</div><div class="v">'+m0(o.velocity)+' <small>₽/день</small></div></div>'):'')
     +crewLine(R.forecast)+'</div>';
   var advice='';
   if(bn){
     var free=(w0.groups||[]).filter(function(g){ return g.group!==bn.group && g.days!=null && bn.days && g.days<bn.days*0.6; })
       .sort(function(a,b){ return a.days-b.days; })[0];
-    advice='<div class="box" style="border-color:transparent;background:var(--red-bg)">'
+    advice='<div class="note bad"><div>'
       +'<div style="font:var(--t-heading);color:var(--red)">🎯 Узкое место: '+esc(bn.group)+' — работы на '+bn.days+' дн</div>'
       +'<div class="muted" style="margin-top:4px">'+m0(bn.rub)+' ₽ при мощности '+m0(bn.capRub)+' ₽/день. Этот участок и определяет срок заказа — остальные его ждут.</div>'
       +(free?('<div style="margin-top:var(--s-2)">💡 «'+esc(free.group)+'» разгребёт своё за '+free.days+' дн — оттуда можно перебросить людей.</div>'):'')
@@ -436,9 +435,10 @@ function renderHorizon(){
            +bn.days+' дн, а до '+esc(o.plan||'срока')+' осталось '+o.dlDays+'. Не хватает '
            +Math.ceil(bn.days-o.dlDays)+' дн — нужны люди на «'+esc(bn.group)+'» или перенос срока.</div>')
         : ((o.dlDays!=null&&bn.days!=null)?('<div style="margin-top:var(--s-2)" class="ok">✓ К сроку укладываемся: узкому месту нужно '+bn.days+' дн, до срока '+o.dlDays+'.</div>'):''))
-      +'</div>';
+      +'</div></div>';
   }
-  $('pane').innerHTML=kpi+advice+heatBox()+(R.waves||[]).map(waveCard).join('')
+  // каркас: уведомление (узкое место) → плитки → секции
+  $('pane').innerHTML=advice+kpi+heatBox()+(R.waves||[]).map(waveCard).join('')
     +((R.unplanned&&R.unplanned.totalRub>0)?('<div class="box"><b>Вне волн</b> <span class="muted">— '+m0(R.unplanned.totalRub)+' ₽ ещё не распределены</span></div>'):'')
     +editorHtml();
 }
@@ -451,9 +451,9 @@ function crewLine(f){
   var d0=f&&f.days&&f.days[0]; if(!d0) return '';
   var cap=0; ['Механика','Шлифовка','Покрытие','Сборка'].forEach(function(g){ cap+=Number((d0.byGroup[g]||{}).cap)||0; });
   var un=Number(d0.unassigned)||0;
-  return '<span><span class="k">По табелю '+ruDate(d0.date)+'</span><b>'+(d0.people||0)+' чел</b>'
-    +' <span class="muted">~'+m0(cap+un)+' ₽/день'
-    +(un?(' · '+m0(un)+' ₽ без участка'):'')+'</span></span>';
+  return '<div class="tile"><div class="t">По табелю '+ruDate(d0.date)+'</div><div class="v">'+(d0.people||0)+' <small>чел</small></div>'
+    +'<div class="meta">~'+m0(cap+un)+' ₽/день'
+    +(un?(' · '+m0(un)+' ₽ без участка'):'')+'</div></div>';
 }
 var HEATMODE='fc';   // 'fc' — что успеем при нынешнем составе; 'req' — что НУЖНО, чтобы успеть к сроку
 function setHeat(m){ HEATMODE=m; render(); }
@@ -543,10 +543,11 @@ function heatBox(){
     ? '<div class="muted" style="margin-top:var(--s-1)">Серые столбцы — выходные по табелю: в эти дни никто не отмечен.</div>' : '')
     + (all.days.length>HEATCOLS
     ? ('<div class="muted" style="margin-top:var(--s-1)">Показаны первые '+HEATCOLS+' дней из '+all.days.length+'; срок закрытия посчитан по всему месяцу.</div>') : '');
-  return '<div class="box"><div class="row" style="margin-bottom:var(--s-2)"><b>📅 '+(req?'Норма на день':'Две недели вперёд')+'</b>'
-    +'<span class="muted">— '+(req?'сколько участок обязан выдать, чтобы сдать в срок':'что каждый участок реально сделает за день')+'</span>'
-    +'<span style="margin-left:auto"><button class="tgl'+(req?'':' on')+'" onclick="setHeat(\'fc\')">что успеем</button>'
-    +'<button class="tgl'+(req?' on':'')+'" onclick="setHeat(\'req\')">что нужно</button></span></div>'
+  return '<div class="sect">📅 '+(req?'Норма на день':'Две недели вперёд')+'</div>'
+    +'<div class="box"><div class="row" style="margin-bottom:var(--s-2)">'
+    +'<span class="muted">'+(req?'сколько участок обязан выдать, чтобы сдать в срок':'что каждый участок реально сделает за день')+'</span>'
+    +'<div class="seg" style="margin-left:auto"><button class="'+(req?'':'on')+'" onclick="setHeat(\'fc\')">что успеем</button>'
+    +'<button class="'+(req?'on':'')+'" onclick="setHeat(\'req\')">что нужно</button></div></div>'
     +'<div class="tbwrap"><svg width="'+W+'" height="'+H+'" viewBox="0 0 '+W+' '+H+'" style="max-width:none">'
     +heads+cells+labels+'</svg></div>'
     +'<div class="legend">'+legend+'</div>'
@@ -554,9 +555,10 @@ function heatBox(){
 }
 // режим «что нужно» без срока считать не из чего — говорим об этом прямо, а не показываем пустую сетку
 function heatBoxNoDl(){
-  return '<div class="box"><div class="row" style="margin-bottom:var(--s-2)"><b>📅 Норма на день</b>'
-    +'<span style="margin-left:auto"><button class="tgl" onclick="setHeat(\'fc\')">что успеем</button>'
-    +'<button class="tgl on" onclick="setHeat(\'req\')">что нужно</button></span></div>'
+  return '<div class="sect">📅 Норма на день</div>'
+    +'<div class="box"><div class="row" style="margin-bottom:var(--s-2)">'
+    +'<div class="seg" style="margin-left:auto"><button onclick="setHeat(\'fc\')">что успеем</button>'
+    +'<button class="on" onclick="setHeat(\'req\')">что нужно</button></div></div>'
     +'<div class="muted">У заказа не задан срок (или он уже прошёл) — не от чего считать норму. '
     +'Поставьте «Дата план» в карточке заказа.</div></div>';
 }

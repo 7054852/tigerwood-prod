@@ -5,9 +5,8 @@
 <style>
   /* ведомость — на всю ширину. setOrient() перезаписывает класс body на port/land, поэтому ширину даём и им */
   body.port, body.land{ --page-w:none; }
-  div.bar{ height:auto; overflow:visible; background:var(--card); border:1px solid var(--line); border-radius:var(--r-card); padding:var(--s-3);
-        margin-bottom:var(--s-4); display:flex; gap:var(--s-3); flex-wrap:wrap; align-items:center; box-shadow:var(--shadow-card); }
-  div.bar select{ min-width:180px; }
+  .wrap>h1{ margin-bottom:var(--s-4); }
+  .toolbar select{ min-width:180px; }
   label.chk{ display:inline-flex; align-items:center; gap:var(--s-2); font:var(--t-small); color:var(--fg2); cursor:pointer; }
 
   /* ── сам лист ── */
@@ -134,22 +133,23 @@
 <style id="pagecss">@page{ size:A4 landscape; margin:10mm; }</style>
 <body class="w-full">
 <div class="wrap">
-  <div class="bar noprint">
-    <b>📋 Переучёт</b>
-    <button class="tb sec on" id="tb_print" onclick="tab('print')">🖨 Печать листа</button>
-    <button class="tb sec" id="tb_load" onclick="tab('load')">📷 Загрузка и сверка</button>
-    <button class="tb sec" id="tb_hist" onclick="tab('hist')">🕘 История</button>
+  <!-- каркас: вкладки → панель действий (заказ, ориентация-сегменты, печать справа) → уведомления → лист -->
+  <h1 class="noprint">📋 Переучёт</h1>
+  <div class="tabs noprint">
+    <button class="tb on" id="tb_print" onclick="tab('print')">Печать листа</button>
+    <button class="tb" id="tb_load" onclick="tab('load')">Загрузка и сверка</button>
+    <button class="tb" id="tb_hist" onclick="tab('hist')">История</button>
   </div>
-  <div class="bar noprint" id="bar_print">
+  <div class="toolbar noprint" id="bar_print">
     <select id="ord" onchange="load()"></select>
     <select id="mode" onchange="load()" style="display:none"><option value="detail" selected>свод по деталям</option></select>
-    <select id="orient" onchange="setOrient(this.value)" title="ориентация листа при печати">
-      <option value="portrait">книжная</option>
-      <option value="landscape">альбомная</option>
-    </select>
+    <div class="seg" id="orient" title="ориентация листа при печати">
+      <button id="or_portrait" onclick="setOrient('portrait')">книжная</button>
+      <button id="or_landscape" onclick="setOrient('landscape')">альбомная</button>
+    </div>
     <label class="chk"><input type="checkbox" id="showAcc" onchange="draw()"> показать цифры программы</label>
-    <button class="pri" onclick="window.print()">🖨 Печать</button>
     <span class="msg" id="msg"></span>
+    <div class="end"><button onclick="window.print()">🖨 Печать</button></div>
   </div>
   <div id="out"></div>
   <div id="pane_load" class="hide noprint"></div>
@@ -192,7 +192,7 @@ function checksHtml(c, lost){
   if(!ps.length) return '';
   var grp={}, ord=[];
   ps.forEach(function(x){ var k=x.level+'|'+x.msg; if(!grp[k]){ grp[k]={level:x.level,msg:x.msg,items:[]}; ord.push(k); } grp[k].items.push(x); });
-  return '<div class="card noprint"><div class="stat"><b>⚠️ Заказ посчитается не полностью</b>'
+  return '<div class="note warn noprint"><div class="grow"><div class="stat"><b>⚠️ Заказ посчитается не полностью</b>'
     +(st.stop?('<span class="pill bad">✕ мешает переучёту: '+st.stop+'</span>'):'')
     +(st.warn?('<span class="pill warn">⏳ стоит поправить: '+st.warn+'</span>'):'')+'</div>'
     +ord.map(function(k){ var g=grp[k];
@@ -200,7 +200,7 @@ function checksHtml(c, lost){
         +'<span class="grow"><b>'+esc(g.msg)+'</b><div class="mini">'
         +g.items.filter(function(x){return x.detail;}).slice(0,8).map(function(x){
             return esc([x.detail,x.stage,x.model].filter(Boolean).join(' · ')); }).join('<br>')
-        +'</div></span></div>'; }).join('')+'</div>';
+        +'</div></span></div>'; }).join('')+'</div></div>';
 }
 
 // ориентацию печати меняем подменой правила @page — иначе браузер печатает как задано в CSS.
@@ -209,12 +209,15 @@ function setOrient(v){
   v=(v==='landscape')?'landscape':'portrait';
   document.getElementById('pagecss').textContent='@page{ size:A4 '+v+'; margin:'+(v==='portrait'?'9mm':'10mm')+'; }';
   document.body.className=(v==='portrait')?'port':'land';
+  // сегментный переключатель: подсветить выбранную ориентацию
+  document.getElementById('or_portrait').className=(v==='portrait')?'on':'';
+  document.getElementById('or_landscape').className=(v==='landscape')?'on':'';
   try{ localStorage.setItem('tw_inv_orient',v); }catch(e){}
 }
 function initOrient(){
   var v='landscape';   // 11 колонок стадий: в книжную влезает только мелким шрифтом
   try{ v=localStorage.getItem('tw_inv_orient')||'landscape'; }catch(e){}
-  document.getElementById('orient').value=v; setOrient(v);
+  setOrient(v);
 }
 function today(){ var d=new Date(), p=function(n){ return (n<10?'0':'')+n; }; return p(d.getDate())+'.'+p(d.getMonth()+1)+'.'+d.getFullYear(); }
 
@@ -336,8 +339,8 @@ function draw(){
 var TAB='print', INV='', DRAFT=null, UPQ=[], ALLROWS=false;
 function tab(t){
   TAB=t;
-  ['print','load','hist'].forEach(function(x){ var b=document.getElementById('tb_'+x); if(b) b.className='tb sec'+(x===t?' on':''); });
-  document.getElementById('bar_print').className='bar noprint'+(t==='print'?'':' hide');
+  ['print','load','hist'].forEach(function(x){ var b=document.getElementById('tb_'+x); if(b) b.className='tb'+(x===t?' on':''); });
+  document.getElementById('bar_print').className='toolbar noprint'+(t==='print'?'':' hide');
   document.getElementById('out').className=(t==='print'?'':'hide');
   document.getElementById('pane_load').className='noprint'+(t==='load'?'':' hide');
   document.getElementById('pane_hist').className='noprint'+(t==='hist'?'':' hide');
@@ -376,14 +379,16 @@ function drawLoad(){
     +'<input type="file" id="pages" accept="image/*,application/pdf" multiple onchange="pickPages(this.files)">'
     +'<div class="mini" style="margin-top:var(--s-1)">Можно по одной странице и в любом порядке. Незаполненные клетки программа пропускает сама.</div>'
     +'<div class="row" style="margin-top:var(--s-2)"><b>✍️ Вписывайте, сколько нашли на участке</b>'
-    +'<span class="mini">Серые цифры под полем — что программа подтянет по цепочке при проведении. '
-    +'Рамка клетки: 🟡 в очереди · 🟢 записано в лист · 🔴 не ушло, повторю сам.</span>'
     +'<span style="flex:1"></span><span id="invsave" class="mini"></span>'
     +'<button class="sm sec" onclick="recalcDraft()">↻ пересчитать цепочку</button></div>'
     +'<div id="uplbox"></div>'
-    +(RESUMED?('<div class="mini" style="margin-top:var(--s-2);color:var(--amber)"><b>Это уже начатый переучёт</b> — по заказу может быть только один незакрытый черновик. '
-      +'Загруженные страницы лягут поверх того, что здесь уже есть. Чтобы считать с нуля, удалите черновик кнопкой ниже.</div>'):'')
     +'</div>';
+  // уведомления над содержимым: начатый черновик и подсказка по клеткам
+  var resumed=RESUMED?('<div class="note warn"><div><b>Это уже начатый переучёт</b> — по заказу может быть только один незакрытый черновик. '
+      +'Загруженные страницы лягут поверх того, что здесь уже есть. Чтобы считать с нуля, удалите черновик кнопкой ниже.</div></div>'):'';
+  var cellNote='<div class="note"><div>Серые цифры под полем — что программа подтянет по цепочке при проведении. '
+    +'Рамка клетки: 🟡 в очереди · 🟢 записано в лист · 🔴 не ушло, повторю сам.'
+    +((d.products||[]).length?'<br>Цифру в любой клетке можно поправить руками — сверяйтесь с бумажным листом.':'')+'</div></div>';
 
   var hints=d.hints||{}, hshort=d.hintsShort||{};
   var SH=stageHeads(ST,hints,hshort);
@@ -477,10 +482,9 @@ function drawLoad(){
     +'<span><i style="background:var(--green-bg)"></i><b class="ok">✓</b> проверено — в цеху уже столько же</span>'
     +'<span><i style="background:var(--heat-over)"></i>применится, но есть замечание</span>'
     +'<span><i style="background:var(--heat-stop);outline:2px solid var(--red)"></i>вопрос — наведите, чтобы увидеть</span></div>'
-    +'<div class="mini" style="margin-bottom:var(--s-2)">Цифру в любой клетке можно поправить руками — сверяйтесь с бумажным листом.</div>'
     +'<button class="pri" onclick="applyInv()">✅ Провести переучёт</button> <span class="msg" id="apmsg"></span></div>';
 
-  box.innerHTML=checksHtml(d.checks, d.lost)+upl
+  box.innerHTML=checksHtml(d.checks, d.lost)+resumed+cellNote+upl
     +((d.products||[]).length?(bar+'<div class="sheet">'+grid+'</div>'):'<div class="card muted">Загрузите страницы — здесь появится эта же ведомость с цифрами.</div>');
 }
 // ⚠ БЫСТРЫЙ ВВОД. Раньше каждая цифра тянула полный пересчёт листа: 12 секунд ожидания и 70 КБ

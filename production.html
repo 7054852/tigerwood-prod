@@ -48,6 +48,9 @@
   .bnum{ font:var(--t-heading); } .bpct{ font-variant-numeric:tabular-nums; }
   .bar{ flex:1; min-width:80px; }
   .msg{ margin-left:var(--s-2); }
+  .toolbar .msg{ margin-left:0; }
+  .tiles.pulse{ margin-bottom:var(--s-4); }
+  .note.click{ cursor:pointer; }
   /* ── лоток блока: утопленный фон отделяет группы друг от друга ── */
   .tray{ margin-top:var(--s-4); }
   .trayhd{ display:flex; align-items:baseline; gap:var(--s-2); margin-bottom:var(--s-3); flex-wrap:wrap; }
@@ -219,18 +222,26 @@ function needSection(){
 }
 
 // ── ПУЛЬС / ПРИОРИТЕТ / РИСК (управленческий обзор) ──
+// панель действий списка: слева счётчик (в работе · очередь · срок разгребания), справа «Новый заказ»
+function listToolbar(){
+  var p=PULSE, meta='';
+  if(p){
+    var cap = p.capacityDays!=null ? ('~'+p.capacityDays+' дн') : '—';
+    meta=plural(p.activeCount||0,'заказ','заказа','заказов')+' в работе · очередь '+money(p.totalLeft)+' ₽ · разгребём за '+cap;
+  }
+  return '<div class="toolbar"><span class="meta">'+meta+'</span>'
+    +'<div class="end"><button onclick="newBatch()">＋ Новый заказ</button></div></div>';
+}
+// пульс фабрики — плитками темы (те же цифры, что раньше шли строкой)
 function pulseStrip(){
   var p=PULSE; if(!p) return '';
   var tr = p.trend==='up'?'<span class="up" title="темп растёт">↑</span>':(p.trend==='down'?'<span class="down" title="темп падает">↓</span>':'<span class="muted">→</span>');
-  var cap = p.capacityDays!=null ? ('~'+p.capacityDays+' дн') : '—';
-  var riskTxt = p.atRisk>0 ? '<b class="err">🔴 в риске: '+p.atRisk+'</b>' : '<span class="ok">✓ все в срок</span>';
-  return '<div class="box" style="display:flex;flex-wrap:wrap;gap:var(--s-4);align-items:center;font:var(--t-small);margin-bottom:var(--s-3)">'
-    +'<span>⚡ <b>Пульс фабрики</b></span>'
-    +'<span>сегодня: <b>'+money(p.today)+' ₽</b> труда</span>'
-    +'<span>ср/день: <b>'+money(p.avgDay)+' ₽</b> '+tr+'</span>'
-    +'<span>'+riskTxt+'</span>'
-    +'<span>в работе: <b>'+(p.activeCount||0)+'</b> заказ.</span>'
-    +'<span>очередь труда: <b>'+money(p.totalLeft)+' ₽</b> · разгребём за <b>'+cap+'</b></span>'
+  var risk = p.atRisk>0 ? ('<span class="err">'+p.atRisk+'</span> <small>заказ.</small>') : '<span class="ok">✓</span> <small>все в срок</small>';
+  return '<div class="tiles pulse">'
+    +'<div class="tile"><div class="t">Сегодня</div><div class="v">'+money(p.today)+' <small>₽ труда</small></div></div>'
+    +'<div class="tile"><div class="t">Ср./день</div><div class="v">'+money(p.avgDay)+' <small>₽</small> '+tr+'</div></div>'
+    +'<div class="tile"><div class="t">В риске</div><div class="v">'+risk+'</div></div>'
+    +'<div class="tile"><div class="t">Очередь труда</div><div class="v">'+money(p.totalLeft)+' <small>₽</small></div></div>'
     +'</div>';
 }
 function recoLine(){
@@ -239,8 +250,8 @@ function recoLine(){
   var why = top.risk==='late'?('⚠ не успеваем'+(top.slack!=null?(' на '+Math.abs(top.slack)+' дн'):''))
           : top.risk==='tight'?'дедлайн впритык'
           : top.deadline?('дедлайн '+esc(top.deadline)):'наибольший объём';
-  return '<div class="box" style="margin-bottom:var(--s-3);background:var(--amber-bg);cursor:pointer" onclick="openOrder(\''+top.id+'\')">'
-    +'🎯 <b>Сейчас в приоритете: '+esc(top.num)+' '+esc(top.name)+'</b> — '+why+', осталось <b>'+money(top.leftRub||0)+' ₽</b> труда'+(top.velocity?(' · темп '+money(top.velocity)+' ₽/дн'):'')+' →</div>';
+  return '<div class="note warn click" onclick="openOrder(\''+top.id+'\')"><div>'
+    +'🎯 <b>Сейчас в приоритете: '+esc(top.num)+' '+esc(top.name)+'</b> — '+why+', осталось <b>'+money(top.leftRub||0)+' ₽</b> труда'+(top.velocity?(' · темп '+money(top.velocity)+' ₽/дн'):'')+' →</div></div>';
 }
 function riskBadge(b){
   var r=b.risk;
@@ -308,11 +319,12 @@ function renderList(){
       +'<div class="muted" style="margin-top:var(--s-2);font:var(--t-small);text-align:right">открыть заказ →</div>'
       +'</div>';
   }).join('');
-  app.innerHTML=pulseStrip()+recoLine()
-    +'<div class="sect">Заказы на производство <button class="sm" onclick="newBatch()">＋ Новый заказ</button></div>'
+  // каркас: панель действий → плитки пульса → уведомления → группа → карточки
+  app.innerHTML=listToolbar()+recoLine()+pulseStrip()
     +'<div id="auditsum"></div>'
-    +'<div class="muted" style="margin:calc(var(--s-1) * -1) 0 var(--s-2)">Отсортированы по приоритету: что делать первым — сверху. 🔴 в риске срока — вверху и с красной точкой. Нажмите на заказ — полное управление.</div>'
-    +(cards||'<div class="box muted">заказов нет — создайте новый</div>')
+    +'<div class="note"><div>Отсортированы по приоритету: что делать первым — сверху. 🔴 в риске срока — вверху и с красной точкой. Нажмите на заказ — полное управление.</div></div>'
+    +'<div class="sect">Заказы на производство</div>'
+    +(cards||'<div class="empty">заказов нет — создайте новый</div>')
     +needSection();
   loadAudit();
 }
@@ -330,8 +342,8 @@ function loadAudit(){
     var sum=$('auditsum'); if(!sum) return;
     var withIssues=(r.orders||[]).length, red=(r.orders||[]).reduce(function(a,o){return a+o.red;},0);
     sum.innerHTML=withIssues
-      ? '<div class="box" style="margin:0 0 var(--s-3);background:var(--amber-bg);font:var(--t-small)">⚠ <b>'+plural(withIssues,'заказ','заказа','заказов')+'</b> с вопросами к данным'+(red?' · 🔴 '+red+' критично':'')+' — значок ⚠ на карточке ведёт внутрь.</div>'
-      : '<div class="box" style="margin:0 0 var(--s-3);background:var(--green-bg);color:var(--green);font:var(--t-small)">✓ по всем заказам логика в порядке</div>';
+      ? '<div class="note warn"><div>⚠ <b>'+plural(withIssues,'заказ','заказа','заказов')+'</b> с вопросами к данным'+(red?' · 🔴 '+red+' критично':'')+' — значок ⚠ на карточке ведёт внутрь.</div></div>'
+      : '<div class="note ok"><div>✓ по всем заказам логика в порядке</div></div>';
   }).catch(function(){});
 }
 
@@ -359,7 +371,18 @@ function renderDetail(){
   var costCol=(b.modelsTotal&&b.modelsAssembled===b.modelsTotal)?'ok':(b.modelsAssembled?'warn':'bad');
   var datalist='<datalist id="modlist">'+MODELS.map(function(m){ return '<option value="'+esc(modLabel(m))+'">'; }).join('')+'</datalist>';
   app.innerHTML=datalist
-    +'<div class="row" style="margin-bottom:var(--s-3)"><button class="sec" onclick="backToList()">← ко всем заказам</button></div>'
+    // панель действий: слева назад и статус операции, справа действия с заказом (удаление — последним)
+    +'<div class="toolbar"><button class="sec" onclick="backToList()">← ко всем заказам</button>'
+      +'<span class="msg" id="bm_'+b.id+'"></span>'
+      +'<div class="end">'
+      +'<button class="sec" title="обычно это происходит само при открытии заказа; кнопка — если нужно прямо сейчас" onclick="recalcOps(\''+b.id+'\')">↻ Пересобрать сейчас</button>'
+      +'<button class="sec" title="печатный лист: пойти в цех и пересчитать детали по стадиям" onclick="inventSheet(\''+b.id+'\')">📋 Ведомость переучёта</button>'
+      +'<button class="sec" title="взять в этот заказ детали, оставшиеся от прошлых партий" onclick="wipOffer(\''+b.id+'\')">🧩 Склад деталей</button>'
+      +'<button class="sec" onclick="ship(\''+b.id+'\')">📦 '+((b.shipped||0)>0?'Довезти остаток':'Отгрузить')+'</button>'
+      +((b.shipped||0)>0?('<button class="sec" title="что и когда увозили" onclick="shipLog(\''+b.id+'\')">🚚 История отгрузок</button>'):'')
+      +''
+      +'<button class="sec" title="удалить заказ" aria-label="удалить заказ" onclick="delBatch(\''+b.id+'\')">🗑</button>'
+      +'</div></div>'
     +'<div class="bcard"><div class="bhead">'
       +'<span class="bnum">'+esc(b.num)+'</span>'
       +'<span class="muted" style="cursor:pointer" onclick="renameBatch(\''+b.id+'\',\''+esc(b.name).replace(/\x27/g,"")+'\')">'+esc(b.name)+' ✎</span>'
@@ -371,13 +394,6 @@ function renderDetail(){
       +'<span class="muted">срок отгрузки: '+(b.plan?('<b>'+esc(b.plan)+'</b>'):'—')
         +' <a href="javascript:void(0)" onclick="setDeadline(\''+b.id+'\',\''+esc(b.plan||'')+'\')" title="изменить срок" style="text-decoration:none">✎</a>'
         +' <a href="javascript:void(0)" onclick="deadlineLog(\''+b.id+'\')" title="история изменений срока" style="text-decoration:none">🕘</a></span>'
-      +'<button class="sec sm" title="обычно это происходит само при открытии заказа; кнопка — если нужно прямо сейчас" onclick="recalcOps(\''+b.id+'\')">↻ Пересобрать сейчас</button>'
-      +'<button class="sec sm" title="печатный лист: пойти в цех и пересчитать детали по стадиям" onclick="inventSheet(\''+b.id+'\')">📋 Ведомость переучёта</button>'
-      +'<button class="sec sm" title="взять в этот заказ детали, оставшиеся от прошлых партий" onclick="wipOffer(\''+b.id+'\')">🧩 Склад деталей</button>'
-      +'<button class="sec sm" onclick="ship(\''+b.id+'\')">📦 '+((b.shipped||0)>0?'Довезти остаток':'Отгрузить')+'</button>'
-      +((b.shipped||0)>0?('<button class="sec sm" title="что и когда увозили" onclick="shipLog(\''+b.id+'\')">🚚 История отгрузок</button>'):'')
-      +'<button class="sec sm" title="удалить заказ" onclick="delBatch(\''+b.id+'\')">🗑</button>'
-      +'<span class="msg" id="bm_'+b.id+'"></span>'
       +'</div>'
       +shipBadgeHtml(b)
       +'<div id="ship_'+b.id+'" style="margin-top:var(--s-2)"></div>'
