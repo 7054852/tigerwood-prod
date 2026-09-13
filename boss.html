@@ -4,74 +4,36 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Тигервуд — начальник производства</title>
+<script src="tw-theme.js"></script>
 <style>
-  :root{ --bg:#f4f6fb; --card:#fff; --fg:#1b2333; --muted:#8a93a6; --line:#e6e9f2; --accent:#2b7de9; --green:#137333; --amber:#b7791f; --red:#c0392b; }
-  *{box-sizing:border-box;} html,body{margin:0;background:var(--bg);}
-  body{ font-family:-apple-system,Roboto,Segoe UI,Arial,sans-serif; color:var(--fg); padding:14px; max-width:900px; margin:0 auto; font-size:14px; }
-  .hi{ font-size:19px; font-weight:800; }
-  .muted{ color:var(--muted); font-size:13px; }
-  .sect{ font-size:13px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin:18px 4px 8px; }
-  .box{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px 16px; }
-  /* месяц — крупные плитки */
-  .month{ background:linear-gradient(180deg,#eef5ff,#fff); border:1px solid #d7e6fb; border-radius:16px; padding:16px; margin-top:6px; }
-  .mrow{ display:flex; gap:10px; flex-wrap:wrap; align-items:stretch; }
-  .tile{ flex:1 1 130px; background:#fff; border:1px solid var(--line); border-radius:12px; padding:11px 13px; }
-  .tile .t{ font-size:11.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; }
-  .tile .v{ font-size:22px; font-weight:800; font-variant-numeric:tabular-nums; margin-top:2px; }
-  .tile .v small{ font-size:13px; font-weight:600; color:var(--muted); }
-  .big{ color:var(--green); }
+  /* месяц — крупные плитки на утопленном лотке */
+  .month{ background:var(--bg2); border:1px solid var(--line); border-radius:var(--r-card); padding:var(--s-4); }
+  .mrow{ display:flex; gap:var(--s-3); flex-wrap:wrap; align-items:stretch; }
+  .mrow .tile{ flex:1 1 130px; }
+  .tile .v.big{ color:var(--green); }
   /* карточка заказа */
-  .ocard{ background:var(--card); border:1px solid var(--line); border-radius:14px; margin-bottom:10px; box-shadow:0 1px 3px rgba(20,30,60,.05); }
-  .ohead{ display:flex; align-items:center; gap:10px; padding:12px 14px; cursor:pointer; flex-wrap:wrap; }
-  .ohead:hover{ background:#fafbfe; }
-  .onum{ font-weight:800; } .oname{ font-weight:600; flex:1; min-width:100px; }
-  .money{ font-weight:800; font-variant-numeric:tabular-nums; }
-  .car{ color:var(--muted); font-size:12px; width:12px; transition:transform .15s ease; }
+  .ocard{ background:var(--card); border:1px solid var(--line); border-radius:var(--r-card); margin-bottom:var(--s-3); box-shadow:var(--shadow-card); overflow:hidden; }
+  .ohead{ display:flex; align-items:center; gap:var(--s-3); padding:var(--s-3) var(--s-4); cursor:pointer; flex-wrap:wrap; }
+  .ohead:hover{ background:var(--card2); }
+  .onum{ font-weight:600; } .oname{ font-weight:500; flex:1; min-width:100px; }
+  .money{ font-weight:600; }
+  .car{ color:var(--muted); font:var(--t-small); width:12px; transition:transform .15s var(--ease); }
   .ocard.open .car{ transform:rotate(90deg); }
-  .obody{ display:none; padding:0 14px 12px; } .ocard.open .obody{ display:block; }
-  .bar{ height:7px; border-radius:6px; background:#eef1f8; overflow:hidden; min-width:70px; flex:1; max-width:160px; }
-  .bar>i{ display:block; height:100%; background:var(--green); }
-  .kpis{ display:flex; gap:8px; flex-wrap:wrap; margin:6px 0 2px; }
-  .kpi{ font-size:12px; background:#f2f5fb; border:1px solid var(--line); border-radius:20px; padding:2px 10px; color:#445; }
-  .kpi b{ color:var(--fg); }
-  .pill{ font-size:11px; font-weight:700; border-radius:20px; padding:2px 9px; }
-  .p-ok{ background:#e7f5ea; color:var(--green); } .p-warn{ background:#fdecea; color:var(--red); } .p-neu{ background:#eef1f8; color:#556; }
-  table{ width:100%; border-collapse:collapse; font-size:13px; margin-top:6px; }
-  th,td{ text-align:left; padding:6px 6px; border-bottom:1px solid var(--line); white-space:nowrap; }
-  th{ color:var(--muted); font-size:11px; text-transform:uppercase; }
-  td.num,th.num{ text-align:right; font-variant-numeric:tabular-nums; }
-  .center{ text-align:center; padding:34px 16px; color:var(--muted); }
-  .rin{ width:58px; padding:5px 6px; border:1px solid var(--line); border-radius:7px; font-size:13px; text-align:right; font-variant-numeric:tabular-nums; }
-  .rreset{ border:1px solid var(--line); background:#f2f5fb; color:#556; border-radius:7px; padding:4px 7px; font-size:13px; cursor:pointer; margin-left:2px; }
-  .rreset:hover{ background:#e7edf7; }
-
-  /* ── ВИДИМАЯ РЕАКЦИЯ. На телефоне нет наведения курсором: если кнопка не «продавливается»,
-     человек не понимает, нажал он или промахнулся, и жмёт ещё раз — отсюда дубли. ── */
-  button{ touch-action:manipulation; -webkit-tap-highlight-color:transparent;
-          transition:transform .06s ease, filter .12s ease, opacity .12s ease; }
-  button:active{ transform:scale(.94); filter:brightness(.86); }
-  button[disabled]{ opacity:.5; pointer-events:none; }
-  a[href^="javascript"]{ -webkit-tap-highlight-color:rgba(124,58,237,.15); }
-  /* тонкая полоска сверху — «идёт обмен с сервером» */
-  #twload{ position:fixed; left:0; top:0; height:3px; width:100%; z-index:60; display:none; overflow:hidden; }
-  #twload>i{ display:block; height:100%; width:38%; background:var(--accent); animation:twslide 1.1s ease-in-out infinite; }
-  @keyframes twslide{ 0%{ margin-left:-38% } 100%{ margin-left:100% } }
-  /* заслонка на время действия: и показывает, что идёт работа, и физически не даёт нажать второй раз */
-  #twwait{ position:fixed; inset:0; background:rgba(246,247,252,.78); z-index:70; display:none;
-           align-items:center; justify-content:center; }
-  #twwait .wb{ background:#fff; border-radius:16px; padding:18px 22px; text-align:center; min-width:190px;
-               box-shadow:0 12px 34px rgba(20,25,50,.18); }
-  #twwait .sp{ width:28px; height:28px; border:3px solid rgba(124,58,237,.22); border-top-color:var(--accent);
-               border-radius:50%; margin:0 auto 10px; animation:twspin .8s linear infinite; }
-  @keyframes twspin{ to{ transform:rotate(360deg) } }
-  #twwait .wt{ font-weight:700; font-size:15px; }
-  #twwait .wh{ font-size:12.5px; opacity:.6; margin-top:4px; }
+  .obody{ display:none; padding:0 var(--s-4) var(--s-3); } .ocard.open .obody{ display:block; }
+  .ohead .bar{ min-width:70px; flex:1; max-width:160px; }
+  .kpis{ display:flex; gap:var(--s-2); flex-wrap:wrap; align-items:center; margin:var(--s-2) 0 var(--s-1); }
+  .kpis .kpi{ display:inline-flex; align-items:center; gap:var(--s-1); min-height:22px; padding:0 var(--s-2); font:var(--t-small); color:var(--fg2);
+              background:var(--grey-bg); border-radius:var(--r-pill); font-variant-numeric:tabular-nums; }
+  .kpis .kpi b{ color:var(--fg); }
+  .obody table{ margin-top:var(--s-2); }
+  .obody td{ white-space:nowrap; }
+  .rin{ width:64px; text-align:right; font-variant-numeric:tabular-nums; }
+  .rreset{ margin-left:var(--s-1); }
 </style>
 </head>
-<body>
+<body class="w-narrow">
 <div id="twload"><i></i></div>
 <div id="twwait"><div class="wb"><div class="sp"></div><div class="wt" id="twwt">Отправляю…</div><div class="wh">идёт обмен с сервером — не нажимайте</div></div></div>
-<style>html.emb>body>.hi,html.emb>body>.muted.sub0{display:none}</style><script>if(/[?&]embed=1/.test(location.search))document.documentElement.classList.add('emb');</script>
 <div class="hi">🏭 Начальник производства</div>
 <div class="muted sub0">Оклад + мотивация за упакованные изделия. Ставки задаёт директор.</div>
 <div id="app"><div class="center">Загрузка…</div></div>
@@ -84,8 +46,8 @@ function twTok(){ try{ return twQp('tok')||localStorage.getItem('tw_tok')||''; }
 function twQp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
 (function(){ var t=twQp('tok'); if(t){ try{ localStorage.setItem('tw_tok',t); }catch(e){} } })();
 function twAuthWall(r){
-  if(r&&r.needAuth){ document.body.innerHTML='<div style="padding:28px;font:16px/1.55 -apple-system,Roboto,Segoe UI,Arial;color:#1b2333">'
-    +'<div style="font-size:20px;font-weight:800;margin-bottom:10px">🔒 Нужен вход</div>'
+  if(r&&r.needAuth){ document.body.innerHTML='<div style="padding:var(--s-6);font:var(--t-body);color:var(--fg)">'
+    +'<div style="font:var(--t-title);margin-bottom:var(--s-3)">🔒 Нужен вход</div>'
     +'<div>'+String(r.error||'Откройте сервис из бота @TWOtchbot или войдите по личному коду.')+'</div></div>'; }
   return r;
 }
@@ -114,27 +76,27 @@ function render(){
     +'<div class="tile"><div class="t">Итого за месяц</div><div class="v">'+money(mo.total)+' <small>р</small></div></div>'
     +'<div class="tile"><div class="t">Упаковано изделий</div><div class="v">'+(mo.packed||0)+'</div></div>'
     +'</div>'
-    +(mo.packedNoVariant? '<div class="muted" style="margin-top:8px">⚠ '+mo.packedNoVariant+' шт упаковки без указанного варианта — мастер не проставил изделие, мотивация по ним не начислена.</div>':'')
+    +(mo.packedNoVariant? '<div class="muted" style="margin-top:var(--s-2)">⚠ '+mo.packedNoVariant+' шт упаковки без указанного варианта — мастер не проставил изделие, мотивация по ним не начислена.</div>':'')
     +'</div>';
   var pot=ORDERS.reduce(function(s,o){return s+(o.potential||0);},0);
   var earn=ORDERS.reduce(function(s,o){return s+(o.earned||0);},0);
   var hint=DIR? 'ставки ₽/шт можно менять — базовая берётся из справочника' : 'потенциал '+money(pot)+' · заработано '+money(earn)+' р';
-  var orders='<div class="sect">'+(DIR?'Заказы — ставки и деньги начальника':'Заказы в работе — деньги для меня')+' <span class="muted" style="text-transform:none;font-weight:400">'+hint+'</span></div>'
-    +(DIR? '<div style="margin:0 0 10px"><button onclick="recalcRates()" style="background:#eef1f8;color:#334;border:1px solid #d7dbe6;border-radius:9px;padding:8px 13px;font-weight:600;cursor:pointer" title="пересчитать базовые ставки от текущего труда изделий">↻ Пересчитать ставки от труда</button> <span class="msg" id="rrMsg"></span></div>' : '')
+  var orders='<div class="sect">'+(DIR?'Заказы — ставки и деньги начальника':'Заказы в работе — деньги для меня')+' <span class="n muted">'+hint+'</span></div>'
+    +(DIR? '<div style="margin:0 0 var(--s-3)"><button class="sec" onclick="recalcRates()" title="пересчитать базовые ставки от текущего труда изделий">↻ Пересчитать ставки от труда</button> <span class="msg" id="rrMsg"></span></div>' : '')
     +(ORDERS.length? ORDERS.map(orderCard).join('') : '<div class="box muted">активных заказов нет</div>');
   app.innerHTML=month+orders;
   Object.keys(OPEN).forEach(function(id){ if(OPEN[id]){ var c=$('oc_'+id); if(c) c.classList.add('open'); } });
 }
 function riskPill(k){
-  if(!k.deadline) return '<span class="pill p-neu">срок не задан</span>';
-  if(k.risk==='late') return '<span class="pill p-warn">🔴 не успеваем</span>';
-  if(k.risk==='tight') return '<span class="pill p-neu" style="background:#f7efdb;color:#b7791f">🟡 впритык</span>';
-  if(k.risk==='done') return '<span class="pill p-ok">✔ готов</span>';
-  return '<span class="pill p-ok">🟢 в срок ('+esc(k.deadline)+')</span>';
+  if(!k.deadline) return '<span class="pill mute">срок не задан</span>';
+  if(k.risk==='late') return '<span class="pill bad">🔴 не успеваем</span>';
+  if(k.risk==='tight') return '<span class="pill warn">🟡 впритык</span>';
+  if(k.risk==='done') return '<span class="pill ok">✔ готов</span>';
+  return '<span class="pill ok">🟢 в срок ('+esc(k.deadline)+')</span>';
 }
 function rateCell(o,p){
   if(DIR){
-    var reset = p.overridden ? ' <button class="rreset" title="вернуть к расчётной ('+p.base+' ₽/шт)" onclick="resetRate(\''+esc(o.id)+'\',\''+esc(p.sku)+'\',this)">↩</button>' : '';
+    var reset = p.overridden ? ' <button class="rreset ic" title="вернуть к расчётной ('+p.base+' ₽/шт)" onclick="resetRate(\''+esc(o.id)+'\',\''+esc(p.sku)+'\',this)">↩</button>' : '';
     return '<td class="num" style="white-space:nowrap"><input class="rin" value="'+p.rate+'" inputmode="decimal" title="ставка ₽/шт (расчётная '+p.base+')" onchange="saveRate(\''+esc(o.id)+'\',\''+esc(p.sku)+'\',this.value,this)">'+reset+'</td>';
   }
   return '<td class="num">'+p.rate+'</td>';   // начальник: только число, без индикатора правки
@@ -152,7 +114,7 @@ function orderCard(o,i){
     +'<div class="ohead" onclick="tog(\''+esc(o.id)+'\')">'
       +'<span class="car">▸</span>'
       +'<span class="onum">'+esc(o.num)+'</span><span class="oname">'+esc(o.name)+'</span>'
-      +'<span class="bar"><i style="width:'+pct+'%'+(pct>=100?';background:#137333':'')+'"></i></span>'
+      +'<span class="bar"><i style="width:'+pct+'%'+(pct>=100?';background:var(--green)':'')+'"></i></span>'
       +'<span class="money">'+money(o.earned)+' / '+money(o.potential)+' р</span>'
     +'</div>'
     +'<div class="obody">'
@@ -161,22 +123,22 @@ function orderCard(o,i){
         +'<span class="kpi">Упаковано <b>'+k.packedUnits+'/'+k.totalUnits+'</b></span>'
         +'<span class="kpi">'+(DIR?'Начислено':'Заработано')+' <b>'+money(o.earned)+' р</b> из '+money(o.potential)+'</span>'
         +riskPill(k)
-        +(k.checksTotal? '<span class="pill p-warn">нестыковок: '+k.checksTotal+'</span>':'<span class="pill p-ok">данные чисты</span>')
+        +(k.checksTotal? '<span class="pill bad">✕ нестыковок: '+k.checksTotal+'</span>':'<span class="pill ok">✓ данные чисты</span>')
       +'</div>'
       +'<div class="kpis"><span class="muted">Бонусы:</span>'
-        +'<span class="pill '+(k.bonusSrok==='ок'?'p-ok':(k.bonusSrok==='риск'?'p-warn':'p-neu'))+'">срок: '+esc(k.bonusSrok)+'</span>'
-        +'<span class="pill '+(k.bonusEcon==='ок'?'p-ok':'p-warn')+'">экономия: '+esc(k.bonusEcon)+'</span>'
+        +'<span class="pill '+(k.bonusSrok==='ок'?'ok':(k.bonusSrok==='риск'?'bad':'mute'))+'">'+(k.bonusSrok==='ок'?'✓ ':(k.bonusSrok==='риск'?'✕ ':''))+'срок: '+esc(k.bonusSrok)+'</span>'
+        +'<span class="pill '+(k.bonusEcon==='ок'?'ok':'bad')+'">'+(k.bonusEcon==='ок'?'✓ ':'✕ ')+'экономия: '+esc(k.bonusEcon)+'</span>'
       +'</div>'
-      +'<table><thead><tr><th>Изделие</th><th class="num">Ставка ₽/шт</th><th class="num">Упаковано</th><th class="num">'+(DIR?'Начислено':'Заработано')+'</th><th class="num">Потенциал</th></tr></thead><tbody>'+rows+'</tbody></table>'
+      +'<div class="tbwrap"><table><thead><tr><th>Изделие</th><th class="num">Ставка ₽/шт</th><th class="num">Упаковано</th><th class="num">'+(DIR?'Начислено':'Заработано')+'</th><th class="num">Потенциал</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
     +'</div></div>';
 }
 function tog(id){ var c=$('oc_'+id); if(c){ var open=c.classList.toggle('open'); OPEN[id]=open; } }
 function recalcRates(){
   var m=$('rrMsg'); if(m) m.textContent='пересчитываю…';
   api({vapi:'recalcbossrates'}).then(function(r){
-    if(r&&r.ok){ if(m) m.innerHTML='<span style="color:#137333">обновлено ставок: '+(r.changedCount||0)+'</span>'; load(); }
-    else if(m) m.innerHTML='<span style="color:#c0392b">'+((r&&r.error)||'ошибка')+'</span>';
-  }).catch(function(){ if(m) m.innerHTML='<span style="color:#c0392b">сеть</span>'; });
+    if(r&&r.ok){ if(m) m.innerHTML='<span class="ok">обновлено ставок: '+(r.changedCount||0)+'</span>'; load(); }
+    else if(m) m.innerHTML='<span class="err">'+((r&&r.error)||'ошибка')+'</span>';
+  }).catch(function(){ if(m) m.innerHTML='<span class="err">сеть</span>'; });
 }
 function saveRate(orderId,sku,val,el){
   var v=String(val).trim().replace(',','.'); if(el) el.disabled=true;

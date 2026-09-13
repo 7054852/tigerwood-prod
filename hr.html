@@ -3,49 +3,53 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="tw-theme.js"></script>
 <title>Тигервуд — Кадры</title>
 <style>
-  :root{
-    --bg:#f4f6fb; --card:#fff; --fg:#1b2333; --muted:#8a93a6; --line:#e6e9f2; --accent:#2b7de9;
-    --accent-bg:#e8f0fe; --green:#137333; --green-bg:#e7f5ea; --amber:#b7791f; --amber-bg:#f7efdb; --red:#c0392b; --red-bg:#fdecea; --grid:#eef1f8;
-  }
-  @media (prefers-color-scheme:dark){
-    :root{ --bg:#14161b; --card:#1c1f26; --fg:#e9eaee; --muted:#9aa0ad; --line:#2a2e37; --accent:#4f9bee;
-           --accent-bg:#16283f; --green:#4bbd7e; --green-bg:#13291d; --amber:#d6a23c; --amber-bg:#2c2411; --red:#e5776b; --red-bg:#2b1714; --grid:#23262e; }
-  }
-  *{box-sizing:border-box;} html,body{margin:0;background:var(--bg);}
-  body{ font-family:-apple-system,Roboto,Segoe UI,Arial,sans-serif; color:var(--fg); padding:14px; max-width:1000px; margin:0 auto; font-size:14px; }
-  html.emb>body>.hi,html.emb>body>.sub{display:none}
-  .hi{ font-size:19px; font-weight:800; } .sub{ color:var(--muted); font-size:13px; margin-top:2px; }
-  .muted{ color:var(--muted); } .center{ text-align:center; padding:40px 16px; color:var(--muted); }
-  .card{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:13px 14px; box-shadow:0 1px 3px rgba(20,30,60,.05); margin-bottom:10px; }
-  .sect{ font-size:12.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; margin:18px 4px 8px; }
-  .tabs{ display:flex; gap:6px; flex-wrap:wrap; margin:10px 0 12px; }
-  .tabs button{ border:1px solid var(--line); background:var(--card); color:var(--fg); border-radius:999px; padding:7px 13px; font-size:13px; cursor:pointer; font-weight:600; }
-  .tabs button.on{ background:var(--accent); border-color:var(--accent); color:#fff; }
-  .tabs button .b{ background:var(--red); color:#fff; border-radius:999px; padding:0 6px; margin-left:5px; font-size:11px; }
-  .tabs button.on .b{ background:rgba(255,255,255,.25); }
-  table{ width:100%; border-collapse:collapse; } th,td{ text-align:left; padding:7px 9px; border-bottom:1px solid var(--line); font-size:13px; vertical-align:top; }
-  th{ color:var(--muted); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.03em; }
-  select.stsel{ padding:3px 6px; font-size:12.5px; border-radius:7px; width:auto; }
-  td.num,th.num{ text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
-  tr.click:hover td{ background:rgba(127,140,170,.07); cursor:pointer; }
-  .tbwrap{ overflow-x:auto; }
-  .pill{ display:inline-block; border-radius:999px; padding:2px 9px; font-size:11.5px; font-weight:700; white-space:nowrap; }
-  .p-info{ background:var(--accent-bg,#e8f0fe); color:var(--accent); }
+  .card{ margin-bottom:var(--s-4); } .card + .card{ margin-top:0; }
+  /* счётчик сроков на вкладке 🔔 */
+  .tabs button .b{ display:inline-block; background:var(--red); color:var(--on-accent); border-radius:var(--r-pill); padding:0 var(--s-1);
+                   margin-left:var(--s-1); font:var(--t-label); font-variant-numeric:tabular-nums; }
+  .tabs .b.amber{ background:var(--amber); }
+  select.stsel{ width:auto; min-height:var(--h-sm); padding:0 var(--s-2); font:var(--t-small); border-radius:var(--r-xs); }
+  td.num, th.num{ white-space:nowrap; }
+  tr.click:hover td{ background:var(--card2); cursor:pointer; }
+  .grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:var(--s-3); }
+  label.f{ display:block; font:var(--t-small); color:var(--muted); margin-bottom:var(--s-1); }
+  input, select, textarea{ width:100%; }
+  .dlink{ cursor:pointer; border-bottom:1px dashed var(--line2); }
+  .dlink:hover{ border-bottom-color:currentColor; }
+  .back{ cursor:pointer; color:var(--accent-text); font:500 13px/18px var(--font); }
+  .kv{ display:grid; grid-template-columns:auto 1fr; gap:var(--s-1) var(--s-3); font:var(--t-small); }
+  .kv .k{ color:var(--muted); }
+  /* обязательные для печати поля: помечены звёздочкой, красные пока пустые */
+  .fld.req label.f:after{ content:' *'; color:var(--red); font-weight:600; }
+  .fld.req.bad input, .fld.req.bad select{ border-color:var(--red); background:var(--red-bg); }
+  .fld.req.bad label.f{ color:var(--red); }
+  .reqhint{ font:var(--t-small); color:var(--red); margin-top:var(--s-2); }
+  .misline{ color:var(--red); margin-top:var(--s-1); } .misline b{ font-weight:600; }
+  tr.dim td{ opacity:.45; }                      /* скрытые (уволен / завершённый подряд) — видно, но приглушённо */
+  /* переключатель: бегунок едет transform, а не left */
+  .sw{ display:inline-flex; align-items:center; gap:var(--s-2); cursor:pointer; font:var(--t-small); color:var(--muted); user-select:none; }
+  .sw i{ width:34px; height:20px; border-radius:var(--r-pill); background:var(--grey-bg); border:1px solid var(--line2); position:relative;
+         transition:background-color .15s var(--ease), border-color .15s var(--ease); }
+  .sw i:after{ content:''; position:absolute; top:2px; left:2px; width:14px; height:14px; border-radius:50%; background:var(--muted);
+               transition:transform .15s var(--ease), background-color .15s var(--ease); }
+  .sw.on i{ background:var(--accent); border-color:var(--accent); } .sw.on i:after{ transform:translateX(14px); background:var(--on-accent); }
+  .sw.on{ color:var(--fg); }
+  /* карточка записи (dlg) — окно поверх экрана; поля идут сеткой, поэтому шире стандартных 560 */
+  .modal.dlg{ max-width:720px; }
+  .modal.dlg h3{ margin-bottom:var(--s-1); }
   /* На телефоне таблица шире экрана: кнопки уезжают вправо и до них не дотянуться.
-     Строка превращается в карточку — подпись колонки берётся из data-l. */
-  @media (max-width:760px){
-    table.mob thead{ display:none; }
-    table.mob, table.mob tbody, table.mob tr, table.mob td{ display:block; width:auto; }
-    table.mob tr{ border:1px solid var(--line); border-radius:10px; padding:8px 10px; margin:0 0 8px; }
-    table.mob tr.sub{ border:none; padding:0 10px 8px; margin-top:-8px; }
-    /* имена вида «1_Письмо_ответ_и_уведомление_о_расторжении» не переносятся сами: без этого
-       карточка распирается и появляется горизонтальная прокрутка */
-    table.mob td{ border:none; padding:2px 0; overflow-wrap:anywhere; word-break:break-word; }
-    table.mob td[data-l]:before{ content:attr(data-l) ": "; color:var(--muted); font-size:11.5px; }
+     Строка превращается в карточку (table.mob темы); подпись колонки берётся из data-l —
+     у Кадров она строкой «Подпись: значение», а не в две колонки, поэтому td остаются блоками. */
+  @media (max-width:640px){
+    table.mob td{ display:block; text-align:left; overflow-wrap:anywhere; word-break:break-word; }
+    table.mob td[data-l]::before{ content:attr(data-l) ": "; }
+    table.mob tr.sub{ border:none; background:transparent; padding:0 var(--s-3) var(--s-2); margin:calc(-1 * var(--s-2)) 0 var(--s-2); }
     table.mob td:empty{ display:none; }
-    table.mob td.acts{ padding-top:8px; }
+    table.mob td.acts{ padding-top:var(--s-2); }
+    table.mob td.acts .btn{ margin:0 var(--s-2) var(--s-2) 0; }
     /* Список сотрудников карточками стал бы простынёй на 15 человек. Оставляем таблицу,
        но прячем то, ради чего на телефон не заходят: должность, № договора, чек-лист, статус.
        Ищут человека и срок — их и показываем. */
@@ -53,70 +57,7 @@
     table.emplist th:nth-child(5), table.emplist td:nth-child(5),
     table.emplist th:nth-child(7), table.emplist td:nth-child(7),
     table.emplist th:nth-child(8), table.emplist td:nth-child(8){ display:none; }
-    table.mob td.acts .btn{ margin:0 6px 6px 0; }
-    /* палец — не курсор: 22px в высоту на телефоне не нажать с первого раза */
-    .btn, .btn.sm{ padding:9px 13px; font-size:13px; min-height:38px; }
-    .pill{ padding:4px 9px; }
   }
-  .p-red{ background:var(--red-bg); color:var(--red); } .p-amber{ background:var(--amber-bg); color:var(--amber); }
-  .p-ok{ background:var(--green-bg); color:var(--green); } .p-none{ background:var(--grid); color:var(--muted); }
-  .btn{ border:1px solid var(--line); background:var(--card); color:var(--fg); border-radius:9px; padding:6px 11px; font-size:13px; cursor:pointer; font-weight:600; }
-  .btn.pri{ background:var(--accent); border-color:var(--accent); color:#fff; }
-  .btn.sm{ padding:3px 8px; font-size:12px; }
-  .row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-  .grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:9px; }
-  label.f{ display:block; font-size:11.5px; color:var(--muted); margin-bottom:3px; }
-  input,select,textarea{ width:100%; padding:7px 9px; border:1px solid var(--line); border-radius:9px; background:var(--card); color:var(--fg); font-size:13px; font-family:inherit; }
-  .steps{ margin-top:4px; }
-  .tabs .b.amber{ background:var(--amber,#b45309); }
-  .dlink{ cursor:pointer; border-bottom:1px dashed var(--line); }
-  .dlink:hover{ border-bottom-color:currentColor; }
-  .step{ display:flex; gap:9px; align-items:flex-start; padding:7px 0; border-bottom:1px dashed var(--line); }
-  .step.done .t{ color:var(--muted); text-decoration:line-through; }
-  .step .n{ width:22px; color:var(--muted); font-variant-numeric:tabular-nums; font-size:12px; padding-top:2px; }
-  .step .t{ flex:1; min-width:120px; } .step .w{ font-size:11.5px; color:var(--muted); }
-  .step .due{ font-size:11.5px; } .step .due.late{ color:var(--red); font-weight:700; }
-  .chk{ width:20px; height:20px; flex:0 0 20px; border:1.5px solid var(--line); border-radius:6px; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:12px; }
-  .step.done .chk{ background:var(--green-bg); border-color:var(--green); color:var(--green); }
-  .back{ cursor:pointer; color:var(--accent); font-weight:600; font-size:13px; }
-  .kv{ display:grid; grid-template-columns:auto 1fr; gap:3px 12px; font-size:13px; }
-  .kv .k{ color:var(--muted); }
-  .empty{ color:var(--muted); font-size:12.5px; padding:8px 0; }
-  /* обязательные для печати поля: помечены звёздочкой, красные пока пустые */
-  .fld.req label.f:after{ content:' *'; color:var(--red); font-weight:700; }
-  .fld.req.bad input,.fld.req.bad select{ border-color:var(--red); background:var(--red-bg); }
-  .fld.req.bad label.f{ color:var(--red); }
-  .reqhint{ font-size:12px; color:var(--red); margin-top:8px; }
-  .misline{ color:var(--red); margin-top:2px; } .misline b{ font-weight:700; }
-  tr.dim td{ opacity:.45; }                      /* скрытые (уволен / завершённый подряд) — видно, но приглушённо */
-  .sw{ display:inline-flex; align-items:center; gap:7px; cursor:pointer; font-size:13px; color:var(--muted); user-select:none; }
-  .sw i{ width:34px; height:19px; border-radius:999px; background:var(--grid); border:1px solid var(--line); position:relative; transition:background .15s; }
-  .sw i:after{ content:''; position:absolute; top:2px; left:2px; width:13px; height:13px; border-radius:50%; background:var(--muted); transition:left .15s,background .15s; }
-  .sw.on i{ background:var(--accent); border-color:var(--accent); } .sw.on i:after{ left:18px; background:#fff; }
-  .sw.on{ color:var(--fg); }
-  a{ color:var(--accent); }
-
-  /* ── ВИДИМАЯ РЕАКЦИЯ. На телефоне нет наведения курсором: если кнопка не «продавливается»,
-     человек не понимает, нажал он или промахнулся, и жмёт ещё раз — отсюда дубли. ── */
-  button{ touch-action:manipulation; -webkit-tap-highlight-color:transparent;
-          transition:transform .06s ease, filter .12s ease, opacity .12s ease; }
-  button:active{ transform:scale(.94); filter:brightness(.86); }
-  button[disabled]{ opacity:.5; pointer-events:none; }
-  a[href^="javascript"]{ -webkit-tap-highlight-color:rgba(124,58,237,.15); }
-  /* тонкая полоска сверху — «идёт обмен с сервером» */
-  #twload{ position:fixed; left:0; top:0; height:3px; width:100%; z-index:60; display:none; overflow:hidden; }
-  #twload>i{ display:block; height:100%; width:38%; background:var(--accent); animation:twslide 1.1s ease-in-out infinite; }
-  @keyframes twslide{ 0%{ margin-left:-38% } 100%{ margin-left:100% } }
-  /* заслонка на время действия: и показывает, что идёт работа, и физически не даёт нажать второй раз */
-  #twwait{ position:fixed; inset:0; background:rgba(246,247,252,.78); z-index:70; display:none;
-           align-items:center; justify-content:center; }
-  #twwait .wb{ background:#fff; border-radius:16px; padding:18px 22px; text-align:center; min-width:190px;
-               box-shadow:0 12px 34px rgba(20,25,50,.18); }
-  #twwait .sp{ width:28px; height:28px; border:3px solid rgba(124,58,237,.22); border-top-color:var(--accent);
-               border-radius:50%; margin:0 auto 10px; animation:twspin .8s linear infinite; }
-  @keyframes twspin{ to{ transform:rotate(360deg) } }
-  #twwait .wt{ font-weight:700; font-size:15px; }
-  #twwait .wh{ font-size:12.5px; opacity:.6; margin-top:4px; }
 </style>
 </head>
 <body>
@@ -128,7 +69,6 @@
 <script>
 var BASE='https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';
 var APP='tw7prod';
-if(/[?&]embed=1/.test(location.search))document.documentElement.classList.add('emb');
 function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]*)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
 var TGID=qp('tgid')||'';
 try{ if(!TGID && window.Telegram && Telegram.WebApp && Telegram.WebApp.initDataUnsafe && Telegram.WebApp.initDataUnsafe.user) TGID=String(Telegram.WebApp.initDataUnsafe.user.id); }catch(e){}
@@ -138,8 +78,8 @@ function twTok(){ try{ return twQp('tok')||localStorage.getItem('tw_tok')||''; }
 function twQp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
 (function(){ var t=twQp('tok'); if(t){ try{ localStorage.setItem('tw_tok',t); }catch(e){} } })();
 function twAuthWall(r){
-  if(r&&r.needAuth){ document.body.innerHTML='<div style="padding:28px;font:16px/1.55 -apple-system,Roboto,Segoe UI,Arial;color:#1b2333">'
-    +'<div style="font-size:20px;font-weight:800;margin-bottom:10px">🔒 Нужен вход</div>'
+  if(r&&r.needAuth){ document.body.innerHTML='<div style="padding:var(--s-6);font:var(--t-body);color:var(--fg)">'
+    +'<div style="font:var(--t-title);margin-bottom:var(--s-3)">🔒 Нужен вход</div>'
     +'<div>'+String(r.error||'Откройте сервис из бота @TWOtchbot или войдите по личному коду.')+'</div></div>'; }
   return r;
 }
@@ -192,7 +132,7 @@ function buildCard(empId){
     steps:(DATA.steps||[]).filter(function(s){return s.emp===empId;}),
     processes:DATA.processes||[] };
 }
-function sevPill(s){ var m={red:'🔴',amber:'🟡',ok:'🟢',none:'—'}; return '<span class="pill p-'+(s||'none')+'">'+(m[s]||'—')+'</span>'; }
+function sevPill(s){ var m={red:'🔴',amber:'🟡',ok:'🟢',none:'—'}; return '<span class="pill '+({red:'bad',amber:'warn',ok:'ok'}[s]||'mute')+'">'+(m[s]||'—')+'</span>'; }
 
 function render(){
   var dl=DATA.deadlines||[], red=dl.filter(function(x){return x.sev==='red';}).length;
@@ -202,7 +142,7 @@ function render(){
   '<button class="'+(DLOPEN?'on':'')+'" onclick="toggleDl()" title="сроки и напоминания">🔔'+
     (dl.length?('<span class="b'+(red?'':' amber')+'">'+dl.length+'</span>'):'')+'</button>'+
   '<button onclick="load(1)" title="перечитать с сервера">⟳</button>'+
-  (DATA.cached?'<span class="muted" style="align-self:center;font-size:11.5px">данные из кеша</span>':'')+'</div>';
+  (DATA.cached?'<span class="muted" style="align-self:center;font-size:13px">данные из кеша</span>':'')+'</div>';
   if(DLOPEN) h+=dlView();
   if(CARD) h+=cardView();
   else if(TAB==='emp') h+=empView();
@@ -233,7 +173,7 @@ function toggleDl(){ DLOPEN=!DLOPEN; render(); }
 /* ─── Сроки ─── */
 function dlView(){
   var d=DATA.deadlines||[];
-  var head='<div class="row" style="justify-content:space-between;margin-bottom:6px"><b>🔔 Сроки и напоминания</b>'+
+  var head='<div class="row" style="justify-content:space-between;margin-bottom:var(--s-2)"><b>🔔 Сроки и напоминания</b>'+
     '<button class="btn sm" onclick="toggleDl()">скрыть</button></div>';
   if(!d.length) return '<div class="card">'+head+'<div class="muted">Нет истекающих договоров и просроченных шагов оформления.</div></div>';
   return '<div class="card tbwrap">'+head+'<table class="mob"><thead><tr><th></th><th>Кто</th><th>Что</th><th>Ответственный</th><th>Комментарий</th></tr></thead><tbody>'+
@@ -261,7 +201,7 @@ function empView(){
   });
   var hid=all.filter(function(x){ return isHidden(x.emp); });
   var l=SHOWHIDDEN?all:all.filter(function(x){ return !isHidden(x.emp); });
-  var h='<div class="row" style="margin-bottom:8px"><button class="btn pri" onclick="newEmp()">+ Сотрудник</button>'+
+  var h='<div class="row" style="margin-bottom:var(--s-2)"><button class="btn pri" onclick="newEmp()">+ Сотрудник</button>'+
         '<span class="muted">активных: '+(all.length-hid.length)+'</span>'+
         (hid.length?'<span class="sw'+(SHOWHIDDEN?' on':'')+'" onclick="toggleHidden()"><i></i>показать скрытых ('+hid.length+')</span>':'')+'</div>';
   h+='<div class="card tbwrap"><table class="emplist"><thead><tr><th></th><th>ФИО</th><th>Тип</th><th>Должность</th><th>Договор</th><th>Окончание</th><th>Оформление</th><th>Статус</th></tr></thead><tbody>';
@@ -282,26 +222,26 @@ function closeCard(){ CARD=null; render(); }
 function cardView(){
   var e=CARD.emp;
   var h='<div class="back" onclick="closeCard()">← к списку</div>';
-  h+='<div class="card" style="margin-top:8px"><div class="row" style="justify-content:space-between">'+
-     '<div><div style="font-size:17px;font-weight:800">'+esc(e.fio)+'</div>'+
+  h+='<div class="card" style="margin-top:var(--s-2)"><div class="row" style="justify-content:space-between">'+
+     '<div><div style="font:var(--t-heading)">'+esc(e.fio)+'</div>'+
      '<div class="muted">'+esc(e.type||'тип по договору не определён')+' · '+esc(e.pos||'должность не указана')+(e.posCode?' ('+esc(e.posCode)+')':'')+' · '+esc(e.status||'')+
-     ' <span style="font-size:11px">(из договора)</span></div></div>'+
+     ' <span class="small">(из договора)</span></div></div>'+
      '<div class="row">'+(e.folder?'<a class="btn sm" href="'+esc(e.folder)+'" target="_blank">📁 папка</a>'
         :'<button class="btn sm" onclick="mkFolder()">📁 создать папку</button>')+
      '<button class="btn sm" onclick="recogPassport()" title="распознать паспортные данные из скана в папке">🪪 распознать паспорт</button>'+
      (e.tgId?'':'<button class="btn sm" onclick="inviteEmp()" title="дать сотруднику доступ в приложение">✉ пригласить</button>')+
      '<button class="btn sm" onclick="editEmp()">✎ править</button></div></div>';
-  h+='<div class="grid" style="margin-top:10px"><div class="kv"><div class="k">Идент. номер</div><div>'+esc(e.idnum||'—')+'</div>'+
+  h+='<div class="grid" style="margin-top:var(--s-3)"><div class="kv"><div class="k">Идент. номер</div><div>'+esc(e.idnum||'—')+'</div>'+
      '<div class="k">Паспорт</div><div>'+esc(e.passport||'—')+'</div><div class="k">Р/с</div><div>'+esc(e.account||'—')+'</div></div>'+
      '<div class="kv"><div class="k">Принят</div><div>'+esc(e.hired||'—')+'</div><div class="k">Уволен</div><div>'+esc(e.fired||'—')+'</div>'+
-     '<div class="k">Telegram</div><div>'+(e.tgId?('<span class="pill p-ok">привязан</span> <span class="muted">'+esc(e.tgId)+'</span>')
+     '<div class="k">Telegram</div><div>'+(e.tgId?('<span class="pill ok">✓ привязан</span> <span class="muted">'+esc(e.tgId)+'</span>')
         :'<span class="muted">не привязан — доступа в приложение нет</span>')+'</div></div></div>'+
      (function(){
         var cur=(CARD.contracts||[]).filter(function(c){return c.kind==='контракт'&&c.status!=='расторгнут'&&c.status!=='продлён';})[0];
         if(!cur||!cur.effective) return '';
         var ef=cur.effective, base=cur, chg=Object.keys(ef).filter(function(k){return String(ef[k]||'')!==String(base[k]||'');});
-        var row=function(l,v,ch){ return v?('<span style="margin-right:14px">'+l+': <b>'+esc(v)+'</b>'+(ch?' <span class="pill p-amber" style="font-size:10px">изменён</span>':'')+'</span>'):''; };
-        return '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--line);font-size:12.5px">'+
+        var row=function(l,v,ch){ return v?('<span style="margin-right:var(--s-3)">'+l+': <b>'+esc(v)+'</b>'+(ch?' <span class="pill warn">изменён</span>':'')+'</span>'):''; };
+        return '<div style="margin-top:var(--s-2);padding-top:var(--s-2);border-top:1px solid var(--line);font-size:13px">'+
           '<span class="muted">действует сейчас (с учётом доп. соглашений): </span>'+
           row('оклад',ef.salary,chg.indexOf('salary')>=0)+row('тариф',ef.tariff,chg.indexOf('tariff')>=0)+
           row('аванс',ef.advance,chg.indexOf('advance')>=0)+
@@ -322,11 +262,11 @@ function cardView(){
         '<td data-l="Статус"><select class="stsel" onchange="event.stopPropagation();setConStatus(\''+c.id+'\',this.value)" onclick="event.stopPropagation()">'+
           ['действует','истёк','расторгнут','продлён'].map(function(o){ return '<option'+(o===(c.statusEff||c.status)?' selected':'')+'>'+o+'</option>'; }).join('')+'</select></td>'+
         '<td data-l="Файл">'+((c.files&&c.files.length)
-            ? '<span class="pill p-ok" title="страниц: '+c.files.length+'">📎 '+c.files.length+'</span> '+
+            ? '<span class="pill ok" title="страниц: '+c.files.length+'">📎 '+c.files.length+'</span> '+
               c.files.map(function(u,i){return '<a href="'+esc(u)+'" target="_blank">'+(i+1)+'</a>';}).join(' ')
             : '<span class="muted" title="скан не приложен">📎 —</span>')+'</td>'+
         '<td class="acts" style="white-space:nowrap">'+acts+'</td></tr>'+
-        '<tr class="sub"><td></td><td colspan="8" class="muted" style="font-size:12px;border-bottom:1px solid var(--line)">'+
+        '<tr class="sub"><td></td><td colspan="8" class="muted" style="font-size:13px;border-bottom:1px solid var(--line)">'+
         // ⚠ Сообщение о сроке — единственное место, где видно, что с договором проблема, а действия
         // («уведомить», «новый контракт», «прекращение») лежат в его карточке. Делаем текст ссылкой,
         // иначе человек читает «нет даты прекращения и Акта» и не понимает, куда идти.
@@ -342,11 +282,11 @@ function cardView(){
             (inEmp.length?'● в карточке сотрудника: <b>'+esc(inEmp.join(', '))+'</b>':'')+'</div>'; })()+
         '</td></tr>';
     }).join('')+'</tbody></table>';
-  h+='<div class="row" style="margin-top:8px"><button class="btn" onclick="newCon(\'контракт\')">+ контракт (штат)</button>'+
+  h+='<div class="row" style="margin-top:var(--s-2)"><button class="btn" onclick="newCon(\'контракт\')">+ контракт (штат)</button>'+
      '<button class="btn" onclick="newCon(\'подряд\')">+ договор подряда</button>'+
      '<button class="btn" onclick="newCon(\'нпд\')">+ НПД (самозанятый)</button>'+
      '<button class="btn" onclick="newCon(\'обучение\')">+ производственное обучение</button>'+
-     '<span class="muted" style="font-size:12px">папка сотрудника создаётся автоматически при добавлении договора</span></div></div>';
+     '<span class="muted" style="font-size:13px">папка сотрудника создаётся автоматически при добавлении договора</span></div></div>';
 
   h+=docsBlock();
   return h;
@@ -366,8 +306,8 @@ function filesCell(d){
     if(oo.basisLink) extra=' <a href="'+esc(oo.basisLink)+'" target="_blank" title="заявление-основание">заявл.</a>';
   }
   if(!f.length) return '<span class="muted" title="скан не приложен">📎 —</span>'+extra;
-  if(f.length===1) return '<a class="pill p-ok" href="'+esc(f[0])+'" target="_blank" title="открыть">📎 скан</a>'+extra;
-  return '<span class="pill p-ok" title="страниц: '+f.length+'">📎 '+f.length+'</span> '+
+  if(f.length===1) return '<a class="pill ok" href="'+esc(f[0])+'" target="_blank" title="открыть">📎 скан</a>'+extra;
+  return '<span class="pill ok" title="страниц: '+f.length+'">📎 '+f.length+'</span> '+
     f.map(function(u,i){ return '<a href="'+esc(u)+'" target="_blank">'+(i+1)+'</a>'; }).join(' ')+extra;
 }
 /* ─── Кнопки документа ───────────────────────────────────────────────────────
@@ -424,7 +364,7 @@ function docRow(d){
   var con=(CARD.contracts||[]).filter(function(c){return c.id===d.con;})[0];
   var st=String(d.status||'нужен');
   return '<tr><td><b>'+esc(docTitle(d))+'</b>'+
-    (d.note?'<div class="muted" style="font-size:12px">'+esc(d.note)+'</div>':'')+'</td>'+
+    (d.note?'<div class="muted" style="font-size:13px">'+esc(d.note)+'</div>':'')+'</td>'+
     '<td data-l="№">'+esc(d.num||'—')+'</td><td data-l="Дата">'+esc(d.date||'—')+'</td>'+
     '<td class="muted" data-l="К договору">'+(con?esc(con.kind+' № '+con.num):'—')+'</td>'+
     '<td data-l="Статус">'+statusPill(st)+'</td>'+
@@ -433,8 +373,9 @@ function docRow(d){
 }
 // «нужен» — жёлтый, «создан» — синий (документ есть, подписи нет), «подписан» — зелёный
 function statusPill(st){
-  var cls=st==='подписан'?'p-ok':(st==='создан'?'p-info':'p-amber');
-  return '<span class="pill '+cls+'">'+esc(st)+'</span>';
+  var cls=st==='подписан'?'ok':(st==='создан'?'info':'warn');
+  var ic=st==='подписан'?'✓ ':(st==='создан'?'ⓘ ':'⏳ ');
+  return '<span class="pill '+cls+'">'+ic+esc(st)+'</span>';
 }
 // Договор — такой же документ: те же четыре кнопки и та же логика «создать → эл. документ».
 // ⚠ Электронный документ отличаем по адресу Google Документов: у договора в «Ссылке» может
@@ -455,11 +396,11 @@ function docsBlock(){
   if(!rows.length) h+='<div class="empty">Документов нет.</div>';
   else h+='<table class="mob"><thead><tr><th>Документ</th><th>№</th><th>Дата</th><th>К договору</th><th>Статус</th><th>Файл</th><th></th></tr></thead><tbody>'+
     rows.map(docRow).join('')+'</tbody></table>';
-  h+='<div class="row" style="margin-top:8px">'+
+  h+='<div class="row" style="margin-top:var(--s-2)">'+
      '<button class="btn pri" onclick="addDoc()">+ документ</button>'+
      '<button class="btn" onclick="newDs()">+ доп. соглашение</button>'+
      '<button class="btn" onclick="ordForm({emp:CARD.emp.id})">+ приказ</button>'+
-     '<span class="muted" style="font-size:12px">сюда кладётся всё: паспорт, заявления, справки, больничные, письма органов. '+
+     '<span class="muted" style="font-size:13px">сюда кладётся всё: паспорт, заявления, справки, больничные, письма органов. '+
      'Доп. соглашение и приказ заводятся своими кнопками — они меняют условия договора и получают номер.</span></div></div>';
   return h;
 }
@@ -565,9 +506,9 @@ function edocSave(id,gen){
 // Плашка «документ собран» со ссылкой. window.open часто съедает блокировщик поп-апов,
 // поэтому ссылку показываем на экране, а не полагаемся только на новую вкладку.
 function docDone(url,left){
-  var w=(left&&left.length)?('<div style="color:var(--red);margin-top:4px">В документе остались незаполненные места: '+esc(left.join(', '))+' — заполните данные и соберите заново.</div>'):'';
+  var w=(left&&left.length)?('<div style="color:var(--red);margin-top:var(--s-1)">В документе остались незаполненные места: '+esc(left.join(', '))+' — заполните данные и соберите заново.</div>'):'';
   msgBox('<b>✅ Документ собран.</b> <a href="'+esc(url)+'" target="_blank">Открыть в Google Документах</a>'+w+
-    '<div class="row" style="margin-top:8px"><button class="btn sm" onclick="msgClose()">Понятно</button></div>');
+    '<div class="row" style="margin-top:var(--s-2)"><button class="btn sm" onclick="msgClose()">Понятно</button></div>');
   try{ window.open(url,'_blank'); }catch(e){}
 }
 function dropElDoc(src,id){
@@ -586,7 +527,7 @@ function recogDoc(id){
     if(!s.type&&!s.num&&!s.date){ msgBox('<span class="muted">Скан загружен. Что это за документ — определить не получилось, укажите тип вручную.</span>'); return; }
     msgBox('<b>🔎 Похоже на:</b> '+esc(s.typeTitle||s.title||'—')+
         (s.num?(' № '+esc(s.num)):'')+(s.date?(' от '+esc(s.date)):'')+
-        '<div class="row" style="margin-top:8px"><button class="btn pri" onclick="recogApply(\''+id+'\')">Применить</button>'+
+        '<div class="row" style="margin-top:var(--s-2)"><button class="btn pri" onclick="recogApply(\''+id+'\')">Применить</button>'+
         '<button class="btn" onclick="msgClose()">Оставить как есть</button></div>');
   }).catch(function(e){ msgBox('<span class="muted">Скан загружен. Сеть: '+esc(e.message)+'</span>'); });
 }
@@ -763,14 +704,14 @@ function val(k){ var el=$('f_'+k); return el?el.value.trim():''; }
 // действия — набор зависит от того, собран электронный документ или нет (п.12.8/12.10/12.11 ТЗ).
 function dlg(title,body,onsave,note,hint,opts){
   opts=opts||{};
-  var h='<div class="card"><b>'+esc(title)+'</b>'+
-    '<div class="muted" style="font-size:12.5px;margin-top:3px">'+(hint||'Заполняются данные записи в системе. Документ (файл) создаётся отдельно.')+'</div>'+
-    '<div class="grid" style="margin-top:9px">'+body+'</div>'+
+  var h='<div class="scrim"><div class="modal dlg"><h3>'+esc(title)+'</h3>'+
+    '<div class="muted small">'+(hint||'Заполняются данные записи в системе. Документ (файл) создаётся отдельно.')+'</div>'+
+    '<div class="grid" style="margin-top:var(--s-2)">'+body+'</div>'+
     '<div id="reqHint"></div>'+(note||'')+
-    '<div class="row" style="margin-top:10px"><button class="btn pri" id="dlgSave">'+(opts.saveLabel||'Сохранить данные')+'</button>'+
+    '<div class="row" style="margin-top:var(--s-3)"><button class="btn pri" id="dlgSave">'+(opts.saveLabel||'Сохранить данные')+'</button>'+
     (opts.extra||'')+
     '<button class="btn" onclick="backFromForm()">Отмена</button></div>'+
-    (opts.foot?'<div class="muted" style="font-size:12px;margin-top:8px">'+opts.foot+'</div>':'')+'</div>';
+    (opts.foot?'<div class="muted" style="font-size:13px;margin-top:var(--s-2)">'+opts.foot+'</div>':'')+'</div></div>';
   $('app').innerHTML=h; $('dlgSave').onclick=onsave; updHint();
 }
 // Куда возвращаться из формы: в карточку сотрудника или в реестр, откуда пришли.
@@ -792,7 +733,7 @@ function empForm(e){
   dlg(e.id?'Правка сотрудника':'Новый сотрудник',
     (e.id?'':'<div class="fld" style="grid-column:1/-1"><label class="f">🪪 Паспорт</label>'+
       '<div class="row"><button class="btn" onclick="passUpload()">⬆ загрузить фото паспорта</button>'+
-      '<span class="muted" id="passMsg" style="font-size:12px">данные заполнятся сами; фото лягут в папку сотрудника при сохранении</span></div></div>')+
+      '<span class="muted" id="passMsg" style="font-size:13px">данные заполнятся сами; фото лягут в папку сотрудника при сохранении</span></div></div>')+
     fld('fio','ФИО',e.fio)+fld('fioR','ФИО в родительном — заполнится само',e.fioR)+fld('fioT','ФИО в творительном — заполнится само',e.fioT)+
     fld('birth','Дата рождения',e.birth)+fld('idnum','Идент. номер',e.idnum)+
     fld('passport','Паспорт (серия и номер)',e.passport)+fld('passDate','Паспорт выдан',e.passDate)+fld('passOrg','Орган выдачи',e.passOrg)+
@@ -870,14 +811,14 @@ function inviteEmp(){
 }
 function inviteShow(e,r){
   $('app').innerHTML='<div class="card"><b>Приглашение для '+esc(e.fio)+'</b>'+
-    '<div class="muted" style="font-size:12.5px;margin:6px 0 10px">Отправьте ссылку сотруднику. Он откроет её в Telegram, '+
+    '<div class="muted" style="font-size:13px;margin:var(--s-2) 0 var(--s-3)">Отправьте ссылку сотруднику. Он откроет её в Telegram, '+
     'представится боту — и его аккаунт сам привяжется к этой карточке. Роль: <b>'+esc(r.roleTitle||r.role)+'</b>. '+
     'Ссылка <b>одноразовая</b>.</div>'+
     '<div class="fld"><label class="f">Ссылка</label><input id="f_link" value="'+esc(r.link)+'" readonly onclick="this.select()"></div>'+
-    '<div class="row" style="margin-top:10px"><button class="btn pri" onclick="inviteCopy()">📋 Скопировать</button>'+
+    '<div class="row" style="margin-top:var(--s-3)"><button class="btn pri" onclick="inviteCopy()">📋 Скопировать</button>'+
     '<a class="btn" href="'+esc(r.link)+'" target="_blank">открыть в Telegram</a>'+
     '<button class="btn" onclick="openCard(\''+e.id+'\')">Готово</button></div>'+
-    '<div id="invMsg" class="muted" style="font-size:12px;margin-top:8px"></div></div>';
+    '<div id="invMsg" class="muted" style="font-size:13px;margin-top:var(--s-2)"></div></div>';
 }
 function inviteCopy(){
   var el=$('f_link'); el.select();
@@ -955,7 +896,7 @@ function conForm(c){
     var acts=[];
     if(c.kind==='контракт'){
       if(!c.notify) acts.push('<button class="btn sm" onclick="noticeForm(\''+c.id+'\')">✉ уведомление о продлении/непродлении</button>');
-      else acts.push('<span class="pill p-ok">уведомление создано '+esc(c.notify)+'</span>'+
+      else acts.push('<span class="pill ok">✓ уведомление создано '+esc(c.notify)+'</span>'+
         (c.answer?'':' <button class="btn sm" onclick="signNotice(\''+c.id+'\')">✔ подписано работником</button>'));
     }
     if((c.state||{}).needRenew) acts.push('<button class="btn sm pri" onclick="renewForm(\''+c.id+'\')">⏭ заключить новый контракт</button>');
@@ -1003,7 +944,7 @@ var UPCTX=null;
 function uploadDoc(recId,target){
   UPCTX={rec:recId,target:target||'con'};
   $('app').innerHTML='<div class="card"><b>Откуда взять файл</b>'+
-    '<div class="muted" style="font-size:12.5px;margin:6px 0 10px">Файл ляжет в папку сотрудника с понятным именем. '+
+    '<div class="muted" style="font-size:13px;margin:var(--s-2) 0 var(--s-3)">Файл ляжет в папку сотрудника с понятным именем. '+
     'При выборе с Диска оригинал остаётся на месте — копируется.</div>'+
     '<div class="row"><button class="btn pri" onclick="uploadFiles(UPCTX.rec,UPCTX.target,\'\')">💻 С компьютера</button>'+
     '<button class="btn" onclick="drivePick(\'recent\',\'\')">📁 Выбрать на Google Диске</button>'+
@@ -1012,13 +953,13 @@ function uploadDoc(recId,target){
 var DRVQ='';
 function drivePick(folder,q){
   DRVQ=q||'';
-  $('app').innerHTML='<div class="card"><b>Google Диск</b><div class="muted" style="margin-top:6px">загружаю список…</div></div>';
+  $('app').innerHTML='<div class="card"><b>Google Диск</b><div class="muted" style="margin-top:var(--s-2)">загружаю список…</div></div>';
   api({vapi:'hrdrivebrowse',folder:folder||'recent',q:DRVQ}).then(function(r){
-    if(!r.ok){ $('app').innerHTML='<div class="card"><b>Google Диск</b><div class="muted" style="margin-top:6px;color:var(--red)">'+esc(r.error||'ошибка')+'</div>'+
-      '<div class="row" style="margin-top:8px"><button class="btn" onclick="backFromForm()">Назад</button></div></div>'; return; }
+    if(!r.ok){ $('app').innerHTML='<div class="card"><b>Google Диск</b><div class="muted" style="margin-top:var(--s-2);color:var(--red)">'+esc(r.error||'ошибка')+'</div>'+
+      '<div class="row" style="margin-top:var(--s-2)"><button class="btn" onclick="backFromForm()">Назад</button></div></div>'; return; }
     var h='<div class="card"><div class="row" style="justify-content:space-between"><b>📁 Google Диск</b>'+
-      '<span class="muted" style="font-size:12px">'+esc(r.where)+'</span></div>'+
-      '<div class="row" style="margin:8px 0">'+
+      '<span class="muted" style="font-size:13px">'+esc(r.where)+'</span></div>'+
+      '<div class="row" style="margin:var(--s-2) 0">'+
         '<button class="btn sm'+(r.folder==='recent'&&!DRVQ?' pri':'')+'" onclick="drivePick(\'recent\',\'\')">🕘 Недавние</button>'+
         '<button class="btn sm" onclick="drivePick(\'root\',\'\')">💾 Мой диск</button>'+
         '<input id="drvq" placeholder="поиск по названию" value="'+esc(DRVQ)+'" style="flex:1;min-width:160px" '+
@@ -1158,7 +1099,7 @@ function conRegView(){
     return (dt(a.date)||0)-(dt(b.date)||0);
   });
   var byEmp={}; (DATA.list||[]).forEach(function(x){ byEmp[x.emp.id]=x.emp; });
-  var h='<div class="row" style="margin-bottom:8px">'+
+  var h='<div class="row" style="margin-bottom:var(--s-2)">'+
     ['all','контракт','подряд','обучение'].map(function(v){ return '<button class="btn'+(CONFILTER===v?' pri':'')+'" onclick="conFilter(\''+v+'\')">'+
       (v==='all'?'все':(v==='контракт'?'контракты':(v==='подряд'?'подряд':'обучение')))+'</button>'; }).join('')+
     '<span class="muted">всего: '+all.length+'</span></div>';
@@ -1234,7 +1175,7 @@ function docView(){
   var order=['дс','приказ','заявление','уведомление','больничный','личный','договор','прочее'];
   var cnt={}; all.forEach(function(d){ var g=docGroupOf(d); cnt[g]=(cnt[g]||0)+1; });
   var nAct=all.filter(function(d){ return ACT_TYPES.indexOf(d.type)>=0; }).length;
-  var h='<div class="row" style="margin-bottom:8px;flex-wrap:wrap">'+
+  var h='<div class="row" style="margin-bottom:var(--s-2);flex-wrap:wrap">'+
     '<button class="btn sm'+(DOCF==='all'?' pri':'')+'" onclick="docFilter(\'all\')">Все '+all.length+'</button>'+
     '<button class="btn sm'+(DOCF==='акт'?' pri':'')+'" onclick="docFilter(\'акт\')">🧾 Акты подряда <span'+(nAct?'':' class="muted"')+'>'+nAct+'</span></button>'+
     order.map(function(g){
@@ -1248,8 +1189,8 @@ function docView(){
       'oninput="DOCQ=this.value;docRender()" style="flex:1;min-width:180px">'+
     '</div><div id="docbody">'+docTable(docFilterList(),docFioMap())+'</div>';
   if((DATA.docs||[]).length) h+=docSheetsBlock();
-  h+='<div class="row" style="margin-top:8px"><button class="btn" onclick="docForm({})">+ табель / ведомость</button>'+
-     '<span class="muted" style="font-size:12px">документы сотрудника добавляются в его карточке</span></div>';
+  h+='<div class="row" style="margin-top:var(--s-2)"><button class="btn" onclick="docForm({})">+ табель / ведомость</button>'+
+     '<span class="muted" style="font-size:13px">документы сотрудника добавляются в его карточке</span></div>';
   return h;
 }
 // реестр актов подряда: сумма, к выплате, срок, оплата — и итог «не оплачено»
@@ -1258,9 +1199,9 @@ function actTable(l,fio){
   var rows=l.map(function(d){
     var f=d.fields||{}, due=actDue(d.date), dd=actDays(due);
     if(!f.paid&&f.sum){ unpaid+=pnum(f.pay||f.sum); n++; if(dd!=null&&dd<0) late++; }
-    var st=f.paid?'<span style="color:#188038">✓ оплачен '+esc(f.paidDate||'')+'</span>'
+    var st=f.paid?'<span style="color:var(--green)">✓ оплачен '+esc(f.paidDate||'')+'</span>'
       :(!f.sum?'<span class="muted">сумма не указана</span>'
-      :(dd!=null&&dd<0?'<b style="color:#c5221f">просрочен на '+(-dd)+' дн.</b>':'ждёт оплаты'+(dd!=null?' · '+dd+' дн.':'')))+
+      :(dd!=null&&dd<0?'<b style="color:var(--red)">просрочен на '+(-dd)+' дн.</b>':'ждёт оплаты'+(dd!=null?' · '+dd+' дн.':'')))+
       (!f.paid&&f.plan?' <span class="muted">· будет '+esc(f.plan)+'</span>':'');
     return '<tr><td class="click" onclick="openCard(\''+d.emp+'\')"><b>'+esc(fio[d.emp]||'—')+'</b></td>'+
       '<td data-l="№">'+esc(d.num||'—')+'</td><td data-l="Дата">'+esc(d.date||'—')+'</td>'+
@@ -1268,8 +1209,8 @@ function actTable(l,fio){
       '<td data-l="Оплатить до">'+esc(due||'—')+'</td><td data-l="Оплата">'+st+'</td>'+
       '<td data-l="Файл">'+filesCell(d)+'</td><td class="acts" style="white-space:nowrap">'+docActs(d)+'</td></tr>';
   }).join('');
-  return '<div class="card"><b>Не оплачено: '+n+' на '+money(unpaid)+'</b>'+(late?' · <b style="color:#c5221f">просрочено: '+late+'</b>':'')+
-    '<div class="muted" style="font-size:12.5px;margin-top:3px">Срок оплаты — 15 дней с даты акта. Сумму и отметку «оплачен» ставят в карточке акта (✎). Акт считается начислением подрядчику в «Долге по месяцам».</div></div>'+
+  return '<div class="card"><b>Не оплачено: '+n+' на '+money(unpaid)+'</b>'+(late?' · <b style="color:var(--red)">просрочено: '+late+'</b>':'')+
+    '<div class="muted" style="font-size:13px;margin-top:var(--s-1)">Срок оплаты — 15 дней с даты акта. Сумму и отметку «оплачен» ставят в карточке акта (✎). Акт считается начислением подрядчику в «Долге по месяцам».</div></div>'+
     (l.length?'<div class="card tbwrap"><table class="mob"><thead><tr><th>Подрядчик</th><th>№</th><th>Дата</th><th class="num">Сумма акта</th>'+
       '<th class="num">К выплате</th><th>Оплатить до</th><th>Оплата</th><th>Файл</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>'
       :'<div class="card"><div class="empty">Актов нет. Акт добавляется в карточке подрядчика: «＋ документ» → «Акт сдачи-приёмки».</div></div>');
@@ -1326,7 +1267,7 @@ function docForm(d){
 }
 function fuelView(){
   var l=DATA.fuel||[], t=DATA.fuelTotals||{};
-  var h='<div class="row" style="margin-bottom:8px"><button class="btn pri" onclick="fuelForm({})">+ Запись</button>'+
+  var h='<div class="row" style="margin-bottom:var(--s-2)"><button class="btn pri" onclick="fuelForm({})">+ Запись</button>'+
         '<span class="muted">акты: '+money(t.acts)+' · выплаты: '+money(t.pays)+'</span></div>';
   h+='<div class="card tbwrap"><table class="mob"><thead><tr><th>Вид</th><th>Дата</th><th>№ акта</th><th>ФИО</th><th class="num">Сумма</th><th></th></tr></thead><tbody>';
   h+=l.map(function(f){ return '<tr><td><b>'+esc(f.kind)+'</b></td><td data-l="Дата">'+esc(f.date||'—')+'</td>'+
@@ -1353,7 +1294,7 @@ function payMonth(p){ var m=['январь','февраль','март','апр�
   var x=String(p||'').split('-'); return x[1]?(m[Number(x[1])-1]+' '+x[0]):(p||'—'); }
 function payView(){
   if(PAYEDIT) return payEditView();
-  var sw='<div class="row" style="margin-bottom:8px;gap:6px">'+
+  var sw='<div class="row" style="margin-bottom:var(--s-2);gap:var(--s-2)">'+
     '<button class="btn'+(PAYMODE==='docs'?' pri':'')+'" onclick="PAYMODE=\'docs\';render()">📄 Ведомости</button>'+
     '<button class="btn'+(PAYMODE==='debt'?' pri':'')+'" onclick="PAYMODE=\'debt\';render()">📊 Долг по месяцам</button>'+
     '<button class="btn'+(PAYMODE==='reg'?' pri':'')+'" onclick="PAYMODE=\'reg\';render()">🧾 Реестр выплат</button>'+
@@ -1366,7 +1307,7 @@ function payDocsView(){
     if(!PAYLOADING){ PAYLOADING=1; api({vapi:'hrpaylist'}).then(function(r){ PAYLOADING=0; PAYDATA=r; if(TAB==='pay') render(); }); }
     return '<div class="center">Загрузка ведомостей…</div>'; }
   if(!PAYDATA.ok) return '<div class="center">Ошибка: '+esc(PAYDATA.error||'')+'</div>';
-  var h='<div class="row" style="margin-bottom:8px"><button class="btn pri" onclick="payUpload()">⬆ Загрузить ведомость</button>'+
+  var h='<div class="row" style="margin-bottom:var(--s-2)"><button class="btn pri" onclick="payUpload()">⬆ Загрузить ведомость</button>'+
     '<span class="muted">Excel, фото или PDF — на всех или на одного (подряд, премия)</span></div>';
   var docs=PAYDATA.docs||[];
   if(!docs.length) return h+'<div class="card"><div class="empty">Ведомостей пока нет.</div></div>';
@@ -1375,15 +1316,15 @@ function payDocsView(){
     return '<div class="card"><div style="cursor:pointer" onclick="PAYOPEN[\''+d.doc+'\']=!PAYOPEN[\''+d.doc+'\'];render()">'+
       '<b>'+esc(payMonth(d.period))+'</b> · '+esc(d.kind)+' · '+d.rows.length+' чел.'+(d.date?' · от '+esc(d.date):'')+
       ' <span class="muted">'+(PAYOPEN[d.doc]?'▾':'▸')+'</span>'+
-      '<div style="font-size:13px;margin-top:3px">начислено '+money(t.accr)+(t.adv?' · аванс '+money(t.adv):'')+' · к выдаче <b>'+money(t.pay)+'</b></div></div>'+
-      '<div class="muted" style="font-size:12px;margin-top:3px">ПН '+money(t.pn)+' · ФСЗН '+money(t.fszn)+' · БГС '+money(t.bgs)+
+      '<div style="font-size:13px;margin-top:var(--s-1)">начислено '+money(t.accr)+(t.adv?' · аванс '+money(t.adv):'')+' · к выдаче <b>'+money(t.pay)+'</b></div></div>'+
+      '<div class="muted" style="font-size:13px;margin-top:var(--s-1)">ПН '+money(t.pn)+' · ФСЗН '+money(t.fszn)+' · БГС '+money(t.bgs)+
       (d.file?' · <a href="'+esc(d.file)+'" target="_blank">📎 файл</a>':'')+
       ' · <a href="#" onclick="payEdit(\''+d.doc+'\');return false">✎ править</a> · <a href="#" onclick="payDel(\''+d.doc+'\');return false">🗑 удалить</a></div>'+
       (PAYOPEN[d.doc]?payTable(d.rows):'')+'</div>';
   }).join('');
 }
 function payTable(rows){
-  return '<div class="tbwrap" style="margin-top:8px"><table class="mob"><thead><tr><th>ФИО</th><th>Должность</th><th>Отдел</th>'+
+  return '<div class="tbwrap" style="margin-top:var(--s-2)"><table class="mob"><thead><tr><th>ФИО</th><th>Должность</th><th>Отдел</th>'+
     PAYCOLS.map(function(c){ return '<th class="num">'+c[1]+'</th>'; }).join('')+'</tr></thead><tbody>'+
     rows.map(function(r){ return '<tr><td><b>'+esc(r.fio)+'</b></td><td data-l="Должность">'+esc(r.pos||'—')+'</td><td data-l="Отдел">'+esc(r.dept)+'</td>'+
       PAYCOLS.map(function(c){ return '<td class="num" data-l="'+c[1]+'">'+money(r[c[0]])+'</td>'; }).join('')+'</tr>'; }).join('')+
@@ -1401,9 +1342,9 @@ function payWarnHtml(){
   var ft=d.fileTotal;
   if(ft){ if(Math.abs(s.pay-ft.pay)>0.011) w.push('сумма «к выдаче» по строкам '+money(s.pay)+' ≠ итог в файле '+money(ft.pay));
           if(Math.abs(s.accr-ft.accr)>0.011) w.push('сумма «начислено» по строкам '+money(s.accr)+' ≠ итог в файле '+money(ft.accr)); }
-  return '<div class="muted" style="font-size:12.5px">итого: начислено '+money(s.accr)+' · к выдаче <b>'+money(s.pay)+'</b></div>'+
-    (w.length?'<div style="color:#c5221f;font-size:12.5px;margin-top:4px">⚠ '+w.join('<br>⚠ ')+'</div>'
-             :'<div style="color:#188038;font-size:12.5px;margin-top:4px">✓ арифметика сходится</div>');
+  return '<div class="muted" style="font-size:13px">итого: начислено '+money(s.accr)+' · к выдаче <b>'+money(s.pay)+'</b></div>'+
+    (w.length?'<div style="color:var(--red);font-size:13px;margin-top:var(--s-1)">⚠ '+w.join('<br>⚠ ')+'</div>'
+             :'<div style="color:var(--green);font-size:13px;margin-top:var(--s-1)">✓ арифметика сходится</div>');
 }
 function payRecheck(){ var e=$('payWarn'); if(e) e.innerHTML=payWarnHtml(); }
 function payEditView(){
@@ -1411,12 +1352,12 @@ function payEditView(){
   var opt=function(list,v){ return list.map(function(x){ return '<option'+(x===v?' selected':'')+'>'+esc(x)+'</option>'; }).join(''); };
   var inp=function(path,v,w){ return '<input value="'+esc(v==null?'':v)+'" oninput="'+path+'=this.value;payRecheck()" style="width:'+w+'px">'; };
   return '<div class="card"><b>'+(d.doc?'Правка ведомости':'Проверьте ведомость перед сохранением')+'</b>'+
-    (d.src?'<div class="muted" style="font-size:12.5px;margin-top:3px">'+esc(d.src)+'</div>':'')+
-    '<div class="row" style="margin-top:9px;gap:10px;flex-wrap:wrap;align-items:center">'+
+    (d.src?'<div class="muted" style="font-size:13px;margin-top:var(--s-1)">'+esc(d.src)+'</div>':'')+
+    '<div class="row" style="margin-top:var(--s-2);gap:var(--s-3);flex-wrap:wrap;align-items:center">'+
       '<label>Вид <select onchange="PAYEDIT.kind=this.value">'+opt(PAYKINDS,d.kind)+'</select></label>'+
       '<label>Месяц <input type="month" value="'+esc(d.period||'')+'" onchange="PAYEDIT.period=this.value"></label>'+
       '<label>Дата '+inp('PAYEDIT.date',d.date,100)+'</label></div>'+
-    '<div class="tbwrap" style="margin-top:8px"><table><thead><tr><th>ФИО</th><th>Должность</th><th>Отдел</th>'+
+    '<div class="tbwrap" style="margin-top:var(--s-2)"><table><thead><tr><th>ФИО</th><th>Должность</th><th>Отдел</th>'+
       PAYCOLS.map(function(c){ return '<th>'+c[1]+'</th>'; }).join('')+'<th></th></tr></thead><tbody>'+
       d.rows.map(function(r,i){ var p='PAYEDIT.rows['+i+']';
         return '<tr><td>'+inp(p+'.fio',r.fio,150)+'</td><td>'+inp(p+'.pos',r.pos,150)+'</td>'+
@@ -1424,12 +1365,12 @@ function payEditView(){
           PAYCOLS.map(function(c){ return '<td>'+inp(p+'.'+c[0],r[c[0]],80)+'</td>'; }).join('')+
           '<td><button class="btn sm" onclick="PAYEDIT.rows.splice('+i+',1);render()">✕</button></td></tr>'; }).join('')+
     '</tbody></table></div>'+
-    '<div class="row" style="margin-top:6px"><button class="btn sm" onclick="PAYEDIT.rows.push({fio:\'\',pos:\'\',dept:\'рабочие\'});render()">＋ строка</button></div>'+
-    '<div id="payWarn" style="margin-top:8px">'+payWarnHtml()+'</div>'+
-    '<div class="row" style="margin-top:8px;gap:10px;flex-wrap:wrap;align-items:center;font-size:13px">Налоги по ведомости: '+
+    '<div class="row" style="margin-top:var(--s-2)"><button class="btn sm" onclick="PAYEDIT.rows.push({fio:\'\',pos:\'\',dept:\'рабочие\'});render()">＋ строка</button></div>'+
+    '<div id="payWarn" style="margin-top:var(--s-2)">'+payWarnHtml()+'</div>'+
+    '<div class="row" style="margin-top:var(--s-2);gap:var(--s-3);flex-wrap:wrap;align-items:center;font-size:13px">Налоги по ведомости: '+
       '<label>ПН '+inp('PAYEDIT.taxes.pn',d.taxes.pn,80)+'</label><label>ФСЗН '+inp('PAYEDIT.taxes.fszn',d.taxes.fszn,80)+'</label>'+
       '<label>БГС '+inp('PAYEDIT.taxes.bgs',d.taxes.bgs,70)+'</label></div>'+
-    '<div class="row" style="margin-top:10px"><button class="btn pri" onclick="paySave()">Сохранить ведомость</button>'+
+    '<div class="row" style="margin-top:var(--s-3)"><button class="btn pri" onclick="paySave()">Сохранить ведомость</button>'+
     '<button class="btn" onclick="PAYEDIT=null;render()">Отмена</button></div></div>';
 }
 function payUpload(){
@@ -1477,18 +1418,18 @@ function debtView(){
   var h='<div class="card"><b style="font-size:16px">Должны сотрудникам: '+money(DEBT.debtNow)+'</b>'+
     (DEBT.closedYm?' <span class="muted">· на конец месяца «'+esc(payMonth(DEBT.closedYm))+'»: '+money(DEBT.debtClosed)+'</span>':'')+
     (DEBT.aheadNow?' <span class="muted">· заплачено наперёд: '+money(DEBT.aheadNow)+'</span>':'')+
-    '<div class="muted" style="font-size:12.5px;margin-top:4px">Итог = долг с прошлого месяца + заработано по нарядам − начислено по ведомостям (до вычета налогов) − доплачено. Если оклад больше нарядов, разница — заплачено наперёд и уменьшает долг следующих месяцев. Текущий месяц ещё идёт — наряды в нём растут.</div>'+
-    (DEBT.finErr?'<div style="color:#c5221f;font-size:12.5px;margin-top:4px">Фин.гений: '+esc(DEBT.finErr)+' — доплаты не учтены</div>':'')+'</div>';
+    '<div class="muted" style="font-size:13px;margin-top:var(--s-1)">Итог = долг с прошлого месяца + заработано по нарядам − начислено по ведомостям (до вычета налогов) − доплачено. Если оклад больше нарядов, разница — заплачено наперёд и уменьшает долг следующих месяцев. Текущий месяц ещё идёт — наряды в нём растут.</div>'+
+    (DEBT.finErr?'<div style="color:var(--red);font-size:13px;margin-top:var(--s-1)">Фин.гений: '+esc(DEBT.finErr)+' — доплаты не учтены</div>':'')+'</div>';
   return h+DEBT.months.map(function(m,mi){
     var noDoc=!m.rows.some(function(r){ return r.accr>0; });
     return '<div class="card"><b>'+esc(payMonth(m.ym))+'</b>'+(m.open?' <span class="muted">· месяц идёт</span>':'')+
-      ' · долг <b'+(m.debt?' style="color:#c5221f"':'')+'>'+money(m.debt)+'</b>'+
+      ' · долг <b'+(m.debt?' style="color:var(--red)"':'')+'>'+money(m.debt)+'</b>'+
       (m.ahead?' <span class="muted">· наперёд '+money(m.ahead)+'</span>':'')+
-      (noDoc&&m.rows.length?'<div class="muted" style="font-size:12px;margin-top:3px">⚠ ведомость за этот месяц не загружена — долг показан без неё</div>':'')+
-      (m.rows.length?'<div class="tbwrap" style="margin-top:8px"><table class="mob"><thead><tr><th>Сотрудник</th><th class="num">С прошлого</th><th class="num">По нарядам</th>'+
+      (noDoc&&m.rows.length?'<div class="muted" style="font-size:13px;margin-top:var(--s-1)">⚠ ведомость за этот месяц не загружена — долг показан без неё</div>':'')+
+      (m.rows.length?'<div class="tbwrap" style="margin-top:var(--s-2)"><table class="mob"><thead><tr><th>Сотрудник</th><th class="num">С прошлого</th><th class="num">По нарядам</th>'+
         '<th class="num">По ведомостям</th><th class="num">Доплачено</th><th class="num">Итог</th><th></th></tr></thead><tbody>'+
         m.rows.map(function(r,ri){ return debtRow(m,mi,r,ri); }).join('')+'</tbody></table></div>'
-        :'<div class="muted" style="margin-top:6px">Нарядов и выплат нет.</div>')+'</div>';
+        :'<div class="muted" style="margin-top:var(--s-2)">Нарядов и выплат нет.</div>')+'</div>';
   }).join('');
 }
 function debtRow(m,mi,r,ri){
@@ -1497,22 +1438,22 @@ function debtRow(m,mi,r,ri){
     '<td class="num" data-l="С прошлого">'+(r.carry?money(r.carry):'—')+'</td>'+
     '<td class="num" data-l="По нарядам">'+money(r.earned)+'</td><td class="num" data-l="По ведомостям">'+money(r.accr)+'</td>'+
     '<td class="num" data-l="Доплачено">'+money(r.paid)+'</td>'+
-    '<td class="num" data-l="Итог">'+(r.debt?'<b style="color:#c5221f">долг '+money(r.debt)+'</b>'
+    '<td class="num" data-l="Итог">'+(r.debt?'<b style="color:var(--red)">долг '+money(r.debt)+'</b>'
       :(r.ahead?'<span class="muted" title="оклад больше нарядов — заплачено наперёд">наперёд '+money(r.ahead)+'</span>':'—'))+'</td>'+
     // платить — только из последнего месяца: итог нарастающий, старые месяцы уже в нём
     '<td class="acts">'+(mi===0&&r.debt&&!paying?'<button class="btn sm" onclick="debtPayOpen('+mi+','+ri+')">💵 Доплатить</button>':'')+'</td></tr>';
-  if(DEBTOPEN[k]) h+='<tr class="sub"><td colspan="7" style="font-size:12.5px">за месяц: '+money(r.bal)+'<br>'+
+  if(DEBTOPEN[k]) h+='<tr class="sub"><td colspan="7" style="font-size:13px">за месяц: '+money(r.bal)+'<br>'+
     (r.docs.length?r.docs.map(function(d){ return '📄 ведомость «'+esc(d.kind)+'»: начислено '+money(d.accr)+', к выдаче '+money(d.pay); }).join('<br>'):'📄 ведомостей нет')+'<br>'+
     (r.pays.length?r.pays.map(function(p){ return '💵 '+esc(p.date)+' · '+esc(p.wallet)+' · '+money(p.sum)+(p.note?' <span class="muted">'+esc(p.note)+'</span>':''); }).join('<br>'):'💵 доплат нет')+'</td></tr>';
   if(paying){
     var cash=DEBT.wallets.cash||[], ws=cash.concat((DEBT.wallets.all||[]).filter(function(w){ return cash.indexOf(w)<0; }));
-    h+='<tr class="sub"><td colspan="7"><div class="row" style="gap:8px;flex-wrap:wrap;align-items:center;font-size:13px">'+
+    h+='<tr class="sub"><td colspan="7"><div class="row" style="gap:var(--s-2);flex-wrap:wrap;align-items:center;font-size:13px">'+
       '<label>Сумма <input id="dp_sum" value="'+r.debt+'" style="width:90px"></label>'+
       '<label>Кошелёк <select id="dp_wallet">'+ws.map(function(w){ return '<option>'+esc(w)+'</option>'; }).join('')+'</select></label>'+
       '<label>Дата <input id="dp_date" value="'+debtToday()+'" style="width:100px"></label>'+
       '<button class="btn pri sm" onclick="debtPaySave('+mi+','+ri+')">Записать выплату</button>'+
       '<button class="btn sm" onclick="DEBTPAY=null;render()">Отмена</button></div>'+
-      '<div class="muted" style="font-size:12px;margin-top:4px">Запишется в Фин.гений оплаченным расходом (зарплата, отдел: '+esc(r.dept)+') за '+esc(payMonth(m.ym))+'.</div></td></tr>';
+      '<div class="muted" style="font-size:13px;margin-top:var(--s-1)">Запишется в Фин.гений оплаченным расходом (зарплата, отдел: '+esc(r.dept)+') за '+esc(payMonth(m.ym))+'.</div></td></tr>';
   }
   return h;
 }
@@ -1538,25 +1479,25 @@ function regView(){
     if(!REGLOADING){ REGLOADING=1; api({vapi:'hrpayreg',ym:REGYM}).then(function(r){ REGLOADING=0; REG=r; if(r&&r.ym) REGYM=r.ym; if(TAB==='pay'&&PAYMODE==='reg') render(); }); }
     return '<div class="center">Собираю реестр: ведомости, акты, договоры, выписка…</div>'; }
   if(!REG.ok) return '<div class="center">Ошибка: '+esc(REG.error||'')+'</div>';
-  var t=REG.totals||{}, col={paid:'#188038',bank:'#188038',ok:'#188038',diff:'#b06000',late:'#c5221f',none:'#c5221f'};
-  var pill=function(map,s){ return '<span style="color:'+(col[s]||'var(--muted)')+';font-weight:'+(col[s]&&s!=='paid'&&s!=='ok'&&s!=='bank'?700:400)+'">'+esc(map[s]||s)+'</span>'; };
-  var h='<div class="card"><div class="row" style="gap:8px;align-items:center"><button class="btn sm" onclick="regYmShift(-1)">◀</button>'+
+  var t=REG.totals||{}, col={paid:'var(--green)',bank:'var(--green)',ok:'var(--green)',diff:'var(--amber)',late:'var(--red)',none:'var(--red)'};
+  var pill=function(map,s){ return '<span style="color:'+(col[s]||'var(--muted)')+';font-weight:'+(col[s]&&s!=='paid'&&s!=='ok'&&s!=='bank'?600:400)+'">'+esc(map[s]||s)+'</span>'; };
+  var h='<div class="card"><div class="row" style="gap:var(--s-2);align-items:center"><button class="btn sm" onclick="regYmShift(-1)">◀</button>'+
     '<b style="font-size:16px">'+esc(payMonth(REG.ym))+'</b><button class="btn sm" onclick="regYmShift(1)">▶</button><span style="flex:1"></span>'+
     '<button class="btn sm" onclick="regExport()">⬇ Выгрузить</button></div>'+
-    '<div style="margin-top:6px;font-size:13px">к оплате <b>'+money(t.toPay)+'</b> · выплачено '+money(t.paid)+
-    (t.late?' · <b style="color:#c5221f">просрочено '+money(t.late)+'</b>':'')+'</div>'+
-    (REG.finErr?'<div style="color:#c5221f;font-size:12.5px;margin-top:4px">Фин.гений: '+esc(REG.finErr)+' — факт оплаты не проверен</div>':'')+'</div>';
+    '<div style="margin-top:var(--s-2);font-size:13px">к оплате <b>'+money(t.toPay)+'</b> · выплачено '+money(t.paid)+
+    (t.late?' · <b style="color:var(--red)">просрочено '+money(t.late)+'</b>':'')+'</div>'+
+    (REG.finErr?'<div style="color:var(--red);font-size:13px;margin-top:var(--s-1)">Фин.гений: '+esc(REG.finErr)+' — факт оплаты не проверен</div>':'')+'</div>';
   h+='<div class="card"><b>🏦 Сверка с выпиской</b>'+(REG.recon.length?
-    '<div class="tbwrap" style="margin-top:6px"><table class="mob"><thead><tr><th>Что</th><th>Срок</th><th class="num">По документам</th><th>В выписке</th><th></th></tr></thead><tbody>'+
+    '<div class="tbwrap" style="margin-top:var(--s-2)"><table class="mob"><thead><tr><th>Что</th><th>Срок</th><th class="num">По документам</th><th>В выписке</th><th></th></tr></thead><tbody>'+
     REG.recon.map(function(x){ return '<tr><td><b>'+esc(x.what)+'</b></td><td data-l="Срок">'+esc(x.due)+'</td>'+
       '<td class="num" data-l="По документам">'+money(x.expected)+'</td>'+
       '<td data-l="В выписке">'+(x.fact?esc(x.fact.date)+' · '+money(x.fact.sum)+(x.status==='diff'?' <span class="muted">(разница '+money(x.fact.sum-x.expected)+')</span>':''):'—')+'</td>'+
       '<td>'+pill(RECST,x.status)+'</td></tr>'; }).join('')+'</tbody></table></div>'
-    :'<div class="muted" style="margin-top:4px">В этом месяце выплат по ведомостям нет — или ведомости не загружены.</div>')+
-    '<div class="muted" style="font-size:12px;margin-top:4px">Выплата реестром ищется в «Расходах» Фин.гения по сумме и дате: аванс — около 30-го, остаток — в течение месяца, налоги — по суммам из ведомости.</div></div>';
+    :'<div class="muted" style="margin-top:var(--s-1)">В этом месяце выплат по ведомостям нет — или ведомости не загружены.</div>')+
+    '<div class="muted" style="font-size:13px;margin-top:var(--s-1)">Выплата реестром ищется в «Расходах» Фин.гения по сумме и дате: аванс — около 30-го, остаток — в течение месяца, налоги — по суммам из ведомости.</div></div>';
   h+='<div class="card tbwrap"><table class="mob"><thead><tr><th>Срок</th><th>Кому</th><th>На каких условиях</th><th class="num">Сумма</th><th>Статус</th></tr></thead><tbody>'+
     (REG.lines.length?REG.lines.map(function(l){ return '<tr><td><b>'+esc(l.due)+'</b></td><td data-l="Кому">'+esc(l.who)+'</td>'+
-      '<td data-l="Условия" style="font-size:12.5px">'+esc(l.terms)+'</td><td class="num" data-l="Сумма">'+money(l.sum)+'</td>'+
+      '<td data-l="Условия" style="font-size:13px">'+esc(l.terms)+'</td><td class="num" data-l="Сумма">'+money(l.sum)+'</td>'+
       '<td data-l="Статус">'+pill(REGST,l.status)+(l.fact?' <span class="muted">'+esc(l.fact)+'</span>':'')+(l.plan?' <span class="muted">· будет '+esc(l.plan)+'</span>':'')+'</td></tr>'; }).join('')
     :'<tr><td colspan="5" class="muted">Выплат на этот месяц нет.</td></tr>')+'</tbody></table></div>';
   return h;
@@ -1594,11 +1535,11 @@ function foldView(){
   var n=0, unsure=0, sel=0;
   FOLD.emps.forEach(function(e){ e.files.forEach(function(f){ n++; if(f.g.recog&&!f.g.done) unsure++; if(f.on) sel++; }); });
   var h='<div class="card"><b>📂 Подписанные сканы в папках сотрудников, ещё не приложенные к карточкам: '+n+'</b>'+
-    '<div class="muted" style="font-size:12.5px;margin-top:3px">Черновики (Word, Google-документы) пропущены'+(FOLD.skipped?' — '+FOLD.skipped:'')+
+    '<div class="muted" style="font-size:13px;margin-top:var(--s-1)">Черновики (Word, Google-документы) пропущены'+(FOLD.skipped?' — '+FOLD.skipped:'')+
     '. Файлы остаются в папках, в карточку добавляется ссылка; несколько фото одного документа (страницы договора, акта) склеиваются в один PDF, фото уходят в подпапку «Оригиналы». '+
     'Проверьте «Куда»; неясные — «Распознать» (читает Claude, ~10 с на файл). '+
     'Галочки стоят у тех, что определены уверенно.</div>'+
-    '<div class="row" style="margin-top:8px;gap:6px;flex-wrap:wrap"><button class="btn" onclick="FOLD=null;render()">← к документам</button>'+
+    '<div class="row" style="margin-top:var(--s-2);gap:var(--s-2);flex-wrap:wrap"><button class="btn" onclick="FOLD=null;render()">← к документам</button>'+
     (unsure?'<button class="btn"'+(FOLDBUSY?' disabled':'')+' onclick="foldRecogAll()">🔎 Распознать неясные ('+unsure+')</button>':'')+
     '<button class="btn pri"'+(FOLDBUSY||!sel?' disabled':'')+' onclick="foldAttach()">📎 Привязать отмеченные ('+sel+')</button></div></div>';
   if(!n) return h+'<div class="card"><div class="empty">Всё подписанное уже приложено к карточкам.</div></div>';
@@ -1610,17 +1551,17 @@ function foldView(){
         var g=f.g, p='FOLD.emps['+ei+'].files['+fi+']', opts=tg.slice();
         if(!opts.some(function(t){ return t[0]===g.to; })) opts.unshift([g.to,g.to]);
         return '<tr><td style="width:26px"><input type="checkbox"'+(f.on?' checked':'')+' onchange="'+p+'.on=this.checked;render()"></td>'+
-          '<td><a href="'+esc(f.url)+'" target="_blank">'+esc(f.name)+'</a> <span class="muted" style="font-size:11.5px">'+esc(f.created)+'</span>'+
-            (g.note?'<div class="muted" style="font-size:11.5px">'+esc(g.note)+'</div>':'')+'</td>'+
+          '<td><a href="'+esc(f.url)+'" target="_blank">'+esc(f.name)+'</a> <span class="muted" style="font-size:13px">'+esc(f.created)+'</span>'+
+            (g.note?'<div class="muted" style="font-size:13px">'+esc(g.note)+'</div>':'')+'</td>'+
           '<td data-l="Куда"><select style="max-width:280px" onchange="'+p+'.g.to=this.value;render()">'+
             opts.map(function(t){ return '<option value="'+esc(t[0])+'"'+(t[0]===g.to?' selected':'')+'>'+esc(t[1])+'</option>'; }).join('')+'</select></td>'+
           '<td data-l="№ / дата" style="white-space:nowrap">'+(String(g.to).indexOf('new:')===0?
             '<input value="'+esc(g.num||'')+'" placeholder="№" oninput="'+p+'.g.num=this.value" style="width:70px"> '+
             '<input value="'+esc(g.date||'')+'" placeholder="дд.мм.гггг" oninput="'+p+'.g.date=this.value" style="width:96px">':'')+
             (g.to==='new:акт'?' <input value="'+esc(g.sum||'')+'" placeholder="сумма" oninput="'+p+'.g.sum=this.value" style="width:70px">'+
-              ' <label style="font-size:12px"><input type="checkbox"'+(g.paid?' checked':'')+' onchange="'+p+'.g.paid=this.checked"> оплачен</label>':'')+'</td>'+
-          '<td data-l="Как определено" style="font-size:12px">'+(g.busy?'распознаю…':(g.done?'<span style="color:#188038">✓ распознано</span>':
-            (g.recog?'<span class="muted">не уверен</span>':'<span style="color:#188038">по названию</span>')))+'</td></tr>';
+              ' <label style="font-size:13px"><input type="checkbox"'+(g.paid?' checked':'')+' onchange="'+p+'.g.paid=this.checked"> оплачен</label>':'')+'</td>'+
+          '<td data-l="Как определено" style="font-size:13px">'+(g.busy?'распознаю…':(g.done?'<span style="color:var(--green)">✓ распознано</span>':
+            (g.recog?'<span class="muted">не уверен</span>':'<span style="color:var(--green)">по названию</span>')))+'</td></tr>';
       }).join('')+'</tbody></table></div></div>';
   }).join('');
 }
@@ -1665,17 +1606,17 @@ function tplView(){
   (TPLDATA.sections||[]).forEach(function(sec){
     h+='<div class="sect" style="display:flex;justify-content:space-between;align-items:baseline">'+esc(sec.title)+
        '<a class="back" href="'+esc(sec.folderUrl)+'" target="_blank" style="text-transform:none;font-weight:400">открыть папку ↗</a></div>';
-    h+='<div class="muted" style="font-size:12px;margin:0 4px 6px">'+esc(hint[sec.key]||'')+'</div>';
+    h+='<div class="muted" style="font-size:13px;margin:0 var(--s-1) var(--s-2)">'+esc(hint[sec.key]||'')+'</div>';
     if(!sec.groups.length){ h+='<div class="card"><div class="empty">Пусто.</div></div>'; return; }
     sec.groups.forEach(function(g){
-      h+='<div class="card">'+(g.sub?'<div style="font-weight:700;margin-bottom:6px">'+esc(g.sub)+'</div>':'')+
-        '<div style="display:flex;flex-direction:column;gap:2px">'+
+      h+='<div class="card">'+(g.sub?'<div style="font-weight:600;margin-bottom:var(--s-2)">'+esc(g.sub)+'</div>':'')+
+        '<div style="display:flex;flex-direction:column;gap:var(--s-1)">'+
         g.items.map(function(it){
           // ✅ — шаблон подключён к генерации (система заполняет сама), ⚪ — просто лежит бланком
           var mark = it.wired
-            ? '<span class="pill p-ok" style="margin-left:6px" title="подключён: система заполняет сам">✅ подключён</span>'
-            : '<span class="pill p-none" style="margin-left:6px" title="лежит в папке, но к генерации не подключён — только скачать и заполнить руками">⚪ не подключён</span>';
-          return '<div style="padding:4px 0;display:flex;align-items:center;gap:2px;flex-wrap:wrap">'
+            ? '<span class="pill ok" style="margin-left:var(--s-2)" title="подключён: система заполняет сам">✅ подключён</span>'
+            : '<span class="pill mute" style="margin-left:var(--s-2)" title="лежит в папке, но к генерации не подключён — только скачать и заполнить руками">⚪ не подключён</span>';
+          return '<div style="padding:var(--s-1) 0;display:flex;align-items:center;gap:var(--s-1);flex-wrap:wrap">'
             +'<a href="'+esc(it.url)+'" target="_blank">📄 '+esc(it.name)+'</a>'+mark+'</div>';
         }).join('')+
         '</div></div>';

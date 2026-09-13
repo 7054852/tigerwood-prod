@@ -3,97 +3,65 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="tw-theme.js"></script>
 <title>Тигервуд — Товары</title>
 <style>
-  :root{
-    --bg:#f4f6fb; --card:#fff; --fg:#1b2333; --muted:#8a93a6; --line:#e6e9f2; --accent:#2b7de9;
-    --green:#137333; --green-bg:#e7f5ea; --amber:#b7791f; --amber-bg:#f7efdb; --red:#c0392b; --red-bg:#fdecea; --grid:#eef1f8;
-  }
-  @media (prefers-color-scheme:dark){
-    :root{ --bg:#14161b; --card:#1c1f26; --fg:#e9eaee; --muted:#9aa0ad; --line:#2a2e37; --accent:#4f9bee;
-           --green:#4bbd7e; --green-bg:#13291d; --amber:#d6a23c; --amber-bg:#2c2411; --red:#e5776b; --red-bg:#2b1714; --grid:#23262e; }
-  }
-  *{box-sizing:border-box;} html,body{margin:0;background:var(--bg);}
-  body{ font-family:-apple-system,Roboto,Segoe UI,Arial,sans-serif; color:var(--fg); padding:14px; max-width:1180px; margin:0 auto; font-size:14px; }
-  html.emb>body>.hi,html.emb>body>.sub{display:none}
-  .hi{ font-size:19px; font-weight:800; } .sub{ color:var(--muted); font-size:13px; margin-top:2px; }
-  .muted{ color:var(--muted); } .center{ text-align:center; padding:40px 16px; color:var(--muted); }
-  .card{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:13px 14px; box-shadow:0 1px 3px rgba(20,30,60,.05); margin-bottom:10px; }
-  .tabs{ display:flex; gap:6px; flex-wrap:wrap; margin:10px 0 12px; }
-  .tabs button{ border:1px solid var(--line); background:var(--card); color:var(--fg); border-radius:999px; padding:7px 13px; font-size:13px; cursor:pointer; font-weight:600; }
-  .tabs button.on{ background:var(--accent); border-color:var(--accent); color:#fff; }
-  table{ width:100%; border-collapse:collapse; } th,td{ text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); font-size:13px; vertical-align:top; }
-  th{ color:var(--muted); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.03em; }
-  td.num,th.num{ text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
-  .tbwrap{ overflow-x:auto; }
-  .pill{ display:inline-block; border-radius:999px; padding:2px 9px; font-size:11.5px; font-weight:700; white-space:nowrap; }
-  .p-ok{ background:var(--green-bg); color:var(--green); } .p-none{ background:var(--grid); color:var(--muted); }
-  .btn{ border:1px solid var(--line); background:var(--card); color:var(--fg); border-radius:9px; padding:6px 11px; font-size:13px; cursor:pointer; font-weight:600; }
-  .btn.pri{ background:var(--accent); border-color:var(--accent); color:#fff; }
-  .btn.danger{ background:var(--red-bg); border-color:var(--red-bg); color:var(--red); }
-  .btn.sm{ padding:3px 8px; font-size:12px; }
-  .row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-  .grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:9px; }
-  label.f{ display:block; font-size:11.5px; color:var(--muted); margin-bottom:3px; }
-  input,select,textarea{ width:100%; padding:7px 9px; border:1px solid var(--line); border-radius:9px; background:var(--card); color:var(--fg); font-size:13px; font-family:inherit; }
-  input[type=checkbox]{ width:16px; height:16px; }
-  input[type=color]{ width:34px; height:28px; padding:1px; }
-  .back{ cursor:pointer; color:var(--accent); font-weight:600; font-size:13px; }
-  .empty{ color:var(--muted); font-size:12.5px; padding:8px 0; }
-  a{ color:var(--accent); }
+  .card{ margin-bottom:var(--s-4); } .card + .card{ margin-top:0; }
+  td.num, th.num{ white-space:nowrap; }
+  .btn.danger{ color:var(--red); }
+  .grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:var(--s-3); }
+  label.f{ display:block; font:var(--t-small); color:var(--muted); margin-bottom:var(--s-1); }
+  input, select, textarea{ width:100%; }
+  input[type=color]{ height:var(--h-sm); min-height:var(--h-sm); flex:none; }
+  .back{ cursor:pointer; color:var(--accent-text); font:500 13px/18px var(--font); }
   /* сообщения вместо alert */
-  #msg{ display:none; margin:8px 0; padding:8px 12px; border-radius:10px; font-size:13px; font-weight:600; }
+  #msg{ display:none; margin:var(--s-2) 0; padding:var(--s-2) var(--s-3); border-radius:var(--r-ctl); font:500 13px/18px var(--font); }
   #msg.ok{ display:block; background:var(--green-bg); color:var(--green); }
   #msg.err{ display:block; background:var(--red-bg); color:var(--red); }
-  #msg .btn{ margin-left:8px; }
-  /* ── реестр ── */
-  .regtbl{ border-collapse:collapse; width:100%; min-width:1100px; font-size:12.5px; }
-  .regtbl th{ position:sticky; top:0; background:var(--card); z-index:2; cursor:pointer; white-space:nowrap; padding:6px 7px; border-bottom:2px solid var(--line); }
-  .regtbl td{ padding:3px 7px; border-bottom:1px solid var(--grid); white-space:nowrap; line-height:18px; }
-  .regtbl tr.item:hover td{ background:rgba(43,125,233,.10); }
-  .regtbl col.hl{ background:rgba(43,125,233,.07); }
-  .regtbl th.hl{ color:var(--accent); }
-  .regtbl tr.grph td{ font-weight:700; padding:5px 7px; cursor:pointer; }
-  .regtbl tr.grph td .gsub, .regtbl tr.grph2 td .gsub{ font-weight:400; font-size:11px; opacity:.75; margin-left:8px; }
-  .regtbl tr.grph2 td{ font-weight:600; padding:4px 7px 4px 26px; cursor:pointer; background:var(--grid); font-size:12px; }
-  .regtbl td.sku{ font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11.5px; font-weight:700; cursor:pointer; color:var(--accent); }
+  #msg .btn{ margin-left:var(--s-2); }
+  /* ── реестр: плотная строка 32px ── */
+  .regtbl{ min-width:1100px; font:var(--t-small); }
+  .regtbl th{ position:sticky; top:0; background:var(--card); z-index:2; cursor:pointer; padding:var(--s-2); }
+  .regtbl td{ padding:6px var(--s-2); font:var(--t-small); white-space:nowrap; border-bottom:1px solid var(--line); }
+  .regtbl tr.item:hover td{ background:var(--accent-bg); }
+  .regtbl col.hl{ background:var(--card2); }
+  .regtbl th.hl{ color:var(--accent-text); }
+  .regtbl tr.grph td{ font-weight:600; padding:var(--s-2); cursor:pointer; background:var(--grey-bg); color:var(--fg); }
+  .regtbl tr.grph2 td{ font-weight:500; padding:var(--s-1) var(--s-2) var(--s-1) var(--s-5); cursor:pointer; background:var(--card2); }
+  .regtbl .gsub{ font-weight:400; color:var(--muted); margin-left:var(--s-2); }
+  /* цвет группы приходит данными из листа — показываем точкой, строка остаётся нейтральной */
+  .dot.g{ box-shadow:inset 0 0 0 1px var(--line2); margin-right:var(--s-2); vertical-align:middle; }
+  .gtag{ display:inline-flex; align-items:center; font-weight:600; }
+  .regtbl td.sku{ font-weight:600; cursor:pointer; color:var(--accent-text); font-variant-numeric:tabular-nums; }
   .regtbl td.dim{ color:var(--muted); }
   .regtbl td.nm{ max-width:220px; overflow:hidden; text-overflow:ellipsis; }
   .regtbl td.rege{ cursor:text; }
-  .reghub{ background:var(--green-bg); color:var(--green); padding:0 6px; border-radius:8px; font-size:10px; font-weight:700; }
+  .reghub{ background:var(--green-bg); color:var(--green); padding:0 var(--s-1); border-radius:var(--r-xs); font:var(--t-label); }
   .asmok{ display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px; border-radius:50%;
-          background:var(--green); color:#fff; font-size:11px; font-weight:900; vertical-align:middle;
-          box-shadow:0 1px 3px rgba(19,115,51,.45); }
-  #massbar{ position:sticky; bottom:8px; z-index:5; background:var(--card); border:1px solid var(--accent); border-radius:12px;
-            padding:9px 12px; display:flex; gap:10px; align-items:center; flex-wrap:wrap; box-shadow:0 6px 20px rgba(20,30,60,.18); margin-top:10px; }
+          background:var(--green); color:var(--on-accent); font:600 11px/16px var(--font); vertical-align:middle; }
+  #massbar{ position:sticky; bottom:var(--s-2); z-index:5; background:var(--card); border:1px solid var(--line); border-radius:var(--r-card);
+            padding:var(--s-2) var(--s-3); display:flex; gap:var(--s-3); align-items:center; flex-wrap:wrap; box-shadow:var(--shadow-pop); margin-top:var(--s-3); }
   /* ── группы ── */
-  .gcard{ display:flex; gap:10px; align-items:center; background:var(--card); border:1px solid var(--line); border-radius:12px;
-          padding:9px 12px; margin-bottom:7px; cursor:grab; }
-  .gcard.sel{ border-color:var(--accent); box-shadow:0 4px 14px rgba(43,125,233,.25); transform:translateY(-1px); }
+  .gcard{ display:flex; gap:var(--s-2); align-items:center; background:var(--card); border:1px solid var(--line); border-radius:var(--r-ctl);
+          padding:var(--s-2) var(--s-3); margin-bottom:var(--s-2); cursor:grab; transition:transform .15s var(--ease), box-shadow .15s var(--ease); }
+  .gcard.sel{ border-color:var(--accent); box-shadow:var(--shadow-pop); transform:translateY(-1px); }
   .gcard.target{ outline:2px dashed var(--accent); outline-offset:2px; }
-  .gcard .gname{ flex:1; min-width:140px; font-weight:700; padding:3px 9px; border-radius:8px; cursor:pointer; }
-  .gcard .cnt{ color:var(--muted); font-size:12px; white-space:nowrap; }
+  .gcard .gname{ flex:1; min-width:140px; font-weight:600; padding:var(--s-1) var(--s-2); border-radius:var(--r-xs); cursor:pointer; display:flex; align-items:center; }
+  .gcard .cnt{ color:var(--muted); font:var(--t-small); white-space:nowrap; }
   /* ── коды ── */
-  .chipx{ display:inline-flex; align-items:center; gap:6px; background:var(--grid); border:1px solid var(--line);
-          border-radius:999px; padding:3px 5px 3px 10px; margin:3px 4px 3px 0; font-size:12.5px; cursor:pointer; }
-  .chipx b{ font-family:ui-monospace,Menlo,monospace; }
-  .chipx .x{ color:var(--red); font-weight:700; padding:0 5px; border-radius:50%; }
+  .chipx{ display:inline-flex; align-items:center; gap:var(--s-2); background:var(--grey-bg); border:1px solid var(--line);
+          border-radius:var(--r-pill); padding:var(--s-1) var(--s-1) var(--s-1) var(--s-3); margin:var(--s-1) var(--s-1) var(--s-1) 0; font:var(--t-small); cursor:pointer; }
+  .chipx b{ font-weight:600; }
+  .chipx input{ min-height:var(--h-sm); padding:0 var(--s-2); }
+  .chipx .x{ color:var(--red); font-weight:600; padding:0 var(--s-1); border-radius:50%; }
   .chipx .x:hover{ background:var(--red-bg); }
-  .kbadd{ display:flex; gap:6px; margin-top:8px; max-width:420px; }
-  .kbadd input:first-child{ width:110px; flex:none; font-family:ui-monospace,monospace; }
-  /* видимая реакция кнопок (телефон) */
-  button{ touch-action:manipulation; -webkit-tap-highlight-color:transparent;
-          transition:transform .06s ease, filter .12s ease, opacity .12s ease; }
-  button:active{ transform:scale(.94); filter:brightness(.86); }
-  button[disabled]{ opacity:.5; pointer-events:none; }
-  #twload{ position:fixed; left:0; top:0; height:3px; width:100%; z-index:60; display:none; overflow:hidden; }
-  #twload>i{ display:block; height:100%; width:38%; background:var(--accent); animation:twslide 1.1s ease-in-out infinite; }
-  @keyframes twslide{ 0%{ margin-left:-38% } 100%{ margin-left:100% } }
-  #twwait{ position:fixed; inset:0; background:rgba(246,247,252,.78); z-index:70; display:none; align-items:center; justify-content:center; }
-  #twwait .wb{ background:var(--card); border-radius:16px; padding:18px 22px; text-align:center; min-width:190px; box-shadow:0 12px 34px rgba(20,25,50,.18); }
-  #twwait .sp{ width:28px; height:28px; border:3px solid rgba(43,125,233,.22); border-top-color:var(--accent); border-radius:50%; margin:0 auto 10px; animation:twspin .8s linear infinite; }
-  @keyframes twspin{ to{ transform:rotate(360deg) } }
-  #twwait .wt{ font-weight:700; font-size:15px; } #twwait .wh{ font-size:12.5px; opacity:.6; margin-top:4px; }
+  .kbadd{ display:flex; gap:var(--s-2); margin-top:var(--s-2); max-width:420px; }
+  .kbadd input:first-child{ width:110px; flex:none; }
+  /* ── состав: блок детали, блок упаковки, полоса этапа ── */
+  .dblk{ border:1px solid var(--line); border-radius:var(--r-ctl); padding:var(--s-2) var(--s-3); margin:var(--s-2) 0; background:var(--bg); }
+  .pblk{ background:var(--bg2); border:1px solid var(--line); border-radius:var(--r-ctl); padding:var(--s-2) var(--s-3); }
+  .prow{ gap:var(--s-2); margin:var(--s-1) 0; font:var(--t-small); align-items:center; flex-wrap:wrap; }
+  .sbar{ display:inline-block; height:8px; border-radius:var(--r-pill); background:var(--bar); }
 </style>
 </head>
 <body>
@@ -105,7 +73,6 @@
 <script>
 var BASE='https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';
 var APP='tw7prod';
-if(/[?&]embed=1/.test(location.search))document.documentElement.classList.add('emb');
 function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]*)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
 var TGID=qp('tgid')||(function(){try{return localStorage.getItem('tw_tgid')||'';}catch(e){return '';}})();
 try{ if(!TGID && window.Telegram && Telegram.WebApp && Telegram.WebApp.initDataUnsafe && Telegram.WebApp.initDataUnsafe.user) TGID=String(Telegram.WebApp.initDataUnsafe.user.id); }catch(e){}
@@ -116,8 +83,8 @@ function twTok(){ try{ return twQp('tok')||localStorage.getItem('tw_tok')||''; }
 function twQp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
 (function(){ var t=twQp('tok'); if(t){ try{ localStorage.setItem('tw_tok',t); }catch(e){} } })();
 function twAuthWall(r){
-  if(r&&r.needAuth){ document.body.innerHTML='<div style="padding:28px;font:16px/1.55 -apple-system,Roboto,Segoe UI,Arial;color:#1b2333">'
-    +'<div style="font-size:20px;font-weight:800;margin-bottom:10px">🔒 Нужен вход</div>'
+  if(r&&r.needAuth){ document.body.innerHTML='<div style="padding:var(--s-6);font:var(--t-body);color:var(--fg)">'
+    +'<div style="font:var(--t-title);margin-bottom:var(--s-3)">🔒 Нужен вход</div>'
     +'<div>'+String(r.error||'Откройте сервис из бота @TWOtchbot или войдите по личному коду.')+'</div></div>'; }
   return r;
 }
@@ -239,7 +206,7 @@ function boot(){
 
 /* ══ Каркас: тулбар и вкладки рисуются один раз — поиск не теряет фокус ══ */
 function renderShell(){
-  var h='<div class="row" style="margin-bottom:2px">'
+  var h='<div class="row" style="margin-bottom:var(--s-1)">'
     +'<input id="q" placeholder="🔎 поиск: артикул, модель, наименование" style="flex:1;min-width:180px" oninput="Q=this.value;renderBody()">'
     +'<select id="grpf" style="width:auto" onchange="GRPF=this.value;renderBody()"></select>'
     +'<select id="grpby" style="width:auto" title="как группировать список" onchange="GRPBY=this.value;defaultCollapse();renderBody()">'
@@ -353,27 +320,27 @@ function regView(){
   var cols=visCols();
   var selN=Object.keys(SEL).length;
   var chips='';
-  if(GRPF) chips+='<span class="pill" style="background:var(--accent);color:#fff;cursor:pointer" onclick="GRPF=\'\';$(\'grpf\').value=\'\';renderBody()" title="снять фильтр группы">группа: '+esc(GRPF)+' ✕</span>';
+  if(GRPF) chips+='<span class="pill acc" style="cursor:pointer" onclick="GRPF=\'\';$(\'grpf\').value=\'\';renderBody()" title="снять фильтр группы">группа: '+esc(GRPF)+' ✕</span>';
   if(SORT.k){ var sc=REGCOLS.filter(function(c){return c.k===SORT.k;})[0];
-    chips+='<span class="pill" style="background:var(--amber-bg);color:var(--amber);cursor:pointer" onclick="SORT={k:\'\',dir:1};renderBody()" title="убрать сортировку — вернуть группы">сортировка: '+esc(sc?sc.t:SORT.k)+(SORT.dir===1?' ▲':' ▼')+' ✕ — вернуть группы</span>'; }
-  if(Q.trim()) chips+='<span class="pill p-none" style="cursor:pointer" onclick="Q=\'\';$(\'q\').value=\'\';renderBody()">поиск: «'+esc(Q.trim())+'» ✕</span>';
-  var h='<div class="row" style="margin-bottom:6px">'
-    +'<span class="muted" style="font-size:12px">товаров: '+list.length+'</span>'+chips
+    chips+='<span class="pill warn" style="cursor:pointer" onclick="SORT={k:\'\',dir:1};renderBody()" title="убрать сортировку — вернуть группы">сортировка: '+esc(sc?sc.t:SORT.k)+(SORT.dir===1?' ▲':' ▼')+' ✕ — вернуть группы</span>'; }
+  if(Q.trim()) chips+='<span class="pill mute" style="cursor:pointer" onclick="Q=\'\';$(\'q\').value=\'\';renderBody()">поиск: «'+esc(Q.trim())+'» ✕</span>';
+  var h='<div class="row" style="margin-bottom:var(--s-2)">'
+    +'<span class="muted" style="font-size:13px">товаров: '+list.length+'</span>'+chips
     +'<span style="position:relative;display:inline-block">'
     +'<button class="btn sm" onclick="var m=$(\'colsMenu\');m.style.display=m.style.display===\'none\'?\'\':\'none\'">⚙ колонки</button>'
-    +'<span id="colsMenu" style="display:none;position:absolute;top:30px;left:0;background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.15);padding:6px;z-index:20;min-width:170px">'
-    +REGCOLS.map(function(c){ return '<label style="display:flex;gap:6px;align-items:center;padding:3px 6px;cursor:pointer;font-size:13px"><input type="checkbox" style="width:auto" '+(HIDE[c.k]?'':'checked')+' onchange="colTgl(\''+c.k+'\')">'+esc(c.t)+'</label>'; }).join('')
+    +'<span id="colsMenu" style="display:none;position:absolute;top:36px;left:0;background:var(--card);border:1px solid var(--line);border-radius:var(--r-ctl);box-shadow:var(--shadow-pop);padding:var(--s-2);z-index:20;min-width:170px">'
+    +REGCOLS.map(function(c){ return '<label style="display:flex;gap:var(--s-2);align-items:center;padding:var(--s-1) var(--s-2);cursor:pointer;font-size:13px"><input type="checkbox" style="width:auto" '+(HIDE[c.k]?'':'checked')+' onchange="colTgl(\''+c.k+'\')">'+esc(c.t)+'</label>'; }).join('')
     +'</span></span>'
     +(!sorted?(function(){
         var any=Object.keys(CLOSED).some(function(k){return CLOSED[k];});
         return any?'<button class="btn sm" onclick="CLOSED={};renderBody()" title="раскрыть все группы и оборудование">⊞ развернуть всё</button>'
                   :'<button class="btn sm" onclick="collapseAll()" title="сжать весь каталог до заголовков">⊟ свернуть всё</button>';
       })():'')
-    +'<span class="muted" style="font-size:11.5px">двойной клик по ячейке — правка · клик по артикулу — карточка · клик по заголовку — сортировка</span>'
+    +'<span class="muted" style="font-size:13px">двойной клик по ячейке — правка · клик по артикулу — карточка · клик по заголовку — сортировка</span>'
     +'</div>';
   h+='<div class="card tbwrap" style="padding:0"><table class="regtbl"><colgroup>'
     +Array(cols.length+2).join('<col>')+'</colgroup><tr>'
-    +'<th style="cursor:default"><input type="checkbox" style="width:14px;height:14px" '+(selN&&selN>=list.length?'checked':'')+' onclick="selAll(this.checked)" title="выбрать все видимые"></th>'
+    +'<th style="cursor:default"><input type="checkbox" '+(selN&&selN>=list.length?'checked':'')+' onclick="selAll(this.checked)" title="выбрать все видимые"></th>'
     +cols.map(function(c){
       var ar=(SORT.k===c.k)?(SORT.dir===1?' ▲':' ▼'):'';
       return '<th onclick="regSortBy(\''+c.k+'\')">'+esc(c.t)+ar+'</th>';
@@ -391,15 +358,15 @@ function regView(){
   // средняя себестоимость по группе убрана намеренно: среднее по разнородным товарам
   // ничего не говорит, стоимость операций смотрим по каждому товару в его строке
   function hdrStat(st){ if(!st) return '';
-    return '<span class="gsub">'+st.n+' тов.'+(st.a?' · <span style="color:var(--green);font-weight:700">✔ собрано '+st.a+'/'+st.n+'</span>':'')+'</span>'; }
+    return '<span class="gsub">'+st.n+' тов.'+(st.a?' · <span style="color:var(--green);font-weight:600">✔ собрано '+st.a+'/'+st.n+'</span>':'')+'</span>'; }
   var open=!!Q.trim();   // при поиске всё раскрыто, как в старом каталоге
   var cur=null, cur2=null;
   list.forEach(function(p){
     var g=(GRPBY==='equip')?(p.equip||'(без оборудования)'):(p.group||'(без группы)');
     if(!sorted && g!==cur){ cur=g; cur2=null;
       var gi=(GRPBY==='equip')?{}:(grpInfo(g)||{});
-      var gst=(gi.bg?'background:'+gi.bg+';':'background:var(--grid);')+(gi.fg?'color:'+gi.fg+';':'');
-      h+='<tr class="grph" onclick="CLOSED[\''+jsq(g)+'\']=!CLOSED[\''+jsq(g)+'\'];renderBody()"><td colspan="'+(cols.length+1)+'" style="'+gst+'">'+(!open&&CLOSED[g]?'▸':'▾')+' '+esc(g)+hdrStat(gStat[g])+'</td></tr>';
+      var gc=gi.bg||gi.fg||'';   // цвет группы из листа — точкой, строка нейтральная (заливка слепила ночью)
+      h+='<tr class="grph" onclick="CLOSED[\''+jsq(g)+'\']=!CLOSED[\''+jsq(g)+'\'];renderBody()"><td colspan="'+(cols.length+1)+'">'+(!open&&CLOSED[g]?'▸':'▾')+' '+(gc?'<span class="dot g" style="background:'+gc+'"></span>':'')+esc(g)+hdrStat(gStat[g])+'</td></tr>';
     }
     if(!open && !sorted && CLOSED[g]) return;
     // второй уровень: оборудование внутри группы (ключ свёртки составной — имена могут совпадать)
@@ -412,17 +379,17 @@ function regView(){
     }
     var sq=jsq(p.sku);
     h+='<tr class="item">'
-      +'<td><input type="checkbox" style="width:14px;height:14px" '+(SEL[p.sku]?'checked':'')+' onclick="selTgl(\''+sq+'\',this.checked)"></td>'
+      +'<td><input type="checkbox" '+(SEL[p.sku]?'checked':'')+' onclick="selTgl(\''+sq+'\',this.checked)"></td>'
       +cols.map(function(c){
         if(c.k==='sku') return '<td class="sku" onclick="openCard(\''+sq+'\')" title="открыть карточку">'+esc(p.sku)
           +(p._asm?' <span class="asmok" title="товар собран — подтверждено директором">✓</span>':'')
           +(p.src==='хаб'?' <span class="reghub">хаб</span>':'')
           +(p.folder?' <a href="'+esc(p.folder)+'" target="_blank" onclick="event.stopPropagation()" title="папка на Drive">📁</a>':'')+'</td>';
-        if(c.k==='_comp') return '<td class="dim" onclick="openCard(\''+sq+'\')">'+(p._comp?esc(p._comp):'<span class="pill p-none">⚠ нет</span>')+'</td>';
+        if(c.k==='_comp') return '<td class="dim" onclick="openCard(\''+sq+'\')">'+(p._comp?esc(p._comp):'<span class="pill mute">⚠ нет</span>')+'</td>';
         if(c.k==='_cost') return '<td onclick="openCard(\''+sq+'\')" style="text-align:right;font-variant-numeric:tabular-nums">'+(p._cost?p._cost.toLocaleString('ru-RU',{minimumFractionDigits:2}):'')+'</td>';
         if(c.k==='_share') return '<td class="dim" onclick="openCard(\''+sq+'\')" style="text-align:right">'+(p._share!==''?p._share+'%':'')+'</td>';
         if(c.k==='_asm') return '<td style="cursor:pointer;text-align:center" onclick="asmTgl(\''+sq+'\')" title="отметка директора: изделие полностью расписано по операциям">'
-          +(p._asm?'<span class="pill p-ok">✔</span>':'<span class="pill p-none">☐</span>')+'</td>';
+          +(p._asm?'<span class="pill ok">✔</span>':'<span class="pill mute">☐</span>')+'</td>';
         var v=esc(String(p[c.k]||'').trim());
         if(c.edit) return '<td class="'+(c.cls||'')+' rege" ondblclick="cellEdit(this,\''+sq+'\',\''+c.k+'\')" title="двойной клик — править">'+v+'</td>';
         return '<td class="'+(c.cls||'')+'" onclick="openCard(\''+sq+'\')">'+v+'</td>';
@@ -485,7 +452,7 @@ function cellEdit(td,sku,key){
   var p=prodBy(sku); if(!p) return;
   td.setAttribute('data-e','1');
   var old=String(p[key]||'');
-  td.innerHTML='<input value="'+esc(old)+'" style="min-width:70px;padding:1px 5px;font-size:12px;border-color:var(--accent)">';
+  td.innerHTML='<input value="'+esc(old)+'" style="min-width:70px;border-color:var(--accent)">';
   var inp=td.firstChild; inp.focus(); inp.select();
   var done=false;
   function fin(saveIt){
@@ -522,9 +489,9 @@ function asmTgl(sku){
 function grpView(){
   if(!GF.length) return '<div class="center">Групп нет — добавьте первую ниже</div>'+grpAddRow();
   var cnt={}; P.forEach(function(p){ cnt[p.group]=(cnt[p.group]||0)+1; });
-  var h='<div class="muted" style="font-size:12px;margin-bottom:8px">Перетащите карточку (или: тап по группе → тап по месту). Клик по имени — переименовать. Порядок используется в реестре и выгрузке.</div>';
+  var h='<div class="muted" style="font-size:13px;margin-bottom:var(--s-2)">Перетащите карточку (или: тап по группе → тап по месту). Клик по имени — переименовать. Порядок используется в реестре и выгрузке.</div>';
   h+=GF.map(function(g,i){
-    var st=(g.bg?'background:'+g.bg+';':'background:var(--grid);')+(g.fg?'color:'+g.fg+';':'');
+    var gc=g.bg||g.fg||'';
     return '<div class="gcard'+(GSEL===g.name?' sel':'')+(GSEL&&GSEL!==g.name?' target':'')+'" draggable="true"'
       +' ondragstart="gDrag(event,\''+jsq(g.name)+'\')"'
       +' ondragover="event.preventDefault();this.classList.add(\'target\')" ondragleave="this.classList.remove(\'target\')"'
@@ -532,7 +499,7 @@ function grpView(){
       +'<span class="muted" style="cursor:grab">⠿</span>'
       +'<button class="btn sm" onclick="event.stopPropagation();gMove('+i+',-1)" '+(i===0?'disabled':'')+'>↑</button>'
       +'<button class="btn sm" onclick="event.stopPropagation();gMove('+i+',1)" '+(i===GF.length-1?'disabled':'')+'>↓</button>'
-      +'<span class="gname" id="gn'+i+'" style="'+st+'" onclick="event.stopPropagation();gRename('+i+')" title="клик — переименовать">'+esc(g.name)+'</span>'
+      +'<span class="gname" id="gn'+i+'" onclick="event.stopPropagation();gRename('+i+')" title="клик — переименовать">'+(gc?'<span class="dot g" style="background:'+gc+'"></span>':'')+esc(g.name)+'</span>'
       +'<span class="cnt">'+(cnt[g.name]||0)+' тов.</span>'
       +'<input type="color" value="'+esc(g.fg||'#333333')+'" title="цвет текста" onclick="event.stopPropagation()" onchange="gColor('+i+',this.value,null)">'
       +'<input type="color" value="'+esc(g.bg||'#eeeeee')+'" title="цвет фона" onclick="event.stopPropagation()" onchange="gColor('+i+',null,this.value)">'
@@ -543,7 +510,7 @@ function grpView(){
   return h;
 }
 function grpAddRow(){
-  return '<div class="row" style="margin-top:10px;max-width:480px">'
+  return '<div class="row" style="margin-top:var(--s-3);max-width:480px">'
     +'<input id="gNew" placeholder="новая группа, например TW: Новинки" style="flex:1" onkeydown="if(event.key===\'Enter\')gAdd()">'
     +'<button class="btn pri" onclick="gAdd()">＋ Добавить</button></div>';
 }
@@ -575,7 +542,7 @@ function gMove(i,dir){
 function gRename(i){
   var g=GF[i], span=$('gn'+i); if(!span||span.getAttribute('data-e')) return;
   span.setAttribute('data-e','1');
-  span.innerHTML='<input value="'+esc(g.name)+'" style="min-width:160px;padding:2px 6px">';
+  span.innerHTML='<input value="'+esc(g.name)+'" style="min-width:160px">';
   var inp=span.firstChild; inp.focus(); inp.select();
   var done=false;
   function fin(saveIt){
@@ -626,10 +593,10 @@ function gDelDo(i){
 
 /* ══════ ⚙️ АРТИКУЛ (настройки кодов) ══════ */
 function artView(){
-  var h='<div class="muted" style="font-size:12px;margin-bottom:8px">Буквенные коды, из которых собирается артикул. Клик по чипу — править значение, ✕ — удалить. Для BusyKids артикул выдаёт партнёр — вводится вручную.</div>';
+  var h='<div class="muted" style="font-size:13px;margin-bottom:var(--s-2)">Буквенные коды, из которых собирается артикул. Клик по чипу — править значение, ✕ — удалить. Для BusyKids артикул выдаёт партнёр — вводится вручную.</div>';
   ARTTYPES.forEach(function(t){
     var list=codesOf(t[0]);
-    h+='<div class="card"><b>'+esc(t[1])+'</b> <span class="muted" style="font-size:12px">('+list.length+')</span><div style="margin-top:6px">'
+    h+='<div class="card"><b>'+esc(t[1])+'</b> <span class="muted" style="font-size:13px">('+list.length+')</span><div style="margin-top:var(--s-2)">'
       +list.map(function(c){
         return '<span class="chipx" id="cx_'+t[0]+'_'+esc(c.code)+'" onclick="codeEdit(\''+t[0]+'\',\''+jsq(c.code)+'\')"><b>'+esc(c.code)+'</b> '+esc(c.value)
           +'<span class="x" onclick="event.stopPropagation();codeDel(\''+t[0]+'\',\''+jsq(c.code)+'\')">✕</span></span>';
@@ -641,21 +608,21 @@ function artView(){
   });
   // связка бренд ↔ оборудование
   var be={}; codesOf('brandEquip').forEach(function(c){ be[c.code]=String(c.value||'').split(',').filter(Boolean); });
-  h+='<div class="card"><b>Какое оборудование у какого бренда</b><div class="muted" style="font-size:12px;margin:3px 0 8px">Конструктор предлагает бренду только его оборудование.</div>';
+  h+='<div class="card"><b>Какое оборудование у какого бренда</b><div class="muted" style="font-size:13px;margin:var(--s-1) 0 var(--s-2)">Конструктор предлагает бренду только его оборудование.</div>';
   codesOf('brand').forEach(function(b){
     var mine=be[b.code]||[];
-    h+='<div style="margin:8px 0"><b style="font-family:ui-monospace,monospace">'+esc(b.code)+'</b> · '+esc(b.value)+'<div style="margin-top:4px">'
+    h+='<div style="margin:var(--s-2) 0"><b>'+esc(b.code)+'</b> · '+esc(b.value)+'<div style="margin-top:var(--s-1)">'
       +codesOf('equip').map(function(e){
         var on=mine.indexOf(e.code)>=0;
-        return '<label style="display:inline-flex;gap:4px;align-items:center;margin:2px 10px 2px 0;font-size:12.5px;cursor:pointer">'
-          +'<input type="checkbox" style="width:14px;height:14px" '+(on?'checked':'')+' onchange="beTgl(\''+jsq(b.code)+'\',\''+jsq(e.code)+'\',this.checked)">'
-          +'<b style="font-family:ui-monospace,monospace">'+esc(e.code)+'</b></label>';
+        return '<label style="display:inline-flex;gap:var(--s-1);align-items:center;margin:var(--s-1) var(--s-3) var(--s-1) 0;font-size:13px;cursor:pointer">'
+          +'<input type="checkbox" '+(on?'checked':'')+' onchange="beTgl(\''+jsq(b.code)+'\',\''+jsq(e.code)+'\',this.checked)">'
+          +'<b>'+esc(e.code)+'</b></label>';
       }).join('')+'</div></div>';
   });
   h+='</div>';
   // живой пример сборки
-  h+='<div class="card"><b>Пример сборки артикула</b><div class="grid" style="margin-top:8px">'+artSelects()+'</div>'
-    +'<div style="margin-top:10px;font-family:ui-monospace,Menlo,monospace;font-size:16px;font-weight:700" id="artPrev">'+esc(artPreview()||'—')+'</div></div>';
+  h+='<div class="card"><b>Пример сборки артикула</b><div class="grid" style="margin-top:var(--s-2)">'+artSelects()+'</div>'
+    +'<div style="margin-top:var(--s-3);font:var(--t-heading)" id="artPrev">'+esc(artPreview()||'—')+'</div></div>';
   return h;
 }
 function artSelects(prefix){
@@ -689,7 +656,7 @@ function codeEdit(t,code){
   var cur=CODES.filter(function(x){return x.type===t&&x.code===code;})[0]; if(!cur) return;
   var chip=$('cx_'+t+'_'+code); if(!chip||chip.getAttribute('data-e')) return;
   chip.setAttribute('data-e','1');
-  chip.innerHTML='<b>'+esc(code)+'</b> <input value="'+esc(cur.value)+'" style="width:150px;padding:1px 6px;font-size:12px">';
+  chip.innerHTML='<b>'+esc(code)+'</b> <input value="'+esc(cur.value)+'" style="width:150px">';
   var inp=chip.querySelector('input'); inp.focus(); inp.select();
   var done=false;
   function fin(saveIt){
@@ -744,12 +711,12 @@ function statView(){
   var rows=names.map(function(g){
     var o=byG[g]; Object.keys(tot).forEach(function(k){ tot[k]+=o[k]; });
     var gi=grpInfo(g)||{};
-    var st=(gi.bg?'background:'+gi.bg+';':'')+(gi.fg?'color:'+gi.fg+';':'');
-    return '<tr><td><span style="'+st+'padding:2px 9px;border-radius:8px;font-weight:700">'+esc(g)+'</span></td>'
+    var gc=gi.bg||gi.fg||'';
+    return '<tr><td><span class="gtag">'+(gc?'<span class="dot g" style="background:'+gc+'"></span>':'')+esc(g)+'</span></td>'
       +'<td class="num">'+o.n+'</td><td class="num">'+o.comp+'</td><td class="num">'+o.asm+'</td><td class="num">'+o.box+'</td><td class="num">'+o.fold+'</td></tr>';
   }).join('');
   return '<div class="card tbwrap"><table><tr><th>Группа</th><th class="num">Товаров</th><th class="num">Состав задан</th><th class="num">Собрано</th><th class="num">Логистика</th><th class="num">Папка</th></tr>'
-    +rows+'<tr style="font-weight:700"><td>ИТОГО</td><td class="num">'+tot.n+'</td><td class="num">'+tot.comp+'</td><td class="num">'+tot.asm+'</td><td class="num">'+tot.box+'</td><td class="num">'+tot.fold+'</td></tr></table></div>';
+    +rows+'<tr style="font-weight:600"><td>ИТОГО</td><td class="num">'+tot.n+'</td><td class="num">'+tot.comp+'</td><td class="num">'+tot.asm+'</td><td class="num">'+tot.box+'</td><td class="num">'+tot.fold+'</td></tr></table></div>';
 }
 
 /* ══════ КАРТОЧКА ТОВАРА (полноэкранно, паттерн «Кадров») ══════ */
@@ -801,17 +768,17 @@ function cardView(){
   SKUAUTO=isNew;
   var h=dlOptions('brand','brand')+dlOptions('equip','equip')+dlOptions('model','model')
     +dlOptions('size','size')+dlOptions('color','color')+dlOptions('pack','kit');
-  h+='<div class="row" style="margin-bottom:8px"><span class="back" onclick="CARD=null;renderTabs();renderBody()">← к реестру</span>'
-    +'<b style="font-size:16px">'+(isNew?'Новый товар':esc(d.sku))+'</b>'
+  h+='<div class="row" style="margin-bottom:var(--s-2)"><span class="back" onclick="CARD=null;renderTabs();renderBody()">← к реестру</span>'
+    +'<b style="font:var(--t-heading)">'+(isNew?'Новый товар':esc(d.sku))+'</b>'
     +(d.src==='хаб'?'<span class="reghub">хаб</span>':'')
     +'</div>';
-  h+='<div class="card"><b>Основное</b><div class="grid" style="margin-top:8px">'
-    +'<div><label class="f">Артикул *</label><div class="row" style="gap:4px"><input id="c_sku" value="'+esc(d.sku||'')+'" placeholder="выберите поля — соберётся сам" oninput="skuManual()">'
+  h+='<div class="card"><b>Основное</b><div class="grid" style="margin-top:var(--s-2)">'
+    +'<div><label class="f">Артикул *</label><div class="row" style="gap:var(--s-1)"><input id="c_sku" value="'+esc(d.sku||'')+'" placeholder="выберите поля — соберётся сам" oninput="skuManual()">'
     +'<button class="btn sm" onclick="cardArtTgl()" title="собрать артикул из кодов вручную">🔧</button></div>'
-    +'<div class="muted" id="skuHint" style="font-size:11px;margin-top:3px"></div>'
-    +'<div id="cardArtBox" style="display:none;margin-top:8px;border:1px dashed var(--line);border-radius:10px;padding:10px">'
+    +'<div class="muted" id="skuHint" style="font-size:11px;margin-top:var(--s-1)"></div>'
+    +'<div id="cardArtBox" style="display:none;margin-top:var(--s-2);border:1px dashed var(--line2);border-radius:var(--r-ctl);padding:var(--s-3)">'
     +'<div class="grid" id="cardArt"></div>'
-    +'<div class="row" style="margin-top:8px"><b id="cardArtPrev" style="font-family:ui-monospace,monospace">—</b>'
+    +'<div class="row" style="margin-top:var(--s-2)"><b id="cardArtPrev">—</b>'
     +'<button class="btn sm pri" onclick="var v=artPreview();if(v)$(\'c_sku\').value=v;cardArtTgl()">применить</button></div></div></div>'
     +fld('brand','Бренд',d.brand,'BusyKids / Tigerwood',0,'dl_brand','skuAutoFill()')
     +fld('equip','Оборудование *',d.equip,'',0,'dl_equip','skuAutoFill()')
@@ -821,13 +788,13 @@ function cardView(){
     +fld('kit','Комплектация',d.kit,'',0,'dl_kit','skuAutoFill()')
     +'<div><label class="f">Группа</label><select id="c_group">'+grpOpts+'</select></div>'
     +'</div></div>';
-  h+='<div class="card"><b>Наименования</b><div class="grid" style="margin-top:8px">'
+  h+='<div class="card"><b>Наименования</b><div class="grid" style="margin-top:var(--s-2)">'
     +fld('name','Наименование',d.name,'пусто = как модель',1)
     +fld('nameEn','Наименование для документов',d.nameEn,'как товар записан в отгрузочных документах (граница)',1)
     +fld('hs','HS-код',d.hs,'пусто = подставится сам')
     +fld('warranty','Гарантия, мес',d.warranty)
     +'</div></div>';
-  h+='<div class="card"><b>📦 Упаковка и логистика</b><div class="grid" style="margin-top:8px">'
+  h+='<div class="card"><b>📦 Упаковка и логистика</b><div class="grid" style="margin-top:var(--s-2)">'
     +fld('boxSize','Размер коробки',d.boxSize,'630*440*70')
     +fld('boxW','Вес коробки, кг',d.boxW)
     +fld('palL','Паллета: длина',d.palL)
@@ -843,7 +810,7 @@ function cardView(){
     +(!isNew?'<button class="btn" onclick="eqRenameAsk()" title="переименовать оборудование везде: товары, составы, заказы, выработка, склад">✎ Оборудование</button>':'')
     +(!isNew?'<button class="btn danger" onclick="cardDelAsk()">🗑 Удалить</button>':'')
     +'</div>';
-  if(!isNew) h+='<div id="compSec" style="margin-top:10px"></div>';
+  if(!isNew) h+='<div id="compSec" style="margin-top:var(--s-3)"></div>';
   return h;
 }
 function cardArtTgl(){
@@ -892,7 +859,7 @@ function cardFolderDo(){
 function eqRenameAsk(){
   var p=prodBy(CARD); if(!p) return;
   msg('Новое название оборудования вместо «'+esc(p.equip)+'» (поменяется везде): '
-    +'<input id="eqNew" value="'+esc(p.equip)+'" style="width:240px;display:inline-block;margin:0 6px">'
+    +'<input id="eqNew" value="'+esc(p.equip)+'" style="width:240px;display:inline-block;margin:0 var(--s-2)">'
     +'<button class="btn pri sm" onclick="eqRenameDry()">Проверить</button><button class="btn sm" onclick="msgOff()">Отмена</button>');
   var e=$('eqNew'); if(e){ e.focus(); e.select(); }
 }
@@ -943,7 +910,7 @@ function compareHtml(){
   var allStages={}, order=[];
   items.forEach(function(it){ (it.ci.stages||[]).forEach(function(st){ if(!allStages[st.op]){ allStages[st.op]=1; order.push(st.op); } }); });
   function row(label,fn){ return '<tr><td class="dim" style="color:var(--muted)">'+label+'</td>'+items.map(function(it){ return '<td class="num">'+fn(it)+'</td>'; }).join('')+'</tr>'; }
-  var h='<div class="row" style="margin-bottom:8px"><span class="back" onclick="CMPV=null;renderBody()">← к реестру</span><b style="font-size:16px">⚖ Сравнение</b></div>';
+  var h='<div class="row" style="margin-bottom:var(--s-2)"><span class="back" onclick="CMPV=null;renderBody()">← к реестру</span><b style="font:var(--t-heading)">⚖ Сравнение</b></div>';
   h+='<div class="card tbwrap"><table><tr><th>Показатель</th>'+items.map(function(it){ return '<th>'+esc(it.p.equip)+'<br><span class="muted" style="font-weight:400">'+esc(it.p.model)+'</span></th>'; }).join('')+'</tr>'
     +row('Себестоимость труда',function(it){ return it.ci.cost?it.ci.cost.toLocaleString('ru-RU',{minimumFractionDigits:2})+' р.':'—'; })
     +row('Нормо-часы',function(it){ return it.ci.hours?hrs(it.ci.hours*60):'—'; })
@@ -951,7 +918,7 @@ function compareHtml(){
     +row('Труд в цене',function(it){ return it.ci.laborShare!=null?it.ci.laborShare+'%':'—'; })
     +row('Деталей',function(it){ return it.ci.detailsCount||'—'; })
     +row('Операций',function(it){ return it.ci.opsCount||'—'; })
-    +'<tr><td colspan="'+(items.length+1)+'" class="muted" style="padding-top:10px;font-size:12px">Труд по этапам, руб:</td></tr>'
+    +'<tr><td colspan="'+(items.length+1)+'" class="muted" style="padding-top:var(--s-3);font-size:13px">Труд по этапам, руб:</td></tr>'
     +order.map(function(op){ return row(esc(op),function(it){
       var st=(it.ci.stages||[]).filter(function(x){return x.op===op;})[0];
       return st?st.cost.toLocaleString('ru-RU',{minimumFractionDigits:2}):'—'; }); }).join('')
@@ -995,31 +962,31 @@ function compRender(){
   var h='<div class="card"><div class="row" style="justify-content:space-between">'
     +'<b>🧩 Состав и операции</b>'
     +'<span class="row">'
-    +'<span class="pill '+(ci.assembled?'p-ok':'p-none')+'" style="cursor:pointer" onclick="asmTgl(\''+jsq(p.sku)+'\');compRender()" title="отметка директора — видна и в заказах">'+(ci.assembled?'✔ собрано':'☐ отметить собранным')+'</span>'
+    +'<span class="pill '+(ci.assembled?'ok':'mute')+'" style="cursor:pointer" onclick="asmTgl(\''+jsq(p.sku)+'\');compRender()" title="отметка директора — видна и в заказах">'+(ci.assembled?'✔ собрано':'☐ отметить собранным')+'</span>'
     +'<button class="btn sm pri" onclick="editOpen()">✎ Редактировать состав</button>'
     +(ci.hasComp?'<button class="btn sm danger" onclick="compDelAsk()">🗑</button>':'')
     +'</span></div>';
   if(!c.ok || !(c.details&&c.details.length)){
-    h+='<div class="empty" style="margin-top:8px">Состав не задан — операции этого товара не попадут в заказы.'
+    h+='<div class="empty" style="margin-top:var(--s-2)">Состав не задан — операции этого товара не попадут в заказы.'
       +(cloneSibs(p).length?' Можно скопировать с другого варианта:':'')+'</div>'+cloneBtns(p);
     return box.innerHTML=h+'</div>';
   }
-  h+='<div class="row muted" style="margin-top:6px;font-size:12.5px">себестоимость труда <b style="color:var(--green)">'
+  h+='<div class="row muted" style="margin-top:var(--s-2);font-size:13px">себестоимость труда <b style="color:var(--green)">'
     +(c.cost||0).toLocaleString('ru-RU',{minimumFractionDigits:2})+' р.</b> · ⏱ '+hrs((c.hours||0)*60)
-    +(ci.price?' · цена <b style="color:var(--accent)">'+ci.price.toLocaleString('ru-RU')+' р.</b>':' · цена —')
+    +(ci.price?' · цена <b style="color:var(--accent-text)">'+ci.price.toLocaleString('ru-RU')+' р.</b>':' · цена —')
     +(ci.laborShare!=null?' · труд <b style="color:var(--amber)">'+ci.laborShare+'%</b> цены':'')
     +' · '+(ci.detailsCount||c.details.length)+' дет. · '+(ci.opsCount||'')+' оп.</div>';
   h+=packCardHtml(p);
   var mx=1; (c.stages||[]).forEach(function(st){ if(st.cost>mx) mx=st.cost; });
-  h+='<div style="margin-top:8px">'+(c.stages||[]).map(function(st){
-    return '<div class="row" style="gap:8px;font-size:12px;margin:2px 0"><span class="dim" style="width:150px;color:var(--muted)">'+esc(st.op)+'</span>'
-      +'<span style="height:8px;border-radius:4px;background:var(--amber);width:'+Math.max(6,Math.round(st.cost/mx*180))+'px"></span> '
+  h+='<div style="margin-top:var(--s-2)">'+(c.stages||[]).map(function(st){
+    return '<div class="row" style="gap:var(--s-2);font-size:13px;margin:var(--s-1) 0"><span class="dim" style="width:150px;color:var(--muted)">'+esc(st.op)+'</span>'
+      +'<span class="sbar" style="width:'+Math.max(6,Math.round(st.cost/mx*180))+'px"></span> '
       +(st.cost||0).toLocaleString('ru-RU',{minimumFractionDigits:2})+' р.</div>';
   }).join('')+'</div>';
-  h+='<div style="margin-top:8px">'+(c.details||[]).map(function(dd){
-    return '<div style="border:1px solid var(--line);border-radius:10px;padding:7px 10px;margin:6px 0;background:var(--bg)">'
-      +'<b style="font-size:13px">'+esc(dd.name)+'</b> <span style="float:right;color:var(--green);font-weight:700">'+(dd.cost||0).toLocaleString('ru-RU',{minimumFractionDigits:2})+' р.</span>'
-      +'<table style="margin-top:4px"><tr><th>Операция</th><th class="num">Кол-во</th><th class="num">Расц.</th><th class="num">Стоим.</th></tr>'
+  h+='<div style="margin-top:var(--s-2)">'+(c.details||[]).map(function(dd){
+    return '<div class="dblk">'
+      +'<b style="font-size:13px">'+esc(dd.name)+'</b> <span style="float:right;color:var(--green);font-weight:600">'+(dd.cost||0).toLocaleString('ru-RU',{minimumFractionDigits:2})+' р.</span>'
+      +'<table style="margin-top:var(--s-1)"><tr><th>Операция</th><th class="num">Кол-во</th><th class="num">Расц.</th><th class="num">Стоим.</th></tr>'
       +(dd.ops||[]).map(function(o){ return '<tr><td>'+esc(o.op)+'</td><td class="num">'+o.qty+'</td><td class="num">'+o.rate+'</td><td class="num">'+(o.cost||0).toLocaleString('ru-RU',{minimumFractionDigits:2})+'</td></tr>'; }).join('')
       +'</table></div>';
   }).join('')+'</div>';
@@ -1031,7 +998,7 @@ function cloneSibs(p){
 function cloneBtns(p){
   var sibs=cloneSibs(p);
   if(!sibs.length) return '';
-  return '<div class="row" style="margin-top:6px">'+sibs.slice(0,8).map(function(x){
+  return '<div class="row" style="margin-top:var(--s-2)">'+sibs.slice(0,8).map(function(x){
     return '<button class="btn sm" onclick="cloneFrom(\''+jsq(x.sku)+'\')">⎘ как '+esc(x.model)+'</button>';
   }).join('')+'</div>';
 }
@@ -1146,9 +1113,9 @@ function rub(x){ return (Number(x)||0).toLocaleString('ru-RU',{minimumFractionDi
 /* карточка товара: что заведено и сколько стоит, правка ставки в один клик */
 function packCardHtml(p){
   var r=EDC[pkey(p.sku)];
-  var h='<div style="background:var(--grid);border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin-top:8px">'
+  var h='<div class="pblk" style="margin-top:var(--s-2)">'
     +'<b style="font-size:13px">📦 Упаковка изделия</b>';
-  if(!r||r==='loading') return h+'<div class="muted" style="font-size:12px;margin-top:4px">⏳ загружаю…</div></div>';
+  if(!r||r==='loading') return h+'<div class="muted" style="font-size:13px;margin-top:var(--s-1)">⏳ загружаю…</div></div>';
   var by={};
   (r.rows||[]).forEach(function(x){
     var k=packKindOf(x.detail,x.level); if(!k) return;
@@ -1157,7 +1124,7 @@ function packCardHtml(p){
   });
   PACK_KINDS.forEach(function(kind){
     var it=by[kind];
-    h+='<div class="row" style="gap:8px;margin:5px 0;font-size:12.5px;align-items:center;flex-wrap:wrap">'
+    h+='<div class="row prow">'
       +'<b style="width:130px">'+PACK_TITLES[kind]+'</b>';
     if(!it){
       // упаковка уже есть, но заведена обычной деталью — не плодим вторую, а подсказываем, что отметить
@@ -1181,7 +1148,7 @@ function packCardHtml(p){
       var ed=PACKEDIT&&PACKEDIT.sku===pkey(p.sku)&&PACKEDIT.kind===kind&&PACKEDIT.oi===oi;
       h+='<span class="muted">'+esc(o.op)+'</span>';
       if(ed){
-        h+='<input id="pcRate" type="number" step="0.01" min="0" value="'+o.rate+'" style="width:84px;padding:3px 6px" onkeydown="if(event.key===\'Enter\')packRateSave()"> ₽/шт'
+        h+='<input id="pcRate" type="number" step="0.01" min="0" value="'+o.rate+'" style="width:84px" onkeydown="if(event.key===\'Enter\')packRateSave()"> ₽/шт'
           +'<button class="btn sm pri" onclick="packRateSave()">Сохранить</button>'
           +'<button class="btn sm" onclick="PACKEDIT=null;compRender()">Отмена</button>';
       } else {
@@ -1224,12 +1191,12 @@ function packStart(kind){ PACKAUTO=kind; editOpen(); }
 
 /* редактор состава */
 function packBlockHtml(){
-  var h='<div style="background:var(--grid);border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin:7px 0">'
+  var h='<div class="pblk" style="margin:var(--s-2) 0">'
     +'<b style="font-size:13px">📦 Упаковка изделия</b>'
-    +'<div class="muted" style="font-size:11.5px;margin:2px 0 4px">Ставка — рубли за одну штуку. Изменённая здесь ставка при «💾 Сохранить состав» запишется в товар и в справочник расценок.</div>';
+    +'<div class="muted" style="font-size:13px;margin:var(--s-1) 0 var(--s-1)">Ставка — рубли за одну штуку. Изменённая здесь ставка при «💾 Сохранить состав» запишется в товар и в справочник расценок.</div>';
   PACK_KINDS.forEach(function(kind){
     var di=-1; EM.forEach(function(d,i){ if(di<0 && packKindOf(d.detail,d.level)===kind) di=i; });
-    h+='<div class="row" style="gap:8px;margin:5px 0;font-size:12.5px;align-items:center;flex-wrap:wrap"><b style="width:130px">'+PACK_TITLES[kind]+'</b>';
+    h+='<div class="row prow"><b style="width:130px">'+PACK_TITLES[kind]+'</b>';
     if(di<0){
       if(PACKFORM&&PACKFORM.kind===kind){ h+='</div>'+packFormHtml(); return; }
       h+='<span style="flex:1;'+(kind==='product'?'color:var(--amber)':'color:var(--muted)')+'">'
@@ -1242,7 +1209,7 @@ function packBlockHtml(){
     d.ops.forEach(function(o,oi){
       if(!o.on) return;
       h+='<span class="muted">'+esc(o.op)+'</span>'
-        +'<input type="number" step="0.01" min="0" value="'+o.rate+'" style="width:84px;padding:3px 6px" oninput="EM['+di+'].ops['+oi+'].rate=Number(this.value)||0;emRecalc()"> ₽';
+        +'<input type="number" step="0.01" min="0" value="'+o.rate+'" style="width:84px" oninput="EM['+di+'].ops['+oi+'].rate=Number(this.value)||0;emRecalc()"> ₽';
     });
     h+=(kind==='product'
         ?'<button class="btn sm" onclick="emUnsetProd('+di+')" title="это не товар целиком — вернуть строку в обычные детали">снять пометку</button>'
@@ -1253,24 +1220,24 @@ function packBlockHtml(){
   if(!EM.some(function(d){ return d.level==='изделие'; }) && !(PACKFORM&&PACKFORM.kind==='product')){
     var ci=-1;
     EM.forEach(function(x,i){ if(ci<0 && emCanBeProd(x)) ci=i; });
-    if(ci>=0) h+='<div style="font-size:12.5px;margin-top:4px">Похоже, упаковка уже есть деталью <b>'+esc(EM[ci].detail)+'</b>. '
-      +'<button class="btn sm pri" style="padding:1px 8px" onclick="emSetProd('+ci+')">это упаковка товара</button></div>';
+    if(ci>=0) h+='<div style="font-size:13px;margin-top:var(--s-1)">Похоже, упаковка уже есть деталью <b>'+esc(EM[ci].detail)+'</b>. '
+      +'<button class="btn sm pri" onclick="emSetProd('+ci+')">это упаковка товара</button></div>';
   }
   return h+'</div>';
 }
 function packFormHtml(){
   var f=PACKFORM;
-  return '<div style="border:1px dashed var(--line);border-radius:8px;padding:8px;margin:0 0 6px">'
-    +'<div class="muted" style="font-size:11.5px;margin-bottom:6px">'+esc(PACK_HINTS[f.kind])+'</div>'
-    +'<div class="row" style="gap:6px;align-items:center;font-size:12.5px;flex-wrap:wrap">'
+  return '<div style="border:1px dashed var(--line2);border-radius:var(--r-ctl);padding:var(--s-2);margin:0 0 var(--s-2)">'
+    +'<div class="muted" style="font-size:13px;margin-bottom:var(--s-2)">'+esc(PACK_HINTS[f.kind])+'</div>'
+    +'<div class="row" style="gap:var(--s-2);align-items:center;font-size:13px;flex-wrap:wrap">'
     +'<span>Строка</span><input id="pfDet" value="'+esc(f.detail)+'" style="flex:1;min-width:160px">'
     +'<span>операция <b>'+esc(f.op)+'</b></span>'
     +'<span>ставка</span><input id="pfRate" type="number" step="0.01" min="0" value="'+(f.rate>0?f.rate:'')+'" style="width:84px" onkeydown="if(event.key===\'Enter\')packFormGo()"> ₽/шт'
     +'<button class="btn sm pri" onclick="packFormGo()">Добавить</button>'
     +'<button class="btn sm" onclick="PACKFORM=null;compRender()">Отмена</button></div>'
     +(f.rate>0
-      ?'<div class="muted" style="font-size:11px;margin-top:4px">название и ставка подставлены '+(f.sample?'как у варианта «'+esc(f.sample)+'»':'из справочника')+' — можно поправить</div>'
-      :'<div style="font-size:11px;margin-top:4px;color:var(--amber)">в справочнике ставки нет — впишите, она там заведётся</div>')
+      ?'<div class="muted" style="font-size:11px;margin-top:var(--s-1)">название и ставка подставлены '+(f.sample?'как у варианта «'+esc(f.sample)+'»':'из справочника')+' — можно поправить</div>'
+      :'<div style="font-size:11px;margin-top:var(--s-1);color:var(--amber)">в справочнике ставки нет — впишите, она там заведётся</div>')
     +'</div>';
 }
 function packAdd(kind){
@@ -1324,44 +1291,44 @@ function packPushRates(done){
 function editHtml(){
   var h='<div class="card"><div class="row" style="justify-content:space-between">'
     +'<b>✎ Состав: '+esc(EDMOD)+'</b>'
-    +'<span class="row"><b class="muted" style="font-size:12.5px">труд: <span id="edTot" style="color:var(--green)">'+emTotal().toLocaleString('ru-RU',{minimumFractionDigits:2})+' р.</span></b>'
+    +'<span class="row"><b class="muted" style="font-size:13px">труд: <span id="edTot" style="color:var(--green)">'+emTotal().toLocaleString('ru-RU',{minimumFractionDigits:2})+' р.</span></b>'
     +'<button class="btn sm pri" onclick="editSave()">💾 Сохранить состав</button>'
     +'<button class="btn sm" onclick="EMODE=false;compRender()">отмена</button></span></div>'
     +'<div id="edWarn">'+warnHtml(EDWARNS)+'</div>'
-    +'<div class="muted" style="font-size:11.5px;margin:4px 0">Деталь приносит все свои операции — галочка включает в состав, стрелки ↑↓ задают техпорядок этой модели. «новая» — операция появилась в справочнике позже: поставьте галочку, если она нужна этой модели.</div>'
+    +'<div class="muted" style="font-size:13px;margin:var(--s-1) 0">Деталь приносит все свои операции — галочка включает в состав, стрелки ↑↓ задают техпорядок этой модели. «новая» — операция появилась в справочнике позже: поставьте галочку, если она нужна этой модели.</div>'
     +packBlockHtml();
   EM.forEach(function(d,di){
     if(packKindOf(d.detail,d.level)) return;   // упаковка товара, фурнитура и коробка — в блоке упаковки выше
-    h+='<div style="border:1px solid var(--line);border-radius:10px;padding:7px 10px;margin:7px 0;background:var(--bg)">'
+    h+='<div class="dblk">'
       +'<div class="row"><b style="flex:1;font-size:13px">'+esc(d.detail)+'</b>'
-      +'<b class="muted" style="font-size:11.5px"><span id="edSum_'+di+'">'+emDetSum(d).toLocaleString('ru-RU',{minimumFractionDigits:2})+' р.</span></b>'
-      +'<span class="muted" style="font-size:11.5px">шт в изделии</span>'
-      +'<input type="number" value="'+esc(d.qty)+'" style="width:64px;padding:3px 6px" oninput="EM['+di+'].qty=this.value;emRecalc()">'
+      +'<b class="muted" style="font-size:13px"><span id="edSum_'+di+'">'+emDetSum(d).toLocaleString('ru-RU',{minimumFractionDigits:2})+' р.</span></b>'
+      +'<span class="muted" style="font-size:13px">шт в изделии</span>'
+      +'<input type="number" value="'+esc(d.qty)+'" style="width:64px" oninput="EM['+di+'].qty=this.value;emRecalc()">'
       // кнопку показываем только там, где вопрос вообще осмыслен: у строки есть операция
       // упаковки, то есть она может оказаться строкой товара целиком, а не деталью
       +(emCanBeProd(d)?'<button class="btn sm" onclick="emSetProd('+di+')" title="это не деталь, а товар целиком: по такой строке считаются упаковано штук, отгрузка, склад и мотивация начальника">📦 это изделие</button>':'')
       +'<button class="btn sm danger" onclick="EM.splice('+di+',1);compRender()" title="убрать деталь из состава">✕</button></div>';
     d.ops.forEach(function(o,oi){
-      h+='<div class="row" style="gap:6px;margin:3px 0;font-size:12.5px">'
+      h+='<div class="row" style="gap:var(--s-2);margin:var(--s-1) 0;font-size:13px">'
         +'<span class="muted" style="width:16px;text-align:right">'+(oi+1)+'</span>'
-        +'<button class="btn sm" style="padding:0 6px" '+(oi===0?'disabled':'')+' onclick="emMove('+di+','+oi+',-1)">↑</button>'
-        +'<button class="btn sm" style="padding:0 6px" '+(oi===d.ops.length-1?'disabled':'')+' onclick="emMove('+di+','+oi+',1)">↓</button>'
-        +'<input type="checkbox" style="width:15px;height:15px" '+(o.on?'checked':'')+' onchange="EM['+di+'].ops['+oi+'].on=this.checked;emRecalc()">'
-        +'<span style="flex:1">'+esc(o.op)+(o.fresh?' <span class="pill p-none" style="font-size:10px">новая</span>':'')+'</span>'
-        +'<span class="'+(o.rate>0?'muted':'')+'" style="'+(o.rate>0?'':'color:var(--red);font-weight:700')+'">'+(o.rate>0?o.rate+' р.':'⚠ нет расценки')+'</span></div>';
+        +'<button class="btn sm" style="padding:0 var(--s-2)" '+(oi===0?'disabled':'')+' onclick="emMove('+di+','+oi+',-1)">↑</button>'
+        +'<button class="btn sm" style="padding:0 var(--s-2)" '+(oi===d.ops.length-1?'disabled':'')+' onclick="emMove('+di+','+oi+',1)">↓</button>'
+        +'<input type="checkbox" '+(o.on?'checked':'')+' onchange="EM['+di+'].ops['+oi+'].on=this.checked;emRecalc()">'
+        +'<span style="flex:1">'+esc(o.op)+(o.fresh?' <span class="pill mute">новая</span>':'')+'</span>'
+        +'<span class="'+(o.rate>0?'muted':'')+'" style="'+(o.rate>0?'':'color:var(--red);font-weight:600')+'">'+(o.rate>0?o.rate+' р.':'⚠ нет расценки')+'</span></div>';
     });
     h+='</div>';
   });
   var dl='<datalist id="dlDet">'+((IZDREF&&IZDREF.details)||[]).map(function(x){return '<option value="'+esc(x)+'">';}).join('')+'</datalist>';
-  h+=dl+'<div class="row" style="margin-top:8px"><input id="edAdd" list="dlDet" placeholder="＋ добавить деталь (начните вводить)" style="flex:1;min-width:200px" onkeydown="if(event.key===\'Enter\')emAddDet()">'
+  h+=dl+'<div class="row" style="margin-top:var(--s-2)"><input id="edAdd" list="dlDet" placeholder="＋ добавить деталь (начните вводить)" style="flex:1;min-width:200px" onkeydown="if(event.key===\'Enter\')emAddDet()">'
     +'<button class="btn sm" onclick="emAddDet()">Добавить</button>'
     +'<button class="btn sm" onclick="refreshRefs()" title="перечитать реестры деталей и расценок">↻ справочник</button></div>'
     +'</div>';
   return h;
 }
 function warnHtml(w){
-  if(!w||!w.length) return '<div class="pill p-ok" style="margin-top:4px">✓ порядок операций выглядит логично</div>';
-  return '<div style="background:var(--amber-bg);color:var(--amber);border-radius:10px;padding:7px 10px;margin-top:4px;font-size:12.5px">'
+  if(!w||!w.length) return '<div class="pill ok" style="margin-top:var(--s-1)">✓ порядок операций выглядит логично</div>';
+  return '<div style="background:var(--amber-bg);color:var(--amber);border-radius:var(--r-ctl);padding:var(--s-2) var(--s-3);margin-top:var(--s-1);font-size:13px">'
     +w.map(function(x){ return '⚠ '+esc(x.detail||'')+': '+esc(x.msg||x.op||''); }).join('<br>')
     +'<br><span style="opacity:.8">поправьте порядок стрелками ↑↓ и сохраните ещё раз</span></div>';
 }
@@ -1443,10 +1410,10 @@ function editSave(){
 /* ── составы-сироты (без товара в реестре) ── */
 function orphanBlock(){
   if(!ORPHANS.length) return '';
-  var h='<div class="card" style="margin-top:10px"><b>⚠ Составы, не привязанные к товару ('+ORPHANS.length+')</b>'
-    +'<div class="muted" style="font-size:12px;margin:3px 0">Состав есть, а товара с таким артикулом нет — привяжите к товару или удалите.</div>';
+  var h='<div class="card" style="margin-top:var(--s-3)"><b>⚠ Составы, не привязанные к товару ('+ORPHANS.length+')</b>'
+    +'<div class="muted" style="font-size:13px;margin:var(--s-1) 0">Состав есть, а товара с таким артикулом нет — привяжите к товару или удалите.</div>';
   ORPHANS.forEach(function(o,i){
-    h+='<div class="row" style="border-top:1px solid var(--line);padding:6px 0;font-size:13px">'
+    h+='<div class="row" style="border-top:1px solid var(--line);padding:var(--s-2) 0;font-size:13px">'
       +'<span style="flex:1">'+esc(o.eq)+' · <b>'+esc(o.mod)+'</b></span>'
       +'<button class="btn sm" onclick="orphAttach('+i+')">🔗 привязать к товару</button>'
       +'<button class="btn sm danger" onclick="orphDel('+i+')">🗑</button></div>';

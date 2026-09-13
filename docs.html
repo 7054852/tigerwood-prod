@@ -3,98 +3,61 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="tw-theme.js"></script>
 <title>Тигервуд — входящие документы</title>
 <style>
-  :root{ --bg:#f4f6fb; --card:#fff; --fg:#1b2333; --muted:#8a93a6; --line:#e6e9f2; --accent:#7c3aed; --green:#137333; --amber:#b7791f; --red:#c0392b; }
-  *{box-sizing:border-box;} html,body{margin:0;background:var(--bg);}
-  body{ font-family:-apple-system,Roboto,Segoe UI,Arial,sans-serif; color:var(--fg); padding:14px; max-width:1100px; margin:0 auto; font-size:14px; }
-  .hi{ font-size:19px; font-weight:800; }
-  .muted{ color:var(--muted); font-size:13px; }
-  .bar{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:12px 0; }
-  input,select{ padding:8px 10px; border:1px solid var(--line); border-radius:9px; font-size:14px; background:#fff; }
-  button{ padding:8px 13px; border:0; border-radius:9px; font-size:13px; font-weight:600; color:#fff; background:var(--accent); cursor:pointer; }
-  button.gray{ background:#eef1f8; color:#334; } button.green{ background:var(--green); } button.sm{ padding:5px 9px; font-size:12px; }
-  .chips{ display:flex; gap:6px; flex-wrap:wrap; }
-  .chip{ padding:5px 11px; border-radius:20px; font-size:12.5px; font-weight:600; background:#eef1f8; color:#556; border:1px solid var(--line); cursor:pointer; }
-  .chip.on{ background:var(--accent); color:#fff; border-color:var(--accent); }
-  .box{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:6px 12px; }
-  .msg{ font-size:13px; } .err{ color:var(--red); } .ok{ color:var(--green); }
-  .center{ text-align:center; padding:36px 16px; }
+  .muted{ font-size:13px; }
+  .tbar{ margin:var(--s-3) 0; }
   /* документ — карточкой: в таблице поставщик и номер уезжали за край */
-  .doc{ border:1px solid var(--line); border-radius:12px; background:var(--card); padding:10px 12px; margin-bottom:8px; cursor:pointer; }
-  .doc:hover{ border-color:var(--accent); }
-  .doc .top{ display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; }
-  .doc .dt{ font-variant-numeric:tabular-nums; font-weight:700; color:var(--accent); min-width:88px; }
-  .uprow{ display:flex; gap:8px; align-items:center; padding:5px 0; border-bottom:1px solid var(--line); font-size:13px; }
+  .doc{ border:1px solid var(--line); border-radius:var(--r-card); background:var(--card); box-shadow:var(--shadow-card); padding:var(--s-3) var(--s-4); margin-bottom:var(--s-2); cursor:pointer; transition:border-color .15s var(--ease); }
+  .doc:hover{ border-color:var(--muted); }
+  .doc .top{ display:flex; gap:var(--s-2); align-items:center; flex-wrap:wrap; }
+  .doc .dt{ font-variant-numeric:tabular-nums; font-weight:600; color:var(--fg2); min-width:88px; }
+  .uprow{ display:flex; gap:var(--s-2); align-items:center; padding:var(--s-1) 0; border-bottom:1px solid var(--line); font:var(--t-small); }
   .uprow:last-child{ border-bottom:0 }
-  .doc .sup{ font-weight:700; }
-  .doc .sub{ color:var(--muted); font-size:12.5px; margin-top:3px; display:flex; gap:10px; flex-wrap:wrap; }
-  .pill{ font-size:11.5px; padding:2px 9px; border-radius:20px; font-weight:700; white-space:nowrap; }
-  .p-wait{ background:#eef1f8; color:#66707f; } .p-todo{ background:#fff3cd; color:#8a6d1f; }
-  .p-done{ background:#e7f5ea; color:#137333; } .p-err{ background:#fdecea; color:#c0392b; }
-  .sum{ margin-left:auto; font-weight:700; font-variant-numeric:tabular-nums; }
-  /* модалка позиций */
-  .ov{ position:fixed; inset:0; background:rgba(20,25,50,.45); display:none; align-items:flex-start; justify-content:center; padding:20px 10px; overflow:auto; z-index:9; }
-  .ov.on{ display:flex; }
-  .modal{ background:#fff; border-radius:16px; max-width:860px; width:100%; padding:18px; }
-  .modal h3{ margin:0 0 4px; font-size:17px; } .modal .x{ float:right; background:#eef1f8; color:#334; }
-  .lbl{ font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; margin:14px 0 6px; font-weight:700; }
-  .pcard{ border:1px solid var(--line); border-radius:12px; padding:10px; margin-bottom:8px; }
-  .pcard.done{ background:#f6fbf7; border-color:#cfe8d6; }
-  .prow{ display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:6px; }
-  .plbl{ font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; font-weight:700; }
-  .pcard input,.pcard select{ padding:7px 9px; font-size:13.5px; }
+  .doc .sup{ font-weight:600; }
+  .doc .sub{ color:var(--muted); font:var(--t-small); margin:var(--s-1) 0 0; display:flex; gap:var(--s-3); flex-wrap:wrap; }
+  .sum{ margin-left:auto; font-weight:600; font-variant-numeric:tabular-nums; }
+  /* модалка позиций: .scrim/.modal темы; .ov.on — открыта */
+  .scrim.ov{ display:none; }
+  .scrim.ov.on{ display:flex; }
+  .scrim .modal{ max-width:860px; }
+  .modal .x{ float:right; }
+  .lbl{ font:var(--t-label); color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin:var(--s-4) 0 var(--s-2); }
+  .pcard{ border:1px solid var(--line); border-radius:var(--r-ctl); padding:var(--s-3); margin-bottom:var(--s-2); }
+  .pcard.done{ background:var(--green-bg); border-color:transparent; }
+  .prow{ display:flex; gap:var(--s-2); align-items:center; flex-wrap:wrap; margin-bottom:var(--s-2); }
+  .plbl{ font:var(--t-label); color:var(--muted); text-transform:uppercase; letter-spacing:.06em; }
+  .pcard input,.pcard select{ min-height:var(--h-sm); padding:0 var(--s-2); font:var(--t-small); }
+  @media (max-width:640px){ .pcard input,.pcard select{ font-size:16px; } }
   .pcard input.xs{ width:82px; } .pcard input.s{ width:120px; }
-  .pres{ font-size:13px; padding-top:5px; border-top:1px dashed var(--line); }
-
-  /* ── ВИДИМАЯ РЕАКЦИЯ. На телефоне нет наведения курсором: если кнопка не «продавливается»,
-     человек не понимает, нажал он или промахнулся, и жмёт ещё раз — отсюда дубли. ── */
-  button{ touch-action:manipulation; -webkit-tap-highlight-color:transparent;
-          transition:transform .06s ease, filter .12s ease, opacity .12s ease; }
-  button:active{ transform:scale(.94); filter:brightness(.86); }
-  button[disabled]{ opacity:.5; pointer-events:none; }
-  a[href^="javascript"]{ -webkit-tap-highlight-color:rgba(124,58,237,.15); }
-  /* тонкая полоска сверху — «идёт обмен с сервером» */
-  #twload{ position:fixed; left:0; top:0; height:3px; width:100%; z-index:60; display:none; overflow:hidden; }
-  #twload>i{ display:block; height:100%; width:38%; background:var(--accent); animation:twslide 1.1s ease-in-out infinite; }
-  @keyframes twslide{ 0%{ margin-left:-38% } 100%{ margin-left:100% } }
-  /* заслонка на время действия: и показывает, что идёт работа, и физически не даёт нажать второй раз */
-  #twwait{ position:fixed; inset:0; background:rgba(246,247,252,.78); z-index:70; display:none;
-           align-items:center; justify-content:center; }
-  #twwait .wb{ background:#fff; border-radius:16px; padding:18px 22px; text-align:center; min-width:190px;
-               box-shadow:0 12px 34px rgba(20,25,50,.18); }
-  #twwait .sp{ width:28px; height:28px; border:3px solid rgba(124,58,237,.22); border-top-color:var(--accent);
-               border-radius:50%; margin:0 auto 10px; animation:twspin .8s linear infinite; }
-  @keyframes twspin{ to{ transform:rotate(360deg) } }
-  #twwait .wt{ font-weight:700; font-size:15px; }
-  #twwait .wh{ font-size:12.5px; opacity:.6; margin-top:4px; }
+  .pres{ font:var(--t-small); padding-top:var(--s-1); border-top:1px dashed var(--line); }
 </style>
 </head>
 <body>
 <div id="twload"><i></i></div>
 <div id="twwait"><div class="wb"><div class="sp"></div><div class="wt" id="twwt">Отправляю…</div><div class="wh">идёт обмен с сервером — не нажимайте</div></div></div>
-<style>html.emb>body>.hi{display:none}</style><script>if(/[?&]embed=1/.test(location.search))document.documentElement.classList.add('emb');</script>
 <div class="hi">📑 Входящие документы</div>
 <div class="muted" id="cnt">загрузка…</div>
 
-<div class="bar">
+<div class="row tbar">
   <span class="muted">с</span><input type="date" id="from" onchange="load()">
   <span class="muted">по</span><input type="date" id="to" onchange="load()">
   <input class="search" id="q" placeholder="поставщик или № документа…" oninput="draw()" style="min-width:180px">
-  <button class="gray" onclick="load()">↻ Обновить</button>
+  <button class="sec" onclick="load()">↻ Обновить</button>
   <button onclick="document.getElementById('upl').click()" title="накладные, акты, УПД, чеки — сразу несколько файлов">⬆️ Загрузить документы</button>
   <input type="file" id="upl" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.doc,.docx,.xls,.xlsx" style="display:none" onchange="uploadPicked(this.files)">
-  <button class="gray" onclick="scanNow()" title="распознать ближайшие документы прямо сейчас, не дожидаясь фонового прогона">⚡ Распознать сейчас</button>
-  <button class="gray" onclick="exportDocs()" title="файл со всеми реквизитами — бухгалтеру останется загрузить его в 1С">⬇️ Выгрузить для 1С</button>
-  <button class="gray" onclick="showFixes()" title="что бухгалтер чаще всего исправляет за распознаванием — по этому списку уточняется промпт">📊 Что чаще правят</button>
+  <button class="sec" onclick="scanNow()" title="распознать ближайшие документы прямо сейчас, не дожидаясь фонового прогона">⚡ Распознать сейчас</button>
+  <button class="sec" onclick="exportDocs()" title="файл со всеми реквизитами — бухгалтеру останется загрузить его в 1С">⬇️ Выгрузить для 1С</button>
+  <button class="sec" onclick="showFixes()" title="что бухгалтер чаще всего исправляет за распознаванием — по этому списку уточняется промпт">📊 Что чаще правят</button>
   <span class="msg" id="smsg"></span>
 </div>
-<div id="uplbox" class="box" style="display:none;margin-bottom:10px"></div>
+<div id="uplbox" class="box" style="display:none;margin-bottom:var(--s-3)"></div>
 <div class="chips" id="filters"></div>
-<div style="height:10px"></div>
+<div style="height:12px"></div>
 <div id="list"><div class="center muted">Загрузка…</div></div>
 
-<div class="ov" id="ov"><div class="modal" id="modal"></div></div>
+<div class="scrim ov" id="ov"><div class="modal" id="modal"></div></div>
 <datalist id="matlist"></datalist>
 
 <script>
@@ -110,8 +73,8 @@ function twTok(){ try{ return twQp('tok')||localStorage.getItem('tw_tok')||''; }
 function twQp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
 (function(){ var t=twQp('tok'); if(t){ try{ localStorage.setItem('tw_tok',t); }catch(e){} } })();
 function twAuthWall(r){
-  if(r&&r.needAuth){ document.body.innerHTML='<div style="padding:28px;font:16px/1.55 -apple-system,Roboto,Segoe UI,Arial;color:#1b2333">'
-    +'<div style="font-size:20px;font-weight:800;margin-bottom:10px">🔒 Нужен вход</div>'
+  if(r&&r.needAuth){ document.body.innerHTML='<div style="padding:var(--s-6);font:var(--t-body);color:var(--fg)">'
+    +'<div style="font:var(--t-title);margin-bottom:var(--s-3)">🔒 Нужен вход</div>'
     +'<div>'+String(r.error||'Откройте сервис из бота @TWOtchbot или войдите по личному коду.')+'</div></div>'; }
   return r;
 }
@@ -142,11 +105,11 @@ function load(){
 function setFilt(f){ FILT=f; load(); }
 
 function statePill(r){
-  if(r.state==='разнесено') return '<span class="pill p-done">✓ разнесено</span>';
-  if(r.state==='разнести') return '<span class="pill p-todo">⚠ разнести '+(r.positions-r.placed)+' из '+r.positions+'</span>';
-  if(r.state==='не распозналось') return '<span class="pill p-err">✗ не распозналось</span>';
-  if(r.state==='нет позиций') return '<span class="pill p-err">нет позиций</span>';
-  return '<span class="pill p-wait">⏳ ждёт распознавания</span>';
+  if(r.state==='разнесено') return '<span class="pill ok">✓ разнесено</span>';
+  if(r.state==='разнести') return '<span class="pill warn">⚠ разнести '+(r.positions-r.placed)+' из '+r.positions+'</span>';
+  if(r.state==='не распозналось') return '<span class="pill bad">✗ не распозналось</span>';
+  if(r.state==='нет позиций') return '<span class="pill bad">✕ нет позиций</span>';
+  return '<span class="pill mute">⏳ ждёт распознавания</span>';
 }
 function draw(){
   var q=$('q').value.trim().toLowerCase();
@@ -161,28 +124,28 @@ function draw(){
   $('cnt').textContent=list.length+' из '+ROWS.length+' документов · на проверке: '+(STAT.check||0)+' · разнести: '+(STAT.todo||0)+' · ждут распознавания: '+(STAT.noscan||0);
   var need=list.filter(function(r){ return r.needCheck; }), rest=list.filter(function(r){ return !r.needCheck; });
   $('list').innerHTML=
-    (need.length? '<div class="lbl" style="margin:4px 0 8px">🔔 На проверке — '+need.length
+    (need.length? '<div class="lbl" style="margin:var(--s-1) 0 var(--s-2)">🔔 На проверке — '+need.length
         +' <span class="muted" style="font-weight:normal;text-transform:none">проверьте реквизиты и нажмите «Подтвердить», после этого документ уйдёт в общий список</span></div>'
       +need.map(docCard).join('')
-      +(rest.length?'<div class="lbl" style="margin:16px 0 8px">Все документы — '+rest.length+'</div>':'') : '')
+      +(rest.length?'<div class="lbl" style="margin:var(--s-4) 0 var(--s-2)">Все документы — '+rest.length+'</div>':'') : '')
     +rest.map(docCard).join('')
     || '<div class="center muted">ничего не найдено</div>';
 }
 function docCard(r){
   return (function(r){
-    var diff=r.diff? ' <span class="pill p-err" title="сумма позиций не сходится с суммой документа">Δ '+money(r.diff)+'</span>' : '';
+    var diff=r.diff? ' <span class="pill bad" title="сумма позиций не сходится с суммой документа">Δ '+money(r.diff)+'</span>' : '';
     return '<div class="doc" onclick="openDoc(\''+r.fileId+'\')">'
       +'<div class="top"><span class="dt">'+esc(r.date||'—')+'</span>'
         +'<span class="sup">'+esc(r.sup||'без поставщика')+'</span>'
         +statePill(r)+diff
-        +(r.dup?'<span class="pill p-err" title="такой контрагент и номер уже есть">возможно дубль</span>':'')
-        +(r.exported?'<span class="pill p-done" title="выгружен в 1С '+esc(r.exported)+'">1С ✓</span>':'')
+        +(r.dup?'<span class="pill bad" title="такой контрагент и номер уже есть">✕ возможно дубль</span>':'')
+        +(r.exported?'<span class="pill ok" title="выгружен в 1С '+esc(r.exported)+'">1С ✓</span>':'')
         +'<span class="sum">'+money(r.sum)+' '+esc(r.cur)+'</span></div>'
       +'<div class="sub"><span>'+esc(r.type)+' '+esc(r.docNo)+'</span>'
         +(r.unp?'<span>УНП '+esc(r.unp)+'</span>':'')
         +(r.positions?'<span>позиций: '+r.positions+'</span>':'')
         +'<span style="margin-left:auto">'
-          +(r.needCheck?'<a href="javascript:void(0)" onclick="event.stopPropagation();confirmDoc(\''+r.fileId+'\')" title="реквизиты верны — убрать из проверки" style="font-weight:700;color:var(--green)">✓ подтвердить</a> · ':'')
+          +(r.needCheck?'<a href="javascript:void(0)" onclick="event.stopPropagation();confirmDoc(\''+r.fileId+'\')" title="реквизиты верны — убрать из проверки" style="font-weight:600;color:var(--green)">✓ подтвердить</a> · ':'')
           +'<a href="javascript:void(0)" onclick="event.stopPropagation();delDoc(\''+r.fileId+'\',\''+esc(r.sup||'').replace(/\x27/g,'')+'\')" title="удалить документ">🗑</a></span></div>'
     +'</div>';
   })(r);
@@ -209,12 +172,12 @@ function uploadPicked(files){
 function drawUpl(){
   var done=UPQ.filter(function(u){return u.state==='готово'||u.state==='ошибка';}).length;
   var rec=UPQ.filter(function(u){return u.state==='распознаётся';}).length;
-  $('uplbox').innerHTML='<div style="font-weight:700;padding:6px 0">Загрузка: '+done+' из '+UPQ.length
+  $('uplbox').innerHTML='<div style="font-weight:600;padding:var(--s-2) 0">Загрузка: '+done+' из '+UPQ.length
     +(rec?' · распознаётся…':'')+(done===UPQ.length?' <a href="javascript:void(0)" onclick="closeUpl()">скрыть</a>':'')+'</div>'
     +UPQ.map(function(u){
       var ic = u.state==='готово'?'✓' : u.state==='ошибка'?'✗' : u.state==='распознаётся'?'⏳' : u.state==='добавлен'?'✓' : '·';
       var col = u.state==='ошибка'?'var(--red)' : u.state==='готово'?'var(--green)':'var(--muted)';
-      return '<div class="uprow"><span style="color:'+col+';font-weight:700">'+ic+'</span>'
+      return '<div class="uprow"><span style="color:'+col+';font-weight:600">'+ic+'</span>'
         +'<span style="flex:1;min-width:120px">'+esc(u.name)+'</span>'
         +'<span class="muted">'+esc(u.note||u.state)+'</span></div>';
     }).join('');
@@ -280,11 +243,11 @@ function exportDocs(){
 
 // ─────────── карточка документа ───────────
 var DOC=null, POS=[], MATS=[], EDIT={};
-function closeOv(){ $('ov').className='ov'; }
+function closeOv(){ $('ov').className='scrim ov'; }
 function openDoc(fileId){
-  $('ov').className='ov on'; $('modal').innerHTML='<div class="center muted">Загрузка документа…</div>';
+  $('ov').className='scrim ov on'; $('modal').innerHTML='<div class="center muted">Загрузка документа…</div>';
   api({vapi:'docpositions', file:fileId}).then(function(r){
-    if(!r||!r.ok){ $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><div class="err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
+    if(!r||!r.ok){ $('modal').innerHTML='<button class="x ic" onclick="closeOv()">✕</button><div class="err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
     DOC=r.header||{fileId:fileId}; DOC.fileId=fileId; POS=r.positions||[]; MATS=r.mats||[]; EDIT={};
     CLASSES=r.classes||CLASSES; CLASSMAP=r.classMap||CLASSMAP;
     SERVICES=r.services||SERVICES; TYPES=r.types||TYPES;
@@ -298,11 +261,11 @@ function renderDoc(){
   var h=DOC||{}, act=POS.filter(function(p){return p.status!=='пропущена';});
   var done=act.filter(function(p){return p.status==='разнесена';}).length, skipped=POS.length-act.length;
   var cards=POS.map(function(p,i){ return posCard(p,i); }).join('');
-  $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button>'
+  $('modal').innerHTML='<button class="x ic" onclick="closeOv()">✕</button>'
     +'<h3>'+esc(h.sup||'')+'</h3>'
     +'<div class="muted">'+esc(h.type||'')+' '+esc(h.docNo||'')+' · '+esc(h.date?fmtD(h.date):'')+' · '+esc(h.cur||'BYN')
       +(h.unp?(' · УНП '+esc(h.unp)):'')+(h.dogovor?(' · '+esc(h.dogovor)):'')+'</div>'
-    +'<div class="muted" style="font-size:12px;margin-top:4px">Реквизиты пойдут в 1С — если распознались неверно, поправьте: '
+    +'<div class="muted" style="font:var(--t-small);margin-top:var(--s-1)">Реквизиты пойдут в 1С — если распознались неверно, поправьте: '
       +'<a href="javascript:void(0)" onclick="editHead()">✎ изменить шапку</a> · '
       +'<a href="'+esc(h.file||'')+'" target="_blank">открыть файл</a></div>'
     +sumCheckHtml()
@@ -322,7 +285,7 @@ function sumCheckHtml(){
   sum=Math.round(sum*100)/100;
   var doc=Number(h.sumGross)||0, d=Math.round((doc-sum)*100)/100;
   if(!doc||Math.abs(d)<0.02) return '';
-  return '<div class="box" style="margin-top:8px;background:#fdecea;border-color:#f5c6c2">'
+  return '<div class="box" style="margin-top:var(--s-2);background:var(--red-bg);border-color:transparent">'
     +'<b>⚠ Суммы не сходятся:</b> позиций на <b>'+money(sum)+'</b>, в документе <b>'+money(doc)+'</b> (разница '+money(d)+').'
     +'<div class="muted">Проверьте: лишняя строка — уберите её «✕»; не хватает строки — распознайте документ заново; '
     +'или сумма документа в реестре не та — поправьте «✎ изменить шапку».</div></div>';
@@ -337,14 +300,14 @@ function posCard(p,i){
     return '<option value="'+esc(sv.name)+'"'+(p.statya&&p.statya===sv.statya?' selected':'')+'>'+esc(sv.name)+'</option>'; })).join('');
   return '<div class="pcard'+(p.status!=='новая'?' done':'')+'" id="pc'+i+'">'
     +'<div class="prow"><b style="flex:1;min-width:200px">'+esc(p.name)+'</b>'
-      +(p.status!=='новая'?'<span class="pill '+(p.status==='пропущена'?'p-wait':'p-done')+'">'+esc(p.status)+'</span>':'')
-      +'<button class="gray sm" title="'+(p.status==='пропущена'?'вернуть строку':'убрать лишнюю строку распознавания')+'" onclick="skipPos('+i+')">'
+      +(p.status!=='новая'?'<span class="pill '+(p.status==='пропущена'?'mute':'ok')+'">'+(p.status==='пропущена'?'':'✓ ')+esc(p.status)+'</span>':'')
+      +'<button class="sec sm" title="'+(p.status==='пропущена'?'вернуть строку':'убрать лишнюю строку распознавания')+'" onclick="skipPos('+i+')">'
       +(p.status==='пропущена'?'↩':'✕')+'</button></div>'
     +(EDIT[i]? numEditHtml(p,i) : ('<div class="prow"><span class="plbl">Кол-во</span><span><b>'+esc(String(p.qty))+'</b> '+esc(p.unit||'')+'</span>'
       +'<span class="plbl">Цена без НДС</span><span>'+money(p.priceNet)+'</span>'
       +'<span class="plbl">НДС</span><span>'+(p.vatPct||0)+'% = '+money(p.vatSum)+'</span>'
       +'<span class="plbl">Сумма с НДС</span><b>'+money(p.sumGross)+'</b>'
-      +'<button class="gray sm" title="распозналось неверно — поправить цифры и наименование" onclick="editNums('+i+')">✎</button></div>'))
+      +'<button class="sec sm" title="распозналось неверно — поправить цифры и наименование" onclick="editNums('+i+')">✎</button></div>'))
     +'<div class="prow"><span class="plbl">Что это</span>'
       +'<select id="pc_cls'+i+'" onchange="setCls('+i+')">'+opts+'</select>'
       +'<span class="plbl" id="plm'+i+'" style="'+(isMat?'':'display:none')+'">Наш материал</span>'
@@ -366,16 +329,16 @@ function posCard(p,i){
 function numEditHtml(p,i){
   var fld=function(id,lbl,val,w){ return '<span class="plbl">'+lbl+'</span>'
     +'<input class="xs" id="'+id+i+'" value="'+esc(val==null?'':String(val))+'" style="width:'+(w||82)+'px">'; };
-  return '<div class="prow" style="background:#f8f7ff;border-radius:8px;padding:6px">'
+  return '<div class="prow" style="background:var(--bg2);border-radius:var(--r-ctl);padding:var(--s-2)">'
     +'<span class="plbl">Наименование</span><input id="pn'+i+'" value="'+esc(p.name||'')+'" style="flex:1;min-width:200px">'
-    +'</div><div class="prow" style="background:#f8f7ff;border-radius:8px;padding:6px">'
+    +'</div><div class="prow" style="background:var(--bg2);border-radius:var(--r-ctl);padding:var(--s-2)">'
     +fld('pq','Кол-во',p.qty)+fld('pu','Ед',p.unit,70)
     +fld('ppn','Цена без НДС',p.priceNet,100)
     +fld('pvp','НДС %',p.vatPct,60)
     +fld('pvs','Сумма НДС',p.vatSum,100)
     +fld('psg','Сумма с НДС',p.sumGross,110)
     +'<button class="sm" onclick="saveNums('+i+')">Сохранить</button>'
-    +'<button class="gray sm" onclick="cancelNums('+i+')">Отмена</button>'
+    +'<button class="sec sm" onclick="cancelNums('+i+')">Отмена</button>'
     +'<span class="msg" id="pnm'+i+'"></span></div>';
 }
 function editNums(i){ EDIT[i]=1; renderDoc(); }
@@ -454,7 +417,7 @@ function recalcPos(i){
     var st=(($('ps'+i)||{}).value||'').trim();
     out.innerHTML='<span class="muted">'+(cls==='услуга'?'услуга — на склад не приходуется, идёт в расходы и в 1С. ':'в реестр материалов не попадёт — только в расходы. ')+'</span>'
       +(st?('<span class="muted">Статья: <b>'+esc(st)+'</b> · счёт '+esc((($('pa'+i)||{}).value||'').trim()||'—')+'</span>')
-          :'<span style="color:#b7791f">укажите статью расхода — иначе бухгалтерия не разнесёт</span>');
+          :'<span style="color:var(--amber)">укажите статью расхода — иначе бухгалтерия не разнесёт</span>');
     return;
   }
   var name=(($('pm'+i)||{}).value||'').trim(); p.mat=name;
@@ -480,10 +443,10 @@ function editHead(){
     return '<option value="'+esc(t)+'"'+(h.type===t?' selected':'')+'>'+esc(t)+'</option>'; }).join('');
   var f=function(id,lbl,val,w){ return '<div class="prow"><span class="plbl" style="min-width:120px">'+lbl+'</span>'
     +'<input id="'+id+'" value="'+esc(val==null?'':val)+'" style="min-width:'+(w||220)+'px;flex:1"></div>'; };
-  $('modal').innerHTML='<button class="x sm" onclick="openDoc(\''+h.fileId+'\')">✕</button><h3>Реквизиты документа</h3>'
+  $('modal').innerHTML='<button class="x ic" onclick="openDoc(\''+h.fileId+'\')">✕</button><h3>Реквизиты документа</h3>'
     +'<div class="muted">Что поправите — уйдёт и в Фингений, и в выгрузку для 1С. '
     +'Правка запоминается: повторное распознавание её не затрёт, а сама поправка попадёт в «Что чаще правят».</div>'
-    +'<div style="margin-top:10px">'
+    +'<div style="margin-top:var(--s-3)">'
     +f('eh_sup','Поставщик',h.sup)
     +f('eh_unp','УНП',h.unp,140)
     +'<div class="prow"><span class="plbl" style="min-width:120px">Тип документа</span><select id="eh_type">'+topts+'</select></div>'
@@ -494,7 +457,7 @@ function editHead(){
     +f('eh_sum','Сумма с НДС',h.sumGross,140)
     +'</div>'
     +'<div style="margin-top:12px"><button onclick="saveHead()">Сохранить</button> '
-    +'<button class="gray" onclick="openDoc(\''+h.fileId+'\')">Отмена</button> <span class="msg" id="ehmsg"></span></div>';
+    +'<button class="sec" onclick="openDoc(\''+h.fileId+'\')">Отмена</button> <span class="msg" id="ehmsg"></span></div>';
 }
 function saveHead(){
   var h=DOC||{}, m=$('ehmsg'); m.className='msg'; m.textContent='Сохраняю…'; twSay('Сохраняю реквизиты…');
@@ -506,21 +469,21 @@ function saveHead(){
 }
 // что чаще всего правят за распознаванием — это и есть список того, что надо уточнить в промпте
 function showFixes(){
-  $('ov').className='ov on'; $('modal').innerHTML='<div class="center muted">Считаю правки…</div>';
+  $('ov').className='scrim ov on'; $('modal').innerHTML='<div class="center muted">Считаю правки…</div>';
   api({vapi:'docfixes', limit:40}).then(function(r){
-    if(!r||!r.ok){ $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><div class="err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
+    if(!r||!r.ok){ $('modal').innerHTML='<button class="x ic" onclick="closeOv()">✕</button><div class="err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
     var top=(r.byField||[]).map(function(x){ return '<div class="uprow"><span style="flex:1">'+esc(x.field)+'</span><b>'+x.n+'</b></div>'; }).join('')
       || '<div class="muted" style="padding:8px 0">правок пока нет — распознавание никто не исправлял</div>';
     var last=(r.last||[]).map(function(x){
       return '<div class="uprow"><span class="muted" style="min-width:88px">'+esc(x.when)+'</span>'
         +'<span style="flex:1;min-width:150px"><b>'+esc(x.field)+'</b> <span class="muted">'+esc(x.scope)+'</span></span>'
         +'<span style="flex:1;min-width:150px"><span class="muted">было:</span> '+esc(x.was||'—')+' → <b>'+esc(x.became||'—')+'</b></span></div>'; }).join('');
-    $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><h3>📊 Что чаще правят</h3>'
+    $('modal').innerHTML='<button class="x ic" onclick="closeOv()">✕</button><h3>📊 Что чаще правят</h3>'
       +'<div class="muted">Всего правок: '+r.total+'. Каждая — это место, где распознавание ошибается. '
       +'По этому списку уточняется промпт, чтобы вручную править приходилось всё реже.</div>'
       +'<div class="lbl">По полям</div><div class="box">'+top+'</div>'
       +(last?('<div class="lbl">Последние правки</div><div class="box">'+last+'</div>'):'');
-  }).catch(function(){ $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><div class="err">связь оборвалась</div>'; });
+  }).catch(function(){ $('modal').innerHTML='<button class="x ic" onclick="closeOv()">✕</button><div class="err">связь оборвалась</div>'; });
 }
 function confirmFromCard(){
   api({vapi:'docconfirm', file:DOC.fileId}).then(function(r){

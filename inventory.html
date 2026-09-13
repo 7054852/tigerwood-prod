@@ -1,152 +1,144 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<script src="tw-theme.js"></script>
 <title>Тигервуд — ведомость переучёта</title>
 <style>
-  :root{ --ink:#1b2333; --muted:#8a93a6; --line:#dfe3ec; --accent:#2b6ef6; }
-  *{ box-sizing:border-box; }
-  body{ margin:0; font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif; color:var(--ink); background:#f5f6fa; }
-  .wrap{ max-width:1180px; margin:0 auto; padding:14px; }
-  .bar{ background:#fff; border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:14px;
-        display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
-  select,button{ font:inherit; }
-  select{ padding:6px 9px; border:1px solid var(--line); border-radius:9px; background:#fff; min-width:180px; }
-  button{ padding:7px 13px; border:1px solid var(--line); border-radius:9px; background:#fff; cursor:pointer; font-weight:600; }
-  button.pri{ background:var(--accent); border-color:var(--accent); color:#fff; }
-  label.chk{ display:inline-flex; align-items:center; gap:6px; font-size:13px; color:#4a5468; cursor:pointer; }
-  .muted{ color:var(--muted); }
-  .msg{ font-size:13px; }
-  .err{ color:#c0392b; }
+  /* ведомость — на всю ширину. setOrient() перезаписывает класс body на port/land, поэтому ширину даём и им */
+  body.port, body.land{ --page-w:none; }
+  div.bar{ height:auto; overflow:visible; background:var(--card); border:1px solid var(--line); border-radius:var(--r-card); padding:var(--s-3);
+        margin-bottom:var(--s-4); display:flex; gap:var(--s-3); flex-wrap:wrap; align-items:center; box-shadow:var(--shadow-card); }
+  div.bar select{ min-width:180px; }
+  label.chk{ display:inline-flex; align-items:center; gap:var(--s-2); font:var(--t-small); color:var(--fg2); cursor:pointer; }
 
   /* ── сам лист ── */
-  .sheet{ background:#fff; border:1px solid var(--line); border-radius:12px; padding:16px; }
-  .shead{ display:flex; gap:16px; flex-wrap:wrap; align-items:flex-end; border-bottom:2px solid var(--ink); padding-bottom:8px; margin-bottom:10px; }
-  .stitle{ font-size:19px; font-weight:800; }
-  .sline{ font-size:12.5px; color:#4a5468; }
-  .fill{ display:inline-block; min-width:150px; border-bottom:1px solid #9aa3b5; }
-  .legend{ font-size:11.5px; color:#4a5468; margin-bottom:10px; }
-  .legend b{ color:var(--ink); }
-  .grp{ margin-bottom:12px; page-break-inside:avoid; }
+  .sheet{ background:var(--card); border:1px solid var(--line); border-radius:var(--r-card); padding:var(--s-4); }
+  .shead{ display:flex; gap:var(--s-4); flex-wrap:wrap; align-items:flex-end; border-bottom:2px solid var(--fg); padding-bottom:var(--s-2); margin-bottom:var(--s-3); }
+  .stitle{ font:var(--t-title); }
+  .sline{ font:var(--t-small); color:var(--fg2); }
+  .fill{ display:inline-block; min-width:150px; border-bottom:1px solid var(--muted); }
+  .legend{ font:var(--t-small); color:var(--fg2); margin-bottom:var(--s-3); }
+  .legend b{ color:var(--fg); }
+  .grp{ margin-bottom:var(--s-3); page-break-inside:avoid; }
   .grp.big{ page-break-inside:auto; }      /* длинный свод рвать можно — иначе браузер оставит пустую страницу */
   thead{ display:table-header-group; }      /* шапка колонок повторяется на каждой странице */
   tr{ page-break-inside:avoid; }
-  .gt{ font-size:14.5px; font-weight:800; padding:5px 0 4px; border-bottom:1px solid var(--ink); }
-  .gt .qty{ font-weight:600; color:#4a5468; }
+  .gt{ font-size:14px; font-weight:600; padding:var(--s-1) 0; border-bottom:1px solid var(--fg); }
+  .gt .qty{ font-weight:500; color:var(--fg2); }
+  /* сетка листа: перебиваем табличный стиль темы (прописные шапки, отступы 10/12, рамка только снизу) */
   table{ width:100%; border-collapse:collapse; }
-  th,td{ border:1px solid #b9c0cf; padding:0 5px; font-size:12.5px; }
-  th{ background:#eef1f7; font-size:11.5px; font-weight:700; text-align:center; padding:5px 3px; line-height:1.2; }
+  th,td{ border:1px solid var(--line2); padding:0 var(--s-1); font-size:13px; line-height:1.45; }
+  th{ background:var(--grey-bg); color:var(--fg); font-size:11px; font-weight:600; text-align:center; padding:var(--s-1); line-height:1.2;
+      text-transform:none; letter-spacing:0; white-space:normal; height:auto; }
+  .sheet tbody tr:last-child td{ border-bottom:1px solid var(--line2); }
   /* пояснение стадии живёт В ШАПКЕ КОЛОНКИ: считающий видит его прямо над клетками, которые
      заполняет, и на каждой странице печати (thead повторяется), а не один раз в легенде сверху */
-  th .hint{ display:block; font-weight:500; font-size:9px; line-height:1.15; color:#5a6478;
-            margin-top:3px; white-space:normal; }
+  th .hint{ display:block; font-weight:500; font-size:9px; line-height:1.15; color:var(--muted);
+            margin-top:var(--s-1); white-space:normal; }
   th.det{ text-align:left; width:24%; }
   td.det{ height:26px; font-weight:600; }
-  td.n{ text-align:center; width:52px; color:#4a5468; }
+  td.n{ text-align:center; width:52px; color:var(--fg2); }
   td.cell{ width:5.9%; height:26px; }
   /* ⚠ td.cell.no, а не td.no: «tr.vrow td{background}» специфичнее и перекрашивал штриховку
      во всех строках цветов в белый — клетки без операции выглядели как обычные */
-  td.no,td.cell.no{ background:repeating-linear-gradient(135deg,#f2f4f8,#f2f4f8 4px,#e6eaf2 4px,#e6eaf2 8px); }
-  td.acc{ text-align:center; color:#8a93a6; font-size:11px; }
-  tr:nth-child(even) td.det, tr:nth-child(even) td.n{ background:#fafbfd; }
-  .sh{ font-size:10px; color:#8a5a00; font-weight:700; }
-  .refs{ font-size:11.5px; color:#4a5468; padding:5px 4px 0; }
+  td.no,td.cell.no{ background:repeating-linear-gradient(135deg,var(--grey-bg),var(--grey-bg) 4px,var(--line2) 4px,var(--line2) 8px); }
+  td.acc{ text-align:center; color:var(--muted); font-size:11px; }
+  tr:nth-child(even) td.det, tr:nth-child(even) td.n{ background:var(--card2); }
+  .sh{ font-size:11px; color:var(--amber); font-weight:600; }
+  .refs{ font-size:11px; color:var(--fg2); padding:var(--s-1) var(--s-1) 0; }
   /* деталь входит сразу в несколько изделий — в блоке изделия она видна, но считается один раз
      в блоке «Общие детали»: иначе кажется, что у изделия деталей нет вовсе */
-  tr.refrow td{ background:#f7f8fb; color:#8a93a6; }
+  tr.refrow td{ background:var(--bg); color:var(--muted); }
   tr.refrow td.det{ font-weight:600; }
-  tr.refrow .rn{ font-size:10px; font-weight:600; color:#8a5a00; white-space:nowrap; }
+  tr.refrow .rn{ font-size:11px; font-weight:600; color:var(--amber); white-space:nowrap; }
   .hide{ display:none !important; }
-  .tb{ font-size:13px; }
-  .tb.on{ background:var(--accent); border-color:var(--accent); color:#fff; }
-  .card{ background:#fff; border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:12px; }
-  .rowline{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:7px 0; border-top:1px solid #eef1f7; font-size:13px; }
+  .card{ margin-bottom:var(--s-3); }
+  .card + .card{ margin-top:0; }
+  .rowline{ display:flex; gap:var(--s-2); align-items:center; flex-wrap:wrap; padding:var(--s-2) 0; border-top:1px solid var(--line); font:var(--t-small); }
   .rowline:first-child{ border-top:0; }
-  .flag{ font-size:11px; font-weight:700; padding:1px 6px; border-radius:6px; background:#fdf1dc; color:#8a5a00; }
-  .flag.bad{ background:#fdecea; color:#c0392b; }
-  .flag.ok{ background:#e6f4ea; color:#137333; }
-  .qin{ width:70px; padding:4px 6px; border:1px solid var(--line); border-radius:7px; font:inherit; text-align:center; }
-  .mini{ font-size:11.5px; color:var(--muted); }
+  .mini{ font:var(--t-small); color:var(--muted); }
   /* ⚠ без min-width:0 элемент внутри flex не сжимается ниже своего текста и ломает строку */
   .grow{ flex:1; min-width:0; }
-  .stat{ display:flex; gap:14px; flex-wrap:wrap; font-size:13px; font-weight:600; margin-bottom:8px; }
+  .stat{ display:flex; gap:var(--s-4); flex-wrap:wrap; align-items:center; font:600 13px/18px var(--font); margin-bottom:var(--s-2); }
   /* сверка: та же таблица, что на бумаге, только заполненная */
-  td.g input{ width:100%; border:0; background:transparent; font:inherit; text-align:center; padding:3px 0; color:inherit; }
-  td.g input:focus{ outline:2px solid var(--accent); border-radius:4px; }
-  td.ok{ background:#cdeed6; }                       /* распозналось и применится */
-  td.empty{ background:#e9f5ed; }                    /* пусто — проверено, ничего не меняем */
-  td.warnc{ background:#fce9c8; }                    /* применится, но стоит глянуть */
-  td.badc{ background:#f7c3bd; box-shadow:inset 0 0 0 2px #c0392b; }   /* вопрос — должно бросаться в глаза */
+  td.g input{ width:100%; min-height:0; border:0; border-radius:0; background:transparent; font:inherit; text-align:center; padding:var(--s-1) 0; color:inherit; }
+  td.g input:focus{ outline:2px solid var(--accent); border-radius:var(--r-xs); box-shadow:none; }
+  /* статусы клеток — через td.g, иначе подсветка строки темы при наведении перекрывает цвет */
+  td.g.ok{ background:var(--heat-ok); color:inherit; }                   /* распозналось и применится */
+  td.g.empty{ background:var(--green-bg); color:inherit; padding:0 var(--s-1); font:400 13px/1.45 var(--font); }  /* пусто — проверено, ничего не меняем */
+  td.g.warnc{ background:var(--heat-over); }                             /* применится, но стоит глянуть */
+  td.g.badc{ background:var(--heat-stop); box-shadow:inset 0 0 0 2px var(--red); }   /* вопрос — должно бросаться в глаза */
   /* выведено программой (цепочка стадий или разворот упаковки), а не вписано в лист:
      синий пунктир + курсив, чтобы происхождение цифры было видно с одного взгляда */
-  td.derived:not(.badc){ background:#e8f0fe; box-shadow:inset 0 0 0 1px #a8c7fa; }
+  td.g.derived:not(.badc){ background:var(--accent-bg); box-shadow:inset 0 0 0 1px var(--bar); }
   /* стадию программа посчитала, но в цеху уже столько же или больше — трогать нечего */
-  td.checked{ background:#e7f6ec; }
+  td.g.checked{ background:var(--green-bg); }
   /* крупная зелёная галочка по центру — «посчитано, в цеху уже столько же, всё в порядке».
      Водяным знаком за полем ввода: клетка остаётся редактируемой, руками цифру вписать можно. */
   td.checked::after{ content:'✓'; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
-                     font-size:15px; font-weight:800; color:#1e8e3e; opacity:.9; pointer-events:none; }
+                     font-size:16px; font-weight:600; color:var(--green); opacity:.9; pointer-events:none; }
   td.checked input{ position:relative; z-index:1; }
-  td.checked input:focus{ background:#fff; }
-  td.derived input{ color:#1a4fa0; font-style:italic; }
+  td.checked input:focus{ background:var(--card); }
+  td.derived input{ color:var(--accent-text); font-style:italic; }
   /* клетка закрыта на бумаге (писать туда нельзя), но работа за ней есть — подписываем операцию */
   /* подтянутое по цепочке — бледной подписью под полем, а не цифрой в поле: поле принадлежит счётчику */
   /* статус записи прямо на клетке: жёлтая — в очереди, зелёная — в листе, красная — не ушла */
-  td.cwait{ box-shadow: inset 0 0 0 2px #f0c36d; }
-  td.cok{ box-shadow: inset 0 0 0 2px #7fc78f; }
-  td.cerr{ box-shadow: inset 0 0 0 2px #e88; }
-  td .drv{ display:block; font-size:9px; line-height:1.1; color:#9aa4bb; text-align:center; }
-  td.derived .opn{ display:block; font-size:8.5px; line-height:1.1; color:#4a7fd4; text-align:center;
+  td.g.cwait{ box-shadow: inset 0 0 0 2px var(--amber); }
+  td.g.cok{ box-shadow: inset 0 0 0 2px var(--green); }
+  td.g.cerr{ box-shadow: inset 0 0 0 2px var(--red); }
+  td .drv{ display:block; font-size:9px; line-height:1.1; color:var(--muted); text-align:center; }
+  td.derived .opn{ display:block; font-size:9px; line-height:1.1; color:var(--accent-text); text-align:center;
                    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:-2px; }
   td.closedop{ height:34px; }
-  td.derived::after{ content:'ƒ'; position:absolute; top:0; right:2px; font-size:9px; color:#4a7fd4; }
+  td.derived::after{ content:'ƒ'; position:absolute; top:0; right:2px; font-size:9px; color:var(--accent-text); }
   td.cell{ position:relative; }
-  td.badc input{ font-weight:800; color:#8b1d13; }
+  td.badc input{ font-weight:600; color:var(--red); }
   td.g{ position:relative; }
-  td.g b.mk{ position:absolute; top:1px; right:3px; font-size:9px; font-weight:800; color:#c0392b; }
-  .lgnd{ display:flex; gap:14px; flex-wrap:wrap; font-size:12px; color:#4a5468; margin:6px 0 2px; }
-  .lgnd i{ display:inline-block; width:11px; height:11px; border-radius:3px; margin-right:5px; vertical-align:-1px; border:1px solid rgba(0,0,0,.08); }
+  td.g b.mk{ position:absolute; top:1px; right:3px; font-size:9px; font-weight:600; color:var(--red); }
+  .lgnd{ display:flex; gap:var(--s-4); flex-wrap:wrap; font:var(--t-small); color:var(--fg2); margin:var(--s-2) 0 var(--s-1); }
+  .lgnd i{ display:inline-block; width:12px; height:12px; border-radius:3px; margin-right:6px; vertical-align:-1px; border:1px solid var(--line); }
   @media print{ .lgnd,#pane_load .card{ display:none !important; } }
-  .pb{ font-size:10px; color:#2b6ef6; font-weight:700; }
-  td.vd{ padding-left:16px; font-weight:600; color:#4a5468; font-size:11.5px; }
+  .pb{ font-size:11px; color:var(--accent-text); font-weight:600; }
+  td.vd{ padding-left:var(--s-4); font-weight:600; color:var(--fg2); font-size:11px; }
   tr.hasv td.det{ border-bottom:0; }
-  td.down,td.up,td.cell.down,td.cell.up{ background:#f2f4f8; text-align:center; color:#aeb6c6; font-size:10px; }
-  th.qc{ font-size:10.5px; }
-  th.qc.w{ background:#fdf1dc; }
-  th.qc.a{ background:#e3f3e7; }
-  tr.vrow td{ background:#fcfdff; }
-  .foot{ margin-top:10px; font-size:12px; color:#4a5468; display:flex; gap:24px; flex-wrap:wrap; }
+  td.down,td.up,td.cell.down,td.cell.up{ background:var(--grey-bg); text-align:center; color:var(--muted); font-size:11px; }
+  th.qc{ font-size:10px; }
+  th.qc.w{ background:var(--amber-bg); }
+  th.qc.a{ background:var(--green-bg); }
+  tr.vrow td{ background:var(--card); }
+  .foot{ margin-top:var(--s-3); font:var(--t-small); color:var(--fg2); display:flex; gap:var(--s-5); flex-wrap:wrap; }
 
   @media print{
-    body{ background:#fff; }
     /* без print-color-adjust браузер при печати выкидывает фоны — штриховка пропадала */
     td.cell.no,td.cell.up,td.cell.down,th{ -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-    td.cell.no{ background:repeating-linear-gradient(135deg,#fff,#fff 3px,#bcc3d1 3px,#bcc3d1 5px) !important; }
-    .wrap{ max-width:none; padding:0; }
+    td.cell.no{ background:repeating-linear-gradient(135deg,var(--card),var(--card) 3px,var(--line2) 3px,var(--line2) 5px) !important; }
     .noprint{ display:none !important; }
     .sheet{ border:0; border-radius:0; padding:0; }
     th,td{ font-size:11px; }
+    .legend{ font-size:11px; }
     td.det,td.cell{ height:24px; }
     /* книжная: колонок столько же, поэтому ужимаем шрифт и высоту строки */
-    body.port th,body.port td{ font-size:9.5px; padding:0 3px; }
+    body.port th,body.port td{ font-size:9px; padding:0 var(--s-1); }
     body.port td.det,body.port td.cell{ height:21px; }
-    body.port th{ font-size:9px; padding:3px 2px; }
-    body.port th .hint{ font-size:7.5px; line-height:1.1; margin-top:2px; }
+    body.port th{ font-size:9px; padding:var(--s-1) 2px; }
+    body.port th .hint{ font-size:8px; line-height:1.1; margin-top:2px; }
     body.port .stitle{ font-size:16px; }
     body.port .legend,body.port .sline{ font-size:10px; }
-    body.port .gt{ font-size:12.5px; }
+    body.port .gt{ font-size:13px; }
     body.port td.n{ width:34px; }
     body.port th.det{ width:22%; }
     body.port td.cell{ width:5.6%; }
-    body.port .foot{ font-size:10.5px; }
+    body.port .foot{ font-size:10px; }
   }
 </style>
 
 <style id="pagecss">@page{ size:A4 landscape; margin:10mm; }</style>
+<body class="w-full">
 <div class="wrap">
   <div class="bar noprint">
     <b>📋 Переучёт</b>
-    <button class="tb on" id="tb_print" onclick="tab('print')">🖨 Печать листа</button>
-    <button class="tb" id="tb_load" onclick="tab('load')">📷 Загрузка и сверка</button>
-    <button class="tb" id="tb_hist" onclick="tab('hist')">🕘 История</button>
+    <button class="tb sec on" id="tb_print" onclick="tab('print')">🖨 Печать листа</button>
+    <button class="tb sec" id="tb_load" onclick="tab('load')">📷 Загрузка и сверка</button>
+    <button class="tb sec" id="tb_hist" onclick="tab('hist')">🕘 История</button>
   </div>
   <div class="bar noprint" id="bar_print">
     <select id="ord" onchange="load()"></select>
@@ -178,8 +170,8 @@ function twTok(){ try{ return twQp('tok')||localStorage.getItem('tw_tok')||''; }
 function twQp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
 (function(){ var t=twQp('tok'); if(t){ try{ localStorage.setItem('tw_tok',t); }catch(e){} } })();
 function twAuthWall(r){
-  if(r&&r.needAuth){ document.body.innerHTML='<div style="padding:28px;font:16px/1.55 -apple-system,Roboto,Segoe UI,Arial;color:#1b2333">'
-    +'<div style="font-size:20px;font-weight:800;margin-bottom:10px">🔒 Нужен вход</div>'
+  if(r&&r.needAuth){ document.body.innerHTML='<div style="padding:var(--s-6);font:var(--t-body);color:var(--fg)">'
+    +'<div style="font:var(--t-title);margin-bottom:var(--s-3)">🔒 Нужен вход</div>'
     +'<div>'+String(r.error||'Откройте сервис из бота @TWOtchbot или войдите по личному коду.')+'</div></div>'; }
   return r;
 }
@@ -201,10 +193,10 @@ function checksHtml(c, lost){
   var grp={}, ord=[];
   ps.forEach(function(x){ var k=x.level+'|'+x.msg; if(!grp[k]){ grp[k]={level:x.level,msg:x.msg,items:[]}; ord.push(k); } grp[k].items.push(x); });
   return '<div class="card noprint"><div class="stat"><b>⚠️ Заказ посчитается не полностью</b>'
-    +(st.stop?('<span class="flag bad">мешает переучёту: '+st.stop+'</span>'):'')
-    +(st.warn?('<span class="flag">стоит поправить: '+st.warn+'</span>'):'')+'</div>'
+    +(st.stop?('<span class="pill bad">✕ мешает переучёту: '+st.stop+'</span>'):'')
+    +(st.warn?('<span class="pill warn">⏳ стоит поправить: '+st.warn+'</span>'):'')+'</div>'
     +ord.map(function(k){ var g=grp[k];
-      return '<div class="rowline"><span class="flag '+(g.level==='стоп'?'bad':'')+'">'+esc(g.level)+'</span>'
+      return '<div class="rowline"><span class="pill '+(g.level==='стоп'?'bad':'warn')+'">'+(g.level==='стоп'?'✕ ':'⏳ ')+esc(g.level)+'</span>'
         +'<span class="grow"><b>'+esc(g.msg)+'</b><div class="mini">'
         +g.items.filter(function(x){return x.detail;}).slice(0,8).map(function(x){
             return esc([x.detail,x.stage,x.model].filter(Boolean).join(' · ')); }).join('<br>')
@@ -344,7 +336,7 @@ function draw(){
 var TAB='print', INV='', DRAFT=null, UPQ=[], ALLROWS=false;
 function tab(t){
   TAB=t;
-  ['print','load','hist'].forEach(function(x){ var b=document.getElementById('tb_'+x); if(b) b.className='tb'+(x===t?' on':''); });
+  ['print','load','hist'].forEach(function(x){ var b=document.getElementById('tb_'+x); if(b) b.className='tb sec'+(x===t?' on':''); });
   document.getElementById('bar_print').className='bar noprint'+(t==='print'?'':' hide');
   document.getElementById('out').className=(t==='print'?'':'hide');
   document.getElementById('pane_load').className='noprint'+(t==='load'?'':' hide');
@@ -379,17 +371,17 @@ function drawLoad(){
   var box=document.getElementById('pane_load'), d=DRAFT;
   var st=d.stat||{}, ST=d.stages||[], C=d.cells||{}, INFO=d.info||{};
   var SPLIT=(d.splitAt!=null?d.splitAt:ST.indexOf('Покрашено'));
-  var upl='<div class="card"><div class="row" style="margin-bottom:6px"><b>📷 Страницы переучёта</b>'
+  var upl='<div class="card"><div class="row" style="margin-bottom:var(--s-2)"><b>📷 Страницы переучёта</b>'
     +'<span class="muted">загружено файлов: '+(d.head.files||0)+'</span></div>'
     +'<input type="file" id="pages" accept="image/*,application/pdf" multiple onchange="pickPages(this.files)">'
-    +'<div class="mini" style="margin-top:5px">Можно по одной странице и в любом порядке. Незаполненные клетки программа пропускает сама.</div>'
-    +'<div class="row" style="margin-top:8px;gap:8px"><b>✍️ Вписывайте, сколько нашли на участке</b>'
+    +'<div class="mini" style="margin-top:var(--s-1)">Можно по одной странице и в любом порядке. Незаполненные клетки программа пропускает сама.</div>'
+    +'<div class="row" style="margin-top:var(--s-2)"><b>✍️ Вписывайте, сколько нашли на участке</b>'
     +'<span class="mini">Серые цифры под полем — что программа подтянет по цепочке при проведении. '
     +'Рамка клетки: 🟡 в очереди · 🟢 записано в лист · 🔴 не ушло, повторю сам.</span>'
     +'<span style="flex:1"></span><span id="invsave" class="mini"></span>'
-    +'<button class="sm gray" onclick="recalcDraft()">↻ пересчитать цепочку</button></div>'
+    +'<button class="sm sec" onclick="recalcDraft()">↻ пересчитать цепочку</button></div>'
     +'<div id="uplbox"></div>'
-    +(RESUMED?('<div class="mini" style="margin-top:6px;color:#8a5a00"><b>Это уже начатый переучёт</b> — по заказу может быть только один незакрытый черновик. '
+    +(RESUMED?('<div class="mini" style="margin-top:var(--s-2);color:var(--amber)"><b>Это уже начатый переучёт</b> — по заказу может быть только один незакрытый черновик. '
       +'Загруженные страницы лягут поверх того, что здесь уже есть. Чтобы считать с нуля, удалите черновик кнопкой ниже.</div>'):'')
     +'</div>';
 
@@ -475,17 +467,17 @@ function drawLoad(){
   }).join('');
 
   var bar='<div class="card"><div class="stat">'
-    +'<span class="flag ok">применится: '+(st.apply||0)+'</span>'
-    +((st.ask||0)?('<span class="flag bad">разобраться: '+st.ask+'</span>'):'')
-    +((st.skip||0)?('<span class="flag bad">не применится: '+st.skip+'</span>'):'')
+    +'<span class="pill ok">✓ применится: '+(st.apply||0)+'</span>'
+    +((st.ask||0)?('<span class="pill bad">✕ разобраться: '+st.ask+'</span>'):'')
+    +((st.skip||0)?('<span class="pill bad">✕ не применится: '+st.skip+'</span>'):'')
     +'<span class="muted">изменит остатки: '+(st.diffs||0)+' · прочитано как «'+esc(d.mode==='факт'?'лежит сейчас':'всего прошло')+'»</span></div>'
-    +'<div class="lgnd"><span><i style="background:#cdeed6"></i>распозналось, применится</span>'
-    +'<span><i style="background:#e9f5ed"></i>пусто — проверено, не меняем</span>'
-    +'<span><i style="background:#e8f0fe;box-shadow:inset 0 0 0 1px #a8c7fa"></i>ƒ вывела программа (только вверх)</span>'
-    +'<span><i style="background:#e7f6ec"></i><b style="color:#1e8e3e">✓</b> проверено — в цеху уже столько же</span>'
-    +'<span><i style="background:#fce9c8"></i>применится, но есть замечание</span>'
-    +'<span><i style="background:#f7c3bd;outline:2px solid #c0392b"></i>вопрос — наведите, чтобы увидеть</span></div>'
-    +'<div class="mini" style="margin-bottom:6px">Цифру в любой клетке можно поправить руками — сверяйтесь с бумажным листом.</div>'
+    +'<div class="lgnd"><span><i style="background:var(--heat-ok)"></i>распозналось, применится</span>'
+    +'<span><i style="background:var(--green-bg)"></i>пусто — проверено, не меняем</span>'
+    +'<span><i style="background:var(--accent-bg);box-shadow:inset 0 0 0 1px var(--bar)"></i>ƒ вывела программа (только вверх)</span>'
+    +'<span><i style="background:var(--green-bg)"></i><b class="ok">✓</b> проверено — в цеху уже столько же</span>'
+    +'<span><i style="background:var(--heat-over)"></i>применится, но есть замечание</span>'
+    +'<span><i style="background:var(--heat-stop);outline:2px solid var(--red)"></i>вопрос — наведите, чтобы увидеть</span></div>'
+    +'<div class="mini" style="margin-bottom:var(--s-2)">Цифру в любой клетке можно поправить руками — сверяйтесь с бумажным листом.</div>'
     +'<button class="pri" onclick="applyInv()">✅ Провести переучёт</button> <span class="msg" id="apmsg"></span></div>';
 
   box.innerHTML=checksHtml(d.checks, d.lost)+upl
@@ -590,7 +582,7 @@ function applyInv(){
   // раньше просто потеряло бы её из переучёта.
   if(SAVING||cntPend()){
     var m0=document.getElementById('apmsg');
-    if(m0) m0.innerHTML='<span style="color:#8a5a00">дописываю последние цифры ('+(cntPend()+(SAVING?1:0))+')… проведу сам</span>';
+    if(m0) m0.innerHTML='<span class="warn">дописываю последние цифры ('+(cntPend()+(SAVING?1:0))+')… проведу сам</span>';
     if(cntPend()&&!SAVING) flushCells();
     setTimeout(applyInv, 800); return;
   }
@@ -599,7 +591,7 @@ function applyInv(){
   api({vapi:'invapply',inv:INV}).then(function(r){
     if(!r||!r.ok){ if(m) m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; return; }
     var b=r.before||{}, a=r.after||{};
-    if(m) m.innerHTML='<span style="color:#137333">✓ применено строк '+r.applied+'</span>';
+    if(m) m.innerHTML='<span class="ok">✓ применено строк '+r.applied+'</span>';
     var done=r.invId||INV;
     INV=''; UPQ=[]; DRAFT=null;
     tab('hist'); showReport(done);
@@ -614,16 +606,16 @@ function loadHist(){
     if(!r||!r.ok){ box.innerHTML='<div class="card err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
     var l=r.list||[];
     if(!l.length){ box.innerHTML='<div class="card muted">По этому заказу переучётов ещё не было.</div>'; return; }
-    box.innerHTML='<div class="card"><div style="font-weight:800;margin-bottom:6px">🕘 Переучёты заказа</div>'
+    box.innerHTML='<div class="card"><div style="font:var(--t-heading);margin-bottom:var(--s-2)">🕘 Переучёты заказа</div>'
       +l.map(function(x){
         return '<div class="rowline"><span style="min-width:130px"><b>№'+x.num+'</b> '+esc(x.date||x.created)+'</span>'
           +'<span style="min-width:150px" class="mini">считал '+esc(x.counter||'—')+'</span>'
-          +'<span class="flag'+(x.status==='применён'?' ok':(x.status==='отменён'?' bad':''))+'">'+esc(x.status)+'</span>'
+          +'<span class="pill'+(x.status==='применён'?' ok':(x.status==='отменён'?' bad':' warn'))+'">'+(x.status==='применён'?'✓ ':(x.status==='отменён'?'✕ ':'⏳ '))+esc(x.status)+'</span>'
           +'<span class="mini">строк '+x.rows+' · применено '+x.applied+' · изменило остатки '+x.diffs+'</span>'
-          +((x.status==='применён'&&x.pctWas)?('<span class="flag">% труда '+x.pctWas+' → '+x.pctNew+' · осталось '+x.leftWas+' → '+x.leftNew+' р.</span>'):'')
+          +((x.status==='применён'&&x.pctWas)?('<span class="pill">% труда '+x.pctWas+' → '+x.pctNew+' · осталось '+x.leftWas+' → '+x.leftNew+' р.</span>'):'')
           +(x.applier?('<span class="mini">применил '+esc(x.applier)+'</span>'):'')
-          +(x.status!=='черновик'?('<button class="tb" onclick="showReport(\''+esc(x.id)+'\')">📊 что изменилось</button>'):'')
-          +(x.status==='применён'?('<button class="tb" onclick="undoInv(\''+esc(x.id)+'\')">↩ откатить</button>'):'')
+          +(x.status!=='черновик'?('<button class="tb sec sm" onclick="showReport(\''+esc(x.id)+'\')">📊 что изменилось</button>'):'')
+          +(x.status==='применён'?('<button class="tb sec sm" onclick="undoInv(\''+esc(x.id)+'\')">↩ откатить</button>'):'')
           +'</div>';
       }).join('')+'</div>';
   }).catch(function(){ box.innerHTML='<div class="card err">сеть недоступна</div>'; });
@@ -642,22 +634,22 @@ function showReport(id){
         +(x.model?(' <span class="mini">'+esc(x.model)+'</span>'):'')+'</span>'
         +'<span class="mini" style="min-width:150px">'+esc(x.stage)+' · '+esc(x.op)+'</span>'
         +'<span style="min-width:170px">сделано всего '+x.readyWas+' → <b>'+x.readyNew+'</b> из '+x.need+'</span>'
-        +'<span class="flag '+(up?'ok':'bad')+'">'+(up?'+':'')+Math.round(x.delta)+' шт</span>'
+        +'<span class="pill '+(up?'ok':'bad')+'">'+(up?'✓ +':'✕ ')+Math.round(x.delta)+' шт</span>'
         +'<span class="mini">'+(up?'+':'')+x.rub+' р. труда</span>'
         +'<span class="mini" title="начальный остаток — ручная часть; к ней прибавляются наряды">остаток '+x.was+' → '+x.now+' · по нарядам '+x.done+'</span>'
-        +(x.note?('<span class="flag bad">'+esc(x.note)+'</span>'):'')+'</div>';
+        +(x.note?('<span class="pill bad">✕ '+esc(x.note)+'</span>'):'')+'</div>';
     }).join('');
-    box.innerHTML='<div class="card"><div class="row" style="margin-bottom:6px">'
+    box.innerHTML='<div class="card"><div class="row" style="margin-bottom:var(--s-2)">'
       +'<b>📊 Что изменил переучёт №'+(r.head.num||'')+'</b>'
-      +'<button class="tb" onclick="loadHist()">← к списку</button></div>'
+      +'<button class="tb sec sm" onclick="loadHist()">← к списку</button></div>'
       +'<div class="stat">'
-      +'<span class="flag '+(dPct>=0?'ok':'bad')+'">% труда: '+(k.pctWas||0)+' → '+(k.pctNew||0)+' ('+(dPct>0?'+':'')+dPct+')</span>'
-      +'<span class="flag '+(dLeft<=0?'ok':'bad')+'">осталось: '+(k.leftWas||0)+' → '+(k.leftNew||0)+' р. ('+(dLeft>0?'+':'')+dLeft+')</span>'
+      +'<span class="pill '+(dPct>=0?'ok':'bad')+'">'+(dPct>=0?'✓ ':'✕ ')+'% труда: '+(k.pctWas||0)+' → '+(k.pctNew||0)+' ('+(dPct>0?'+':'')+dPct+')</span>'
+      +'<span class="pill '+(dLeft<=0?'ok':'bad')+'">'+(dLeft<=0?'✓ ':'✕ ')+'осталось: '+(k.leftWas||0)+' → '+(k.leftNew||0)+' р. ('+(dLeft>0?'+':'')+dLeft+')</span>'
       +'</div>'
       +'<div class="mini">Изменено операций: <b>'+(t.changed||0)+'</b> — остаток вырос у '+(t.up||0)
       +' (на '+(t.qtyUp||0)+' шт, +'+(t.rubUp||0)+' р.), упал у '+(t.down||0)+' (на '+(t.qtyDown||0)+' шт, −'+(t.rubDown||0)+' р.).'
       +'<br>Начальные остатки — это то, что было сделано ДО программы. Наряды рабочих не менялись.</div></div>'
-      +(rows?('<div class="card"><div style="font-weight:800;margin-bottom:4px">Сдвиги, начиная с самых крупных</div>'+rows+'</div>')
+      +(rows?('<div class="card"><div style="font:var(--t-heading);margin-bottom:var(--s-1)">Сдвиги, начиная с самых крупных</div>'+rows+'</div>')
             :'<div class="card muted">Остатки не изменились.</div>');
   }).catch(function(){ box.innerHTML='<div class="card err">сеть недоступна</div>'; });
 }

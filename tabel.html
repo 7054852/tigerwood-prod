@@ -3,36 +3,20 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="tw-theme.js"></script>
 <title>Тигервуд — табель и заработок</title>
 <style>
-  :root{ --bg:#f4f6fb; --card:#fff; --fg:#1b2333; --muted:#8a93a6; --line:#e6e9f2; --accent:#2b7de9; --green:#137333; --amber:#b7791f; --red:#c0392b; }
-  *{box-sizing:border-box;} html,body{margin:0;background:var(--bg);}
-  body{ font-family:-apple-system,Roboto,Segoe UI,Arial,sans-serif; color:var(--fg); padding:14px; max-width:960px; margin:0 auto; font-size:14px; }
-  .hi{ font-size:19px; font-weight:800; margin-bottom:10px; }
-  .muted{ color:var(--muted); font-size:13px; }
-  .center{ text-align:center; padding:24px; } .err{ color:var(--red); } .ok{ color:var(--green); }
-  .box{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; margin-bottom:12px; overflow-x:auto; }
-  .row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-  select,input{ font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--fg); }
-  button{ font:inherit; font-weight:600; border:0; border-radius:9px; padding:7px 12px; cursor:pointer; background:var(--accent); color:#fff; }
-  button.sec{ background:#eef2fb; color:var(--accent); } button.gho{ background:transparent; color:var(--muted); padding:4px 7px; }
-  .tabs{ display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap; }
-  .tabs button{ background:#eef2fb; color:var(--accent); } .tabs button.active{ background:var(--accent); color:#fff; }
-  .pill{ font-size:11.5px; font-weight:700; border-radius:20px; padding:2px 9px; display:inline-block; }
-  .num{ font-variant-numeric:tabular-nums; }
-  table{ border-collapse:collapse; width:100%; font-size:13px; }
-  th,td{ padding:5px 8px; border-bottom:1px solid var(--line); text-align:left; vertical-align:middle; }
-  th.num,td.num{ text-align:right; }
-  /* строка сотрудника в табеле */
+  .hi{ margin-bottom:var(--s-3); }
+  .box{ margin-bottom:var(--s-3); }
   /* месяц */
-  .mgrid td,.mgrid th{ padding:3px 4px; font-size:11.5px; text-align:center; white-space:nowrap; }
+  .mgrid td,.mgrid th{ padding:var(--s-1); font-size:11px; text-align:center; white-space:nowrap; }
   .mgrid td.nm{ text-align:left; font-weight:600; white-space:nowrap; }
-  .mgrid td{ cursor:pointer; transition:background .12s ease; -webkit-tap-highlight-color:transparent; }
-  .mgrid tr:hover td{ background:rgba(43,125,233,.10); }
-  .mgrid tr:hover td.cell-d{ background:#ffe9b3; } .mgrid tr:hover td.cell-n{ background:#cdd6ff; }
-  .mgrid col.hl{ background:rgba(43,125,233,.08); }
-  .mgrid th.hl{ background:#2b7de9; color:#fff; border-radius:6px; }
-  .mgrid td.nm.hl{ color:#2b7de9; }
+  .mgrid td{ cursor:pointer; transition:background-color .12s var(--ease); -webkit-tap-highlight-color:transparent; }
+  .mgrid tr:hover td{ background:var(--accent-bg); }
+  .mgrid tr:hover td.cell-d{ background:var(--heat-over); } .mgrid tr:hover td.cell-n{ background:var(--bar); }
+  .mgrid col.hl{ background:var(--accent-bg); }
+  .mgrid th.hl{ background:var(--accent); color:var(--on-accent); border-radius:var(--r-xs); }
+  .mgrid td.nm.hl{ color:var(--accent-text); }
   .mgrid td.nm, .mgrid th{ cursor:default; }
   /* ⚠ имя работника прибито слева: на телефоне видно 9 дней из 30, и при прокрутке вправо
      строка теряла хозяина — было не понять, чей это график */
@@ -40,106 +24,81 @@
   /* ⚠ у скролл-контейнера НЕ должно быть боковых отступов: прилипшая колонка встаёт по краю
      padding-box, а прокручиваемая таблица видна в самом padding — числа подглядывали слева от ФИО */
   .box.mgrid{ padding-left:0; padding-right:0; }
-  .mgrid td.nm{ padding-left:12px; } .mgrid th:first-child{ padding-left:12px; }
+  .mgrid td.nm{ padding-left:var(--s-3); } .mgrid th:first-child{ padding-left:var(--s-3); }
   .mgrid td:active{ filter:brightness(.9); }
   /* выходные: колонка приглушена, число красным — чтобы суббота с воскресеньем читались без счёта по пальцам */
-  .mgrid td.we{ background:#eef0f5; } .mgrid th.we{ background:#eef0f5; color:var(--red); border-radius:6px; }
-  .mgrid tr:hover td.we{ background:#e2e6ef; }
-  /* праздник — тот же серый, но число с точкой: чтобы 7 января отличалось от обычной субботы */
-  .mgrid th.hol{ background:#fbe3e0; color:var(--red); font-weight:800; }
-  .mgrid td.hol{ background:#faeceb; } .mgrid tr:hover td.hol{ background:#f5dedc; }
+  .mgrid td.we{ background:var(--grey-bg); } .mgrid th.we{ background:var(--grey-bg); color:var(--red); border-radius:var(--r-xs); }
+  .mgrid tr:hover td.we{ background:var(--line); }
+  /* праздник — тот же приём, но розовая подложка: чтобы 7 января отличалось от обычной субботы */
+  .mgrid th.hol{ background:var(--red-bg); color:var(--red); font-weight:600; }
+  .mgrid td.hol{ background:var(--red-bg); } .mgrid tr:hover td.hol{ background:var(--heat-stop); }
   /* ⚠ смена важнее выходного: правило .mgrid td.we специфичнее голого .cell-d, и без .mgrid td
      здесь ☀️/🌙 в субботу теряли свой цвет и клетка выглядела пустой */
   /* метка факта поверх значка смены: день/ночь остаётся видно, факт читается сразу */
-  .mgrid td .fk{ font-size:9px; vertical-align:super; margin-left:1px; }
-  .mgrid td .fk.ok{ color:#137333; } .mgrid td .fk.no{ color:#c0392b; }
+  .mgrid td .fk{ font-size:11px; vertical-align:super; }
+  .mgrid td .fk.ok{ color:var(--green); } .mgrid td .fk.no{ color:var(--red); }
   /* факт, выведенный из наряда: тот же зелёный, но полупрозрачный — видно, что это вывод,
      а не отметка руководителя. ⚠ — наряд есть, а отмечено «не вышел»: противоречие, разобраться. */
-  .mgrid td .fk.auto{ color:#137333; opacity:.6; } .mgrid td .fk.warn{ color:#b06000; opacity:.9; }
-  .cell-work, .mgrid td.cell-work{ background:#eaf6ec; }
-  .tabs.mmode button{ font-size:13px; }
+  .mgrid td .fk.auto{ color:var(--green); opacity:.6; } .mgrid td .fk.warn{ color:var(--amber); opacity:.9; }
+  .cell-work, .mgrid td.cell-work{ background:var(--green-bg); }
   /* на телефоне клетка — под палец: 20 px в режиме отметки означало бы попадание в соседний день */
-  @media (max-width:760px){
+  @media (max-width:640px){
     .mgrid td[data-d]{ min-width:30px; height:32px; font-size:13px; }
-    .tabs.mmode button{ flex:1; padding:9px 6px; }
+    .tabs.mmode button{ flex:1; padding:0 var(--s-2); }
   }
-  .cell-d, .mgrid td.cell-d{ background:#fff3d6; } .cell-n, .mgrid td.cell-n{ background:#e3e8ff; }
-  .cell-out{ outline:2px solid #7fc78f; outline-offset:-2px; } .cell-no{ outline:2px solid #e88; outline-offset:-2px; text-decoration:line-through; }
-  /* план на день */
-  .kpi{ display:flex; gap:18px; flex-wrap:wrap; font-weight:700; }
-  .kpi b{ font-size:17px; } .kpi .k{ color:var(--muted); font-weight:600; font-size:12px; display:block; }
-  .gbar{ height:6px; background:#eef1f8; border-radius:6px; overflow:hidden; }
-  .gbar>i{ display:block; height:100%; background:var(--accent); }
+  .cell-d, .mgrid td.cell-d{ background:var(--amber-bg); } .cell-n, .mgrid td.cell-n{ background:var(--blue-bg); }
+  .cell-out{ outline:2px solid var(--green); outline-offset:-2px; } .cell-no{ outline:2px solid var(--red); outline-offset:-2px; text-decoration:line-through; }
+  /* сводка месяца */
+  .kpi{ display:flex; gap:var(--s-5); flex-wrap:wrap; }
+  .kpi b{ font:var(--t-heading); font-variant-numeric:tabular-nums; }
+  .kpi .k{ display:block; font:var(--t-small); color:var(--muted); }
   /* ── ведомость заработка: ровная сетка «рабочий × дни месяца» ── */
-  .paywrap{ overflow-x:auto; border:1px solid var(--line); border-radius:12px; background:var(--card); }
-  table.pay{ border-collapse:separate; border-spacing:0; table-layout:fixed; font-size:12.5px;
+  .paywrap{ overflow-x:auto; border:1px solid var(--line); border-radius:var(--r-card); background:var(--card); }
+  table.pay{ border-collapse:separate; border-spacing:0; table-layout:fixed; font-size:13px;
              font-variant-numeric:tabular-nums; }
   table.pay col.c-nm{ width:190px; } table.pay col.c-tot{ width:92px; }
   table.pay col.c-d{ width:44px; } table.pay col.c-sm{ width:52px; }
   table.pay th,table.pay td{ border-bottom:1px solid var(--line); border-right:1px solid var(--line);
-    padding:0 7px; height:34px; text-align:right; overflow:hidden; }
-  table.pay thead th{ position:sticky; top:0; z-index:4; background:#f2f5fb; color:#5a6478;
-    font-size:11px; font-weight:700; height:30px; }
+    padding:0 var(--s-2); height:34px; text-align:right; overflow:hidden; }
+  table.pay thead th{ position:sticky; top:0; z-index:4; background:var(--bg2); color:var(--muted);
+    font-size:11px; font-weight:600; height:32px; }
   table.pay .nmc{ text-align:left; position:sticky; left:0; z-index:5; background:var(--card);
-    font-weight:700; white-space:nowrap; text-overflow:ellipsis; }
-  table.pay thead .nmc{ background:#f2f5fb; z-index:6; }
-  table.pay .totc{ position:sticky; left:190px; z-index:5; background:#f6faf7; font-weight:800; color:#137333;
-    box-shadow:3px 0 6px rgba(20,30,60,.08); }
-  table.pay thead .totc{ background:#eaf4ec; color:#137333; z-index:6; }
+    font-weight:600; white-space:nowrap; text-overflow:ellipsis; }
+  table.pay thead .nmc{ background:var(--bg2); z-index:6; }
+  table.pay .totc{ position:sticky; left:190px; z-index:5; background:var(--green-bg); font-weight:600; color:var(--green);
+    box-shadow:2px 0 0 var(--line); }
+  table.pay thead .totc{ background:var(--green-bg); color:var(--green); z-index:6; }
   /* ⚠ этот медиаблок обязан идти ПОСЛЕ правил выше: специфичность одинаковая, побеждает последний.
      На телефоне 190px под имя — больше половины экрана, на дни не остаётся места. Ужимаем колонку
      и шрифт, но фамилию с именем по-прежнему показываем целиком (проверено: самое длинное влезает).
      Сдвиг липкой «Итого» обязан совпадать с шириной колонки, иначе она наедет на имя. */
-  @media (max-width:760px){
+  @media (max-width:640px){
     table.pay .sub .avgd, table.pay .sub .pt{ display:none; }
-    table.pay .sub .pc + .pc{ margin-left:7px; }
+    table.pay .sub .pc + .pc{ margin-left:var(--s-2); }
     table.pay col.c-nm{ width:150px; }
-    table.pay .nmc{ font-size:11.5px; padding-right:4px; }
+    table.pay .nmc{ font-size:11px; padding-right:var(--s-1); }
     table.pay .totc{ left:150px; }
   }
-  table.pay tbody tr:hover td{ background:#fafcff; }
-  table.pay tbody tr:hover .nmc{ background:#fafcff; } table.pay tbody tr:hover .totc{ background:#eef7f0; }
-  table.pay td.wknd{ background:#fbfbfd; } table.pay th.wknd{ background:#e9edf6; }
-  table.pay .tdy{ box-shadow:inset 0 0 0 2px #f0c14b; }
-  table.pay thead th.tdy{ background:#fdf3d4; color:#8a6d00; }
-  table.pay .zero{ color:#d3d8e3; }
-  table.pay tfoot td{ position:sticky; bottom:0; background:#eef2f9; font-weight:800; z-index:4;
-    border-top:2px solid #d5dced; }
-  table.pay tfoot .nmc{ background:#eef2f9; z-index:6; }
-  table.pay tfoot .totc{ background:#e3efe6; z-index:6; }
-  table.pay .nn{ font-size:9px; opacity:.75; margin-left:1px; }
-  table.pay .sub{ display:block; font-weight:400; font-size:10px; color:var(--muted); line-height:1.1; margin-top:-3px; }
-  .pnd{ display:inline-block; margin-left:4px; font-size:9.5px; font-weight:700; color:#8a6d00;
-    background:#fff3d6; border-radius:10px; padding:0 5px; vertical-align:1px; }
-  /* ── ВИДИМАЯ РЕАКЦИЯ. На телефоне нет наведения курсором: если кнопка не «продавливается»,
-     человек не понимает, нажал он или промахнулся, и жмёт ещё раз — отсюда дубли. ── */
-  button{ touch-action:manipulation; -webkit-tap-highlight-color:transparent;
-          transition:transform .06s ease, filter .12s ease, opacity .12s ease; }
-  button:active{ transform:scale(.94); filter:brightness(.86); }
-  button[disabled]{ opacity:.5; pointer-events:none; }
-  a[href^="javascript"]{ -webkit-tap-highlight-color:rgba(124,58,237,.15); }
-  /* тонкая полоска сверху — «идёт обмен с сервером» */
-  .zcap{ font-size:12px; padding:4px 0; border-bottom:1px dashed var(--line); margin-bottom:4px; }
-  .capbox input{ width:78px; padding:5px 7px; font-size:13px; }
-  #twload{ position:fixed; left:0; top:0; height:3px; width:100%; z-index:60; display:none; overflow:hidden; }
-  #twload>i{ display:block; height:100%; width:38%; background:var(--accent); animation:twslide 1.1s ease-in-out infinite; }
-  @keyframes twslide{ 0%{ margin-left:-38% } 100%{ margin-left:100% } }
-  /* заслонка на время действия: и показывает, что идёт работа, и физически не даёт нажать второй раз */
-  #twwait{ position:fixed; inset:0; background:rgba(246,247,252,.78); z-index:70; display:none;
-           align-items:center; justify-content:center; }
-  #twwait .wb{ background:#fff; border-radius:16px; padding:18px 22px; text-align:center; min-width:190px;
-               box-shadow:0 12px 34px rgba(20,25,50,.18); }
-  #twwait .sp{ width:28px; height:28px; border:3px solid rgba(124,58,237,.22); border-top-color:var(--accent);
-               border-radius:50%; margin:0 auto 10px; animation:twspin .8s linear infinite; }
-  @keyframes twspin{ to{ transform:rotate(360deg) } }
-  #twwait .wt{ font-weight:700; font-size:15px; }
-  #twwait .wh{ font-size:12.5px; opacity:.6; margin-top:4px; }
+  table.pay tbody tr:hover td{ background:var(--card2); }
+  table.pay tbody tr:hover .nmc{ background:var(--card2); } table.pay tbody tr:hover .totc{ background:var(--green-bg); }
+  /* выходные: клетки — утопленный фон; в шапке (она сама на утопленном фоне) — на ступень темнее */
+  table.pay td.wknd{ background:var(--grey-bg); } table.pay th.wknd{ background:var(--line); }
+  table.pay .tdy{ box-shadow:inset 0 0 0 2px var(--amber); }
+  table.pay thead th.tdy{ background:var(--amber-bg); color:var(--amber); }
+  table.pay .zero{ color:var(--line2); }
+  table.pay tfoot td{ position:sticky; bottom:0; background:var(--bg2); font-weight:600; z-index:4;
+    border-top:2px solid var(--line2); }
+  table.pay tfoot .nmc{ background:var(--bg2); z-index:6; }
+  table.pay tfoot .totc{ background:var(--green-bg); z-index:6; }
+  table.pay .nn{ font-size:11px; opacity:.75; }
+  table.pay .sub{ display:block; font-weight:400; font-size:11px; color:var(--muted); line-height:1.1; margin-top:calc(-1 * var(--s-1)); }
+  .pnd{ display:inline-block; margin-left:var(--s-1); font-size:11px; font-weight:600; color:var(--amber);
+    background:var(--amber-bg); border-radius:var(--r-pill); padding:0 var(--s-1); vertical-align:1px; }
 </style>
 </head>
-<body>
+<body class="w-full">
 <div id="twload"><i></i></div>
 <div id="twwait"><div class="wb"><div class="sp"></div><div class="wt" id="twwt">Отправляю…</div><div class="wh">идёт обмен с сервером — не нажимайте</div></div></div>
-<style>html.emb>body>.hi{display:none}</style><script>if(/[?&]embed=1/.test(location.search))document.documentElement.classList.add('emb');</script>
 <div class="hi">📅 Табель и заработок</div>
 <div id="app"><div class="center muted">Загрузка…</div></div>
 <script>
@@ -151,8 +110,8 @@ function twTok(){ try{ return twQp('tok')||localStorage.getItem('tw_tok')||''; }
 function twQp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
 (function(){ var t=twQp('tok'); if(t){ try{ localStorage.setItem('tw_tok',t); }catch(e){} } })();
 function twAuthWall(r){
-  if(r&&r.needAuth){ document.body.innerHTML='<div style="padding:28px;font:16px/1.55 -apple-system,Roboto,Segoe UI,Arial;color:#1b2333">'
-    +'<div style="font-size:20px;font-weight:800;margin-bottom:10px">🔒 Нужен вход</div>'
+  if(r&&r.needAuth){ document.body.innerHTML='<div style="padding:var(--s-6);font:var(--t-body);color:var(--fg)">'
+    +'<div style="font:var(--t-title);margin-bottom:var(--s-3)">🔒 Нужен вход</div>'
     +'<div>'+String(r.error||'Откройте сервис из бота @TWOtchbot или войдите по личному коду.')+'</div></div>'; }
   return r;
 }
@@ -182,7 +141,7 @@ function shell(){
   app.innerHTML='<div class="tabs">'
     +'<button id="tb-m" onclick="showTab(\'m\')">📅 Табель</button>'
     +'<button id="tb-z" onclick="showTab(\'z\')">💰 Заработок</button></div>'
-    +'<div class="box muted" style="padding:9px 12px">Расстановка по участкам и задания бойцам — в разделе '
+    +'<div class="box muted" style="padding:var(--s-2) var(--s-3)">Расстановка по участкам и задания бойцам — в разделе '
     +'<a href="javascript:void(0)" onclick="goPlan()"><b>📊 Планирование</b></a>.</div>'
     +'<div id="pane"></div>';
   showTab(TAB);
@@ -244,19 +203,19 @@ function renderPay(){
   var bestD=0,bestV=0; cols.forEach(function(d){ if((r.dayTotals[d]||0)>bestV){ bestV=r.dayTotals[d]; bestD=d; } });
   var head='<div class="box"><div class="row">'
     +'<button class="gho" onclick="shiftZ(-1)" title="предыдущий месяц">←</button>'
-    +'<b style="font-size:16px;min-width:130px;text-align:center">'+esc(mLabel)+'</b>'
+    +'<b style="font:var(--t-heading);min-width:130px;text-align:center">'+esc(mLabel)+'</b>'
     +'<button class="gho" onclick="shiftZ(1)" title="следующий месяц">→</button>'
     +'<span style="flex:1"></span>'
-    +'<button class="sec" style="padding:5px 11px;font-size:12px" onclick="togZOnly()">'+(ZONLY?'📅 показать весь месяц':'⚡ только дни с работой')+'</button>'
+    +'<button class="sec sm" onclick="togZOnly()">'+(ZONLY?'📅 показать весь месяц':'⚡ только дни с работой')+'</button>'
     +'</div>'
-    +'<div class="kpi" style="margin-top:10px">'
-      +'<span><span class="k">Зарплата за месяц (подтверждено)</span><b style="color:#137333">'+money(r.grand)+' ₽</b></span>'
+    +'<div class="kpi" style="margin-top:var(--s-3)">'
+      +'<span><span class="k">Зарплата за месяц (подтверждено)</span><b style="color:var(--green)">'+money(r.grand)+' ₽</b></span>'
       +'<span><span class="k">Рабочих</span><b>'+r.workers.length+'</b></span>'
       +'<span><span class="k">В среднем на человека</span><b>'+money(avgPer)+' ₽</b></span>'
       +(bestD?'<span><span class="k">Лучший день</span><b>'+bestD+'.'+ym[1]+' — '+money(bestV)+' ₽</b></span>':'')
-      +(r.sheetTotal>0?'<span><span class="k">🪚 Раскрой листов</span><b style="color:#9a5b12" title="оплата за раскрой листов на ЧПУ: платим за лист, а детали с него уходят в свои заказы">'+money(r.sheetTotal)+' ₽</b></span>':'')
-      +(r.freeTotal>0?'<span><span class="k">Из них вне заказа</span><b style="color:#2b5fd9">'+money(r.freeTotal)+' ₽</b></span>':'')
-      +(r.pendingTotal>0?'<span><span class="k">Ждёт подтверждения</span><b style="color:#8a6d00">'+money(r.pendingTotal)+' ₽</b></span>':'')
+      +(r.sheetTotal>0?'<span><span class="k">🪚 Раскрой листов</span><b style="color:var(--amber)" title="оплата за раскрой листов на ЧПУ: платим за лист, а детали с него уходят в свои заказы">'+money(r.sheetTotal)+' ₽</b></span>':'')
+      +(r.freeTotal>0?'<span><span class="k">Из них вне заказа</span><b style="color:var(--accent-text)">'+money(r.freeTotal)+' ₽</b></span>':'')
+      +(r.pendingTotal>0?'<span><span class="k">Ждёт подтверждения</span><b style="color:var(--amber)">'+money(r.pendingTotal)+' ₽</b></span>':'')
     +'</div></div>';
   if(!r.workers.length){ $('pane').innerHTML=head+'<div class="box muted">За этот месяц подтверждённой выработки нет.</div>'; return; }
   // ⚠ Инициал вместо второго слова терял ФАМИЛИЮ у половины людей: в «Работниках» имя записано
@@ -296,7 +255,7 @@ function renderPay(){
     +cols.map(function(d){ var t=r.dayTotals[d];
       return '<td class="'+(d===todayD?'tdy':(wkd(d)?'wknd':''))+(t?'':' zero')+'">'+(t?rub(t):'·')+'</td>'; }).join('')
     +'</tr></tfoot>';
-  var note='<div class="muted" style="margin:8px 2px 0;font-size:12px">В клетках — заработок за день, целыми рублями (точная сумма — при наведении). '
+  var note='<div class="muted" style="margin:var(--s-2) var(--s-1) 0;font-size:13px">В клетках — заработок за день, целыми рублями (точная сумма — при наведении). '
     +'🌙 — была ночная смена. Колонка «Итого ₽» и строка «ВСЕГО» — с копейками.'
     +(hidden>0&&ZONLY?(' Скрыто дней без выработки: '+hidden+'.'):'')+'</div>';
   $('pane').innerHTML=head+'<div class="paywrap" id="paywrap"><table class="pay">'+cg+th+body+ft+'</table></div>'+note;
@@ -375,14 +334,14 @@ function renderMonth(){
     }
     return '<tr><td class="nm">'+esc(w)+' <span class="muted">('+cnt+(was?' · был '+was:'')+')</span></td>'+tds+'</tr>';
   }).join('');
-  var modeBox='<div class="tabs mmode" style="margin:8px 0 0">'
+  var modeBox='<div class="tabs mmode" style="margin:var(--s-2) 0 0">'
     +'<button class="'+(MMODE==='plan'?'active':'')+'" onclick="setMMode(\'plan\')">✏️ Ставлю график</button>'
     +'<button class="'+(MMODE==='fact'?'active':'')+'" onclick="setMMode(\'fact\')">✅ Отмечаю выход</button></div>'
-    +'<div class="muted" style="font-size:12px;margin-top:4px">'
+    +'<div class="muted" style="font-size:13px;margin-top:var(--s-1)">'
     +(MMODE==='fact'
       ? 'Клик по клетке: <b>по графику → ✓ вышел → ✕ не вышел</b>. Смену в этом режиме не меняем — только факт.'
       : 'Клик по клетке: ☀️ день → 🌙 ночь → пусто · зелёная рамка — вышел, красная — не вышел · серые колонки — выходные, розовые — праздники')
-    +'<div class="muted" style="font-size:12px;margin-top:2px">Бледная <b class="fk auto" style="font-size:12px">✓</b> — отметки нет, но за этот день подан наряд: значит был на работе. Зелёная клетка без солнышка — наряд есть, а смена в графике не проставлена. <b class="fk warn" style="font-size:12px">!</b> — отмечен «не вышел», но наряд есть.</div>'
+    +'<div class="muted" style="font-size:13px;margin-top:var(--s-1)">Бледная <b class="fk auto" style="font-size:13px">✓</b> — отметки нет, но за этот день подан наряд: значит был на работе. Зелёная клетка без солнышка — наряд есть, а смена в графике не проставлена. <b class="fk warn" style="font-size:13px">!</b> — отмечен «не вышел», но наряд есть.</div>'
     +'</div>';
   $('pane').innerHTML='<div class="box"><div class="row"><button class="gho" onclick="shiftMonth(-1)">←</button><b>'+YM+'</b><button class="gho" onclick="shiftMonth(1)">→</button>'
     +'<span id="sv" class="muted"></span></div>'+modeBox+'</div>'

@@ -3,92 +3,58 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="tw-theme.js"></script>
 <title>Тигервуд — материалы</title>
 <style>
-  :root{ --bg:#f4f6fb; --card:#fff; --fg:#1b2333; --muted:#8a93a6; --line:#e6e9f2; --accent:#7c3aed; --green:#137333; --amber:#b7791f; --red:#c0392b; }
-  *{box-sizing:border-box;} html,body{margin:0;background:var(--bg);}
-  body{ font-family:-apple-system,Roboto,Segoe UI,Arial,sans-serif; color:var(--fg); padding:14px; max-width:1000px; margin:0 auto; font-size:14px; }
-  .hi{ font-size:19px; font-weight:800; }
-  .muted{ color:var(--muted); font-size:13px; }
-  .bar{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:12px 0; }
-  input,select{ padding:8px 10px; border:1px solid var(--line); border-radius:9px; font-size:14px; background:#fff; }
+  /* панель инструментов: у темы .bar — полоска прогресса, здесь это строка кнопок */
+  .bar{ display:flex; gap:var(--s-2); align-items:center; flex-wrap:wrap; margin:var(--s-3) 0;
+        height:auto; background:none; border-radius:0; overflow:visible; }
   input.search{ flex:1; min-width:160px; }
-  button{ padding:8px 13px; border:0; border-radius:9px; font-size:13px; font-weight:600; color:#fff; background:var(--accent); cursor:pointer; }
-  button.gray{ background:#eef1f8; color:#334; } button.green{ background:var(--green); } button.sm{ padding:5px 9px; font-size:12px; }
-  .chips{ display:flex; gap:6px; flex-wrap:wrap; }
-  .chip{ padding:5px 11px; border-radius:20px; font-size:12.5px; font-weight:600; background:#eef1f8; color:#556; border:1px solid var(--line); cursor:pointer; }
-  .chip.on{ background:var(--accent); color:#fff; border-color:var(--accent); }
-  .box{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:6px 12px; overflow-x:auto; }
-  table{ width:100%; border-collapse:collapse; font-size:13.5px; }
-  th,td{ text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); vertical-align:middle; }
-  th{ color:var(--muted); font-size:11.5px; font-weight:600; text-transform:uppercase; letter-spacing:.03em; }
-  td.num,th.num{ text-align:right; font-variant-numeric:tabular-nums; }
   td input.p{ width:78px; text-align:right; } td input.u{ width:52px; }
-  input.mchk,#chkAll{ width:18px; height:18px; }
-  .nm{ cursor:pointer; color:var(--accent); font-weight:700; }
-  .role{ font-size:11px; padding:2px 8px; border-radius:20px; background:#f0edfb; color:var(--accent); font-weight:700; }
+  .nm{ cursor:pointer; color:var(--accent-text); font-weight:500; }
+  /* цена: рост — плохо, падение — хорошо (наоборот, чем в теме) */
   .up{ color:var(--red); } .down{ color:var(--green); }
-  .msg{ font-size:13px; } .err{ color:var(--red); } .ok{ color:var(--green); }
-  .center{ text-align:center; padding:36px 16px; }
-  /* modal */
-  .ov{ position:fixed; inset:0; background:rgba(20,25,50,.45); display:none; align-items:flex-start; justify-content:center; padding:24px 12px; overflow:auto; z-index:9; }
+  .box{ overflow-x:auto; }
+  /* карточка материала поверх экрана: класс .ov переключает JS (ov / ov on) */
+  .ov{ position:fixed; inset:0; background:var(--scrim); display:none; align-items:flex-start; justify-content:center;
+       padding:var(--s-5) var(--s-3); overflow:auto; z-index:50; }
   .ov.on{ display:flex; }
-  .modal{ background:#fff; border-radius:16px; max-width:720px; width:100%; padding:18px; }
-  .modal h3{ margin:0 0 4px; font-size:17px; } .modal .x{ float:right; background:#eef1f8; color:#334; }
-  .lbl{ font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; margin:14px 0 6px; font-weight:700; }
-  .frm{ display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
-  .frm input,.frm select{ padding:6px 8px; font-size:13px; }
+  #modal{ max-width:720px; max-height:none; }
+  .modal h3{ margin:0 0 var(--s-1); }
+  .modal .x{ float:right; background:transparent; color:var(--muted); border-color:transparent; }
+  .modal .x:hover{ background:var(--grey-bg); color:var(--fg); }
+  .lbl{ font:var(--t-label); text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:var(--s-4) 0 var(--s-2); }
+  .frm{ display:flex; gap:var(--s-2); flex-wrap:wrap; align-items:center; }
   .frm input.s{ width:88px; } .frm input.xs{ width:60px; }
   /* позиции накладной — карточками: в таблице название и материал уезжали за край */
   /* панель выбранных — всегда под рукой, без прокрутки наверх */
   #selBar{ position:fixed; left:0; right:0; bottom:0; z-index:8; margin:0;
-    background:var(--card); border-top:1px solid var(--line); box-shadow:0 -6px 18px rgba(20,25,50,.12);
-    padding:10px 14px calc(10px + env(safe-area-inset-bottom)); justify-content:center; }
-  body.hasSel{ padding-bottom:74px; }              /* чтобы панель не закрывала последние строки */
-  @media(max-width:520px){ #selBar #selCnt{ width:100%; text-align:center } }
-
-  /* ── ВИДИМАЯ РЕАКЦИЯ. На телефоне нет наведения курсором: если кнопка не «продавливается»,
-     человек не понимает, нажал он или промахнулся, и жмёт ещё раз — отсюда дубли. ── */
-  button{ touch-action:manipulation; -webkit-tap-highlight-color:transparent;
-          transition:transform .06s ease, filter .12s ease, opacity .12s ease; }
-  button:active{ transform:scale(.94); filter:brightness(.86); }
-  button[disabled]{ opacity:.5; pointer-events:none; }
-  a[href^="javascript"]{ -webkit-tap-highlight-color:rgba(124,58,237,.15); }
-  /* тонкая полоска сверху — «идёт обмен с сервером» */
-  #twload{ position:fixed; left:0; top:0; height:3px; width:100%; z-index:60; display:none; overflow:hidden; }
-  #twload>i{ display:block; height:100%; width:38%; background:var(--accent); animation:twslide 1.1s ease-in-out infinite; }
-  @keyframes twslide{ 0%{ margin-left:-38% } 100%{ margin-left:100% } }
-  /* заслонка на время действия: и показывает, что идёт работа, и физически не даёт нажать второй раз */
-  #twwait{ position:fixed; inset:0; background:rgba(246,247,252,.78); z-index:70; display:none;
-           align-items:center; justify-content:center; }
-  #twwait .wb{ background:#fff; border-radius:16px; padding:18px 22px; text-align:center; min-width:190px;
-               box-shadow:0 12px 34px rgba(20,25,50,.18); }
-  #twwait .sp{ width:28px; height:28px; border:3px solid rgba(124,58,237,.22); border-top-color:var(--accent);
-               border-radius:50%; margin:0 auto 10px; animation:twspin .8s linear infinite; }
-  @keyframes twspin{ to{ transform:rotate(360deg) } }
-  #twwait .wt{ font-weight:700; font-size:15px; }
-  #twwait .wh{ font-size:12.5px; opacity:.6; margin-top:4px; }
+    background:var(--card); border-top:1px solid var(--line); box-shadow:var(--shadow-pop);
+    padding:var(--s-3) var(--s-4) calc(var(--s-3) + env(safe-area-inset-bottom)); justify-content:center; }
+  body.hasSel{ padding-bottom:80px; }              /* чтобы панель не закрывала последние строки */
+  @media (max-width:640px){ #selBar #selCnt{ width:100%; text-align:center } }
+  /* название материала — главная колонка: не переносим в столбик, иначе строка вырастает вдвое */
+  td .nm{ display:inline-block; min-width:200px; font-weight:500; }
 </style>
 </head>
 <body>
 <div id="twload"><i></i></div>
 <div id="twwait"><div class="wb"><div class="sp"></div><div class="wt" id="twwt">Отправляю…</div><div class="wh">идёт обмен с сервером — не нажимайте</div></div></div>
-<style>html.emb>body>.hi{display:none}</style><script>if(/[?&]embed=1/.test(location.search))document.documentElement.classList.add('emb');</script>
 <div class="hi">🧱 Материалы</div>
 <div class="muted" id="cnt">загрузка…</div>
 <!-- документы живут в своём разделе: здесь остаётся справочник материалов и ручной приход.
      Раньше накладную можно было разнести из двух мест, и каждое открытие заново оплачивало распознавание. -->
-<div class="muted" style="margin-top:6px">Накладные и акты поставщиков — в разделе
+<div class="muted" style="margin-top:var(--s-2)">Накладные и акты поставщиков — в разделе
   <a href="javascript:void(0)" onclick="goDocs()"><b>📑 Входящие документы</b></a>: там загрузка, распознавание и разнесение по материалам.</div>
 <div class="bar">
   <input class="search" id="q" placeholder="поиск…" oninput="draw()">
-  <button class="gray sm" onclick="doImport()">⬇︎ Импорт из файла</button>
-  <button class="gray sm" onclick="openSimilar()" title="найти позиции, которые различаются только сортом или написанием">🔀 Похожие позиции</button>
-  <button class="gray sm" onclick="openStd()" title="единый вид названий: регистр, размеры, опечатки">🧹 Навести порядок</button>
+  <button class="sec sm" onclick="doImport()">⬇︎ Импорт из файла</button>
+  <button class="sec sm" onclick="openSimilar()" title="найти позиции, которые различаются только сортом или написанием">🔀 Похожие позиции</button>
+  <button class="sec sm" onclick="openStd()" title="единый вид названий: регистр, размеры, опечатки">🧹 Навести порядок</button>
   <button onclick="toggleNew()" id="newBtn">➕ Новый материал</button>
   <span class="msg" id="imsg"></span>
 </div>
-<div id="newBox" class="box" style="display:none;margin-bottom:10px;padding:10px">
+<div id="newBox" class="box" style="display:none;margin-bottom:var(--s-3)">
   <div class="bar" style="flex-wrap:wrap">
     <input id="nName" placeholder="Название, напр. Фанера 18мм 1250х2500" style="min-width:260px;flex:1">
     <select id="nUnit" style="width:110px" onchange="nSheetToggle()"><option value="лист">лист</option><option value="шт">шт</option><option value="кг">кг</option><option value="м">м</option><option value="л">л</option><option value="м²">м²</option></select>
@@ -98,7 +64,7 @@
     <span id="nSheetFields"><input id="nThick" placeholder="толщина, мм" style="width:130px">
     <input id="nSize" placeholder="размер листа 1525x1525" style="width:200px"></span>
     <button onclick="addMat()">Добавить</button>
-    <button class="gray" onclick="toggleNew()">Отмена</button>
+    <button class="sec" onclick="toggleNew()">Отмена</button>
     <span class="msg" id="nmsg"></span>
   </div>
   <div class="muted">Для листовых материалов толщина и размер нужны, чтобы посчиталась расценка за раскрой (площадь × толщина ÷ делитель).</div>
@@ -106,11 +72,11 @@
 <div class="chips" id="roles"></div>
 <div id="selBar" class="bar" style="display:none;align-items:center">
   <b id="selCnt"></b>
-  <button class="gray sm" onclick="selAll(false)">снять выбор</button>
-  <button class="sm" style="background:#dc2626;color:#fff" onclick="delSelected()">🗑 Удалить выбранные</button>
+  <button class="sec sm" onclick="selAll(false)">снять выбор</button>
+  <button class="sm danger" onclick="delSelected()">🗑 Удалить выбранные</button>
   <span class="msg" id="selMsg"></span>
 </div>
-<div style="height:10px"></div>
+<div style="height:var(--s-3)"></div>
 <div class="box"><table><thead><tr><th style="width:26px"><input type="checkbox" id="chkAll" onclick="selAll(this.checked)" title="выбрать всё, что сейчас в списке"></th><th>Материал</th><th>Ед</th><th>Роль</th><th class="num" title="для листовых — считается расценка за раскрой">Толщина</th><th title="напр. 1525x1525">Размер листа</th><th class="num">Последняя цена</th><th class="num">Для расчёта</th><th>Комментарий</th><th></th></tr></thead><tbody id="tb"><tr><td colspan=9 class="center muted">Загрузка…</td></tr></tbody></table></div>
 <datalist id="matlist"></datalist>
 
@@ -130,8 +96,8 @@ function twTok(){ try{ return twQp('tok')||localStorage.getItem('tw_tok')||''; }
 function twQp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
 (function(){ var t=twQp('tok'); if(t){ try{ localStorage.setItem('tw_tok',t); }catch(e){} } })();
 function twAuthWall(r){
-  if(r&&r.needAuth){ document.body.innerHTML='<div style="padding:28px;font:16px/1.55 -apple-system,Roboto,Segoe UI,Arial;color:#1b2333">'
-    +'<div style="font-size:20px;font-weight:800;margin-bottom:10px">🔒 Нужен вход</div>'
+  if(r&&r.needAuth){ document.body.innerHTML='<div style="padding:var(--s-6);font:var(--t-body);color:var(--fg)">'
+    +'<div style="font:var(--t-title);margin-bottom:var(--s-3)">🔒 Нужен вход</div>'
     +'<div>'+String(r.error||'Откройте сервис из бота @TWOtchbot или войдите по личному коду.')+'</div></div>'; }
   return r;
 }
@@ -182,7 +148,7 @@ function draw(){
       +'<td class="num">'+price+'</td>'
       +'<td class="num" title="средняя поставок + 10%, округл.">'+forCost+'</td>'
       +'<td class="muted">'+esc(m.note||'')+'</td>'
-      +'<td><button class="gray sm" title="переименовать" onclick="renameMat(\''+esc(m.name).replace(/\x27/g,"\\x27")+'\')">✎</button> <button class="gray sm" title="удалить материал" onclick="delMat(\''+esc(m.name).replace(/\x27/g,"\\x27")+'\')">🗑</button> <span class="msg" id="m'+idx+'"></span></td>'
+      +'<td style="white-space:nowrap"><button class="ic" title="переименовать" onclick="renameMat(\''+esc(m.name).replace(/\x27/g,"\\x27")+'\')">✎</button> <button class="ic" title="удалить материал" onclick="delMat(\''+esc(m.name).replace(/\x27/g,"\\x27")+'\')">🗑</button> <span class="msg" id="m'+idx+'"></span></td>'
       +'</tr>';
   }).join('')||'<tr><td colspan=10 class="center muted">ничего не найдено</td></tr>';
   syncSel();
@@ -293,7 +259,7 @@ function openStd(){
   window.STDFIX=fixes;
   var rowsOf=function(kind){
     return fixes.map(function(f,i){ return f.kind!==kind ? '' :
-      '<label style="display:block;padding:4px 0;border-bottom:1px solid rgba(128,128,128,.15)">'
+      '<label style="display:block;padding:var(--s-1) 0;border-bottom:1px solid var(--line)">'
       +'<input type="checkbox" class="stdchk" value="'+i+'" checked> '
       +'<span class="muted">'+esc(f.from)+'</span> &nbsp;→&nbsp; <b>'+esc(f.to)+'</b></label>';
     }).join('');
@@ -302,18 +268,18 @@ function openStd(){
       nTpl=fixes.filter(function(f){return f.kind==='tpl';}).length;
   $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><h3>Навести порядок в названиях</h3>'
     +'<div class="muted">Стандарт: <b>Что · характеристика · размер</b> — с заглавной буквы, размер латинской «x» без пробелов (1525x1525), единица слитно с числом (18мм), только кириллица в русских словах.</div>'
-    +'<div class="muted" style="margin-top:4px">Старое название каждого переименованного материала останется как «называют поставщики» — распознавание накладных не сломается.</div>'
-    +(nStd? '<div class="lbl" style="margin-top:10px">Написание: '+nStd+'</div><div class="box" style="padding:8px;max-height:280px;overflow:auto">'+rowsOf('std')+'</div>' : '')
-    +(nTpl? '<div class="lbl" style="margin-top:10px">Собрать имя из толщины и размера: '+nTpl
+    +'<div class="muted" style="margin-top:var(--s-1)">Старое название каждого переименованного материала останется как «называют поставщики» — распознавание накладных не сломается.</div>'
+    +(nStd? '<div class="lbl" style="margin-top:var(--s-3)">Написание: '+nStd+'</div><div class="box" style="padding:var(--s-2);max-height:280px;overflow:auto">'+rowsOf('std')+'</div>' : '')
+    +(nTpl? '<div class="lbl" style="margin-top:var(--s-3)">Собрать имя из толщины и размера: '+nTpl
         +' <span class="muted" style="font-weight:normal">— характеристика вперёд, размеры в конец, из полей реестра</span></div>'
-        +'<div class="box" style="padding:8px;max-height:280px;overflow:auto">'+rowsOf('tpl')+'</div>' : '')
+        +'<div class="box" style="padding:var(--s-2);max-height:280px;overflow:auto">'+rowsOf('tpl')+'</div>' : '')
     +(fixes.length
-      ? '<div style="margin-top:8px"><button class="gray sm" onclick="stdAll(true)">отметить все</button> <button class="gray sm" onclick="stdAll(false)">снять</button> '
+      ? '<div style="margin-top:var(--s-2)"><button class="sec sm" onclick="stdAll(true)">отметить все</button> <button class="sec sm" onclick="stdAll(false)">снять</button> '
         +'<button class="green" onclick="applyStd()">✓ Применить отмеченные</button> <span class="msg" id="std_msg"></span></div>'
-      : '<div class="lbl" style="margin-top:10px">✓ Названия уже по стандарту</div>')
-    +(conf.length? '<div class="lbl" style="margin-top:12px">Совпадёт с существующим — это дубли</div><div class="box" style="padding:8px">'
+      : '<div class="lbl" style="margin-top:var(--s-3)">✓ Названия уже по стандарту</div>')
+    +(conf.length? '<div class="lbl" style="margin-top:var(--s-3)">Совпадёт с существующим — это дубли</div><div class="box" style="padding:var(--s-2)">'
         +conf.map(function(f){ return '<div>• '+esc(f.from)+' → <b>'+esc(f.to)+'</b> <span class="muted">уже есть — объедините на экране «🔀 Похожие позиции»</span></div>'; }).join('')+'</div>' : '')
-    +(manual.length? '<div class="lbl" style="margin-top:12px">Решить вручную: '+manual.length+'</div><div class="box" style="padding:8px">'
+    +(manual.length? '<div class="lbl" style="margin-top:var(--s-3)">Решить вручную: '+manual.length+'</div><div class="box" style="padding:var(--s-2)">'
         +manual.map(function(x){ return '<div class="muted">• '+esc(x)+'</div>'; }).join('')+'</div>' : '');
 }
 function stdAll(on){ var b=document.querySelectorAll('.stdchk'); for(var i=0;i<b.length;i++) b[i].checked=on; }
@@ -412,15 +378,15 @@ function openCard(name){
 function renderCard(name, r){
   var sups=(r&&r.suppliers)||[], buys=(r&&r.buys)||[];
   var qn=function(s){ return esc(String(s)).replace(/\x27/g,"\\x27"); };
-  var supRows=sups.map(function(s){ return '<tr><td>'+esc(s.supplier)+'</td><td class="muted">'+esc(s.supName||'')+'</td><td class="num">'+(s.coef||'')+'</td><td class="num">'+money(s.price)+' '+esc(s.cur)+'</td><td class="muted">'+esc(s.terms||'')+'</td><td><button class="gray sm" title="удалить поставщика" onclick="delSup(\''+qn(name)+'\',\''+qn(s.supplier)+'\')">🗑</button></td></tr>'; }).join('')||'<tr><td colspan=6 class="muted">нет поставщиков</td></tr>';
-  var buyRows=buys.map(function(b){ return '<tr><td>'+esc(b.date)+'</td><td>'+esc(b.supplier)+'</td><td class="muted">'+esc(b.docNo)+'</td><td class="num">'+b.qtyW+'</td><td class="num"><b>'+money(b.priceW)+'</b></td><td class="num">'+money(b.sum)+' '+esc(b.cur)+'</td><td><button class="gray sm" title="удалить запись" onclick="delBuy(\''+qn(name)+'\',\''+qn(b.docNo)+'\',\''+qn(b.supplier)+'\')">🗑</button></td></tr>'; }).join('')||'<tr><td colspan=7 class="muted">закупок нет</td></tr>';
+  var supRows=sups.map(function(s){ return '<tr><td>'+esc(s.supplier)+'</td><td class="muted">'+esc(s.supName||'')+'</td><td class="num">'+(s.coef||'')+'</td><td class="num">'+money(s.price)+' '+esc(s.cur)+'</td><td class="muted">'+esc(s.terms||'')+'</td><td><button class="sec sm" title="удалить поставщика" onclick="delSup(\''+qn(name)+'\',\''+qn(s.supplier)+'\')">🗑</button></td></tr>'; }).join('')||'<tr><td colspan=6 class="muted">нет поставщиков</td></tr>';
+  var buyRows=buys.map(function(b){ return '<tr><td>'+esc(b.date)+'</td><td>'+esc(b.supplier)+'</td><td class="muted">'+esc(b.docNo)+'</td><td class="num">'+b.qtyW+'</td><td class="num"><b>'+money(b.priceW)+'</b></td><td class="num">'+money(b.sum)+' '+esc(b.cur)+'</td><td><button class="sec sm" title="удалить запись" onclick="delBuy(\''+qn(name)+'\',\''+qn(b.docNo)+'\',\''+qn(b.supplier)+'\')">🗑</button></td></tr>'; }).join('')||'<tr><td colspan=7 class="muted">закупок нет</td></tr>';
   $('modal').innerHTML=
     '<button class="x sm" onclick="closeOv()">✕</button><h3>'+esc(name)+'</h3>'
     +'<div class="lbl">Формат закупки</div>'
     +'<div class="box" id="linkBox"><div class="muted">Загрузка…</div></div>'
     +'<div class="lbl">Как называют поставщики <span class="muted" style="font-weight:normal">— любое из этих названий в накладной система сама переведёт в «'+esc(name)+'»</span></div>'
     +'<div class="box" id="alBox"><div class="muted">Загрузка…</div></div>'
-    +'<div class="frm" style="margin-top:6px"><input class="s" id="al_new" placeholder="название в накладной" style="min-width:240px"><input class="s" id="al_sup" placeholder="поставщик (необязательно)"><button class="green sm" onclick="addAlias(\''+qn(name)+'\')">＋ запомнить</button><span class="msg" id="al_msg"></span></div>'
+    +'<div class="frm" style="margin-top:var(--s-2)"><input class="s" id="al_new" placeholder="название в накладной" style="min-width:240px"><input class="s" id="al_sup" placeholder="поставщик (необязательно)"><button class="green sm" onclick="addAlias(\''+qn(name)+'\')">＋ запомнить</button><span class="msg" id="al_msg"></span></div>'
     +'<div class="lbl">Поставщики</div><div class="box"><table><thead><tr><th>Поставщик</th><th>У поставщика</th><th class="num">Коэф</th><th class="num">Цена</th><th>Условия</th><th></th></tr></thead><tbody>'+supRows+'</tbody></table></div>'
     +'<div class="lbl">Добавить закупку</div>'
     +'<div class="frm">'
@@ -432,8 +398,8 @@ function renderCard(name, r){
       +'<input class="xs" id="p_coef" placeholder="коэф" value="1">'
       +'<input class="s" id="p_sum" placeholder="сумма BYN" oninput="buyPreview(\''+esc(name).replace(/\x27/g,"\\x27")+'\')">'
       +'<button class="green sm" onclick="addBuy(\''+esc(name).replace(/\x27/g,"\\x27")+'\')">＋ провести</button>'
-    +'</div><div id="p_prev" class="muted" style="margin-top:6px"></div>'
-    +'<div class="muted" style="margin-top:4px">коэф = сколько рабочих ед в 1 ед. документа (кубы→листы, пачка→листы). Подставляется сам по толщине и размеру листа.</div>'
+    +'</div><div id="p_prev" class="muted" style="margin-top:var(--s-2)"></div>'
+    +'<div class="muted" style="margin-top:var(--s-1)">коэф = сколько рабочих ед в 1 ед. документа (кубы→листы, пачка→листы). Подставляется сам по толщине и размеру листа.</div>'
     +'<div class="msg" id="p_msg"></div>'
     +'<div class="lbl">Журнал закупок</div><div class="box"><table><thead><tr><th>Дата</th><th>Поставщик</th><th>№</th><th class="num">Кол-во (раб.)</th><th class="num">Цена/ед</th><th class="num">Сумма</th><th></th></tr></thead><tbody>'+buyRows+'</tbody></table></div>';
   loadAliases(name);
@@ -452,16 +418,16 @@ function renderLink(name){
   if(kids.length){
     h+='<div><b>Это закупочный формат.</b> Из него режут: '
       +kids.map(function(k){ return '<b>'+esc(k.name)+'</b> — '+k.yield+' шт из одного'; }).join(', ')+'</div>'
-      +'<div class="muted" style="margin-top:4px">Приход и контроль цены — по этой позиции. На ЧПУ она не предлагается.</div>';
+      +'<div class="muted" style="margin-top:var(--s-1)">Приход и контроль цены — по этой позиции. На ЧПУ она не предлагается.</div>';
   } else {
-    var pr=m.from? ('<div class="muted" style="margin-top:4px">Цена считается сама: цена «'+esc(m.from)+'» ÷ '+(m.yield||0)+'. Руками её не правьте.</div>') : '';
+    var pr=m.from? ('<div class="muted" style="margin-top:var(--s-1)">Цена считается сама: цена «'+esc(m.from)+'» ÷ '+(m.yield||0)+'. Руками её не правьте.</div>') : '';
     h+='<div class="frm">'
       +'<span class="muted">Получается из</span>'
       +'<input list="matlist" id="lk_from" value="'+esc(m.from||'')+'" placeholder="закупочная позиция" style="min-width:230px">'
       +'<span class="muted">выход, шт</span><input class="xs" id="lk_yield" value="'+(m.yield||'')+'" placeholder="4">'
       +'<button class="green sm" onclick="saveLink(\''+qn(name)+'\')">Сохранить</button>'
       +'<span class="msg" id="lk_msg"></span></div>'+pr
-      +'<div class="muted" style="margin-top:4px;font-size:12px">Заполняйте, если поставщик режет покупной лист на несколько наших (например 2800x2070 → 4 шт 1395x1030). Пусто — обычная позиция.</div>';
+      +'<div class="muted" style="margin-top:var(--s-1);font-size:13px">Заполняйте, если поставщик режет покупной лист на несколько наших (например 2800x2070 → 4 шт 1395x1030). Пусто — обычная позиция.</div>';
   }
   box.innerHTML=h;
 }
@@ -483,7 +449,7 @@ function loadAliases(name){
     box.innerHTML=al.length
       ? '<table><thead><tr><th>Название в накладной</th><th>Поставщик</th><th></th></tr></thead><tbody>'+al.map(function(a){
           return '<tr><td>'+esc(a.alias)+'</td><td class="muted">'+esc(a.sup||'')+'</td>'
-            +'<td><button class="gray sm" title="забыть это название" onclick="delAlias(\''+qn(name)+'\',\''+qn(a.alias)+'\')">🗑</button></td></tr>';
+            +'<td><button class="sec sm" title="забыть это название" onclick="delAlias(\''+qn(name)+'\',\''+qn(a.alias)+'\')">🗑</button></td></tr>';
         }).join('')+'</tbody></table>'
       : '<div class="muted">пока не запоминали — при первом приходе название из накладной запишется само</div>';
   });
@@ -508,19 +474,19 @@ function openSimilar(){
   api({vapi:'matsimilar'}).then(function(r){
     if(!r||!r.ok){ $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><div class="err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
     window.SIMG=(r.groups||[]);
-    if(!window.SIMG.length){ $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><h3>Похожие позиции</h3><div class="muted" style="margin-top:8px">✓ дублей не нашлось — реестр чистый</div>'; return; }
+    if(!window.SIMG.length){ $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><h3>Похожие позиции</h3><div class="muted" style="margin-top:var(--s-2)">✓ дублей не нашлось — реестр чистый</div>'; return; }
     var blocks=window.SIMG.map(function(g,gi){
       var rows=g.items.map(function(it,ii){
-        return '<label style="display:block;padding:3px 0"><input type="radio" name="sg'+gi+'" value="'+ii+'"'+(ii===0?' checked':'')+'> <b>'+esc(it.name)+'</b>'
+        return '<label style="display:block;padding:var(--s-1) 0"><input type="radio" name="sg'+gi+'" value="'+ii+'"'+(ii===0?' checked':'')+'> <b>'+esc(it.name)+'</b>'
           +' <span class="muted">'+esc(it.unit||'')+(it.price?' · '+money(it.price)+' р':'')+'</span></label>';
       }).join('');
-      return '<div class="box" style="padding:10px;margin-bottom:8px">'+rows
-        +'<div style="margin-top:6px"><button class="sm" onclick="doMerge('+gi+')">Объединить в выбранную</button>'
+      return '<div class="box" style="padding:var(--s-3);margin-bottom:var(--s-2)">'+rows
+        +'<div style="margin-top:var(--s-2)"><button class="sm" onclick="doMerge('+gi+')">Объединить в выбранную</button>'
         +' <span class="muted">остальные названия станут «как называют поставщики»</span> <span class="msg" id="sm'+gi+'"></span></div></div>';
     }).join('');
     $('modal').innerHTML='<button class="x sm" onclick="closeOv()">✕</button><h3>Похожие позиции</h3>'
       +'<div class="muted">отметь, какое название главное — закупки, поставщики, составы изделий и расценка переедут на него</div>'
-      +'<div style="margin-top:8px">'+blocks+'</div>';
+      +'<div style="margin-top:var(--s-2)">'+blocks+'</div>';
   });
 }
 function doMerge(gi){

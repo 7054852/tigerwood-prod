@@ -5,79 +5,86 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Тигервуд — сервис</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="tw-theme.js"></script>
 <style>
-  :root{ --bg:#f4f6fb; --card:#fff; --fg:#1b2333; --muted:#8a93a6; --line:#e6e9f2; --accent:#2b7de9; --green:#137333; --red:#c0392b; --amber:#b9770e; --side:#0f1830; --sidefg:#dfe6f5; --sidemut:#8592ad; }
-  *{box-sizing:border-box;} html,body{margin:0;height:100%;background:var(--bg);}
-  body{ font-family:-apple-system,Roboto,Segoe UI,Arial,sans-serif; color:var(--fg); font-size:14px; }
-  .muted{ color:var(--muted); font-size:13px; }
-  .center{ text-align:center; padding:44px 16px; color:var(--muted); }
-  .err{ color:var(--red); } .ok{ color:var(--green); }
-  input,select{ padding:9px; border:1px solid var(--line); border-radius:9px; font-size:15px; width:100%; }
-  button{ padding:10px 15px; border:0; border-radius:9px; font-size:14px; font-weight:600; color:#fff; background:var(--accent); cursor:pointer; }
-  button.gray{ background:#eef1f8; color:#334; } button.sm{ padding:6px 10px; font-size:13px; }
-  .box{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; }
-  table{ width:100%; border-collapse:collapse; font-size:14px; }
-  th,td{ text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); vertical-align:middle; }
-  th{ color:var(--muted); font-size:12px; font-weight:600; }
-  td select,td input{ padding:6px; font-size:13px; }
-  .pill{ font-size:11px; padding:2px 8px; border-radius:20px; background:#eef1f8; color:#556; }
-  .msg{ font-size:13px; }
+  /* оболочка: body без ширины и отступов темы — меню и раздел занимают весь экран */
+  html,body{ height:100%; }
+  body{ max-width:none; padding:0; }
+  .row{ display:flex; justify-content:space-between; align-items:center; gap:var(--s-2); flex-wrap:wrap; }
+  input,select,textarea{ width:100%; }
+  .acc-row input, td input[type=checkbox], label input[type=checkbox]{ width:18px; }
 
   /* ─── каркас сервиса ─── */
-  .shell{ display:flex; min-height:100vh; }
-  .side{ width:270px; flex:0 0 270px; background:var(--side); color:var(--sidefg); display:flex; flex-direction:column;
-         position:sticky; top:0; height:100vh; overflow-y:auto; }
-  .sbrand{ display:flex; align-items:center; gap:10px; padding:16px 16px 12px; }
-  .sbrand .logo{ width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,#2b7de9,#1b56b0);color:#fff;display:flex;align-items:center;justify-content:center;font-size:20px;flex:0 0 auto; }
-  .sbrand .who{ line-height:1.2; min-width:0; }
-  .sbrand .who .n{ font-weight:700; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .sbrand .who .r{ font-size:11.5px; color:var(--sidemut); }
-  .snav{ padding:6px 10px 20px; flex:1; }
-  .sgroup{ margin-top:12px; }
-  .sgroup>.gt{ font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--sidemut); padding:6px 10px 4px; font-weight:700; }
-  .sitem{ display:flex; align-items:center; gap:9px; padding:9px 11px; border-radius:9px; color:var(--sidefg); text-decoration:none; cursor:pointer; font-size:13.5px; line-height:1.2; }
-  .sitem:hover{ background:rgba(255,255,255,.06); }
-  .sitem.active{ background:var(--accent); color:#fff; font-weight:600; }
-  .sitem .ic{ width:20px; text-align:center; flex:0 0 auto; }
+  .shell{ display:flex; min-height:100vh; min-height:100dvh; }
+  .side{ width:256px; flex:0 0 256px; background:var(--side); color:var(--side-fg); display:flex; flex-direction:column;
+         position:sticky; top:0; height:100vh; height:100dvh; overflow-y:auto; border-right:1px solid var(--line); }
+  .sbrand{ display:flex; align-items:center; gap:var(--s-3); padding:var(--s-5) var(--s-4) var(--s-4); }
+  .logo{ width:36px; height:36px; border-radius:var(--r-ctl); background:var(--accent); color:var(--on-accent);
+         display:flex; align-items:center; justify-content:center; font:600 16px/1 var(--font); letter-spacing:-.02em; flex:none; }
+  .sbrand .who{ min-width:0; }
+  .sbrand .who .n{ font:var(--t-strong); color:var(--side-fg); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .sbrand .who .r{ font:var(--t-small); color:var(--side-mut); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .snav{ padding:0 var(--s-3) var(--s-4); flex:1; }
+  .sgroup{ margin-top:var(--s-4); }
+  .sgroup>.gt{ font:var(--t-label); text-transform:uppercase; letter-spacing:.06em; color:var(--side-mut); padding:var(--s-1) var(--s-3) var(--s-2); }
+  .sitem{ display:flex; align-items:center; gap:var(--s-3); min-height:36px; padding:0 var(--s-3); border-radius:var(--r-ctl);
+          color:var(--side-fg); text-decoration:none; cursor:pointer; font:500 14px/20px var(--font);
+          transition:background-color .15s var(--ease), color .15s var(--ease); }
+  .sitem .ic{ color:var(--side-mut); display:flex; }
+  .sitem:hover{ background:var(--side-hover); }
+  .sitem.active{ background:var(--side-active); box-shadow:var(--shadow-card), 0 0 0 1px var(--line); font-weight:600; }
+  .sitem.active .ic{ color:var(--accent-text); }
   /* название раздела — всегда одной строкой: перенос делал пункты разной высоты и «прыгающим» меню.
      Ellipsis — страховка на случай очень длинного названия, полное видно во всплывающей подсказке. */
   .sitem .lb{ flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .sitem .ex{ margin-left:6px; flex:0 0 auto; font-size:11px; color:var(--sidemut); }
+  .sitem .ex{ margin-left:var(--s-1); flex:none; color:var(--side-mut); display:flex; }
+  /* переключатель темы внизу меню */
+  /* закреплён внизу панели: меню длинное, переключатель не должен уезжать за экран */
+  .sfoot{ position:sticky; bottom:0; background:var(--side); padding:var(--s-3) var(--s-4) calc(var(--s-4) + env(safe-area-inset-bottom)); border-top:1px solid var(--line); }
+  .seg{ display:flex; background:var(--bg2); border:1px solid var(--line); border-radius:var(--r-ctl); padding:3px; gap:2px; }
+  .seg button{ flex:1; min-height:30px; padding:0 var(--s-2); background:transparent; color:var(--side-mut); border:0; border-radius:var(--r-xs); font:500 13px/18px var(--font); gap:6px; }
+  .seg button:hover{ background:transparent; color:var(--side-fg); }
+  .seg button.on{ background:var(--card); color:var(--fg); box-shadow:var(--shadow-card); }
+  .seg button .twi{ width:15px; height:15px; }
+  .suntxt{ font:var(--t-small); color:var(--side-mut); margin-top:var(--s-2); text-align:center; }
 
   .main{ flex:1; min-width:0; display:flex; flex-direction:column; }
-  .topbar{ display:none; align-items:center; gap:10px; padding:10px 12px; background:var(--side); color:#fff; position:sticky; top:0; z-index:20; }
-  .topbar .burger{ font-size:22px; background:none; padding:2px 8px; color:#fff; }
-  .topbar .tt{ font-weight:700; font-size:15px; }
-  .view{ flex:1; min-height:0; position:relative; }
-  .view iframe{ width:100%; height:100%; border:0; display:block; }
-  .view .pad{ padding:16px; max-width:920px; margin:0 auto; }
+  .topbar{ display:none; align-items:center; gap:var(--s-2); min-height:52px; padding:0 var(--s-3); background:var(--card);
+           border-bottom:1px solid var(--line); position:sticky; top:0; z-index:20; padding-top:env(safe-area-inset-top); }
+  .topbar .burger{ background:transparent; color:var(--fg); border:0; padding:0; width:40px; }
+  .topbar .burger:hover{ background:var(--grey-bg); }
+  .topbar .tt{ font:var(--t-heading); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .view{ flex:1; min-height:0; position:relative; background:var(--bg); }
+  .view iframe{ width:100%; height:100vh; height:100dvh; border:0; display:block; background:var(--bg); }
+  .view .pad{ padding:var(--s-5); max-width:1200px; margin:0 auto; }
   .backdrop{ display:none; }
 
-  /* мобилка: сайдбар превращается в выезжающее меню */
+  /* мобилка: меню превращается в выезжающую панель */
   @media(max-width:820px){
     .topbar{ display:flex; }
-    .side{ position:fixed; left:0; top:0; z-index:40; transform:translateX(-100%); transition:transform .18s ease; box-shadow:2px 0 18px rgba(0,0,0,.35); }
+    .side{ position:fixed; left:0; top:0; z-index:40; transform:translateX(-100%); transition:transform .2s var(--ease); box-shadow:var(--shadow-pop); }
     body.drawer .side{ transform:translateX(0); }
-    body.drawer .backdrop{ display:block; position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:35; }
-    .view iframe{ height:calc(100vh - 52px); }
+    body.drawer .backdrop{ display:block; position:fixed; inset:0; background:var(--scrim); z-index:35; }
+    .view iframe{ height:calc(100vh - 52px); height:calc(100dvh - 52px - env(safe-area-inset-top)); }
+    .view .pad{ padding:var(--s-4); }
   }
-  @media(min-width:821px){ .view iframe{ height:100vh; } }
 
-  /* экран входа/регистрации/сотрудников — по центру */
   /* матрица доступа */
-  .rchips{ display:flex; gap:6px; flex-wrap:wrap; margin:6px 0 4px; }
-  .rchip{ background:#eef1f8; color:#334; border:1px solid var(--line); font-weight:600; padding:7px 12px; border-radius:20px; }
-  .rchip.on{ background:var(--accent); color:#fff; border-color:var(--accent); }
-  .acc-grp{ margin-bottom:12px; } .acc-grp:last-child{ margin-bottom:0; }
-  .acc-gt{ font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin:4px 0 4px; }
-  .acc-row{ display:flex; align-items:center; gap:9px; padding:8px 6px; border-bottom:1px solid var(--line); cursor:pointer; font-size:14px; }
+  .rchips{ margin:var(--s-2) 0 var(--s-1); }
+  .acc-grp{ margin-bottom:var(--s-4); } .acc-grp:last-child{ margin-bottom:0; }
+  .acc-gt{ font:var(--t-label); text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:var(--s-1) 0; }
+  .acc-row{ display:flex; align-items:center; gap:var(--s-3); min-height:40px; padding:0 var(--s-1); border-bottom:1px solid var(--line); cursor:pointer; }
   .acc-row:last-child{ border-bottom:0; }
-  .acc-row input{ width:18px; height:18px; flex:0 0 auto; }
-  .plain{ max-width:820px; margin:0 auto; padding:16px; }
-  .top{ display:flex; align-items:center; gap:12px; margin-bottom:16px; }
-  .top .logo{ width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,#2b7de9,#1b56b0);color:#fff;display:flex;align-items:center;justify-content:center;font-size:22px;flex:0 0 auto; }
-  .hi{ font-size:19px; font-weight:700; line-height:1.15; }
-  .back{ background:none;border:0;color:var(--accent);font-size:14px;cursor:pointer;padding:6px 0;font-weight:600; }
+  .plain{ max-width:560px; margin:0 auto; padding:var(--s-7) var(--s-4); }
+  .plain .box{ padding:var(--s-6); }
+  .plain .hi{ margin-bottom:var(--s-2); }
+  .note{ border-radius:var(--r-card); padding:var(--s-4) 20px; margin-bottom:var(--s-4); border:1px solid var(--line); }
+  .note.warn{ background:var(--amber-bg); border-color:transparent; }
+  .note.info{ background:var(--accent-bg); border-color:transparent; }
+  .note.ok{ background:var(--green-bg); border-color:transparent; }
+  .fl{ font:var(--t-small); color:var(--muted); margin-bottom:var(--s-1); display:block; }
+  .formgrid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:var(--s-3); margin-top:var(--s-3); }
+  .back{ background:none; border:0; color:var(--accent-text); cursor:pointer; padding:0; min-height:0; font-weight:600; }
 </style>
 </head>
 <body>
@@ -109,12 +116,11 @@ if(!window.fetch){window.fetch=function(url){return new window.Promise(function(
 window.onerror=function(msg,src,line){
   try{
     var b=document.getElementById('app')||document.body;
-    b.innerHTML='<div style="font-family:-apple-system,Roboto,Arial,sans-serif;padding:18px;line-height:1.5">'
-      +'<div style="font-size:17px;font-weight:700;margin-bottom:8px">Не удалось открыть приложение</div>'
-      +'<div style="color:#666;font-size:13px">Покажите это сообщение руководителю:</div>'
-      +'<div style="background:#fdecea;color:#c0392b;border-radius:9px;padding:9px;margin-top:8px;font-size:12px;word-break:break-word">'
-      +String(msg)+' (строка '+line+')</div>'
-      +'<div style="margin-top:12px;font-size:13px;color:#666">Часто помогает: закрыть приложение и открыть заново из бота.</div></div>';
+    b.innerHTML='<div class="plain"><div class="box">'
+      +'<div class="hi">Не удалось открыть приложение</div>'
+      +'<div class="muted">Покажите это сообщение руководителю:</div>'
+      +'<div class="note warn" style="margin:var(--s-3) 0;word-break:break-word"><span class="err">'+String(msg)+' (строка '+line+')</span></div>'
+      +'<div class="muted">Часто помогает: закрыть приложение и открыть заново из бота.</div></div></div>';
   }catch(e){}
   return false;
 };
@@ -124,7 +130,7 @@ window.onerror=function(msg,src,line){
 <script>
 var BASE='https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';
 var APP='tw7prod', TGID='', ME=null, ROLE='', app=document.getElementById('app');
-var VER='20260913h';
+var VER='20260914a';
 var RUN=String(Date.now());   // одна метка на загрузку оболочки — сбивает кеш встроенных страниц   // бамп при изменении встраиваемых stat-страниц — сбивает кеш GitHub Pages в iframe
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
@@ -134,9 +140,8 @@ function twTok(){ try{ return twQp('tok')||localStorage.getItem('tw_tok')||''; }
 function twQp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
 (function(){ var t=twQp('tok'); if(t){ try{ localStorage.setItem('tw_tok',t); }catch(e){} } })();
 function twAuthWall(r){
-  if(r&&r.needAuth){ document.body.innerHTML='<div style="padding:28px;font:16px/1.55 -apple-system,Roboto,Segoe UI,Arial;color:#1b2333">'
-    +'<div style="font-size:20px;font-weight:800;margin-bottom:10px">🔒 Нужен вход</div>'
-    +'<div>'+String(r.error||'Откройте сервис из бота @TWOtchbot или войдите по личному коду.')+'</div></div>'; }
+  if(r&&r.needAuth){ document.body.innerHTML='<div class="plain"><div class="box"><div class="hi">Нужен вход</div>'
+    +'<div class="muted">'+String(r.error||'Откройте сервис из бота @TWOtchbot или войдите по личному коду.')+'</div></div></div>'; }
   return r;
 }
 function api(p){ var _t=twTok(); if(_t) p.tok=_t; p.app=APP; var q=Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]);}).join('&'); return fetch(BASE+'?'+q).then(function(r){return r.json();}).then(twAuthWall); }
@@ -152,7 +157,7 @@ function withTid(url){ if(!url) return url;
   if(url.indexOf('7054852.github.io')>=0 || url.indexOf('script.google.com')>=0 || url.charAt(0)!=='h'){
     // к своим (GitHub Pages) страницам добавляем и ТОКЕН: только он доказывает личность,
     // tgid остаётся для совместимости и для GAS-панелей
-    var u=url+(url.indexOf('?')>=0?'&':'?')+'tgid='+encodeURIComponent(TGID);
+    var u=url+(url.indexOf('?')>=0?'&':'?')+'tgid='+encodeURIComponent(TGID)+'&theme='+encodeURIComponent(window.twTheme?twTheme.get():'auto');
     if(url.indexOf('7054852.github.io')>=0 || url.charAt(0)!=='h'){ var t=twTok(); if(t) u+='&tok='+encodeURIComponent(t); }
     return u; }
   return url; }
@@ -204,8 +209,8 @@ function load(){
     if(CODE){ try{localStorage.setItem('tw_code',CODE);}catch(e){} }
     if(m.blocked){
       app.innerHTML = m.pending
-        ? '<div class="plain"><div class="box"><div class="hi">⏳ Заявка отправлена</div><p class="muted">Вы зарегистрировались как <b>'+esc(m.name||'')+'</b>. Доступ откроется, когда руководитель подтвердит вас в списке сотрудников.</p></div></div>'
-        : '<div class="plain"><div class="box"><div class="hi">⛔ Доступ приостановлен</div><p class="muted">Ваша учётная запись в архиве. Обратитесь к администратору или мастеру.</p></div></div>';
+        ? '<div class="plain"><div class="box"><div class="hi">Заявка отправлена</div><p class="muted">Вы зарегистрировались как <b>'+esc(m.name||'')+'</b>. Доступ откроется, когда руководитель подтвердит вас в списке сотрудников.</p></div></div>'
+        : '<div class="plain"><div class="box"><div class="hi">Доступ приостановлен</div><p class="muted">Ваша учётная запись в архиве. Обратитесь к администратору или мастеру.</p></div></div>';
       return; }
     ROLE=m.role||'';
     shell();
@@ -215,19 +220,19 @@ function load(){
 // ─── вход / регистрация (перенос из портала) ───
 function identify(m){
   var err=(m&&m.badCode)?'<div class="err" style="margin:2px 0 10px">Неверный код — попробуйте ещё раз.</div>':'';
-  app.innerHTML='<div class="plain"><div class="box"><div class="hi">🔒 Вход в Тигервуд</div>'
+  app.innerHTML='<div class="plain"><div class="box"><div class="logo" style="margin-bottom:var(--s-4)">T</div><div class="hi">Вход в Тигервуд</div>'
     +err
     +'<p class="muted">Введите свой <b>код доступа</b> (его выдаёт руководитель):</p>'
-    +'<input id="acode" inputmode="numeric" autocomplete="off" placeholder="напр. 4821" style="font-size:20px;letter-spacing:3px;text-align:center">'
-    +'<div style="height:10px"></div><button onclick="loginCode()">Войти по коду</button>'
-    +'<p class="muted" style="margin-top:16px">Или откройте сервис из бота <b>@TWOtchbot</b> (кнопка меню <b>☰</b>) — вход по вашей учётной записи Telegram.</p>'
-    +'<p class="muted" style="font-size:12px">Ссылку с чужим доступом переслать нельзя — нужен свой код или свой Telegram.</p>'
+    +'<input id="acode" inputmode="numeric" autocomplete="off" placeholder="напр. 4821" style="font:var(--t-title);letter-spacing:.2em;text-align:center;min-height:var(--h-big)">'
+    +'<button class="big block" style="margin-top:var(--s-3)" onclick="loginCode()">Войти по коду</button>'
+    +'<p class="muted" style="margin-top:var(--s-5)">Или откройте сервис из бота <b>@TWOtchbot</b> (кнопка меню <b>☰</b>) — вход по вашей учётной записи Telegram.</p>'
+    +'<p class="muted small">Ссылку с чужим доступом переслать нельзя — нужен свой код или свой Telegram.</p>'
     +'</div></div>';
   setTimeout(function(){ var i=document.getElementById('acode'); if(i){ try{i.focus();}catch(e){} i.onkeydown=function(e){ if(e.key==='Enter') loginCode(); }; } },60);
 }
 function loginCode(){ var el=document.getElementById('acode'); var v=(el&&el.value||'').trim(); if(!v) return; CODE=v; try{localStorage.setItem('tw_code',v);}catch(e){} load(); }
 function register(){
-  app.innerHTML='<div class="plain"><div class="box"><div class="hi">👋 Добро пожаловать в Тигервуд</div><p class="muted">Вы ещё не в системе. Введите <b>Фамилию и Имя</b> — администратор назначит вам роль.</p><input id="fio" placeholder="Иванов Иван"><div style="height:10px"></div><button onclick="doReg()">Зарегистрироваться</button> <span class="msg" id="rmsg"></span></div></div>';
+  app.innerHTML='<div class="plain"><div class="box"><div class="logo" style="margin-bottom:var(--s-4)">T</div><div class="hi">Добро пожаловать в Тигервуд</div><p class="muted">Вы ещё не в системе. Введите <b>Фамилию и Имя</b> — администратор назначит вам роль.</p><input id="fio" placeholder="Иванов Иван"><button class="big block" style="margin-top:var(--s-3)" onclick="doReg()">Зарегистрироваться</button> <span class="msg" id="rmsg"></span></div></div>';
 }
 function doReg(){
   var fio=document.getElementById('fio').value.trim(), m=document.getElementById('rmsg');
@@ -245,8 +250,8 @@ function navHtml(){
     if(!its.length) return '';
     var links=its.map(function(id){
       var it=ITEMS[id], ext=EXTERNAL[id];
-      if(ext) return '<a class="sitem" href="'+esc(withTid(it.url))+'" target="_blank" rel="noopener" title="'+esc(itemLabel(it))+'"><span class="ic">'+itemIcon(it)+'</span><span class="lb">'+esc(itemLabel(it))+'</span><span class="ex">↗</span></a>';
-      return '<div class="sitem" id="nav_'+id+'" onclick="go(\''+id+'\')" title="'+esc(itemLabel(it))+'"><span class="ic">'+itemIcon(it)+'</span><span class="lb">'+esc(itemLabel(it))+'</span></div>';
+      if(ext) return '<a class="sitem" href="'+esc(withTid(it.url))+'" target="_blank" rel="noopener" title="'+esc(itemLabel(it))+'"><span class="ic">'+twTheme.icon(id)+'</span><span class="lb">'+esc(itemLabel(it))+'</span><span class="ex">'+twTheme.icon('ext','s16')+'</span></a>';
+      return '<div class="sitem" id="nav_'+id+'" onclick="go(\''+id+'\')" title="'+esc(itemLabel(it))+'"><span class="ic">'+twTheme.icon(id)+'</span><span class="lb">'+esc(itemLabel(it))+'</span></div>';
     }).join('');
     return '<div class="sgroup"><div class="gt">'+esc(g.title)+'</div>'+links+'</div>';
   }).join('');
@@ -270,17 +275,42 @@ function shell(){
     +'<div class="shell">'
     +'<div class="backdrop" onclick="drawer(false)"></div>'
     +'<aside class="side">'
-      +'<div class="sbrand"><div class="logo">🌲</div><div class="who"><div class="n">'+esc(first)+'</div><div class="r">'+esc(ME.roleTitle||ROLE)+'</div></div></div>'
+      +'<div class="sbrand"><div class="logo">T</div><div class="who"><div class="n">'+esc(first)+'</div><div class="r">'+esc(roleText(ME.roleTitle||ROLE))+'</div></div></div>'
       +'<nav class="snav">'+groupsHtml+'</nav>'
+      +'<div class="sfoot"><div class="seg" id="themeseg">'
+        +'<button data-m="day" onclick="setTheme(\'day\')" title="всегда светлая">'+twTheme.icon('sun')+'День</button>'
+        +'<button data-m="auto" onclick="setTheme(\'auto\')" title="по восходу и закату">'+twTheme.icon('auto')+'Авто</button>'
+        +'<button data-m="night" onclick="setTheme(\'night\')" title="всегда тёмная">'+twTheme.icon('moon')+'Ночь</button>'
+      +'</div><div class="suntxt" id="suntxt"></div></div>'
     +'</aside>'
     +'<div class="main">'
-      +'<div class="topbar"><button class="burger" onclick="drawer(true)">☰</button><span class="tt" id="topttl">Тигервуд</span></div>'
+      +'<div class="topbar"><button class="burger" onclick="drawer(true)" aria-label="меню">'+twTheme.icon('menu')+'</button><span class="tt" id="topttl">Тигервуд</span></div>'
       +'<div class="view" id="view"></div>'
     +'</div>'
     +'</div>';
   window.onhashchange=route;
+  markTheme();
   route();
 }
+// роль приходит с эмодзи в начале («🗂 Диспетчер производства») — в шапке меню показываем без него
+function roleText(t){ return String(t||'').replace(/^[^a-zа-яё0-9]+\s*/i,''); }
+// ── тема: переключатель внизу меню ──
+function markTheme(){
+  var seg=document.getElementById('themeseg'); if(!seg) return;
+  var bs=seg.getElementsByTagName('button'), m=twTheme.get();
+  for(var i=0;i<bs.length;i++) bs[i].className=(bs[i].getAttribute('data-m')===m)?'on':'';
+  var t=document.getElementById('suntxt'); if(t) t.textContent=(m==='auto')?twTheme.text():(m==='day'?'светлая закреплена':'тёмная закреплена');
+}
+function setTheme(m){
+  twTheme.set(m);   // запомнить + разослать встроенным страницам GitHub Pages
+  markTheme();
+  // GAS-панели живут в чужой песочнице — сообщение до них не доходит, перезагружаем с новым режимом
+  Object.keys(FRAMES).forEach(function(id){
+    var f=FRAMES[id]; if(!f||String(f.src).indexOf('script.google.com')<0) return;
+    f.src=String(f.src).replace(/([?&]theme=)[^&]*/, '$1'+encodeURIComponent(m));
+  });
+}
+setInterval(function(){ if(document.getElementById('suntxt')) markTheme(); }, 300000);
 function drawer(open){ document.body.classList.toggle('drawer',!!open); }
 function go(id){ var t='#/'+id; if(location.hash===t) route(); else location.hash=t; }   // смена хеша → route через onhashchange (без двойного рендера)
 function route(){
@@ -359,14 +389,14 @@ function goFocus(id, params){ if(!ITEMS[id]){ return false; } FOCUS={ id:id, par
 
 // ─── «Сотрудники и доступы» (перенос из портала) ───
 function usersView(box){
-  box.innerHTML='<div class="pad"><div class="hi">👥 Сотрудники и доступы</div><div class="center">Загрузка…</div></div>';
+  box.innerHTML='<div class="pad"><div class="hi">Сотрудники и доступы</div><div class="center">Загрузка…</div></div>';
   api({vapi:'users',tgid:TGID}).then(function(r){ renderUsers(box,r); }).catch(function(e){ box.innerHTML='<div class="pad err">Ошибка</div>'; });
 }
 function renderUsers(box,r){
   if(!r||!r.ok){ box.innerHTML='<div class="pad err">'+esc((r&&r.error)||'нет прав')+'</div>'; return; }
   var roles=r.roles||[], canEdit=r.canEdit, me=r.me||{}, isMaster=(me.role==='мастер'), isSupply=(me.role==='обеспечение');
   var canInvite=(r.canInvite!==undefined)?r.canInvite:(canEdit||isMaster);   // менеджер по обеспечению зовёт рабочих, роли не раздаёт
-  var pageTitle=isMaster?'👥 Моя бригада':'👥 Сотрудники и доступы';
+  var pageTitle=isMaster?'Моя бригада':'Сотрудники и доступы';
   // список мастеров для выпадающего «Мастер/участок»
   var masters=(r.users||[]).filter(function(u){ return u.role==='мастер'; }).map(function(u){ return u.name; });
   function masterOpts(cur){ cur=String(cur||''); var list=masters.slice(); if(cur&&list.indexOf(cur)<0) list.unshift(cur);
@@ -384,41 +414,41 @@ function renderUsers(box,r){
       ||(isMaster&&(u.master===me.name||(!String(u.master||'').trim()&&(pending||archived))));
     var nm=String(u.name).replace(/[\\']/g,''), tg=String(u.tgId||'');
     var chg=(canEdit&&!self)?' onchange="saveUser('+i+',\''+esc(tg)+'\')"':'';   // авто-сохранение при выборе — не нужно отдельно жать 💾
-    var roleCell=canEdit?'<select id="ro'+i+'"'+chg+'>'+roles.map(function(x){return '<option value="'+x+'"'+(x===u.role?' selected':'')+'>'+esc(r.roleTitles[x]||x)+'</option>';}).join('')+'</select>':'<span class="pill">'+esc(r.roleTitles[u.role]||u.role)+'</span>';
-    var masterCell=canEdit?'<select id="ma'+i+'" style="max-width:150px"'+chg+'>'+masterOpts(u.master)+'</select>':esc(u.master||'—');
+    var roleCell=canEdit?'<select id="ro'+i+'"'+chg+' style="min-width:170px">'+roles.map(function(x){return '<option value="'+x+'"'+(x===u.role?' selected':'')+'>'+esc(r.roleTitles[x]||x)+'</option>';}).join('')+'</select>':'<span class="pill">'+esc(r.roleTitles[u.role]||u.role)+'</span>';
+    var masterCell=canEdit?'<select id="ma'+i+'" style="min-width:140px"'+chg+'>'+masterOpts(u.master)+'</select>':esc(u.master||'—');
     // персональный доступ к вкладке «🪚 Раскрой» (мастер/начальник/директор видят её всегда — по роли)
     var byRole=(u.role==='мастер'||u.role==='начальник'||u.role==='директор'||u.role==='админ');
-    var cutCell=byRole ? '<span class="muted" style="font-size:12px">по роли</span>'
-      : (canEdit ? '<label style="font-size:12px;white-space:nowrap"><input type="checkbox" id="cu'+i+'"'+(u.cut?' checked':'')+(self?' disabled':'')+' onchange="saveUser('+i+',\''+esc(tg)+'\')"> 🪚</label>'
+    var cutCell=byRole ? '<span class="muted small">по роли</span>'
+      : (canEdit ? '<label class="small" style="white-space:nowrap"><input type="checkbox" id="cu'+i+'"'+(u.cut?' checked':'')+(self?' disabled':'')+' onchange="saveUser('+i+',\''+esc(tg)+'\')"> 🪚</label>'
                  : (u.cut?'🪚':'—'));
     // персональная отметка «принимает качество» — можно дать мастеру, не меняя ему роль
     var otkByRole=byRole||(u.role==='контролёр');
-    var otkCell=otkByRole ? '<span class="muted" style="font-size:12px">по роли</span>'
-      : (canEdit ? '<label style="font-size:12px;white-space:nowrap"><input type="checkbox" id="ot'+i+'"'+(u.otk?' checked':'')+(self?' disabled':'')+' onchange="saveUser('+i+',\''+esc(tg)+'\')"> 🔎</label>'
+    var otkCell=otkByRole ? '<span class="muted small">по роли</span>'
+      : (canEdit ? '<label class="small" style="white-space:nowrap"><input type="checkbox" id="ot'+i+'"'+(u.otk?' checked':'')+(self?' disabled':'')+' onchange="saveUser('+i+',\''+esc(tg)+'\')"> 🔎</label>'
                  : (u.otk?'🔎':'—'));
     // ПОДТВЕРЖДЕНИЕ НАРЯДОВ — галочка, а не роль: поставил/снял конкретному человеку.
     // Показываем фактическое право (u.appr), подпись говорит, откуда оно взялось.
     var apprSrc=u.apprSet?('задано вручную: '+u.apprSet):'по роли '+(r.roleTitles[u.role]||u.role);
     var apprCell=(canEdit&&!self)
-      ? '<label style="font-size:12px;white-space:nowrap" title="'+esc(apprSrc)+'"><input type="checkbox" id="ap'+i+'"'+(u.appr?' checked':'')+' onchange="saveUser('+i+',\''+esc(tg)+'\')"> ✅</label>'
-        +(u.apprSet?'<div class="muted" style="font-size:10px">вручную</div>':'')
+      ? '<label class="small" style="white-space:nowrap" title="'+esc(apprSrc)+'"><input type="checkbox" id="ap'+i+'"'+(u.appr?' checked':'')+' onchange="saveUser('+i+',\''+esc(tg)+'\')"> ✅</label>'
+        +(u.apprSet?'<div class="label">вручную</div>':'')
       : (u.appr?'✅':'—');
     var acts='';
     if(canManage) acts+='<button class="sm" title="переименовать (Фамилия Имя)" onclick="renameWorker(\''+tg+'\',\''+nm+'\')">✎</button> ';
     if(canManage&&u.tgId) acts+='<button class="sm" title="сменить код входа" onclick="setCode(\''+tg+'\',\''+esc(u.code||'')+'\')">🔑</button> ';
     if(canEdit&&!self) acts+='<button class="sm" title="сохранить роль/участок" onclick="saveUser('+i+',\''+esc(tg)+'\')">💾</button> ';
     if(canManage&&!self){ acts+= pending
-      ? '<button class="sm" style="background:#137333;color:#fff" title="открыть доступ этому человеку" onclick="restoreWorker(\''+tg+'\',\''+nm+'\')">✅ Подтвердить</button> '
+      ? '<button class="sm green" title="открыть доступ этому человеку" onclick="restoreWorker(\''+tg+'\',\''+nm+'\')">✅ Подтвердить</button> '
         +'<button class="sm" title="отклонить — доступа не будет" onclick="archiveWorker(\''+tg+'\',\''+nm+'\')">🚫</button> '
       : archived
       ? '<button class="sm" title="вернуть из архива" onclick="restoreWorker(\''+tg+'\',\''+nm+'\')">↩</button> '
       : '<button class="sm" title="в архив — доступ пропадёт, история ЗП сохранится" onclick="archiveWorker(\''+tg+'\',\''+nm+'\')">🗄</button> '; }
-    if(canManage&&!self) acts+='<button class="sm" style="color:#c0392b" title="удалить (только без выработки)" onclick="deleteWorker(\''+tg+'\',\''+nm+'\')">🗑</button>';
-    var reg=pending?'<span class="pill" style="background:#fff3cd;color:#8a6d1f">⏳ ждёт подтверждения</span>'
-      :archived?'<span class="pill" style="background:#eceff4;color:#77808f">в архиве</span>'
-      :(u.tgId?'<span class="pill" style="background:#e7f5ea;color:#137333">в системе</span>':'<span class="pill" style="background:#fdeee7;color:#b9770e">без Telegram</span>');
-    var codeCell=u.tgId?'<br><span class="muted" style="font-size:12px">🔑 код: <b>'+esc(u.code||'—')+'</b></span>':'';
-    return '<tr'+(archived?' style="opacity:.6"':'')+'><td><b>'+esc(u.name)+'</b><br><span class="muted" style="font-size:11px">'+esc(u.tgId||'')+'</span>'+codeCell+'</td><td>'+roleCell+'</td><td>'+masterCell+'</td><td>'+cutCell+'</td><td>'+otkCell+'</td><td>'+apprCell+'</td><td>'+reg+'</td><td><span class="msg" id="um'+i+'"></span> '+acts+'</td></tr>';
+    if(canManage&&!self) acts+='<button class="sm danger sec" title="удалить (только без выработки)" onclick="deleteWorker(\''+tg+'\',\''+nm+'\')">🗑</button>';
+    var reg=pending?'<span class="pill warn">⏳ ждёт подтверждения</span>'
+      :archived?'<span class="pill mute">в архиве</span>'
+      :(u.tgId?'<span class="pill ok">✓ в системе</span>':'<span class="pill warn">без Telegram</span>');
+    var codeCell=u.tgId?'<br><span class="muted small">код: <b class="num">'+esc(u.code||'—')+'</b></span>':'';
+    return '<tr'+(archived?' style="opacity:.6"':'')+'><td><b>'+esc(u.name)+'</b><br><span class="muted small num">'+esc(u.tgId||'')+'</span>'+codeCell+'</td><td>'+roleCell+'</td><td>'+masterCell+'</td><td>'+cutCell+'</td><td>'+otkCell+'</td><td>'+apprCell+'</td><td>'+reg+'</td><td><span class="msg" id="um'+i+'"></span> '+acts+'</td></tr>';
   }
   // архивные — из общего списка вон, отдельным свёрнутым блоком внизу.
   // ⚠ индекс i сквозной по ulist: на нём завязаны id полей (ro/ma/cu/um) и saveUser(i,…)
@@ -428,39 +458,39 @@ function renderUsers(box,r){
     else rows+=rowHtml(u,i);
   });
   var head='<thead><tr><th>Сотрудник</th><th>Роль</th><th>Мастер/участок</th><th title="доступ к вкладке «Раскрой»">Раскрой</th><th title="принимает работу по качеству">ОТК</th><th title="подтверждает наряды рабочих — сильнее роли">Наряды</th><th>Статус</th><th></th></tr></thead>';
-  var archBlock=nArch?('<div class="box" style="margin-top:12px;padding:0">'
-      +'<div id="uarchhead" onclick="toggleUArch()" style="cursor:pointer;padding:10px 12px;font-weight:700">🗄 Архив: '+nArch
-      +' <span class="muted" style="font-weight:normal">— доступа нет, история ЗП сохранена</span> <span id="uarchcar" class="muted">▸</span></div>'
-      +'<div id="uarch" style="display:none;padding:0 12px 10px;overflow-x:auto"><table>'+head+'<tbody>'+archRows+'</tbody></table></div>'
+  var archBlock=nArch?('<div class="box" style="margin-top:var(--s-4);padding:0">'
+      +'<div id="uarchhead" onclick="toggleUArch()" style="cursor:pointer;padding:var(--s-4) 20px;font-weight:600">Архив: <span class="num">'+nArch+'</span>'
+      +' <span class="muted" style="font-weight:400">— доступа нет, история ЗП сохранена</span> <span id="uarchcar" class="muted">▸</span></div>'
+      +'<div id="uarch" class="tbwrap" style="display:none;padding:0 20px var(--s-4)"><table>'+head+'<tbody>'+archRows+'</tbody></table></div>'
     +'</div>'):'';
-  var alert_=nPend?('<div class="box" style="margin-bottom:12px;background:#fff8e6;border-color:#f0d9a0">'
+  var alert_=nPend?('<div class="note warn">'
       +'<b>⏳ Ждут подтверждения: '+nPend+'</b><div class="muted">Люди зарегистрировались через бота сами. Доступа у них нет, пока вы не нажмёте «Подтвердить».</div></div>'):'';
   var invite='';
   if(canEdit){
     var ropts=roles.map(function(x){ return '<option value="'+x+'">'+esc(r.roleTitles[x]||x)+'</option>'; }).join('');
-    invite='<div class="box" style="margin-bottom:14px;background:#f0f6ff;border-color:#d3e4fb">'
-      +'<div style="font-weight:700;margin-bottom:8px">➕ Пригласить сотрудника под ролью</div>'
-      +'<div class="muted" style="margin-bottom:8px">Выберите роль → получите ссылку. Отправьте человеку — он перейдёт, введёт ФИО и <b>сразу войдёт под этой ролью</b>. Ссылка многоразовая (годится на нескольких людей одной роли).</div>'
-      +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">'
-        +'<div><div class="muted" style="font-size:11px;margin-bottom:3px">Роль</div><select id="invRole" style="min-width:180px">'+ropts+'</select></div>'
-        +'<div><div class="muted" style="font-size:11px;margin-bottom:3px">Мастер/участок (для рабочего)</div><select id="invMaster" style="min-width:150px"><option value="">—</option>'+masters.map(function(nm){ return '<option>'+esc(nm)+'</option>'; }).join('')+'</select></div>'
+    invite='<div class="note info">'
+      +'<h3>Пригласить сотрудника под ролью</h3>'
+      +'<div class="muted" style="margin-bottom:var(--s-3)">Выберите роль → получите ссылку. Отправьте человеку — он перейдёт, введёт ФИО и <b>сразу войдёт под этой ролью</b>. Ссылка многоразовая (годится на нескольких людей одной роли).</div>'
+      +'<div style="display:flex;gap:var(--s-3);flex-wrap:wrap;align-items:flex-end">'
+        +'<div><span class="fl">Роль</span><select id="invRole" style="min-width:200px">'+ropts+'</select></div>'
+        +'<div><span class="fl">Мастер/участок (для рабочего)</span><select id="invMaster" style="min-width:180px"><option value="">—</option>'+masters.map(function(nm){ return '<option>'+esc(nm)+'</option>'; }).join('')+'</select></div>'
         +'<button onclick="makeInvite()">Создать ссылку</button>'
       +'</div>'
-      +'<div id="invOut" style="margin-top:10px"></div>'
+      +'<div id="invOut" style="margin-top:var(--s-3)"></div>'
     +'</div>';
   } else if(canInvite){
-    invite='<div class="box" style="margin-bottom:14px;background:#f0f6ff;border-color:#d3e4fb">'
-      +'<div style="font-weight:700;margin-bottom:8px">➕ Пригласить рабочего</div>'
-      +'<div class="muted" style="margin-bottom:8px">Получите ссылку и отправьте рабочему — он перейдёт, введёт ФИО и <b>сразу войдёт как рабочий</b>. Ссылка многоразовая.</div>'
+    invite='<div class="note info">'
+      +'<h3>Пригласить рабочего</h3>'
+      +'<div class="muted" style="margin-bottom:var(--s-3)">Получите ссылку и отправьте рабочему — он перейдёт, введёт ФИО и <b>сразу войдёт как рабочий</b>. Ссылка многоразовая.</div>'
       +'<button onclick="makeInvite(\'рабочий\',\'\')">Создать ссылку для рабочего</button>'
-      +'<div id="invOut" style="margin-top:10px"></div>'
+      +'<div id="invOut" style="margin-top:var(--s-3)"></div>'
     +'</div>';
   }
   var intro=canEdit?'Все, кто зарегистрировался через бота. Приглашайте по ссылке (сразу под ролью) или правьте роль существующим — сохраняйте 💾.'
     :(isMaster?'Ваши рабочие. Пригласите нового по ссылке — он сразу попадёт к вам в бригаду.'
     :(canInvite?'Сотрудники в системе. Пригласите нового рабочего по ссылке — роли назначает директор.':'Все, кто зарегистрировался через бота.'));
   box.innerHTML='<div class="pad"><div class="hi">'+pageTitle+'</div><p class="muted">'+intro+'</p>'+alert_+invite
-    +'<div class="box" style="overflow-x:auto"><table>'+head+'<tbody>'+(rows||'<tr><td colspan=8 class="muted">пусто</td></tr>')+'</tbody></table></div>'
+    +'<div class="box tbwrap" style="padding:var(--s-2) 0"><table>'+head+'<tbody>'+(rows||'<tr><td colspan=8 class="muted">пусто</td></tr>')+'</tbody></table></div>'
     +archBlock+'</div>';
 }
 function toggleUArch(){
@@ -473,12 +503,12 @@ function makeInvite(fixedRole,fixedMaster){
   api({vapi:'createinvite',tgid:TGID,role:role,master:master}).then(function(r){
     if(!r||!r.ok){ out.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; return; }
     if(!r.link){ out.innerHTML='<span class="err">не удалось получить имя бота (проверьте токен бота)</span>'; return; }
-    out.innerHTML='<div class="muted" style="font-size:12px;margin-bottom:4px">Ссылка-приглашение под роль «'+esc(r.roleTitle)+'»'+(r.master?(' · участок '+esc(r.master)):'')+':</div>'
-      +'<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">'
-      +'<input id="invLink" value="'+esc(r.link)+'" readonly style="flex:1;min-width:220px;font-size:12px">'
-      +'<button class="sm" onclick="copyInvite()">📋 Копировать</button>'
-      +'<a class="sm" href="'+esc(r.link)+'" target="_blank" style="text-decoration:none;background:#eef1f8;color:#334;padding:6px 10px;border-radius:9px">Открыть</a>'
-      +'</div><div class="msg" id="invCopied" style="margin-top:4px"></div>';
+    out.innerHTML='<div class="muted small" style="margin-bottom:var(--s-1)">Ссылка-приглашение под роль «'+esc(r.roleTitle)+'»'+(r.master?(' · участок '+esc(r.master)):'')+':</div>'
+      +'<div style="display:flex;gap:var(--s-2);flex-wrap:wrap;align-items:center">'
+      +'<input id="invLink" value="'+esc(r.link)+'" readonly style="flex:1;min-width:220px;width:auto">'
+      +'<button onclick="copyInvite()">Копировать</button>'
+      +'<a class="btn sec" href="'+esc(r.link)+'" target="_blank">Открыть</a>'
+      +'</div><div class="msg" id="invCopied" style="margin-top:var(--s-1)"></div>';
   }).catch(function(){ out.innerHTML='<span class="err">сеть недоступна</span>'; });
 }
 function copyInvite(){
@@ -501,11 +531,11 @@ function reloadUsers(){ usersView(nativeBox()); }   // ⚠ только nativeBo
 
 // ─── «Компания и настройки» (админ/директор): реквизиты юрлиц = единый источник для всех документов ───
 function companyView(box){
-  box.innerHTML='<div class="pad"><div class="hi">🏢 Компания и настройки</div><div class="center">Загрузка…</div></div>';
+  box.innerHTML='<div class="pad"><div class="hi">Компания и настройки</div><div class="center">Загрузка…</div></div>';
   api({vapi:'companyget',tgid:TGID}).then(function(r){ renderCompany(box,r); }).catch(function(){ box.innerHTML='<div class="pad err">Ошибка</div>'; });
 }
 function reloadCompany(){ companyView(nativeBox()); }
-function cSetInput(id,label,val){ return '<div><div class="muted" style="font-size:11px;margin-bottom:3px">'+esc(label)+'</div><input id="'+id+'" value="'+esc(val==null?'':val)+'" inputmode="decimal" style="width:100%"></div>'; }
+function cSetInput(id,label,val){ return '<div><span class="fl">'+esc(label)+'</span><input id="'+id+'" class="num" value="'+esc(val==null?'':val)+'" inputmode="decimal"></div>'; }
 function renderCompany(box,r){
   if(!r||!r.ok){ box.innerHTML='<div class="pad err">'+esc((r&&r.error)||'нет прав')+'</div>'; return; }
   var head=r.head||[], sellers=r.sellers||[], st=r.settings||{}; window.COMP_HEAD=head;
@@ -515,37 +545,37 @@ function renderCompany(box,r){
   var ADDR_FLAG={'Почтовый адрес':'Почтовый = юр','Адрес производства':'Производство = юр'};
   function fld(ci,j,h,val,s){
     if(FLAG_FIELDS[h]) return '';   // спрятать сырые колонки-флаги
-    if(h===nanKey) return '<label style="display:flex;align-items:center;gap:8px;font-size:14px;grid-column:1/-1"><input type="checkbox" id="c'+ci+'_'+j+'"'+(/да|1|yes/i.test(val)?' checked':'')+' style="width:18px;height:18px;flex:0 0 auto"> Это юрлицо — <b>наниматель</b> (используется в кадровых документах)</label>';
+    if(h===nanKey) return '<label style="display:flex;align-items:center;gap:var(--s-2);grid-column:1/-1"><input type="checkbox" id="c'+ci+'_'+j+'"'+(/да|1|yes/i.test(val)?' checked':'')+'> Это юрлицо — <b>наниматель</b> (используется в кадровых документах)</label>';
     if(ADDR_FLAG[h]){   // адрес + галочка «совпадает с юридическим»
       var flagJ=head.indexOf(ADDR_FLAG[h]), same=/да|1|yes/i.test(String(s[ADDR_FLAG[h]]||'')), jur=s['Юридический адрес']||'';
-      return '<div style="grid-column:1/-1"><div class="row"><span class="muted" style="font-size:11px">'+esc(h)+'</span>'
-        +'<label style="font-size:12px;display:flex;align-items:center;gap:5px;color:#556"><input type="checkbox" id="c'+ci+'_'+flagJ+'"'+(same?' checked':'')+' onchange="toggleSame('+ci+','+j+')" style="width:16px;height:16px"> совпадает с юридическим</label></div>'
-        +'<textarea id="c'+ci+'_'+j+'" rows="2" style="width:100%"'+(same?' disabled':'')+'>'+esc(same?jur:val)+'</textarea></div>';
+      return '<div style="grid-column:1/-1"><div class="row"><span class="fl">'+esc(h)+'</span>'
+        +'<label class="small" style="display:flex;align-items:center;gap:var(--s-2);color:var(--fg2)"><input type="checkbox" id="c'+ci+'_'+flagJ+'"'+(same?' checked':'')+' onchange="toggleSame('+ci+','+j+')"> совпадает с юридическим</label></div>'
+        +'<textarea id="c'+ci+'_'+j+'" rows="2"'+(same?' disabled':'')+'>'+esc(same?jur:val)+'</textarea></div>';
     }
-    var ta=(h==='Юридический адрес'||h==='Банк'), lock=(h===codeKey)?' readonly style="width:100%;background:#f2f4f8"':' style="width:100%"';
-    return '<div'+(ta?' style="grid-column:1/-1"':'')+'><div class="muted" style="font-size:11px;margin-bottom:3px">'+esc(h)+'</div>'
-      +(ta?'<textarea id="c'+ci+'_'+j+'" rows="2" style="width:100%">'+esc(val)+'</textarea>':'<input id="c'+ci+'_'+j+'" value="'+esc(val)+'"'+lock+'>')+'</div>';
+    var ta=(h==='Юридический адрес'||h==='Банк'), lock=(h===codeKey)?' readonly disabled':'';
+    return '<div'+(ta?' style="grid-column:1/-1"':'')+'><span class="fl">'+esc(h)+'</span>'
+      +(ta?'<textarea id="c'+ci+'_'+j+'" rows="2">'+esc(val)+'</textarea>':'<input id="c'+ci+'_'+j+'" value="'+esc(val)+'"'+lock+'>')+'</div>';
   }
   var cards=sellers.map(function(s,ci){
     var isEmp=/да|1|yes/i.test(String(s[nanKey]||''));
     var fields=head.map(function(h,j){ return fld(ci,j,h,s[h]||'',s); }).join('');
-    return '<div class="box" style="margin-bottom:14px">'
-      +'<div class="row"><b style="font-size:16px">'+esc(s['Название']||s[codeKey])+'</b>'+(isEmp?'<span class="pill" style="background:#e7f5ea;color:#137333">наниматель</span>':'')+'</div>'
-      +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:10px">'+fields+'</div>'
-      +'<div style="margin-top:10px"><button onclick="saveSeller('+ci+',\''+esc(s[codeKey])+'\')">💾 Сохранить реквизиты</button> <span class="msg" id="cm'+ci+'"></span></div></div>';
+    return '<div class="box" style="margin-bottom:var(--s-4)">'
+      +'<div class="row"><h3 style="margin:0">'+esc(s['Название']||s[codeKey])+'</h3>'+(isEmp?'<span class="pill ok">✓ наниматель</span>':'')+'</div>'
+      +'<div class="formgrid">'+fields+'</div>'
+      +'<div style="margin-top:var(--s-4)"><button onclick="saveSeller('+ci+',\''+esc(s[codeKey])+'\')">💾 Сохранить реквизиты</button> <span class="msg" id="cm'+ci+'"></span></div></div>';
   }).join('');
-  var setBlock='<div class="box" style="margin-bottom:14px;background:#f6faf7;border-color:#dbe8de">'
-    +'<div class="hi" style="font-size:16px">⚙️ Параметры выработки и начальника</div>'
-    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-top:10px">'
+  var setBlock='<div class="box" style="margin-bottom:var(--s-4)">'
+    +'<h3>Параметры выработки и начальника</h3>'
+    +'<div class="formgrid">'
     +cSetInput('s_premPct','Премия за наряд, %',st.premPct)+cSetInput('s_premThr','Порог премии, руб',st.premThr)
     +cSetInput('s_nightPct','Ночная доплата, %',st.nightPct)+cSetInput('s_bossOklad','Начальник: оклад, BYN/мес',st.bossOklad)
     +cSetInput('s_bossPct','Начальник: % за упаковку',st.bossPct)+'</div>'
-    +'<div style="margin-top:10px"><button onclick="saveSettings()">💾 Сохранить настройки</button> <span class="msg" id="cset"></span></div>'
-    +'<div class="muted" style="font-size:12px;margin-top:6px">Проценты используются в расчётах; сотрудникам сами цифры % не показываются.</div></div>';
-  var blanksBox='<div class="box" style="margin-bottom:14px;background:#fff8ef;border-color:#f0e0c8">'
-    +'<div class="row"><div><b>🖨️ Ручные бланки (для печати)</b><div class="muted" style="font-size:12px;margin-top:2px">Бланки, которые печатают и заполняют от руки, хранят реквизиты текстом. После смены реквизитов нажмите — реквизиты обновятся во всех бланках.</div></div>'
-    +'<div style="display:flex;gap:6px;flex:0 0 auto"><button onclick="refreshBlanks()">🔄 Обновить бланки</button><button class="sm" onclick="checkTemplates()" style="background:#eef1f8;color:#334">🔍 Проверить шаблоны</button></div></div><div class="msg" id="blankmsg" style="margin-top:8px"></div></div>';
-  box.innerHTML='<div class="pad"><div class="hi">🏢 Компания и настройки</div>'
+    +'<div style="margin-top:var(--s-4)"><button onclick="saveSettings()">Сохранить настройки</button> <span class="msg" id="cset"></span></div>'
+    +'<div class="muted small" style="margin-top:var(--s-2)">Проценты используются в расчётах; сотрудникам сами цифры % не показываются.</div></div>';
+  var blanksBox='<div class="box" style="margin-bottom:var(--s-4)">'
+    +'<div class="row"><div><h3 style="margin:0">Ручные бланки (для печати)</h3><div class="muted small" style="margin-top:var(--s-1)">Бланки, которые печатают и заполняют от руки, хранят реквизиты текстом. После смены реквизитов нажмите — реквизиты обновятся во всех бланках.</div></div>'
+    +'<div style="display:flex;gap:var(--s-2);flex:none"><button onclick="refreshBlanks()">Обновить бланки</button><button class="sec" onclick="checkTemplates()">Проверить шаблоны</button></div></div><div class="msg" id="blankmsg" style="margin-top:var(--s-3)"></div></div>';
+  box.innerHTML='<div class="pad"><div class="hi">Компания и настройки</div>'
     +'<p class="muted">Реквизиты юрлиц — <b>единый источник</b>: поменяли здесь → меняется во всех документах (договоры продаж и кадровые). Отметьте «наниматель» у того юрлица, от которого оформляете сотрудников.</p>'
     +setBlock+blanksBox+'<div class="sect">Юридические лица</div>'+(cards||'<div class="box muted">нет юрлиц</div>')+'</div>';
 }
@@ -575,7 +605,7 @@ function checkTemplates(){
     if(r&&r.ok){
       var h=r.hits||[];
       if(!h.length){ m.innerHTML='<span class="ok">✅ Проверено шаблонов: '+r.total+' — старого адреса нигде нет.</span>'; return; }
-      m.innerHTML='<span class="err">⚠️ Со старым адресом: '+h.length+' из '+r.total+'</span><div class="muted" style="font-size:12px;margin-top:4px">'
+      m.innerHTML='<span class="err">⚠️ Со старым адресом: '+h.length+' из '+r.total+'</span><div class="muted small" style="margin-top:var(--s-1)">'
         +h.map(function(x){ return esc(x.name)+' ('+esc(x.markers.join(', '))+')'; }).join('<br>')
         +'</div><div style="margin-top:6px"><button class="sm" onclick="refreshBlanks()">🔄 Исправить</button></div>';
     } else m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>';
@@ -590,7 +620,7 @@ function refreshBlanks(){
     if(!m) return;
     if(r&&r.ok){
       var upd=r.updated||0, chg=(r.changed||[]).map(function(c){ return esc(c.field)+': «'+esc(c.from)+'» → «'+esc(c.to)+'»'; }).join('<br>');
-      m.innerHTML='<span class="ok">✅ Готово. Бланки обновлены'+(upd?' ('+upd+')':'')+', все шаблоны проверены.</span>'+(chg?'<div class="muted" style="font-size:12px;margin-top:4px">'+chg+'</div>':'');
+      m.innerHTML='<span class="ok">✅ Готово. Бланки обновлены'+(upd?' ('+upd+')':'')+', все шаблоны проверены.</span>'+(chg?'<div class="muted small" style="margin-top:var(--s-1)">'+chg+'</div>':'');
     } else m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>';
   }).catch(function(){ if(m) m.innerHTML='<span class="err">сеть недоступна</span>'; });
 }
@@ -635,7 +665,7 @@ function deleteWorker(tgId,name){
 // ─── «Доступ к разделам»: матрица роль → страницы (админ/директор) ───
 var ACCESS=null, ACCROLE='';
 function accessView(box){
-  box.innerHTML='<div class="pad"><div class="hi">🔑 Доступ к разделам</div><div class="center">Загрузка…</div></div>';
+  box.innerHTML='<div class="pad"><div class="hi">Доступ к разделам</div><div class="center">Загрузка…</div></div>';
   api({vapi:'accessmatrix',tgid:TGID}).then(function(r){
     if(!r||!r.ok){ box.innerHTML='<div class="pad err">'+esc((r&&r.error)||'нет прав')+'</div>'; return; }
     ACCESS=r; if(!ACCROLE||r.roles.indexOf(ACCROLE)<0) ACCROLE=r.roles[0]; renderAccess(box);
@@ -643,7 +673,7 @@ function accessView(box){
 }
 function renderAccess(box){
   var r=ACCESS;
-  var chips=r.roles.map(function(role){ return '<button class="rchip'+(role===ACCROLE?' on':'')+'" onclick="pickAccRole(\''+role+'\')">'+esc(r.roleTitles[role]||role)+'</button>'; }).join('');
+  var chips=r.roles.map(function(role){ return '<button class="chip'+(role===ACCROLE?' on':'')+'" onclick="pickAccRole(\''+role+'\')">'+esc(r.roleTitles[role]||role)+'</button>'; }).join('');
   var tmap={}; r.sections.forEach(function(s){ tmap[s.id]=s.title; });
   var have={}; (r.access[ACCROLE]||[]).forEach(function(id){ have[id]=1; });
   var groups=GROUPS.map(function(g){
@@ -655,10 +685,10 @@ function renderAccess(box){
     return '<div class="acc-grp"><div class="acc-gt">'+esc(g.title)+'</div>'+rows+'</div>';
   }).join('');
   var isMeta = (ACCROLE==='админ'||ACCROLE==='директор');
-  box.innerHTML='<div class="pad"><div class="hi">🔑 Доступ к разделам</div>'
+  box.innerHTML='<div class="pad"><div class="hi">Доступ к разделам</div>'
     +'<p class="muted">Выберите роль → отметьте разделы, которые ей видны. Сохраняется сразу.'+(isMeta?' У админа и директора «Сотрудники» и «Доступ» доступны всегда.':'')+'</p>'
-    +'<div class="rchips">'+chips+'</div>'
-    +'<div style="margin:8px 0"><button class="gray sm" onclick="resetAcc()">↩ по умолчанию для роли</button> <span class="msg" id="accMsg"></span></div>'
+    +'<div class="chips rchips">'+chips+'</div>'
+    +'<div style="margin:var(--s-3) 0"><button class="sec sm" onclick="resetAcc()">↩ по умолчанию для роли</button> <span class="msg" id="accMsg"></span></div>'
     +'<div class="box">'+(groups||'<span class="muted">нет разделов</span>')+'</div></div>';
 }
 function pickAccRole(role){ ACCROLE=role; renderAccess(nativeBox()); }
