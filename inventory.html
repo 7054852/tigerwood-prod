@@ -431,11 +431,11 @@ function drawLoad(){
         +((c.ops&&c.ops.length)?('операции: '+c.ops.join(', ')+'\n'):'')
         +'прочитано как «'+(c.mode==='факт'?'лежит сейчас':'всего прошло')+'»\n'
         +'ИТОГО станет '+c.target+' из '+c.need+' нужных — цифра с листа это ИТОГ, а не добавка.\n'
-        +'по нарядам уже принято '+c.done+' (не трогаем), поэтому начальный остаток '+c.was+' → '+c.now;
+        +'по нарядам принято '+c.done+' (наряды и ЗП не трогаем), начальный остаток '+c.was+' → '+c.now+' — минус значит поправку вниз до факта';
       if(!c.derived&&(c.acc||0)>(c.target||0)){
         cls+=' shortc'; acc='<span class="acc">нарядами '+c.acc+'</span>';
         SHORTS.push({det:det,mod:mod,stage:stage,acc:c.acc,got:c.target});
-        tip='НАШЛИ МЕНЬШЕ, ЧЕМ ПРИНЯТО: по нарядам принято '+c.acc+', насчитали '+c.target+' (на этом участке и дальше по цепочке).\n'+tip;
+        tip='НАШЛИ МЕНЬШЕ, ЧЕМ ПРИНЯТО: по нарядам принято '+c.acc+', насчитали '+c.target+' (на этом участке и дальше по цепочке). После проведения готовность станет '+c.target+'.\n'+tip;
       }
     }
     // у изделия «Готово» на листе закрыто (изделие либо упаковано, либо нет), но операция сборки
@@ -494,6 +494,12 @@ function drawLoad(){
         return '<div>'+esc(s.det)+(s.mod?' · '+esc(s.mod):'')+' · '+esc(s.stage)
           +' — по нарядам принято <b>'+s.acc+'</b>, насчитали <b>'+s.got+'</b></div>';
       }).join('')+'</div>'):'')
+    +(d.pay&&(d.pay.over||d.pay.under)?('<div class="shorts">💰 Наряды против факта: переплачено <b>'+d.pay.over.toFixed(2)+' ₽</b> · недоплачено <b>'+d.pay.under.toFixed(2)+' ₽</b> · итог по заказу: <b>'
+        +(d.pay.net>=0?'недоплатили ':'переплатили ')+Math.abs(d.pay.net).toFixed(2)+' ₽</b>'
+        +'<details><summary>по операциям ('+d.pay.rows.length+')</summary>'+d.pay.rows.map(function(x){
+          return '<div>'+esc(x.detail)+(x.model?' · '+esc(x.model):'')+' · '+esc(x.op)+' — нарядами '+x.done+', по факту '+x.fact
+            +' × '+x.rate+' ₽ = <b>'+(x.rub>0?'недоплата ':'переплата ')+Math.abs(x.rub).toFixed(2)+' ₽</b></div>';
+        }).join('')+'</details></div>'):'')
     +'<div class="lgnd"><span><i style="background:var(--heat-ok)"></i>распозналось, применится</span>'
     +'<span><i style="background:var(--green-bg)"></i>пусто — проверено, не меняем</span>'
     +'<span><i style="background:var(--green-bg)"></i><b class="ok">✓</b> проверено — в цеху уже столько же</span>'
