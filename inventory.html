@@ -365,10 +365,10 @@ function startInv(){
   }).catch(function(){ box.innerHTML='<div class="card err">сеть недоступна</div>'; });
 }
 function loadDraft(){
-  api({vapi:'invgrid',inv:INV}).then(function(r){
-    if(!r||!r.ok){ document.getElementById('pane_load').innerHTML='<div class="card err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
-    DRAFT=r; drawLoad();
-  }).catch(function(){});
+  return api({vapi:'invgrid',inv:INV}).then(function(r){
+    if(!r||!r.ok){ document.getElementById('pane_load').innerHTML='<div class="card err">'+esc((r&&r.error)||'ошибка')+'</div>'; return null; }
+    DRAFT=r; drawLoad(); return r;
+  }).catch(function(){ return null; });
 }
 function ikey(det,mod,st){ return nrm(det)+'|'+nrm(mod)+'|'+st; }
 function nrm(x){ return String(x==null?'':x).toLowerCase().replace(/ё/g,'е').replace(/x/g,'х').replace(/[«»"'`]/g,'').replace(/\s+/g,' ').trim(); }
@@ -383,8 +383,7 @@ function drawLoad(){
     +'<input type="file" id="pages" accept="image/*,application/pdf" multiple onchange="pickPages(this.files)">'
     +'<div class="mini" style="margin-top:var(--s-1)">Можно по одной странице и в любом порядке. Незаполненные клетки программа пропускает сама.</div>'
     +'<div class="row" style="margin-top:var(--s-2)"><b>✍️ Вписывайте, сколько нашли на участке</b>'
-    +'<span style="flex:1"></span><span id="invsave" class="mini"></span>'
-    +'<button class="sm sec" onclick="recalcDraft()">↻ пересчитать цепочку</button></div>'
+    +'<span style="flex:1"></span><span id="invsave" class="mini"></span></div>'
     +'<div id="uplbox"></div>'
     +'</div>';
   // уведомления над содержимым: начатый черновик и подсказка по клеткам
@@ -572,7 +571,6 @@ function flushCells(){
 }
 function svShow(h){ var e=document.getElementById('invsave'); if(e) e.innerHTML=h||''; }
 // пересчёт цепочки по требованию: человек досчитал участок и хочет увидеть, что подтянулось
-function recalcDraft(){ svShow('пересчитываю…'); loadDraft(); }
 function pickPages(files){
   if(!files||!files.length) return;
   for(var i=0;i<files.length;i++) UPQ.push({name:files[i].name, file:files[i], state:'ждёт'});
@@ -618,7 +616,24 @@ function applyInv(){
     if(cntPend()&&!SAVING) flushCells();
     setTimeout(applyInv, 800); return;
   }
-  if(!confirm('Применить переучёт?\n\nИзменятся только начальные остатки заказа. Принятые наряды и ЗП не трогаются.\n\nЦепочку предыдущих стадий программа посчитает сама — ждать её на экране не нужно.')) return;
+  // кнопки «пересчитать цепочку» больше нет: цепочку сервер считает сам при проведении, а перед
+  // подтверждением экран обновляем здесь — человек видит свежие недостачи и деньги (15.09.2026)
+  var m1=document.getElementById('apmsg'); if(m1) m1.textContent='обновляю сверку…';
+  loadDraft().then(function(r){
+    if(!r) return;
+    var st=r.stat||{}, pay=r.pay||{}, sh=0, C=r.cells||{};
+    for(var k in C) if(C.hasOwnProperty(k)){ var c=C[k], got=(c.got!=null&&c.got!==0)?c.got:c.target;
+      if(!c.derived&&!c.twin&&(c.acc||0)>(got||0)) sh++; }
+    var msg='Провести переучёт?\n\n'
+      +'Применится строк: '+(st.apply||0)+((st.ask||0)?(' · разобраться: '+st.ask):'')+((st.skip||0)?(' · не применится: '+st.skip):'')+'\n'
+      +(sh?('Насчитали меньше, чем принято нарядами: '+sh+' — готовность там опустится до факта.\n'):'')
+      +((pay.over||pay.under)?('Наряды против факта: переплачено '+(pay.over||0).toFixed(2)+' ₽, недоплачено '+(pay.under||0).toFixed(2)+' ₽.\n'):'')
+      +'\nМеняются только начальные остатки заказа. Принятые наряды и ЗП не трогаются.';
+    if(!confirm(msg)){ var m2=document.getElementById('apmsg'); if(m2) m2.textContent=''; return; }
+    applyGo();
+  });
+}
+function applyGo(){
   var m=document.getElementById('apmsg'); if(m) m.textContent='применяю…';
   api({vapi:'invapply',inv:INV}).then(function(r){
     if(!r||!r.ok){ if(m) m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; return; }
