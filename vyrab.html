@@ -232,9 +232,11 @@ function roleCache(v){
 (function(){ var c=roleCache(); if(c){ DATA.canCheck=c.canCheck; DATA.canCut=c.canCut; DATA.canQC=c.canQC; DATA.role=c.role||''; DATA.worker=c.worker||''; } })();
 var MODE = 'my';
 function isMaster(){ return MODE==='master'; }
+// вносит отчёты ещё и за сотрудника без телефона (отметка «отчёты вносит» в «Сотрудниках»)
+function hasProxy(){ return !isMaster() && !!(DATA.proxyFor && DATA.proxyFor.length); }
 // текущий работник для формы: в личном режиме — я; в режиме мастера — выбранный в списке (или я)
 function curWorker(){
-  if(!isMaster() && DATA.worker) return DATA.worker;
+  if(!isMaster() && DATA.worker && !hasProxy()) return DATA.worker;
   var sel=document.getElementById('worker'); if(sel&&sel.value) return sel.value;
   return DATA.worker||'';
 }
@@ -350,6 +352,15 @@ function load(){
       if(ws){ if(!wsOld) ws.innerHTML=opts||opt('','нет сотрудников');
               if(keepW){ ws.value=keepW; if(!ws.value) ws.value=DATA.worker||''; } }
       renderWhoBar(); renderTotals();   // селектор готов — обновляем подпись «за кого» в панели отправки
+    }
+    else if(DATA.worker && hasProxy()){
+      document.getElementById('who').textContent=''; document.getElementById('wsel').innerHTML='';
+      var wp=document.getElementById('worker'), keepP=(wp&&wp.value)||DRAFT.worker||DATA.worker;
+      var popts=[DATA.worker].concat(DATA.proxyFor).map(function(n){ return '<option value="'+esc(n)+'">'+esc(n)+(n===DATA.worker?' (я)':'')+'</option>'; }).join('');
+      if(!wp) document.getElementById('wsel-top').innerHTML='<div class="toolbar"><label for="worker">За кого наряд</label><select id="worker" onchange="onWorkerChange()">'+popts+'</select></div>';
+      else wp.innerHTML=popts;
+      var wp2=document.getElementById('worker'); if(wp2){ wp2.value=keepP; if(!wp2.value) wp2.value=DATA.worker; }
+      renderWhoBar(); renderTotals();
     }
     else if(DATA.worker){ document.getElementById('who').textContent='Рабочий: '+DATA.worker; document.getElementById('wsel').innerHTML=''; }
     else if(TGID){ document.getElementById('wsel').innerHTML='<label>Вы впервые. Представьтесь — <b>Фамилия Имя</b>:</label><input id="reg-fio" placeholder="Иванов Иван"><button onclick="doRegister()">Зарегистрироваться</button><div class="msg" id="reg-msg"></div>'; }
@@ -506,7 +517,7 @@ function renderTotals(){
   var total=Math.round((opsSum+(CUTTOTAL||0))*100)/100;
   if(!CART.length && !nSheets){ box.innerHTML=''; setBar('',false); return; }
   var wsel=document.getElementById('worker'), forWho=(wsel&&wsel.value)||'';
-  var forOther=(isMaster()&&forWho&&forWho!==DATA.worker);
+  var forOther=((isMaster()||hasProxy())&&forWho&&forWho!==DATA.worker);
   var parts=[];
   if(CART.length) parts.push(CART.length+' оп.');
   if(nSheets) parts.push(nSheets+' лист(ов)'+(nDet?(' · '+nDet+' дет.'):''));
@@ -581,7 +592,7 @@ function renderWhoBar(){
     +(self?'':'<button class="sm sec" onclick="backToSelf()">за себя</button>')+'</div>';
 }
 function backToSelf(){ var ws=document.getElementById('worker'); if(ws){ ws.value=DATA.worker||''; onWorkerChange(); } }
-function onWorkerChange(){ renderWhoBar(); renderTotals(); saveDraft(); }
+function onWorkerChange(){ renderWhoBar(); renderTotals(); saveDraft(); if(hasProxy()){ try{ loadPending(); }catch(e){} } }
 
 // ── ДОПОЛНЕНИЕ НАРЯДА: рабочий вспомнил операции, пока мастер не проверил ──
 var ADDTO='', ADDINFO='';
@@ -700,11 +711,11 @@ function askNum(title,cur,cb,min0){
 }
 // свой наряд и мастерские правки идут через act(): у неё есть catch и защита от двойного нажатия
 function myEdit(id,cur){
-  askNum('Новое количество:', cur, function(q){ act({vapi:'workeredit',id:id,qty:q,worker:DATA.worker||''}, null); });
+  askNum('Новое количество:', cur, function(q){ act({vapi:'workeredit',id:id,qty:q,worker:curWorker()||DATA.worker||''}, null); });
 }
 function myDel(id){
   if(!confirm('Убрать эту операцию из наряда?')) return;
-  act({vapi:'workerdel',id:id,worker:DATA.worker||''}, null);
+  act({vapi:'workerdel',id:id,worker:curWorker()||DATA.worker||''}, null);
 }
 function loadMySummary(){
   var worker=DATA.worker||'', box=document.getElementById('mysum'); if(!box) return;
@@ -762,7 +773,7 @@ function loadPending(){
   // и после одобрения/отклонения список рисовался из старого ответа — наряд оставался на месте.
   // Со стороны это выглядело как «кнопки не работают, то одобряет то нет».
   if(SCREEN&&SCREEN.pending){ var p0=SCREEN.pending; SCREEN.pending=null; renderPending(p0); return; }
-  api({vapi:'pending'}).then(renderPending)
+  api(hasProxy()?{vapi:'pending',worker:curWorker()}:{vapi:'pending'}).then(renderPending)
     .catch(function(){ el.innerHTML='<div class="err">Связь оборвалась. <a href="javascript:void(0)" onclick="loadPending()">Повторить</a></div>'; });
 }
 // ДЕЙСТВИЯ МАСТЕРА идут через одну обёртку: без неё ошибка сети уходила в никуда
@@ -1097,6 +1108,7 @@ function loadJournal(){
   var jp={vapi:'journal',from:fromRu,to:toRu};   // рабочему сервер отдаёт ТОЛЬКО его строки (фильтр по Telegram ID)
   var jw=document.getElementById('jworker');
   if(master && jw && jw.value) jp.worker=jw.value;
+  else if(hasProxy()) jp.worker=curWorker();
   api(jp).then(function(r){
     JRESP=r||{items:[]};
     fillJBatches(); fillJOps(); fillJDetails();
