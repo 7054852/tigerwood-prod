@@ -66,6 +66,10 @@
   td.g.empty{ background:var(--green-bg); color:inherit; padding:0 var(--s-1); font:400 13px/1.45 var(--font); }  /* пусто — проверено, ничего не меняем */
   td.g.warnc{ background:var(--heat-over); }                             /* применится, но стоит глянуть */
   td.g.badc{ background:var(--heat-stop); box-shadow:inset 0 0 0 2px var(--red); }   /* вопрос — должно бросаться в глаза */
+  /* насчитали меньше, чем принято нарядами — владелец хочет видеть обе цифры сразу (15.09.2026) */
+  td.g.shortc{ background:var(--heat-stop); box-shadow:inset 0 0 0 2px var(--red); }
+  td.g .acc{ display:block; font:600 11px/14px var(--font); color:var(--red); white-space:nowrap; }
+  .shorts{ font:400 13px/20px var(--font); margin:var(--s-2) 0; }
   /* выведено программой (цепочка стадий или разворот упаковки), а не вписано в лист:
      синий пунктир + курсив, чтобы происхождение цифры было видно с одного взгляда */
   td.g.derived:not(.badc){ background:var(--accent-bg); box-shadow:inset 0 0 0 1px var(--bar); }
@@ -408,7 +412,7 @@ function drawLoad(){
         +'Если в цеху на самом деле меньше — впишите цифру, вписанное всегда главнее.')+'">'
         +'<input value="" inputmode="numeric" onchange="setCell(\''+esc(k)+'\',this.value)"></td>';
     if(!c&&stg&&stg.split) return '<td class="cell down">↓</td>';
-    var cls='g cell', mark='', tip='';
+    var cls='g cell', mark='', tip='', acc='';
     var noop=(!stg||!stg.has);
     if(c&&c.derived&&!(c.qty!==null&&c.qty!==undefined&&c.qty!=='')) c=null;   // выведенная клетка выглядит как пустая
     if(!c){ cls+=' empty'; tip='не заполнено в листе — остаток не меняем'; }
@@ -428,6 +432,11 @@ function drawLoad(){
         +'прочитано как «'+(c.mode==='факт'?'лежит сейчас':'всего прошло')+'»\n'
         +'ИТОГО станет '+c.target+' из '+c.need+' нужных — цифра с листа это ИТОГ, а не добавка.\n'
         +'по нарядам уже принято '+c.done+' (не трогаем), поэтому начальный остаток '+c.was+' → '+c.now;
+      if(!c.derived&&(c.acc||0)>(c.target||0)){
+        cls+=' shortc'; acc='<span class="acc">нарядами '+c.acc+'</span>';
+        SHORTS.push({det:det,mod:mod,stage:stage,acc:c.acc,got:c.target});
+        tip='НАШЛИ МЕНЬШЕ, ЧЕМ ПРИНЯТО: по нарядам принято '+c.acc+', насчитали '+c.target+' (на этом участке и дальше по цепочке).\n'+tip;
+      }
     }
     // у изделия «Готово» на листе закрыто (изделие либо упаковано, либо нет), но операция сборки
     // коробки живёт именно там. Цифру показываем и ПОДПИСЫВАЕМ, иначе она берётся ниоткуда.
@@ -444,9 +453,10 @@ function drawLoad(){
       +'<input value="'+((c&&c.qty!==null&&c.qty!==undefined&&c.qty!=='')?c.qty:'')+'" inputmode="numeric" onchange="setCell(\''+esc(k)+'\',this.value,this)">'
       // ⚠ выведенное по цепочке («эти детали уже шлифованы») здесь НЕ показываем: владелец вносит только то,
       // что лежит на участке, серые цифры в соседних стадиях путали (15.09.2026). При проведении цепочка применяется.
-      +opn+'</td>';
+      +opn+acc+'</td>';
   }
 
+  var SHORTS=[];
   var grid=(d.products||[]).map(function(p){
     var title=esc(p.title||p.eq||'Детали заказа');
     var rows=(p.details||[]).map(function(x){
@@ -478,7 +488,12 @@ function drawLoad(){
     +'<span class="pill ok">✓ применится: '+(st.apply||0)+'</span>'
     +((st.ask||0)?('<span class="pill bad">✕ разобраться: '+st.ask+'</span>'):'')
     +((st.skip||0)?('<span class="pill bad">✕ не применится: '+st.skip+'</span>'):'')
+    +(SHORTS.length?('<span class="pill bad">✕ насчитали меньше, чем принято: '+SHORTS.length+'</span>'):'')
     +'<span class="muted">изменит остатки: '+(st.diffs||0)+' · цифры читаются как «лежит сейчас»</span></div>'
+    +(SHORTS.length?('<div class="shorts">'+SHORTS.map(function(s){
+        return '<div>'+esc(s.det)+(s.mod?' · '+esc(s.mod):'')+' · '+esc(s.stage)
+          +' — по нарядам принято <b>'+s.acc+'</b>, насчитали <b>'+s.got+'</b></div>';
+      }).join('')+'</div>'):'')
     +'<div class="lgnd"><span><i style="background:var(--heat-ok)"></i>распозналось, применится</span>'
     +'<span><i style="background:var(--green-bg)"></i>пусто — проверено, не меняем</span>'
     +'<span><i style="background:var(--green-bg)"></i><b class="ok">✓</b> проверено — в цеху уже столько же</span>'
