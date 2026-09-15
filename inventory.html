@@ -386,8 +386,10 @@ function drawLoad(){
   // уведомления над содержимым: начатый черновик и подсказка по клеткам
   var resumed=RESUMED?('<div class="note warn"><div><b>Это уже начатый переучёт</b> — по заказу может быть только один незакрытый черновик. '
       +'Загруженные страницы лягут поверх того, что здесь уже есть. Чтобы считать с нуля, удалите черновик кнопкой ниже.</div></div>'):'';
-  var cellNote='<div class="note"><div>Серые цифры под полем — что программа подтянет по цепочке при проведении. '
-    +'Рамка клетки: 🟡 в очереди · 🟢 записано в лист · 🔴 не ушло, повторю сам.'
+  var cellNote='<div class="note"><div><b>Пишите, сколько деталей лежит на участке сейчас</b> — только в той стадии, где они лежат. '
+    +'Покрашенные 10 шт пишете в «Покрашено», загрунтованные 20 шт — в «Грунтовано». Что покрашенные прошли грунт, шлифовку и раскрой, программа досчитает сама при проведении. '
+    +'Пустая клетка — не считали; на участке пусто — пишите 0. '
+    +'Рамка клетки: 🟡 в очереди · 🟢 записано · 🔴 не ушло, повторю сам.'
     +((d.products||[]).length?'<br>Цифру в любой клетке можно поправить руками — сверяйтесь с бумажным листом.':'')+'</div></div>';
 
   var hints=d.hints||{}, hshort=d.hintsShort||{};
@@ -408,7 +410,7 @@ function drawLoad(){
     if(!c&&stg&&stg.split) return '<td class="cell down">↓</td>';
     var cls='g cell', mark='', tip='';
     var noop=(!stg||!stg.has);
-    if(c&&c.derived) cls+=' derived';
+    if(c&&c.derived&&!(c.qty!==null&&c.qty!==undefined&&c.qty!=='')) c=null;   // выведенная клетка выглядит как пустая
     if(!c){ cls+=' empty'; tip='не заполнено в листе — остаток не меняем'; }
     else{
       var fl=(c.flags||[]).join(', ');
@@ -440,7 +442,8 @@ function drawLoad(){
       // поле как обычная цифра: лист выглядел заполненным там, где никто не считал, и это мешало
       // вводить. Теперь оно идёт бледной подписью под полем (и всё равно применяется при проведении).
       +'<input value="'+((c&&c.qty!==null&&c.qty!==undefined&&c.qty!=='')?c.qty:'')+'" inputmode="numeric" onchange="setCell(\''+esc(k)+'\',this.value,this)">'
-      +((c&&c.derived&&c.target&&!(c.qty!==null&&c.qty!==undefined&&c.qty!==''))?('<span class="drv" title="подтянуто по цепочке — применится при проведении">'+c.target+'</span>'):'')
+      // ⚠ выведенное по цепочке («эти детали уже шлифованы») здесь НЕ показываем: владелец вносит только то,
+      // что лежит на участке, серые цифры в соседних стадиях путали (15.09.2026). При проведении цепочка применяется.
       +opn+'</td>';
   }
 
@@ -475,10 +478,9 @@ function drawLoad(){
     +'<span class="pill ok">✓ применится: '+(st.apply||0)+'</span>'
     +((st.ask||0)?('<span class="pill bad">✕ разобраться: '+st.ask+'</span>'):'')
     +((st.skip||0)?('<span class="pill bad">✕ не применится: '+st.skip+'</span>'):'')
-    +'<span class="muted">изменит остатки: '+(st.diffs||0)+' · прочитано как «'+esc(d.mode==='факт'?'лежит сейчас':'всего прошло')+'»</span></div>'
+    +'<span class="muted">изменит остатки: '+(st.diffs||0)+' · цифры читаются как «лежит сейчас»</span></div>'
     +'<div class="lgnd"><span><i style="background:var(--heat-ok)"></i>распозналось, применится</span>'
     +'<span><i style="background:var(--green-bg)"></i>пусто — проверено, не меняем</span>'
-    +'<span><i style="background:var(--accent-bg);box-shadow:inset 0 0 0 1px var(--bar)"></i>ƒ вывела программа (только вверх)</span>'
     +'<span><i style="background:var(--green-bg)"></i><b class="ok">✓</b> проверено — в цеху уже столько же</span>'
     +'<span><i style="background:var(--heat-over)"></i>применится, но есть замечание</span>'
     +'<span><i style="background:var(--heat-stop);outline:2px solid var(--red)"></i>вопрос — наведите, чтобы увидеть</span></div>'
