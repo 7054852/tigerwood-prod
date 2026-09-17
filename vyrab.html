@@ -111,6 +111,7 @@ window.onerror=function(msg,src,line){
     </div>
   </div>
   <div id="whobar"></div>
+  <div id="daytime"></div>
   <div class="note">🌙 Ночная смена с 23 на 24 — ставьте <b>23</b> (день, когда смена началась).</div>
 </div>
 <div id="pane-w">
@@ -339,6 +340,7 @@ function load(){
     if(!keep || bsel.value!==keep) onBatchChange(); else updateWhen();
     loadMySummary();
     restoreDraft();
+    renderDayTime();   // карточка дня: приход/уход по выбранному сотруднику и дате
     if(isMaster()){
       // мастер вводит наряд за себя ИЛИ за любого сотрудника
       document.getElementById('who').textContent='';
@@ -448,7 +450,7 @@ function setDate(off){ var d=new Date(); d.setDate(d.getDate()+off);
   var s=d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());
   var el=document.getElementById('wdate'); if(el) el.value=s; updateWhen(); saveDraft(); }
 // наглядно: за какую дату и смену будет отчёт
-function updateWhen(){ var el=document.getElementById('whenline'); if(!el) return;
+function updateWhen(){ try{ renderDayTime(); }catch(e){} var el=document.getElementById('whenline'); if(!el) return;
   var wd=(document.getElementById('wdate')||{}).value||'';
   var human=wd?wd.split('-').reverse().slice(0,2).join('.'):'—';
   el.innerHTML='📅 Отчёт за <b>'+human+'</b> · '+(SHIFT==='ночь'?'🌙 ночь':'☀️ день'); }
@@ -592,7 +594,7 @@ function renderWhoBar(){
     +(self?'':'<button class="sm sec" onclick="backToSelf()">за себя</button>')+'</div>';
 }
 function backToSelf(){ var ws=document.getElementById('worker'); if(ws){ ws.value=DATA.worker||''; onWorkerChange(); } }
-function onWorkerChange(){ renderWhoBar(); renderTotals(); saveDraft(); if(hasProxy()){ try{ loadPending(); }catch(e){} } }
+function onWorkerChange(){ renderWhoBar(); renderTotals(); saveDraft(); renderDayTime(); if(hasProxy()){ try{ loadPending(); }catch(e){} } }
 
 // ── ДОПОЛНЕНИЕ НАРЯДА: рабочий вспомнил операции, пока мастер не проверил ──
 var ADDTO='', ADDINFO='';
@@ -664,8 +666,21 @@ function sendWork(){
   }
   if(!items.length && !sheets.length){ wmsg('<span class="err">Наряд пуст</span>'); return; }
   var wd=(document.getElementById('wdate')||{}).value||'';
+  var dRu=wd?wd.split('-').reverse().join('.'):'';
+  // ВРЕМЯ ПРИХОДА обязательно при первом наряде за дату: спрашиваем здесь, а не отказом сервера
+  var tRec=dayTime(worker,dRu);
+  if(!tRec['in']){
+    askInline('Во сколько '+(worker===DATA.worker?'вы пришли':esc(worker)+' пришёл')+' на работу '+dRu+'?', nowHM(), function(v){
+      if(!v) { wmsg('<span class="err">Без времени прихода наряд не отправить</span>'); return; }
+      setDayTime(worker,dRu,{'in':v},function(r){
+        if(!r||!r.ok){ wmsg('<span class="err">'+esc((r&&r.error)||'не записалось')+'</span>'); return; }
+        sendWork();   // время записано — отправляем наряд обычным путём
+      });
+    },'time');
+    return;
+  }
   wmsg(ADDTO?'Добавляю в наряд…':'Отправляю наряд…'); sendLock(true);
-  var p={vapi:'submitwork',worker:worker,date:(wd?wd.split('-').reverse().join('.'):''),shift:SHIFT,
+  var p={vapi:'submitwork',worker:worker,date:dRu,shift:SHIFT,
          items:JSON.stringify(items), sheets:JSON.stringify(sheets)};
   if(ADDTO) p.addto=ADDTO;
   apiPost(p).then(function(r){
@@ -692,7 +707,8 @@ function askInline(title, cur, cb, text){
   var old=document.getElementById('askbox'); if(old) old.parentNode.removeChild(old);
   var d=document.createElement('div'); d.id='askbox';
   d.innerHTML='<div class="ab card"><div class="abt"></div>'
-    +(text==='date'?('<input id="askin" type="date" max="'+attr(todayIso())+'"')
+    +(text==='time'?'<input id="askin" type="time"'
+      :text==='date'?('<input id="askin" type="date" max="'+attr(todayIso())+'"')
       :(text?'<input id="askin" type="text"':'<input id="askin" type="number" step="1" min="0" inputmode="decimal"'))
     +' style="width:100%">'
     +'<div class="row" style="margin-top:var(--s-2)"><button class="sm" id="askok">ОК</button><button class="sm sec" id="askno">Отмена</button></div></div>';
@@ -730,7 +746,12 @@ function renderMySummary(r){
   (function(){
     var items=(r&&r.items)||[], pr=(r&&r.payroll)||[], zp=pr.length?pr[0].sum:0;
     var recent=items.slice(0,5).map(function(it){ return '<div class="row"><span class="muted">'+esc(it.date)+' · '+esc(it.op)+' · '+it.qty+'шт</span><span class="'+(it.status==='подтверждено'?'ok':(it.status==='отклонено'?'err':'muted'))+'">'+it.sum+'р · '+esc(it.status)+'</span></div>'; }).join('');
-    box.innerHTML='<div class="card"><div class="row"><b>💰 Ваша ЗП за месяц (подтв.)</b><b class="ok">'+zp+' руб.</b></div>'
+    // часы за месяц по табелю: рабочий видит, за сколько часов эти деньги
+    var hh=0, hk=(r&&r.hours)||{};
+    Object.keys(hk).forEach(function(k){ if(k.indexOf((DATA.worker||'')+'|')===0) hh+=Number(hk[k].h)||0; });
+    hh=Math.round(hh*10)/10;
+    box.innerHTML='<div class="card"><div class="row"><b>💰 Ваша ЗП за месяц (подтв.)</b><b class="ok">'+zp+' руб.'
+      +(hh?(' <span class="muted">/ '+String(hh).replace('.',',')+' ч'+(zp?(' · '+(Math.round(zp/hh*100)/100)+' р/ч'):'')+'</span>'):'')+'</b></div>'
       +(recent?'<div class="muted" style="margin-top:var(--s-2)">Последние отчёты:</div>'+recent:'<div class="muted" style="margin-top:var(--s-2)">пока нет отчётов</div>')+'</div>';
   })();
 }
@@ -936,7 +957,8 @@ function renderPending(r){
       var ageH=ruAgeH(rp.date), oldN=(ageH>48);
       return '<div class="card"><div class="row"><b>'+esc(rp.worker)+'</b>'
         +'<span class="'+(oldN?'err':'muted')+'" style="font-size:13px">📅 <b>'+esc(rp.date)+'</b></span>'+bTag+'</div>'
-        +'<div class="muted">'+(rp.single?'одиночная запись':'наряд')+': '+rp.lines.length+' оп.'
+        +'<div class="muted">'+timeLine(rp.worker,rp.date,rp.time,!!DATA.canCheck)
+        +(rp.single?'одиночная запись':'наряд')+': '+rp.lines.length+' оп.'
         +(ageH>=24?(' · <span class="'+(oldN?'err':'muted')+'">лежит '+otkAge(ageH)+'</span>'):'')
         +(rp.submitted?' · подан '+esc(rp.submitted):'')+'</div>'
         +ctrls+lines+bonusBlockHtml(rp.breakdown||{})+footer+'</div>';
@@ -1184,8 +1206,13 @@ function renderJournal(){
   pay.innerHTML='';
   if(pr.length){
     var tot=pr.reduce(function(s,p){return s+p.sum;},0);
-    pay.innerHTML='<div class="card"><div class="row"><b>💰 ЗП за период (подтв.)'+((bf||of||df)?' · по фильтру':'')+'</b><b class="ok">'+(Math.round(tot*100)/100)+' руб.</b></div>'
-      +pr.map(function(p){return '<div class="row"><span>'+esc(p.worker)+'</span><span>'+p.sum+' руб.</span></div>';}).join('')+'</div>';
+    // часы за период по табелю: «450 р · 64 ч · 7 р/ч»
+    var hw={}, hall=0, hk=(r&&r.hours)||{};
+    Object.keys(hk).forEach(function(k){ var w=k.split('|')[0], h=Number(hk[k].h)||0;
+      if(!h) return; hw[w]=Math.round(((hw[w]||0)+h)*10)/10; hall=Math.round((hall+h)*10)/10; });
+    var hTxt=function(h,sum){ return h?(' <span class="muted">· '+String(h).replace('.',',')+' ч'+(sum?(' · '+(Math.round(sum/h*100)/100)+' р/ч'):'')+'</span>'):''; };
+    pay.innerHTML='<div class="card"><div class="row"><b>💰 ЗП за период (подтв.)'+((bf||of||df)?' · по фильтру':'')+'</b><b class="ok">'+(Math.round(tot*100)/100)+' руб.'+hTxt(hall,tot)+'</b></div>'
+      +pr.map(function(p){return '<div class="row"><span>'+esc(p.worker)+'</span><span>'+p.sum+' руб.'+hTxt(hw[p.worker],p.sum)+'</span></div>';}).join('')+'</div>';
   }
   (function(){
     if(!items.length){ lst.innerHTML='<div class="muted">Нет принятых нарядов за период.</div>'; return; }
@@ -1249,7 +1276,8 @@ function renderJournal(){
       // красного: журнал листают, чтобы найти нужный день, а не чтобы поймать просрочку.
       return '<div class="card"><div class="row"><b>'+esc(g.worker)+'</b>'
         +'<span style="font-size:13px">📅 <b>'+esc(g.date)+'</b> <span class="muted">'+(night?'🌙 ночь':'☀️ день')+'</span></span>'+bonBtn+'</div>'
-        +'<div class="muted" style="font-size:13px">'+(g.submitted?'подан '+esc(g.submitted)+' · ':'')
+        +'<div class="muted" style="font-size:13px">'+dayLine(g.worker,g.date)
+        +(g.submitted?'подан '+esc(g.submitted)+' · ':'')
           +((g.lines||[]).some(isCutLine)?batchTag({kind:'лист'}):((g.lines[0]&&g.lines[0].free)?batchTag(g.lines[0]):esc(g.batch)))
           +(g.single?'':' · наряд')+' · '+g.lines.length+' оп.</div>'
         +'<div id="bonbox-j-'+bonKey(bonRid)+'"></div>'
@@ -1909,3 +1937,77 @@ load();try{if(document.getElementById("pane-m").style.display!=="none")loadPendi
 </script>
 </body>
 </html>
+
+<script>
+// ═══ ВРЕМЯ ПРИХОДА И УХОДА (17.09.2026) ═══
+// Часы принадлежат ДНЮ, а не наряду: за смену нарядов бывает несколько. Приход спрашиваем при
+// первом наряде за дату, уход — кнопкой «Закончил работу»; забыл — увидит напоминание на другой день.
+function nowHM(){ var d=new Date(); return (d.getHours()<10?'0':'')+d.getHours()+':'+(d.getMinutes()<10?'0':'')+d.getMinutes(); }
+function tKey(w,dRu){ return String(w||'')+'|'+String(dRu||''); }
+function dayTime(w,dRu){ var t=(DATA.times||{})[tKey(w,dRu)]; return t||{'in':'',out:'',h:0}; }
+function wdateRu(){ var v=(document.getElementById('wdate')||{}).value||''; return v?v.split('-').reverse().join('.'):''; }
+function hFmt(h){ return String(Math.round((h||0)*10)/10).replace('.',',')+' ч'; }
+function setDayTime(w,dRu,patch,done){
+  var p={vapi:'worktime',date:dRu,worker:w};
+  if(patch['in']!=null) p.tin=patch['in'];
+  if(patch.out!=null) p.tout=patch.out;
+  api(p).then(function(r){
+    if(r&&r.ok){ DATA.times=DATA.times||{}; DATA.times[tKey(w,dRu)]={'in':r['in']||'',out:r.out||'',h:r.h||0}; renderDayTime(); }
+    if(done) done(r);
+  }).catch(function(){ if(done) done(null); });
+}
+// строка времени в карточке наряда (у мастера — с правкой)
+function timeLine(w,dRu,t,canEdit){
+  t=t||dayTime(w,dRu);
+  var txt=t['in']?('🕘 '+t['in']+(t.out?('–'+t.out+' · '+hFmt(t.h)):' · уход не отмечен')):'🕘 время не указано';
+  return '<span class="'+(t['in']&&t.out?'muted':'warn')+'">'+txt+'</span>'
+    +(canEdit?(' <button class="sm sec" onclick="editDayTime(\''+esc(String(w).replace(/'/g,''))+'\',\''+esc(dRu)+'\')">✎ время</button>'):'')+' · ';
+}
+// строка дня в журнале: «08:00–16:30 · 8,5 ч · за день 60 р · 7,1 р/ч»
+function dayLine(w,dRu){
+  var t=((JRESP&&JRESP.hours)||{})[tKey(w,dRu)]||{'in':'',out:'',h:0};
+  if(!t['in']) return '';
+  var sum=0,pend=0;
+  ((JRESP&&JRESP.items)||[]).forEach(function(x){ if(x.worker!==w||x.date!==dRu) return;
+    if(x.status==='подтверждено') sum+=Number(x.sum)||0; else if(x.status!=='отклонено') pend+=Number(x.sum)||0; });
+  sum=Math.round(sum*100)/100;
+  var s='🕘 '+t['in']+(t.out?('–'+t.out):'')+(t.h?(' · <b>'+hFmt(t.h)+'</b>'):' · уход не отмечен');
+  if(sum) s+=' · за день <b>'+money(sum)+' р</b>'+(t.h?(' · '+money(Math.round(sum/t.h*100)/100)+' р/ч'):'');
+  if(pend) s+=' <span class="warn">+'+money(Math.round(pend*100)/100)+' р на проверке</span>';
+  return s+' · ';
+}
+function editDayTime(w,dRu){
+  var t=dayTime(w,dRu);
+  askInline('Во сколько пришёл '+dRu+'?', t['in']||nowHM(), function(a){
+    if(!a) return;
+    askInline('Во сколько ушёл? (пусто — ещё работает)', t.out||'', function(b){
+      setDayTime(w,dRu,{'in':a,out:b||''},function(r){ if(r&&!r.ok) alert(r.error||'не записалось'); });
+    },'time');
+  },'time');
+}
+function finishDay(w,dRu){ setDayTime(w,dRu,{out:nowHM()},function(r){ if(r&&!r.ok) alert(r.error||'не записалось'); }); }
+// карточка дня над формой + напоминание про незакрытый прошлый день
+function renderDayTime(){
+  var box=document.getElementById('daytime'); if(!box) return;
+  var w=curWorker(), dRu=wdateRu();
+  if(!w||!dRu){ box.innerHTML=''; return; }
+  var t=dayTime(w,dRu), nm=(w===DATA.worker)?'':(' · '+esc(w));
+  var body=t['in']
+    ? ('пришёл <b>'+t['in']+'</b> · '+(t.out?('ушёл <b>'+t.out+'</b> · <b>'+hFmt(t.h)+'</b>'):'<span class="warn">уход не отмечен</span>'))
+    : '<span class="warn">время прихода не указано — спросим при отправке наряда</span>';
+  var btns='<span style="flex:1"></span>'
+    +(t['in']&&!t.out?('<button class="sm" onclick="finishDay(\''+esc(String(w).replace(/'/g,''))+'\',\''+esc(dRu)+'\')">🏁 Закончил работу</button> '):'')
+    +'<button class="sm sec" onclick="editDayTime(\''+esc(String(w).replace(/'/g,''))+'\',\''+esc(dRu)+'\')">✎ время</button>';
+  var warn='';
+  var keys=Object.keys(DATA.times||{});
+  for(var i=0;i<keys.length;i++){
+    var p=keys[i].split('|'), tt=DATA.times[keys[i]];
+    if(p[0]===w && p[1]!==dRu && tt['in'] && !tt.out){
+      warn='<div class="note warn"><div><b>'+esc(p[1])+': уход не отмечен.</b> Укажите, во сколько закончили — иначе часы за тот день не посчитаются.'
+        +' <button class="sm" onclick="editDayTime(\''+esc(String(w).replace(/'/g,''))+'\',\''+esc(p[1])+'\')">Указать</button></div></div>';
+      break;
+    }
+  }
+  box.innerHTML='<div class="card"><div class="row">🕘 <b>'+esc(dRu)+'</b>'+nm+' · '+body+btns+'</div></div>'+warn;
+}
+</script>

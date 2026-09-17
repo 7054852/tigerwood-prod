@@ -217,6 +217,8 @@ function renderPay(){
       +(bestD?tile('Лучший день', money(bestV)+' <small>₽ · '+bestD+'.'+ym[1]+'</small>'):'')
       +(r.sheetTotal>0?tile('🪚 Раскрой листов', money(r.sheetTotal)+' <small>₽</small>', 'var(--amber)', 'оплата за раскрой листов на ЧПУ: платим за лист, а детали с него уходят в свои заказы'):'')
       +(r.freeTotal>0?tile('Из них вне заказа', money(r.freeTotal)+' <small>₽</small>', 'var(--accent-text)'):'')
+      +(r.hoursTotal>0?tile('Часов всего', h1(r.hoursTotal)+' <small>ч</small>', '', 'приход и уход из табеля: часы = уход − приход, обед не вычитается'):'')
+      +(r.hoursTotal>0?tile('В среднем ₽/час', money(Math.round(r.grand/r.hoursTotal*100)/100)+' <small>₽</small>'):'')
       +(r.pendingTotal>0?tile('Ждёт подтверждения', money(r.pendingTotal)+' <small>₽</small>', 'var(--amber)'):'')
     +'</div>';
   if(!r.workers.length){ $('pane').innerHTML=top+tiles+'<div class="empty">За этот месяц подтверждённой выработки нет.</div>'; return; }
@@ -225,22 +227,25 @@ function renderPay(){
   // человека, и в ведомости их не различить. Показываем два слова целиком, отчество убираем.
   var shortName=function(n){ var p=String(n).trim().split(/\s+/); return p.slice(0,2).join(' '); };
   // colgroup — ровные колонки одинаковой ширины
-  var cg='<colgroup><col class="c-nm"><col class="c-tot"><col class="c-sm">'
+  var cg='<colgroup><col class="c-nm"><col class="c-tot"><col class="c-sm"><col class="c-sm"><col class="c-sm">'
     +cols.map(function(){ return '<col class="c-d">'; }).join('')+'</colgroup>';
   var th='<thead><tr><th class="nmc">Рабочий</th><th class="totc">Итого ₽</th><th class="c-sm">дн</th>'
+    +'<th class="c-sm" title="часы по табелю: уход − приход">ч</th><th class="c-sm" title="заработок за час">₽/ч</th>'
     +cols.map(function(d){ return '<th class="'+(d===todayD?'tdy':(wkd(d)?'wknd':''))+'" title="'+d+' '+esc(mLabel)+', '+dow[new Date(Number(ym[0]),Number(ym[1])-1,d).getDay()]+'">'+d+'</th>'; }).join('')
     +'</tr></thead>';
   var body='<tbody>'+r.workers.map(function(w){
     var tds=cols.map(function(d){
-      var v=w.byDay[d], cls=(d===todayD?'tdy':(wkd(d)?'wknd':''));
-      return '<td class="'+cls+(v?'':' zero')+'"'+(v?(' title="'+esc(w.name)+', '+d+' '+esc(mLabel)+': '+money(v)+' ₽"'):'')+'>'
+      var v=w.byDay[d], cls=(d===todayD?'tdy':(wkd(d)?'wknd':'')), hd=(w.hoursByDay||{})[d], tm=(w.timeIn||{})[d];
+      var ttl=(v||hd)?(esc(w.name)+', '+d+' '+esc(mLabel)+(v?(': '+money(v)+' ₽'):'')+(hd?('\n'+(tm?tm+' · ':'')+h1(hd)+' ч'):'')):'';
+      return '<td class="'+cls+(v?'':' zero')+'"'+(ttl?(' title="'+ttl+'"'):'')+'>'
         +(v?(rub(v)+(w.night[d]?'<span class="nn">🌙</span>':'')):'·')+'</td>';
     }).join('');
     var tip=w.name+' · всего '+money(w.total)+' ₽ за '+w.days+' дн'
       +(w.sheetRub>0?('\nиз них раскрой листов: '+money(w.sheetRub)+' ₽'):'')
       +(w.freeRub>0?('\nвне заказа: '+money(w.freeRub)+' ₽'):'')
       +(w.bonusRub>0?('\nпремии: '+money(w.bonusRub)+' ₽'):'')
-      +(w.timeRub>0?('\nповременно: '+money(w.timeRub)+' ₽'):'');
+      +(w.timeRub>0?('\nповременно: '+money(w.timeRub)+' ₽'):'')
+      +(w.hours>0?('\nчасов по табелю: '+h1(w.hours)+' ч'+(w.rubPerHour>0?(' · '+money(w.rubPerHour)+' ₽/час'):'')):'');
     return '<tr><td class="nmc" title="'+esc(tip)+'">'+esc(shortName(w.name))
         +(w.pending>0?'<span class="pnd" title="на проверке у мастера">+'+money(w.pending)+'</span>':'')
         // ⚠ раскрой листов — это НЕ «вне заказа»: работа по заказу есть, просто оплата идёт за лист,
@@ -251,14 +256,18 @@ function renderPay(){
           // оставляем значки, расшифровка полностью в подсказке на имени
           +(w.sheetRub>0?('<span class="pt"> · </span><span class="pc">🪚 '+money(w.sheetRub)+'</span>'):'')
           +(w.freeRub>0?('<span class="pt"> · </span><span class="pc">🧰 '+money(w.freeRub)+'</span>'):'')+'</span></td>'
-      +'<td class="totc">'+money(w.total)+'</td><td>'+w.days+'</td>'+tds+'</tr>';
+      +'<td class="totc">'+money(w.total)+'</td><td>'+w.days+'</td>'
+      +'<td'+(w.hours>0?'':' class="zero"')+'>'+(w.hours>0?h1(w.hours):'·')+'</td>'
+      +'<td'+(w.rubPerHour>0?'':' class="zero"')+'>'+(w.rubPerHour>0?money(w.rubPerHour):'·')+'</td>'+tds+'</tr>';
   }).join('')+'</tbody>';
   var ft='<tfoot><tr><td class="nmc">ВСЕГО</td><td class="totc">'+money(r.grand)+'</td><td>'+r.workers.length+' чел</td>'
+    +'<td>'+(r.hoursTotal>0?h1(r.hoursTotal):'·')+'</td><td>'+(r.hoursTotal>0?money(Math.round(r.grand/r.hoursTotal*100)/100):'·')+'</td>'
     +cols.map(function(d){ var t=r.dayTotals[d];
       return '<td class="'+(d===todayD?'tdy':(wkd(d)?'wknd':''))+(t?'':' zero')+'">'+(t?rub(t):'·')+'</td>'; }).join('')
     +'</tr></tfoot>';
   var note='<div class="note"><div>В клетках — заработок за день, целыми рублями (точная сумма — при наведении). '
-    +'🌙 — была ночная смена. Колонка «Итого ₽» и строка «ВСЕГО» — с копейками.'
+    +'🌙 — была ночная смена. Колонка «Итого ₽» и строка «ВСЕГО» — с копейками. '
+    +'Колонки «ч» и «₽/ч» — часы по табелю (приход и уход, обед не вычитается) и заработок за час.'
     +(hidden>0&&ZONLY?(' Скрыто дней без выработки: '+hidden+'.'):'')+'</div></div>';
   $('pane').innerHTML=top+note+tiles+'<div class="paywrap" id="paywrap"><table class="pay">'+cg+th+body+ft+'</table></div>';
   setTimeout(function(){   // прокрутить к сегодняшнему дню; если его нет — к последним дням с работой
