@@ -612,7 +612,7 @@ function opsByOpHtml(id,dash){
         +'<span class="pill" title="доля труда операции от всего труда заказа">'+(t.share||0)+'% труда</span>'
         +'<span class="bar"><i style="width:'+pct+'%'+(pct>=100?';background:var(--green)':'')+'"></i></span>'
         +'<span class="gpct">'+(t.pct||0)+'%</span>'
-        +'<span class="gsum">лежит '+r1(t.factQty)+' · осталось '+t.leftQty+' из '+t.needQty+'</span>'
+        +'<span class="gsum">сделано '+t.doneQty+' из '+t.needQty+' · лежит '+r1(t.factQty)+' · осталось '+t.leftQty+'</span>'
       +'</div>'
       +'<div class="gbody"><table><thead><tr><th>Деталь</th><th class="num c-hide">Нужно</th><th class="num c-hide">Нач. остатки</th><th class="num">Сделано</th>'
         +'<th class="num" title="сколько деталей прошли эту операцию и ещё не ушли на следующую">Лежит</th>'
@@ -652,7 +652,7 @@ function opsDashHtml(id,dash){
         +'<span class="pill" title="доля труда участка от всего труда заказа">'+(g.share||0)+'% труда</span>'
         +'<span class="bar"><i style="width:'+pct+'%'+(pct>=100?';background:var(--green)':'')+'"></i></span>'
         +'<span class="gpct">'+(g.pct||0)+'%</span>'
-        +'<span class="gsum">лежит '+r1(g.factQty)+' · осталось '+money(g.leftRub)+' ₽ · '+g.leftQty+' оп.</span>'
+        +'<span class="gsum">сделано '+g.doneQty+' из '+g.needQty+' · лежит '+r1(g.factQty)+' · осталось '+money(g.leftRub)+' ₽</span>'
       +'</div>'
       +'<div class="gbody"><table><thead><tr><th>Тип операции</th><th class="num c-hide">Нужно</th><th class="num">Сделано</th><th class="num" title="сколько лежит на этой операции сейчас">Лежит</th><th class="num">Остаток</th><th class="num c-hide">Нужно ₽</th><th class="num c-hide">% труда</th><th class="num">Остаток ₽</th><th class="num">% вып.</th></tr></thead><tbody>'+opRows+'</tbody></table></div>'
     +'</div>';
@@ -710,9 +710,10 @@ function floorCell(id,t,d){
   var call="openFact('"+id+"','"+ids.join(',')+"')";
   var pen=' <span class="flpen" onclick="'+call+'" title="поправить — пересчитали детали на участке">✎</span>';
   var his=logged?' <span class="flhist" onclick="'+call+'" title="цифру уже правили руками — показать историю">🕘</span>':'';
+  var made=Number(d.ready)||0;
   return '<td title="'+esc(tip)+'">'
     +'<span class="flf'+(fact>0?'':' z')+'">'+r1(fact)+'</span>'+his+pen
-    +'<span class="fll'+(left>0?'':' ok')+'">'+(left>0?('ост. '+r1(left)):'✓')+'</span>'
+    +'<span class="fll'+(left>0?'':' ok')+'">сд. '+r1(made)+(left>0?(' · ост. '+r1(left)):' ✓')+'</span>'
     +'</td>';
 }
 var FLOORLOG={};   // id заказа → { opId: сколько раз правили }
@@ -738,12 +739,12 @@ function opsFloorHtml(id,dash){
         +'<span class="gcar">▸</span><span class="dot" style="background:'+color+'"></span>'
         +'<span class="gname">'+esc(g.group)+'</span>'
         +'<span class="pill" title="сколько деталей физически лежит на операциях участка (штуко-операции)">лежит '+r1(g.factQty)+'</span>'
-        +'<span class="gsum">осталось '+money(g.leftRub)+' ₽ · '+plural(m.dets.length,'деталь','детали','деталей')+'</span>'
+        +'<span class="gsum">сделано '+g.doneQty+' из '+g.needQty+' · осталось '+money(g.leftRub)+' ₽ · '+plural(m.dets.length,'деталь','детали','деталей')+'</span>'
       +'</div>'
       +'<div class="gbody"><div class="flwrap"><table class="floor"><thead>'+head+'</thead><tbody>'+body+'</tbody></table></div></div>'
     +'</div>';
   }).join('')
-  +'<div class="muted small">нажми на участок — раскроется его таблица. Крупная цифра в клетке — сколько деталей лежит на этой операции сейчас, мелкая — сколько ещё осталось пройти; ✎ правит её. Штриховка — у детали такой операции нет. Итог участка в штуко-операциях: три операции одной детали дают 3.</div>';
+  +'<div class="muted small">нажми на участок — раскроется его таблица. Крупная цифра в клетке — сколько деталей лежит на этой операции сейчас; ✎ правит её. Мелким: «сд.» — сколько всего прошло эту операцию (наряды плюс начальные остатки), «ост.» — сколько ещё осталось. Штриховка — у детали такой операции нет. Итог участка в штуко-операциях: три операции одной детали дают 3.</div>';
 }
 // ── ПРАВКА «ЛЕЖИТ СЕЙЧАС» ДИСПЕТЧЕРОМ ──
 // Пересчитал детали на участке — вписал цифру. Наряды и ЗП не трогаются: меняются только
