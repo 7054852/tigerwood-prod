@@ -81,6 +81,33 @@
   .gcard.open .gcar{ transform:rotate(90deg); }
   .gbody{ display:none; padding:0 var(--s-3) var(--s-3); overflow-x:auto; } .gcard.open .gbody{ display:block; }
   .pill.sh{ cursor:help; }   /* деталь идёт в нескольких изделиях */
+  /* ── ТАБЛИЦА УЧАСТКА: что лежит на каждой операции ──
+     Строка — деталь, колонки — операции участка по техпорядку. В клетке крупно «лежит сейчас»
+     (прошли эту операцию, но не ушли на следующую), мелко — «осталось». Штриховка = у детали
+     такой операции нет (правило и рисунок те же, что в ведомости переучёта). */
+  .fltabs{ display:flex; gap:var(--s-1); margin-bottom:var(--s-3); }
+  .fltab{ font:var(--t-small); padding:var(--s-1) var(--s-3); border:1px solid var(--line); border-radius:999px;
+          background:var(--card); color:var(--muted); cursor:pointer; user-select:none; }
+  .fltab.on{ background:var(--accent-bg); border-color:var(--accent); color:var(--accent-text); font-weight:600; }
+  .flg{ margin-bottom:var(--s-3); }
+  .flg h4{ margin:0 0 var(--s-1); font:var(--t-label); color:var(--muted); }
+  .flwrap{ overflow-x:auto; }
+  table.floor{ border-collapse:separate; border-spacing:0; }
+  table.floor th,table.floor td{ border-bottom:1px solid var(--line); border-right:1px solid var(--line);
+                                 padding:var(--s-1) var(--s-2); text-align:center; }
+  table.floor thead th{ background:var(--card2); font:var(--t-label); color:var(--muted); border-top:1px solid var(--line); white-space:normal; max-width:96px; }
+  table.floor .dn{ position:sticky; left:0; z-index:1; text-align:left; white-space:normal; max-width:200px;
+                   border-left:1px solid var(--line); background:var(--card); }
+  table.floor thead .dn{ z-index:2; background:var(--card2); }
+  table.floor td.no{ background:repeating-linear-gradient(135deg,var(--grey-bg),var(--grey-bg) 4px,var(--line2) 4px,var(--line2) 8px); }
+  .flf{ font:600 15px/18px var(--font); font-variant-numeric:tabular-nums; }
+  .flf.z{ color:var(--muted); font-weight:500; }
+  .fll{ display:block; font:var(--t-label); color:var(--muted); font-variant-numeric:tabular-nums; }
+  .fll.ok{ color:var(--green); }
+  .flhist{ font-size:10px; color:var(--muted); cursor:pointer; }
+  .flpen{ font-size:11px; color:var(--muted); cursor:pointer; opacity:0; transition:opacity .12s var(--ease); }
+  table.floor td:hover .flpen{ opacity:1; }
+  @media (max-width:640px){ table.floor .dn{ max-width:130px; font-size:12px; } .flf{ font-size:14px; } }
   /* ── проверки логики ── */
   .chkok{ margin-top:var(--s-4); font:var(--t-small); color:var(--green); background:var(--green-bg); border-radius:var(--r-ctl); padding:var(--s-2) var(--s-3); }
   .chktray{ background:var(--amber-bg); }
@@ -417,6 +444,7 @@ function loadOps(id){
 }
 function renderOps(id,r){
   var box=$('ops_'+id), k=r.kpi||{};
+  FLOORLOG[id]=r.logged||{}; indexOps(id,r);
   // каталог правили после того, как заказ был создан → операции пересобрались сами, человеку надо это сказать
   var reb = r.rebuilt ? '<div class="pill info" style="margin-bottom:var(--s-2);white-space:normal;height:auto">↻ операции пересобраны по актуальному каталогу — начальные остатки и выработка сохранены</div>' : '';
   var warn = (r.notAssembled&&r.notAssembled.length) ? '<div class="pill warn" style="margin-bottom:var(--s-2);white-space:normal;height:auto">⚠ не подтверждены директором как «собрано»: '+r.notAssembled.map(esc).join(', ')+'</div>' : '';
@@ -457,8 +485,10 @@ function renderOps(id,r){
   var dash=r.dash||{}, nG=(dash.groups||[]).length, nO=(dash.ops||[]).length, nP=(r.products||[]).length;
   box.innerHTML=reb+warn+'<div id="opskpi_'+id+'">'+kpi+'</div>'
     +'<div id="opschecks_'+id+'">'+opsChecksHtml(id,r.checks||{})+'</div>'
-    +trayHtml('Участки работ', nG?plural(nG,'участок','участка','участков'):'', 'нажми на участок — разбивка по типам операций',
-              '<div id="opsdash_'+id+'">'+opsDashHtml(id,dash)+'</div>')
+    +trayHtml('Участки работ', nG?plural(nG,'участок','участка','участков'):'', 'карточки — деньги и проценты; таблица — что лежит на операциях',
+              floorTabsHtml(id)
+              +'<div id="opsdash_'+id+'"'+(FLOORVIEW[id]?' style="display:none"':'')+'>'+opsDashHtml(id,dash)+'</div>'
+              +'<div id="opsfloor_'+id+'"'+(FLOORVIEW[id]?'':' style="display:none"')+'>'+opsFloorHtml(id,dash)+'</div>')
     +trayHtml('Заказ по операциям', nO?plural(nO,'операция','операции','операций'):'', 'одна деталь идёт в нескольких изделиях — здесь сведено по заказу',
               '<div id="opsbyop_'+id+'">'+opsByOpHtml(id,dash)+'</div>')
     +(prods?trayHtml('Изделия заказа', plural(nP,'изделие','изделия','изделий'), 'нажми на изделие — его операции; остатки вводятся здесь', prods)
@@ -598,6 +628,160 @@ function opsDashHtml(id,dash){
   }).join('');
   return cards;
 }
+// ── ТАБЛИЧНЫЙ ВИД: «сколько лежит сейчас на участке» ──
+// Пять цифр по операции: нужно · сделано · начальные остатки · ЛЕЖИТ СЕЙЧАС · осталось.
+// «Лежит» приходит с сервера (fact): прошло эту операцию минус прошло следующую по цепочке состава.
+var FLOORVIEW={};   // id заказа → true, если вместо карточек показан табличный вид
+function setFloorView(id,on){
+  FLOORVIEW[id]=!!on;
+  var d=$('opsdash_'+id), f=$('opsfloor_'+id);
+  if(d) d.style.display=on?'none':'';
+  if(f) f.style.display=on?'':'none';
+  var tc=$('fltab_c_'+id), tt=$('fltab_t_'+id);
+  if(tc) tc.className='fltab'+(on?'':' on');
+  if(tt) tt.className='fltab'+(on?' on':'');
+}
+function floorTabsHtml(id){
+  var on=!!FLOORVIEW[id];
+  return '<div class="fltabs">'
+    +'<span class="fltab'+(on?'':' on')+'" id="fltab_c_'+id+'" onclick="setFloorView(\''+id+'\',false)">карточки</span>'
+    +'<span class="fltab'+(on?' on':'')+'" id="fltab_t_'+id+'" onclick="setFloorView(\''+id+'\',true)">таблица</span>'
+    +'</div>';
+}
+// матрица участка: детали × операции
+function floorMatrix(g){
+  var ops=(g.ops||[]), dets=[], idx={};
+  ops.forEach(function(t){
+    (t.details||[]).forEach(function(d){
+      var k=String(d.detail||'').toLowerCase();
+      if(idx[k]===undefined){ idx[k]=dets.length; dets.push({ name:d.detail, models:d.models||[], need:0, left:0, cells:{} }); }
+      var row=dets[idx[k]];
+      row.cells[t.op]=d;
+      if(d.need>row.need) row.need=d.need;
+      row.left+=(Number(d.left)||0);
+    });
+  });
+  dets.sort(function(a,b){ return a.name.localeCompare(b.name,'ru'); });
+  return { ops:ops, dets:dets };
+}
+function floorCell(id,t,d){
+  if(!d) return '<td class="no" title="у этой детали такой операции нет"></td>';
+  var fact=Number(d.fact)||0, left=Number(d.left)||0;
+  var ids=d.ids||[], log=FLOORLOG[id]||{}, logged=false;
+  for(var i=0;i<ids.length;i++) if(log[ids[i]]) logged=true;
+  var tip=t.op+' · '+d.detail
+    +'\nнужно: '+r1(d.need)
+    +'\nпо нарядам: '+r1(d.done)+(Number(d.stock)?(' · начальные остатки: '+r1(d.stock)):'')
+    +'\nвсего прошло: '+r1(d.ready)
+    +'\nлежит сейчас: '+r1(fact)
+    +'\nосталось: '+r1(left)
+    +(d.nextOp?('\nждёт: '+d.nextOp):'');
+  var key=encodeURIComponent(t.op)+'~'+encodeURIComponent(d.detail);
+  var pen=' <span class="flpen" onclick="openFact(\''+id+'\',\''+key+'\')" title="поправить — пересчитали детали на участке">✎</span>';
+  var his=logged?' <span class="flhist" onclick="openFact(\''+id+'\',\''+key+'\')" title="цифру уже правили руками — показать историю">🕘</span>':'';
+  return '<td title="'+esc(tip)+'">'
+    +'<span class="flf'+(fact>0?'':' z')+'">'+r1(fact)+'</span>'+his+pen
+    +'<span class="fll'+(left>0?'':' ok')+'">'+(left>0?('ост. '+r1(left)):'✓')+'</span>'
+    +'</td>';
+}
+var FLOORLOG={};   // id заказа → { opId: сколько раз правили }
+var FLOORCELL={};  // id заказа → { 'операция~деталь': строки этой клетки }
+function opsFloorHtml(id,dash){
+  var groups=dash.groups||[]; if(!groups.length) return '';
+  FLOORCELL[id]={};
+  return groups.map(function(g){
+    var m=floorMatrix(g); if(!m.ops.length||!m.dets.length) return '';
+    var head='<tr><th class="dn">Деталь</th><th>Нужно</th>'
+      +m.ops.map(function(t){ return '<th title="'+esc(t.op+' · лежит сейчас '+r1(t.factQty)+' шт')+'">'+esc(t.op)+'</th>'; }).join('')
+      +'<th>Осталось<br>по участку</th></tr>';
+    var body=m.dets.map(function(d){
+      var nm=esc(d.name)+(d.models.length>1?' <span class="pill mute sh" title="'+esc('идёт в изделиях: '+d.models.join(', '))+'">общая</span>':'');
+      return '<tr><td class="dn">'+nm+'</td><td class="num">'+r1(d.need)+'</td>'
+        +m.ops.map(function(t){ var c=d.cells[t.op];
+            if(c) FLOORCELL[id][encodeURIComponent(t.op)+'~'+encodeURIComponent(d.name)]={op:t.op,detail:d.name,cell:c,group:g.group};
+            return floorCell(id,t,c); }).join('')
+        +'<td class="num" style="'+(d.left>0?'color:var(--red)':'color:var(--green)')+'">'+r1(d.left)+'</td></tr>';
+    }).join('');
+    return '<div class="flg"><h4>'+esc(g.group)+' · лежит сейчас '+r1(g.factQty)+' шт-операций · осталось '+money(g.leftRub)+' ₽</h4>'
+      +'<div class="flwrap"><table class="floor"><thead>'+head+'</thead><tbody>'+body+'</tbody></table></div></div>';
+  }).join('')
+  +'<div class="muted small">крупная цифра — сколько деталей лежит на этой операции сейчас; мелкая — сколько ещё осталось пройти. Штриховка — у детали такой операции нет. Итог участка считается в штуко-операциях: три операции одной детали дают 3.</div>';
+}
+// ── ПРАВКА «ЛЕЖИТ СЕЙЧАС» ДИСПЕТЧЕРОМ ──
+// Пересчитал детали на участке — вписал цифру. Наряды и ЗП не трогаются: меняются только
+// начальные остатки. Предыдущие операции подтягиваются вверх (деталь не могла пройти эту
+// операцию, не пройдя их), вниз — никогда. Каждая правка идёт в историю с примечанием.
+var FLOORROWS={};   // id заказа → { opId: строка операции с изделием }
+function indexOps(id,r){
+  var m={};
+  (r.products||[]).forEach(function(p){ (p.ops||[]).forEach(function(o){
+    m[o.id]={eq:p.eq,model:p.model,detail:o.detail,op:o.op,fact:o.fact,need:o.need,
+             ready:o.ready,done:o.done,stock:o.stock,left:o.left,nextOp:o.nextOp,nextReady:o.nextReady};
+  }); });
+  FLOORROWS[id]=m;
+}
+function closeFact(){ var o=$('fcov'); if(o) o.remove(); }
+function openFact(id,key){
+  var c=(FLOORCELL[id]||{})[key]; if(!c) return;
+  var ids=(c.cell.ids||[]), M=FLOORROWS[id]||{};
+  var rows=ids.map(function(oid){
+    var o=M[oid]; if(!o) return '';
+    return '<div class="mvn"><span style="flex:1">'+esc(o.model||o.eq)
+      +' <span class="muted">· нужно '+r1(o.need)+' · всего прошло '+r1(o.ready)
+      +(o.nextOp?(' · ушло на «'+esc(o.nextOp)+'» '+r1(o.nextReady)):'')+'</span></span>'
+      +'<input class="q fcq" data-op="'+esc(oid)+'" value="'+r1(o.fact)+'" inputmode="decimal"></div>';
+  }).join('');
+  var ov=document.createElement('div'); ov.className='mvov'; ov.id='fcov';
+  ov.onclick=function(e){ if(e.target===ov) closeFact(); };
+  ov.innerHTML='<div class="mvbox"><span class="mvclose" onclick="closeFact()">✕</span>'
+    +'<h3>Сколько лежит на операции</h3>'
+    +'<div class="muted small">деталь «'+esc(c.detail)+'» · операция «'+esc(c.op)+'» · участок '+esc(c.group)+'</div>'
+    +rows
+    +'<div style="margin-top:var(--s-3)"><input id="fcnote" placeholder="почему правим — пересчитали, нашли на складе…" style="width:100%"></div>'
+    +'<div class="muted small" style="margin-top:var(--s-2)">наряды и зарплата не меняются: правятся только начальные остатки. Предыдущие операции подтянутся вверх, если понадобится.</div>'
+    +'<div class="row" style="margin-top:var(--s-3);gap:var(--s-2)">'
+      +'<button onclick="saveFact(\''+id+'\',\''+key+'\')">Сохранить</button>'
+      +'<button class="sec" onclick="closeFact()">Отмена</button></div>'
+    +'<div id="fclog" style="margin-top:var(--s-3)"></div></div>';
+  document.body.appendChild(ov);
+  api({vapi:'opfactlog',batch:id}).then(function(r){
+    var b=$('fclog'); if(!b) return;
+    var log=((r&&r.log)||[]).filter(function(x){ return x.op===c.op && x.detail===c.detail; });
+    if(!log.length){ b.innerHTML='<div class="muted small">правок ещё не было</div>'; return; }
+    b.innerHTML='<div class="muted small" style="margin-bottom:var(--s-1)">История правок</div>'
+      +log.map(function(x){
+        return '<div class="mvn"><span style="flex:1">'+esc(x.when)+' · '+esc(x.who||'—')
+          +(x.model?(' · '+esc(x.model)):'')+' <b>'+esc(x.was)+' → '+esc(x.now)+'</b>'
+          +(x.note?(' <span class="muted">— '+esc(x.note)+'</span>'):'')
+          +(x.cascade?('<br><span class="muted small">подтянуто выше: '+esc(x.cascade)+'</span>'):'')+'</span></div>';
+      }).join('');
+  });
+}
+function saveFact(id,key){
+  var ov=$('fcov'); if(!ov) return;
+  var note=(($('fcnote')||{}).value||'').trim();
+  if(note.length<3){ alert('Напишите коротко, почему правите — через неделю никто не вспомнит.'); return; }
+  var M=FLOORROWS[id]||{}, list=[];
+  Array.prototype.forEach.call(ov.querySelectorAll('.fcq'), function(inp){
+    var oid=inp.getAttribute('data-op'), o=M[oid];
+    var val=Number(String(inp.value).replace(',','.'));
+    if(!isFinite(val)||val<0) return;
+    if(o && Math.abs(val-(Number(o.fact)||0))<0.001) return;    // не трогали — не пишем
+    list.push({op:oid,qty:val});
+  });
+  if(!list.length){ closeFact(); return; }
+  var i=0;
+  var step=function(force){
+    if(i>=list.length){ closeFact(); loadOps(id); return; }
+    var x=list[i];
+    api({vapi:'setopfact',op:x.op,qty:x.qty,note:note,force:force?1:''}).then(function(r){
+      if(r&&r.warn){ if(confirm(r.msg)) step(true); else { i++; step(false); } return; }
+      if(!r||!r.ok){ alert((r&&r.error)||'не удалось сохранить'); return; }
+      i++; step(false);
+    });
+  };
+  step(false);
+}
 function opLeftCss(o){ return o.left>0?'color:var(--red)':'color:var(--green)'; }
 function opLeftHtml(o){
   // Излишек ОБЩЕЙ операции (деталь до покраски одинакова) не относится ни к одному цвету —
@@ -691,6 +875,8 @@ function applyOpsNumbers(id,r){
   var cb=$('opschecks_'+id); if(cb) cb.innerHTML=opsChecksHtml(id,r.checks||{});   // проверки пересчитываются целиком
   var oflags=(r.checks&&r.checks.opFlags)||{};
   // агрегатные блоки (участки, заказ по операциям) пересчитываются целиком — в них не вводят; сохраняем раскрытое
+  FLOORLOG[id]=r.logged||{}; indexOps(id,r);
+  var fb=$('opsfloor_'+id); if(fb && r.dash) fb.innerHTML=opsFloorHtml(id,r.dash);
   [['opsdash_',opsDashHtml],['opsbyop_',opsByOpHtml]].forEach(function(cfg){
     var b=$(cfg[0]+id); if(!b || !r.dash) return;
     var open={}; Array.prototype.forEach.call(b.querySelectorAll('.gcard.open'), function(c){ open[c.id]=1; });
