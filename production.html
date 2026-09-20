@@ -93,7 +93,18 @@
   .fltab.on{ background:var(--accent-bg); border-color:var(--accent); color:var(--accent-text); font-weight:600; }
   .flg{ margin-bottom:var(--s-3); }
   .flg h4{ margin:0 0 var(--s-1); font:var(--t-label); color:var(--muted); }
-  .flwrap{ overflow-x:auto; }
+  /* ⚠ overflow-y:clip (а не visible/auto) — чтобы горизонтальная прокрутка осталась, но контейнер
+     НЕ становился вертикальным скроллом: иначе липкая шапка прилипает к невидимому краю
+     контейнера, а не к верху экрана, и при прокрутке страницы уезжает вместе с таблицей. */
+  /* ⚠ Таблица прокручивается ВНУТРИ своей рамки (и вбок, и вниз). Иначе липкую шапку
+     держать негде: контейнер с горизонтальной прокруткой сам становится скроллом,
+     и «position:sticky» цепляется к нему, а не к экрану — шапка уезжала вместе с таблицей. */
+  .flwrap{ overflow:auto; max-height:70vh; overscroll-behavior:contain; }
+  /* названия колонок видны всегда, пока листаешь длинный список деталей */
+  table.floor thead th{ position:sticky; top:0; z-index:3; }
+  table.floor thead tr.ops th{ top:var(--flh1,28px); }
+  table.floor thead tr:only-child th, table.floor thead tr.ops:first-child th{ top:0; }
+  table.floor thead .dn{ z-index:5; }
   table.floor{ border-collapse:separate; border-spacing:0; }
   table.floor th,table.floor td{ border-bottom:1px solid var(--line); border-right:1px solid var(--line);
                                  padding:var(--s-1) var(--s-2); text-align:center; }
@@ -104,8 +115,8 @@
   table.floor td.no{ background:repeating-linear-gradient(135deg,var(--grey-bg),var(--grey-bg) 4px,var(--line2) 4px,var(--line2) 8px); }
   .flf{ font:600 15px/18px var(--font); font-variant-numeric:tabular-nums; }
   .flf.z{ color:var(--muted); font-weight:500; }
+  .flsub{ display:block; }
   .fll{ display:inline; font:var(--t-label); color:var(--muted); font-variant-numeric:tabular-nums; }
-  .flf + .fll, .flf + .flhist + .fll, .flf + .flpen + .fll{ display:block; }
   .fll.fl2::before{ content:' · '; }
   .fll.ok{ color:var(--green); }
   /* ЗАКРЫТО — видно фоном, а не только цветом цифры. В дневной теме зелёный текст на белом
@@ -128,6 +139,7 @@
   table.floor.only-base .br-nat, table.floor.only-base .br-col,
   table.floor.only-nat .br-base, table.floor.only-nat .br-col,
   table.floor.only-col .br-base, table.floor.only-col .br-nat{ display:none; }
+  .flahead{ color:var(--amber); font-size:11px; cursor:help; }
   .flover{ display:block; font:var(--t-label); color:var(--amber); font-variant-numeric:tabular-nums; }
   .flhist{ font-size:10px; color:var(--muted); cursor:pointer; }
   .flpen{ font-size:12px; color:var(--muted); cursor:pointer; opacity:0; transition:opacity .12s var(--ease); padding:0 2px; }
@@ -139,6 +151,7 @@
     table.floor th,table.floor td{ padding:var(--s-1) 4px; }
     table.floor thead th{ font-size:10px; max-width:70px; }
     .flf{ font-size:15px; } .fll{ font-size:10px; }
+    table.floor{ --flh1:24px; }
     .fll.fl2{ display:block; }                 /* «сд.» и «ост.» в два ряда — колонка вдвое уже */
     .fll.fl2::before{ content:''; }
     .gcard.flg .gbody{ padding:0 var(--s-1) var(--s-2); }   /* на телефоне каждый пиксель ширины на счету */
@@ -744,14 +757,18 @@ function floorCell(id,t,d){
     +'\nлежит сейчас: '+r1(fact)
     +'\nосталось: '+r1(left)
     +(d.nextOp?('\nждёт: '+d.nextOp):'');
+  var ahead=Number(d.ahead)||0;
+  var ah=ahead>0.01?' <span class="flahead" title="'+esc('принято '+r1(d.ready)+' шт, а предыдущей операцией обеспечено только '+r1(d.cap)
+        +' — на '+r1(ahead)+' больше. Либо наряд по предыдущей операции ещё не одобрен, либо приёмка здесь завышена, либо детали пришли со склада.')+'">⚠</span>':'';
   var call="openFact('"+id+"','"+ids.join(',')+"')";
   var pen=' <span class="flpen" onclick="'+call+'" title="поправить — пересчитали детали на участке">✎</span>';
   var his=logged?' <span class="flhist" onclick="'+call+'" title="цифру уже правили руками — показать историю">🕘</span>':'';
   var made=Number(d.ready)||0, done=left<=0.001;
+  if (ahead>0.01) tip+='\nобеспечено предыдущей операцией: '+r1(d.cap)+' — здесь принято больше';
   return '<td class="'+(done?'cdone':'')+br+'" title="'+esc(tip)+'">'
-    +'<span class="flf'+(fact>0?'':' z')+'">'+r1(fact)+'</span>'+his+pen
-    +'<span class="fll'+(left>0?'':' ok')+'">сд. '+r1(made)+(left>0?'':' ✓')+'</span>'
-    +(left>0?'<span class="fll fl2">ост. '+r1(left)+'</span>':'')
+    +'<span class="flf'+(fact>0?'':' z')+'">'+r1(fact)+'</span>'+ah+his+pen
+    +'<span class="flsub"><span class="fll'+(left>0?'':' ok')+'">сд. '+r1(made)+(left>0?'':' ✓')+'</span>'
+      +(left>0?'<span class="fll fl2">ост. '+r1(left)+'</span>':'')+'</span>'
     +'</td>';
 }
 var FLOORLOG={};   // id заказа → { opId: сколько раз правили }
@@ -861,7 +878,7 @@ function opsFloorHtml(id,dash){
         +'<div class="flwrap"><table class="floor'+(br?(' only-'+br):'')+'"><thead>'+head+'</thead><tbody>'+body+'</tbody></table></div></div>'
     +'</div>';
   }).join('')
-  +'<div class="muted small">нажми на участок — раскроется его таблица. Шлифовка и покрытие идут одним участком: слева подготовка (шпатлёвка, шлифовка), затем натуральная отделка (лак, масло) и покраска в цвет — у каждой детали открыты клетки только своей ветки. Крупная цифра в клетке — сколько деталей лежит на этой операции сейчас; ✎ правит её. Мелким: «сд.» — сколько всего прошло эту операцию (наряды плюс начальные остатки), «ост.» — сколько ещё осталось. Штриховка — у детали такой операции нет. Последняя колонка — сколько ДЕТАЛЕЙ ещё не прошли участок целиком (по самой отстающей операции), «+N» жёлтым — сделано сверх потребности. Итог в шапке участка — в штуко-операциях: три операции одной детали дают 3.</div>';
+  +'<div class="muted small">нажми на участок — раскроется его таблица. Шлифовка и покрытие идут одним участком: слева подготовка (шпатлёвка, шлифовка), затем натуральная отделка (лак, масло) и покраска в цвет — у каждой детали открыты клетки только своей ветки. Крупная цифра в клетке — сколько деталей лежит на этой операции сейчас; ✎ правит её. Мелким: «сд.» — сколько всего прошло эту операцию (наряды плюс начальные остатки), «ост.» — сколько ещё осталось. Штриховка — у детали такой операции нет. Последняя колонка — сколько ДЕТАЛЕЙ ещё не прошли участок целиком (по самой отстающей операции), «+N» жёлтым — сделано сверх потребности. ⚠ в клетке — операция принята в большем количестве, чем прошло предыдущую: так бывает, когда наряд на предыдущую ещё не одобрен или приёмка завышена. Итог в шапке участка — в штуко-операциях: три операции одной детали дают 3.</div>';
 }
 
 // ── ПРАВКА «ЛЕЖИТ СЕЙЧАС» ДИСПЕТЧЕРОМ ──
