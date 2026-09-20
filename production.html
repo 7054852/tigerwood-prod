@@ -114,6 +114,10 @@
   table.floor td.cdone .fll{ color:var(--green); font-weight:600; }
   table.floor .dn.done{ background:var(--green-bg); color:var(--green); font-weight:600; }
   table.floor td.num.done{ background:var(--green-bg); color:var(--green); font-weight:700; }
+  /* двухъярусная шапка: ветка отделки сверху, операции снизу (как в ведомости переучёта) */
+  table.floor thead th.brh{ font-weight:700; letter-spacing:.04em; border-bottom:1px solid var(--line); }
+  table.floor thead th.br-nat{ background:var(--card2); }
+  table.floor thead th.br-col{ background:var(--accent-bg); color:var(--accent-text); }
   .flhist{ font-size:10px; color:var(--muted); cursor:pointer; }
   .flpen{ font-size:12px; color:var(--muted); cursor:pointer; opacity:0; transition:opacity .12s var(--ease); padding:0 2px; }
   table.floor td:hover .flpen{ opacity:1; }
@@ -730,14 +734,64 @@ var FLOORLOG={};   // id заказа → { opId: сколько раз прав
 // Участки в таблице свёрнуты: нажал «Шлифовка» — она раскрылась, листать до неё не нужно.
 // Раскрытое запоминается, чтобы точечное обновление цифр не схлопывало то, что открыл человек.
 function toggleFloorGroup(id,gi){ var c=$('fg_'+id+'_'+gi); if(c) c.classList.toggle('open'); }
+// ── БЛОКИ ТАБЛИЦЫ: шлифовка и покрытие идут одним участком ──
+// Физически это одна непрерывная цепочка: шлифовка → грунт → перетирка → покраска,
+// и перетирки по цеху числятся за шлифовщиками. Разрезанные на два блока, они путали:
+// приходилось прыгать между таблицами, чтобы понять, где деталь стоит.
+var FLOOR_BLOCKS=[['Механика',['Механика']],['Шлифовка и покрытие',['Шлифовка','Покрытие']],
+                  ['Сборка',['Сборка']],['Прочее',['Прочее']]];
+// Ветка отделки: общая подготовка → натуральные (лак, масло) → в цвет.
+// Внутри ветки порядок технологический, как в каталоге; ветки не смешиваются,
+// иначе «Грунтовка Лаком» и «Грунтовка под цвет» стоят рядом и читаются как одна стадия.
+var FLOOR_BRANCH=[['base','Подготовка'],['nat','Натуральные · лак и масло'],['col','В цвет']];
+function opBranch(op){
+  var n=String(op||'').toLowerCase();
+  if(/цвет/.test(n)) return 'col';
+  if(/перетирка\s+грунта/.test(n)) return 'col';     // грунт перетирают под покраску в цвет
+  if(/лак|масл/.test(n)) return 'nat';
+  return 'base';
+}
+function floorBlocks(dash){
+  var byG={}; (dash.groups||[]).forEach(function(g){ byG[g.group]=g; });
+  var out=[];
+  FLOOR_BLOCKS.forEach(function(b){
+    var gs=[]; b[1].forEach(function(n){ if(byG[n]) gs.push(byG[n]); });
+    if(!gs.length) return;
+    var blk={ title:(gs.length>1?b[0]:gs[0].group), ops:[], needQty:0, doneQty:0, leftQty:0, factQty:0, leftRub:0, color:'var(--line2)' };
+    gs.forEach(function(g){
+      blk.ops=blk.ops.concat(g.ops||[]);
+      blk.needQty+=g.needQty; blk.doneQty+=g.doneQty; blk.leftQty+=g.leftQty;
+      blk.factQty+=(g.factQty||0); blk.leftRub+=g.leftRub;
+    });
+    if(blk.ops[0]&&blk.ops[0].color) blk.color=blk.ops[0].color;
+    var rank={base:0,nat:1,col:2};
+    blk.ops.sort(function(a,b2){
+      var ra=rank[opBranch(a.op)], rb=rank[opBranch(b2.op)];
+      return (ra-rb) || ((a.idx||0)-(b2.idx||0)) || a.op.localeCompare(b2.op,'ru');
+    });
+    blk.leftRub=Math.round(blk.leftRub*100)/100;
+    out.push(blk);
+  });
+  return out;
+}
+function floorHead(ops){
+  var cnt={}; ops.forEach(function(t){ var b=opBranch(t.op); cnt[b]=(cnt[b]||0)+1; });
+  var used=[]; FLOOR_BRANCH.forEach(function(b){ if(cnt[b[0]]) used.push(b); });
+  var names='<tr class="ops">'+(used.length>1?'':'<th class="dn">Деталь</th><th>Нужно</th>')
+    +ops.map(function(t){ return '<th class="br-'+opBranch(t.op)+'" title="'+esc(t.op+' · лежит сейчас '+r1(t.factQty)+' шт')+'">'+esc(t.op)+'</th>'; }).join('')
+    +(used.length>1?'':'<th>Осталось<br>по участку</th>')+'</tr>';
+  if(used.length<2) return names;
+  // два яруса: сверху ветка отделки, снизу сами операции
+  var top='<tr><th class="dn" rowspan="2">Деталь</th><th rowspan="2">Нужно</th>'
+    +used.map(function(b){ return '<th class="br-'+b[0]+' brh" colspan="'+cnt[b[0]]+'">'+esc(b[1])+'</th>'; }).join('')
+    +'<th rowspan="2">Осталось<br>по участку</th></tr>';
+  return top+names;
+}
 function opsFloorHtml(id,dash){
-  var groups=dash.groups||[]; if(!groups.length) return '';
-  return groups.map(function(g,gi){
+  var blocks=floorBlocks(dash); if(!blocks.length) return '';
+  return blocks.map(function(g,gi){
     var m=floorMatrix(g); if(!m.ops.length||!m.dets.length) return '';
-    var color=(g.ops&&g.ops[0]&&g.ops[0].color)||'var(--line2)';
-    var head='<tr><th class="dn">Деталь</th><th>Нужно</th>'
-      +m.ops.map(function(t){ return '<th title="'+esc(t.op+' · лежит сейчас '+r1(t.factQty)+' шт')+'">'+esc(t.op)+'</th>'; }).join('')
-      +'<th>Осталось<br>по участку</th></tr>';
+    var head=floorHead(m.ops);
     var body=m.dets.map(function(d){
       var rdone=d.left<=0.001;
       var nm=(rdone?'✓ ':'')+esc(d.name)+(d.models.length>1?' <span class="pill mute sh" title="'+esc('идёт в изделиях: '+d.models.join(', '))+'">общая</span>':'');
@@ -747,17 +801,18 @@ function opsFloorHtml(id,dash){
         +'<td class="num'+(rdone?' done':'')+'"'+(rdone?'':' style="color:var(--red)"')+'>'+(rdone?'✓':r1(d.left))+'</td></tr>';
     }).join('');
     return '<div class="gcard flg" id="fg_'+id+'_'+gi+'">'
-      +'<div class="grow" onclick="toggleFloorGroup(\''+id+'\','+gi+')">'
-        +'<span class="gcar">▸</span><span class="dot" style="background:'+color+'"></span>'
-        +'<span class="gname">'+esc(g.group)+'</span>'
+      +'<div class="grow" onclick="toggleFloorGroup(\'' + id + '\',' + gi + ')">'
+        +'<span class="gcar">▸</span><span class="dot" style="background:'+g.color+'"></span>'
+        +'<span class="gname">'+esc(g.title)+'</span>'
         +'<span class="pill" title="сколько деталей физически лежит на операциях участка (штуко-операции)">лежит '+r1(g.factQty)+'</span>'
         +'<span class="gsum">сделано '+g.doneQty+' из '+g.needQty+' · осталось '+money(g.leftRub)+' ₽ · '+plural(m.dets.length,'деталь','детали','деталей')+'</span>'
       +'</div>'
       +'<div class="gbody"><div class="flwrap"><table class="floor"><thead>'+head+'</thead><tbody>'+body+'</tbody></table></div></div>'
     +'</div>';
   }).join('')
-  +'<div class="muted small">нажми на участок — раскроется его таблица. Крупная цифра в клетке — сколько деталей лежит на этой операции сейчас; ✎ правит её. Мелким: «сд.» — сколько всего прошло эту операцию (наряды плюс начальные остатки), «ост.» — сколько ещё осталось. Штриховка — у детали такой операции нет. Итог участка в штуко-операциях: три операции одной детали дают 3.</div>';
+  +'<div class="muted small">нажми на участок — раскроется его таблица. Шлифовка и покрытие идут одним участком: слева подготовка (шпатлёвка, шлифовка), затем натуральная отделка (лак, масло) и покраска в цвет — у каждой детали открыты клетки только своей ветки. Крупная цифра в клетке — сколько деталей лежит на этой операции сейчас; ✎ правит её. Мелким: «сд.» — сколько всего прошло эту операцию (наряды плюс начальные остатки), «ост.» — сколько ещё осталось. Штриховка — у детали такой операции нет. Итог участка в штуко-операциях: три операции одной детали дают 3.</div>';
 }
+
 // ── ПРАВКА «ЛЕЖИТ СЕЙЧАС» ДИСПЕТЧЕРОМ ──
 // Пересчитал детали на участке — вписал цифру. Наряды и ЗП не трогаются: меняются только
 // начальные остатки. Предыдущие операции подтягиваются вверх (деталь не могла пройти эту
