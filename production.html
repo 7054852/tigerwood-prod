@@ -104,7 +104,9 @@
   table.floor td.no{ background:repeating-linear-gradient(135deg,var(--grey-bg),var(--grey-bg) 4px,var(--line2) 4px,var(--line2) 8px); }
   .flf{ font:600 15px/18px var(--font); font-variant-numeric:tabular-nums; }
   .flf.z{ color:var(--muted); font-weight:500; }
-  .fll{ display:block; font:var(--t-label); color:var(--muted); font-variant-numeric:tabular-nums; }
+  .fll{ display:inline; font:var(--t-label); color:var(--muted); font-variant-numeric:tabular-nums; }
+  .flf + .fll, .flf + .flhist + .fll, .flf + .flpen + .fll{ display:block; }
+  .fll.fl2::before{ content:' · '; }
   .fll.ok{ color:var(--green); }
   /* ЗАКРЫТО — видно фоном, а не только цветом цифры. В дневной теме зелёный текст на белом
      читался слабо: глаз искал «где всё сделано» по мелким галочкам. Токены темы сами дают
@@ -118,17 +120,32 @@
   table.floor thead th.brh{ font-weight:700; letter-spacing:.04em; border-bottom:1px solid var(--line); }
   table.floor thead th.br-nat{ background:var(--card2); }
   table.floor thead th.br-col{ background:var(--accent-bg); color:var(--accent-text); }
+  /* выбор ветки: показываем только её столбцы — на телефоне таблица тогда влезает целиком */
+  .flbrs{ display:flex; gap:var(--s-1); flex-wrap:wrap; margin:0 0 var(--s-2); }
+  .flbr{ font:var(--t-label); text-transform:none; letter-spacing:0; padding:4px var(--s-2); border:1px solid var(--line);
+         border-radius:999px; background:var(--card); color:var(--muted); cursor:pointer; user-select:none; }
+  .flbr.on{ background:var(--accent-bg); border-color:var(--accent); color:var(--accent-text); font-weight:600; }
+  table.floor.only-base .br-nat, table.floor.only-base .br-col,
+  table.floor.only-nat .br-base, table.floor.only-nat .br-col,
+  table.floor.only-col .br-base, table.floor.only-col .br-nat{ display:none; }
+  .flover{ display:block; font:var(--t-label); color:var(--amber); font-variant-numeric:tabular-nums; }
   .flhist{ font-size:10px; color:var(--muted); cursor:pointer; }
   .flpen{ font-size:12px; color:var(--muted); cursor:pointer; opacity:0; transition:opacity .12s var(--ease); padding:0 2px; }
   table.floor td:hover .flpen{ opacity:1; }
   /* на телефоне наведения нет — карандаш виден всегда, иначе правку не открыть */
   @media (hover:none){ .flpen{ opacity:.75; font-size:14px; } }
   @media (max-width:820px){
-    table.floor .dn{ max-width:116px; font-size:12px; line-height:15px; padding:var(--s-1); }
-    table.floor th,table.floor td{ padding:var(--s-1) 6px; }
-    table.floor thead th{ font-size:10px; max-width:76px; }
+    table.floor .dn{ max-width:104px; font-size:12px; line-height:15px; padding:var(--s-1); }
+    table.floor th,table.floor td{ padding:var(--s-1) 4px; }
+    table.floor thead th{ font-size:10px; max-width:70px; }
     .flf{ font-size:15px; } .fll{ font-size:10px; }
+    .fll.fl2{ display:block; }                 /* «сд.» и «ост.» в два ряда — колонка вдвое уже */
+    .fll.fl2::before{ content:''; }
+    .gcard.flg .gbody{ padding:0 var(--s-1) var(--s-2); }   /* на телефоне каждый пиксель ширины на счету */
+    .tray{ padding-left:var(--s-2); padding-right:var(--s-2); }
+    .gcard .flhint{ display:block; }
   }
+  .flhint{ display:none; font:var(--t-label); color:var(--muted); margin:0 0 var(--s-1); }
   /* Телефон: таблицы внутри карточек (участки, заказ по операциям) вписываются в ширину —
      иначе видны только названия деталей, а цифры уезжают за край. Таблица участка (.floor)
      этого правила не знает: она живёт горизонтальной прокруткой. */
@@ -699,18 +716,24 @@ function floorMatrix(g){
   ops.forEach(function(t){
     (t.details||[]).forEach(function(d){
       var k=String(d.detail||'').toLowerCase();
-      if(idx[k]===undefined){ idx[k]=dets.length; dets.push({ name:d.detail, models:d.models||[], need:0, left:0, cells:{} }); }
+      if(idx[k]===undefined){ idx[k]=dets.length; dets.push({ name:d.detail, models:d.models||[], need:0, left:0, over:0, slow:'', cells:{} }); }
       var row=dets[idx[k]];
       row.cells[t.op]=d;
       if(d.need>row.need) row.need=d.need;
-      row.left+=(Number(d.left)||0);
+      // ⚠ «Осталось по участку» — это ДЕТАЛИ, а не сумма по операциям. Деталь прошла участок,
+      // только когда закрыты ВСЕ его операции, значит остаток задаёт самая отстающая из них.
+      // Раньше складывали остатки всех операций и получали цифру больше, чем деталей в заказе.
+      var l=Number(d.left)||0, o=Number(d.over)||0;
+      if(l>row.left){ row.left=l; row.slow=t.op; }
+      if(o>row.over) row.over=o;
     });
   });
   dets.sort(function(a,b){ return a.name.localeCompare(b.name,'ru'); });
   return { ops:ops, dets:dets };
 }
 function floorCell(id,t,d){
-  if(!d) return '<td class="no" title="у этой детали такой операции нет"></td>';
+  var br=' br-'+opBranch(t.op);
+  if(!d) return '<td class="no'+br+'" title="у этой детали такой операции нет"></td>';
   var fact=Number(d.fact)||0, left=Number(d.left)||0;
   var ids=d.ids||[], log=FLOORLOG[id]||{}, logged=false;
   for(var i=0;i<ids.length;i++) if(log[ids[i]]) logged=true;
@@ -725,9 +748,10 @@ function floorCell(id,t,d){
   var pen=' <span class="flpen" onclick="'+call+'" title="поправить — пересчитали детали на участке">✎</span>';
   var his=logged?' <span class="flhist" onclick="'+call+'" title="цифру уже правили руками — показать историю">🕘</span>':'';
   var made=Number(d.ready)||0, done=left<=0.001;
-  return '<td class="'+(done?'cdone':'')+'" title="'+esc(tip)+'">'
+  return '<td class="'+(done?'cdone':'')+br+'" title="'+esc(tip)+'">'
     +'<span class="flf'+(fact>0?'':' z')+'">'+r1(fact)+'</span>'+his+pen
-    +'<span class="fll'+(left>0?'':' ok')+'">сд. '+r1(made)+(left>0?(' · ост. '+r1(left)):' ✓')+'</span>'
+    +'<span class="fll'+(left>0?'':' ok')+'">сд. '+r1(made)+(left>0?'':' ✓')+'</span>'
+    +(left>0?'<span class="fll fl2">ост. '+r1(left)+'</span>':'')
     +'</td>';
 }
 var FLOORLOG={};   // id заказа → { opId: сколько раз правили }
@@ -779,26 +803,51 @@ function floorHead(ops){
   var used=[]; FLOOR_BRANCH.forEach(function(b){ if(cnt[b[0]]) used.push(b); });
   var names='<tr class="ops">'+(used.length>1?'':'<th class="dn">Деталь</th><th>Нужно</th>')
     +ops.map(function(t){ return '<th class="br-'+opBranch(t.op)+'" title="'+esc(t.op+' · лежит сейчас '+r1(t.factQty)+' шт')+'">'+esc(t.op)+'</th>'; }).join('')
-    +(used.length>1?'':'<th>Осталось<br>по участку</th>')+'</tr>';
+    +(used.length>1?'':'<th title="сколько деталей ещё не прошли участок целиком — по самой отстающей операции">Осталось<br>деталей</th>')+'</tr>';
   if(used.length<2) return names;
   // два яруса: сверху ветка отделки, снизу сами операции
   var top='<tr><th class="dn" rowspan="2">Деталь</th><th rowspan="2">Нужно</th>'
     +used.map(function(b){ return '<th class="br-'+b[0]+' brh" colspan="'+cnt[b[0]]+'">'+esc(b[1])+'</th>'; }).join('')
-    +'<th rowspan="2">Осталось<br>по участку</th></tr>';
+    +'<th rowspan="2" title="сколько деталей ещё не прошли участок целиком — по самой отстающей операции">Осталось<br>деталей</th></tr>';
   return top+names;
+}
+// какую ветку показывать в блоке: '' = все. На телефоне 10 колонок в 265 px не влезают,
+// и человек не понимает, всё ли увидел — поэтому даём выбрать ветку и убрать лишние столбцы.
+var FLOORBR={};
+function setFloorBranch(id,gi,br){
+  FLOORBR[id+'|'+gi]=br;
+  var box=$('fg_'+id+'_'+gi); if(!box) return;
+  var t=box.querySelector('table.floor');
+  if(t) t.className='floor'+(br?(' only-'+br):'');
+  Array.prototype.forEach.call(box.querySelectorAll('.flbr'), function(c){
+    c.className='flbr'+((c.getAttribute('data-br')||'')===br?' on':'');
+  });
+  var w=box.querySelector('.flwrap'); if(w) w.scrollLeft=0;
+}
+function floorBranchChips(id,gi,ops){
+  var cnt={}; ops.forEach(function(t){ var b=opBranch(t.op); cnt[b]=(cnt[b]||0)+1; });
+  var used=[]; FLOOR_BRANCH.forEach(function(b){ if(cnt[b[0]]) used.push(b); });
+  if(used.length<2) return '';
+  var cur=FLOORBR[id+'|'+gi]||'';
+  var chip=function(br,name){ return '<span class="flbr'+(cur===br?' on':'')+'" data-br="'+br+'" onclick="setFloorBranch(\''+id+'\','+gi+',\''+br+'\')">'+esc(name)+'</span>'; };
+  return '<div class="flbrs">'+chip('','Все операции')+used.map(function(b){ return chip(b[0],b[1]); }).join('')+'</div>';
 }
 function opsFloorHtml(id,dash){
   var blocks=floorBlocks(dash); if(!blocks.length) return '';
   return blocks.map(function(g,gi){
     var m=floorMatrix(g); if(!m.ops.length||!m.dets.length) return '';
-    var head=floorHead(m.ops);
+    var head=floorHead(m.ops), br=FLOORBR[id+'|'+gi]||'', chips=floorBranchChips(id,gi,m.ops);
     var body=m.dets.map(function(d){
       var rdone=d.left<=0.001;
       var nm=(rdone?'✓ ':'')+esc(d.name)+(d.models.length>1?' <span class="pill mute sh" title="'+esc('идёт в изделиях: '+d.models.join(', '))+'">общая</span>':'');
       return '<tr><td class="dn'+(rdone?' done':'')+'" title="'+(rdone?'по этому участку деталь закрыта полностью':'')+'">'+nm+'</td>'
         +'<td class="num">'+r1(d.need)+'</td>'
         +m.ops.map(function(t){ return floorCell(id,t,d.cells[t.op]); }).join('')
-        +'<td class="num'+(rdone?' done':'')+'"'+(rdone?'':' style="color:var(--red)"')+'>'+(rdone?'✓':r1(d.left))+'</td></tr>';
+        +'<td class="num'+(rdone?' done':'')+'"'+(rdone?'':' style="color:var(--red)"')
+          +' title="'+esc(rdone?('участок пройден полностью'+(d.over>0?(', перевыполнено на '+r1(d.over)):''))
+                             :('ещё не прошли участок: '+r1(d.left)+' шт'+(d.slow?(' — держит «'+d.slow+'»'):'')))+'">'
+          +(rdone?'✓':r1(d.left))
+          +(d.over>0?'<span class="flover" title="сделано сверх потребности">+'+r1(d.over)+'</span>':'')+'</td></tr>';
     }).join('');
     return '<div class="gcard flg" id="fg_'+id+'_'+gi+'">'
       +'<div class="grow" onclick="toggleFloorGroup(\'' + id + '\',' + gi + ')">'
@@ -807,10 +856,12 @@ function opsFloorHtml(id,dash){
         +'<span class="pill" title="сколько деталей физически лежит на операциях участка (штуко-операции)">лежит '+r1(g.factQty)+'</span>'
         +'<span class="gsum">сделано '+g.doneQty+' из '+g.needQty+' · осталось '+money(g.leftRub)+' ₽ · '+plural(m.dets.length,'деталь','детали','деталей')+'</span>'
       +'</div>'
-      +'<div class="gbody"><div class="flwrap"><table class="floor"><thead>'+head+'</thead><tbody>'+body+'</tbody></table></div></div>'
+      +'<div class="gbody">'+chips
+        +'<span class="flhint">⟷ таблица листается вбок'+(chips?'; чтобы влезла целиком — выберите ветку выше':'')+'</span>'
+        +'<div class="flwrap"><table class="floor'+(br?(' only-'+br):'')+'"><thead>'+head+'</thead><tbody>'+body+'</tbody></table></div></div>'
     +'</div>';
   }).join('')
-  +'<div class="muted small">нажми на участок — раскроется его таблица. Шлифовка и покрытие идут одним участком: слева подготовка (шпатлёвка, шлифовка), затем натуральная отделка (лак, масло) и покраска в цвет — у каждой детали открыты клетки только своей ветки. Крупная цифра в клетке — сколько деталей лежит на этой операции сейчас; ✎ правит её. Мелким: «сд.» — сколько всего прошло эту операцию (наряды плюс начальные остатки), «ост.» — сколько ещё осталось. Штриховка — у детали такой операции нет. Итог участка в штуко-операциях: три операции одной детали дают 3.</div>';
+  +'<div class="muted small">нажми на участок — раскроется его таблица. Шлифовка и покрытие идут одним участком: слева подготовка (шпатлёвка, шлифовка), затем натуральная отделка (лак, масло) и покраска в цвет — у каждой детали открыты клетки только своей ветки. Крупная цифра в клетке — сколько деталей лежит на этой операции сейчас; ✎ правит её. Мелким: «сд.» — сколько всего прошло эту операцию (наряды плюс начальные остатки), «ост.» — сколько ещё осталось. Штриховка — у детали такой операции нет. Последняя колонка — сколько ДЕТАЛЕЙ ещё не прошли участок целиком (по самой отстающей операции), «+N» жёлтым — сделано сверх потребности. Итог в шапке участка — в штуко-операциях: три операции одной детали дают 3.</div>';
 }
 
 // ── ПРАВКА «ЛЕЖИТ СЕЙЧАС» ДИСПЕТЧЕРОМ ──
