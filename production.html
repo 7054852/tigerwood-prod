@@ -106,6 +106,14 @@
   .flf.z{ color:var(--muted); font-weight:500; }
   .fll{ display:block; font:var(--t-label); color:var(--muted); font-variant-numeric:tabular-nums; }
   .fll.ok{ color:var(--green); }
+  /* ЗАКРЫТО — видно фоном, а не только цветом цифры. В дневной теме зелёный текст на белом
+     читался слабо: глаз искал «где всё сделано» по мелким галочкам. Токены темы сами дают
+     нужный фон и в дне, и в ночи. */
+  table.floor td.cdone{ background:var(--green-bg); }
+  table.floor td.cdone .flf{ color:var(--green); }
+  table.floor td.cdone .fll{ color:var(--green); font-weight:600; }
+  table.floor .dn.done{ background:var(--green-bg); color:var(--green); font-weight:600; }
+  table.floor td.num.done{ background:var(--green-bg); color:var(--green); font-weight:700; }
   .flhist{ font-size:10px; color:var(--muted); cursor:pointer; }
   .flpen{ font-size:12px; color:var(--muted); cursor:pointer; opacity:0; transition:opacity .12s var(--ease); padding:0 2px; }
   table.floor td:hover .flpen{ opacity:1; }
@@ -712,8 +720,8 @@ function floorCell(id,t,d){
   var call="openFact('"+id+"','"+ids.join(',')+"')";
   var pen=' <span class="flpen" onclick="'+call+'" title="поправить — пересчитали детали на участке">✎</span>';
   var his=logged?' <span class="flhist" onclick="'+call+'" title="цифру уже правили руками — показать историю">🕘</span>':'';
-  var made=Number(d.ready)||0;
-  return '<td title="'+esc(tip)+'">'
+  var made=Number(d.ready)||0, done=left<=0.001;
+  return '<td class="'+(done?'cdone':'')+'" title="'+esc(tip)+'">'
     +'<span class="flf'+(fact>0?'':' z')+'">'+r1(fact)+'</span>'+his+pen
     +'<span class="fll'+(left>0?'':' ok')+'">сд. '+r1(made)+(left>0?(' · ост. '+r1(left)):' ✓')+'</span>'
     +'</td>';
@@ -731,10 +739,12 @@ function opsFloorHtml(id,dash){
       +m.ops.map(function(t){ return '<th title="'+esc(t.op+' · лежит сейчас '+r1(t.factQty)+' шт')+'">'+esc(t.op)+'</th>'; }).join('')
       +'<th>Осталось<br>по участку</th></tr>';
     var body=m.dets.map(function(d){
-      var nm=esc(d.name)+(d.models.length>1?' <span class="pill mute sh" title="'+esc('идёт в изделиях: '+d.models.join(', '))+'">общая</span>':'');
-      return '<tr><td class="dn">'+nm+'</td><td class="num">'+r1(d.need)+'</td>'
+      var rdone=d.left<=0.001;
+      var nm=(rdone?'✓ ':'')+esc(d.name)+(d.models.length>1?' <span class="pill mute sh" title="'+esc('идёт в изделиях: '+d.models.join(', '))+'">общая</span>':'');
+      return '<tr><td class="dn'+(rdone?' done':'')+'" title="'+(rdone?'по этому участку деталь закрыта полностью':'')+'">'+nm+'</td>'
+        +'<td class="num">'+r1(d.need)+'</td>'
         +m.ops.map(function(t){ return floorCell(id,t,d.cells[t.op]); }).join('')
-        +'<td class="num" style="'+(d.left>0?'color:var(--red)':'color:var(--green)')+'">'+r1(d.left)+'</td></tr>';
+        +'<td class="num'+(rdone?' done':'')+'"'+(rdone?'':' style="color:var(--red)"')+'>'+(rdone?'✓':r1(d.left))+'</td></tr>';
     }).join('');
     return '<div class="gcard flg" id="fg_'+id+'_'+gi+'">'
       +'<div class="grow" onclick="toggleFloorGroup(\''+id+'\','+gi+')">'
