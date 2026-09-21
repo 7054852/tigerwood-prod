@@ -321,10 +321,11 @@ function payNote(l){
 // Для заказа это тот же наряд (двигается по нашей расценке), но зарплата не начисляется:
 // подрядчику платят деньгами, и сумма ложится долгом в Фин.гений. Отдельно отмечать передачу
 // деталей не нужно — «лежит» на предыдущей операции уменьшится само.
-var SUBREFS=null, SUBDATA=null;
-function subAddToggle(){
+var SUBREFS=null, SUBDATA=null, SUBEDIT=null;   // SUBEDIT — правим существующую запись, а не вносим новую
+function subAddToggle(ed){
   var b=document.getElementById('sadd'); if(!b) return;
-  if(b.innerHTML){ b.innerHTML=''; return; }
+  if(b.innerHTML && !ed){ b.innerHTML=''; SUBEDIT=null; return; }
+  SUBEDIT=ed||null;
   b.innerHTML='<div class="card muted">загрузка справочников…</div>';
   if(SUBREFS){ subForm(); return; }
   api({vapi:'subconrefs'}).then(function(r){
@@ -340,8 +341,11 @@ function subForm(){
   var wl=(SUBREFS.wallets||[]), cash=(SUBREFS.cash||[]);
   var wopts=wl.map(function(w){ return opt(w, w+(cash.indexOf(w)>=0?' (наличные)':' (безнал)')); }).join('');
   var names=(SUBREFS.suppliers||[]).map(function(x){ return '<option value="'+attr(x.name)+'">'; }).join('');
-  b.innerHTML='<div class="card"><b>Внести работу подрядчика</b>'
-    +'<div class="muted" style="font-size:13px;margin:var(--s-1) 0">Заказ продвинется по нашей расценке. Сумма, которую платим подрядчику, станет долгом в Фин.гении — погасите его там, когда рассчитаетесь.</div>'
+  var ED=SUBEDIT;
+  b.innerHTML='<div class="card"><b>'+(ED?'Поправить работу подрядчика':'Внести работу подрядчика')+'</b>'
+    +'<div class="muted" style="font-size:13px;margin:var(--s-1) 0">'
+    +(ED?'Правка пересчитает заказ и ту же строку расхода в Фин.гении — вторая не появится. Оплаченный долг не правится: сначала снимите оплату в Фин.гении.'
+        :'Заказ продвинется по нашей расценке. Сумма, которую платим подрядчику, станет долгом в Фин.гении — погасите его там, когда рассчитаетесь.')+'</div>'
     +'<label>Заказ<select id="sb_b">'+bopts+'</select></label>'
     +'<label>Оборудование<select id="sb_e" onchange="subDet()">'+eqs.map(function(e){return opt(e);}).join('')+'</select></label>'
     +'<label>Деталь<select id="sb_d" onchange="subOp()"></select></label>'
@@ -354,8 +358,27 @@ function subForm(){
     +'<label>Дата<input id="sb_dt" type="date" value="'+attr(todayIso())+'"></label>'
     +'<label>Комментарий<input id="sb_n" placeholder="за что, по какому акту…"></label>'
     +'<div class="sum" id="sb_sum">—</div>'
-    +'<div class="row"><button id="sb_go" onclick="subGo()">🤝 Записать работу</button><span class="msg" id="sb_msg"></span></div></div>';
-  subDet();
+    +'<div class="row"><button id="sb_go" onclick="subGo()">'+(ED?'💾 Сохранить':'🤝 Записать работу')+'</button>'
+    +(ED?'<button class="sec" onclick="subAddToggle()">отмена</button>':'')
+    +'<span class="msg" id="sb_msg"></span></div></div>';
+  if(ED) subFill(ED); else subDet();
+}
+// предзаполнение формы существующей записью: селекты каскадные, поэтому строго по цепочке
+function subFill(x){
+  var set=function(id,v){ var e=document.getElementById(id); if(e) e.value=v; };
+  set('sb_b', x.batchId||'');
+  set('sb_e', x.equip||''); subDet();
+  set('sb_d', x.detail||''); subOp();
+  set('sb_o', x.op||''); 
+  set('sb_q', x.qty||0);
+  set('sb_c', x.contractor||'');
+  set('sb_s', x.sub||0);
+  if(x.wallet) set('sb_w', x.wallet);
+  if(x.statya) set('sb_st', x.statya);
+  set('sb_dt', isoOfRu(x.date)||todayIso());
+  set('sb_n', x.comment||'');
+  subCalc();
+  var b=document.getElementById('sadd'); if(b&&b.scrollIntoView) b.scrollIntoView({block:'nearest'});
 }
 function subDet(){
   var eq=(document.getElementById('sb_e')||{}).value||'', p=(otkComp()[eq]||{});
@@ -392,21 +415,23 @@ function subGo(){
   if(!b){ otkMsg('sb_msg','<span class="err">выберите заказ</span>'); return; }
   if(!(q>0)){ otkMsg('sb_msg','<span class="err">укажите количество</span>'); return; }
   if(!c){ otkMsg('sb_msg','<span class="err">укажите подрядчика</span>'); return; }
-  var labor=Math.round(q*subRate()*100)/100;
-  if(!confirm('Записать работу подрядчика?\n\n'+d+' · '+o+' · '+q+' шт\nподрядчик: '+c
-    +'\n\nзаказ продвинется на '+labor+' р. (наша расценка)\nдолг перед подрядчиком: '+s+' р.')) return;
-  var btn=document.getElementById('sb_go'); if(btn){ btn.disabled=true; btn.textContent='вношу…'; }
+  var ED=SUBEDIT, labor=Math.round(q*subRate()*100)/100, ttl=ED?'💾 Сохранить':'🤝 Записать работу';
+  if(!confirm((ED?'Сохранить правку?':'Записать работу подрядчика?')+'\n\n'+d+' · '+o+' · '+q+' шт\nподрядчик: '+c
+    +'\n\nзаказ '+(ED?'пересчитается по ':'продвинется на ')+labor+' р. (наша расценка)\n'
+    +(ED?'долг в Фин.гении станет ':'долг перед подрядчиком: ')+s+' р.')) return;
+  var btn=document.getElementById('sb_go'); if(btn){ btn.disabled=true; btn.textContent=ED?'сохраняю…':'вношу…'; }
   var data={batch:b,equip:eq,detail:d,op:o,qty:q,contractor:c,sum:s,
             wallet:(document.getElementById('sb_w')||{}).value||'',
             statya:(document.getElementById('sb_st')||{}).value||'',
             date:ruOfIso((document.getElementById('sb_dt')||{}).value||''),
             note:(document.getElementById('sb_n')||{}).value||''};
-  api({vapi:'subconadd',data:JSON.stringify(data)}).then(function(r){
-    if(btn){ btn.disabled=false; btn.textContent='🤝 Записать работу'; }
+  var req=ED?{vapi:'subconedit',id:ED.id,data:JSON.stringify(data)}:{vapi:'subconadd',data:JSON.stringify(data)};
+  api(req).then(function(r){
+    if(btn){ btn.disabled=false; btn.textContent=ttl; }
     if(!r||!r.ok){ otkMsg('sb_msg','<span class="err">'+esc((r&&r.error)||'не записано')+'</span>'); return; }
-    otkMsg('sb_msg','<span class="ok">записано'+(r.waitQC?' — ждёт приёмки ОТК':'')+'</span>');
-    document.getElementById('sadd').innerHTML=''; loadSub();
-  }).catch(function(e){ if(btn){ btn.disabled=false; btn.textContent='🤝 Записать работу'; } otkMsg('sb_msg','<span class="err">сеть: '+esc(e.message)+'</span>'); });
+    otkMsg('sb_msg','<span class="ok">'+(ED?'сохранено':'записано')+(r.waitQC?' — ждёт приёмки ОТК':'')+'</span>');
+    SUBEDIT=null; document.getElementById('sadd').innerHTML=''; loadSub();
+  }).catch(function(e){ if(btn){ btn.disabled=false; btn.textContent=ttl; } otkMsg('sb_msg','<span class="err">сеть: '+esc(e.message)+'</span>'); });
 }
 function loadSub(){
   var el=document.getElementById('slist'); if(!el) return;
@@ -437,12 +462,19 @@ function renderSub(r){
       +'<div class="row" style="font-size:13px"><span>'+esc(x.contractor)+' · наша расценка '+x.labor+' р. · платим <b>'+x.sub+' р.</b>'
       +(x.wallet?(' <span class="muted">('+esc(x.wallet)+')</span>'):'')+'</span>'
       +'<span>'+(x.sub>0?(x.paid?('<span class="ok">оплачено'+(x.paidDate?(' '+esc(x.paidDate)):'')+'</span>'):'<span class="err">не оплачено</span>'):'<span class="muted">без оплаты</span>')
-      +' <button class="sm sec" onclick="subEdit(\''+attr(x.id)+'\','+x.sub+')" title="поправить сумму подрядчику">✎</button>'
-      +' <button class="sm sec" onclick="subDel(\''+attr(x.id)+'\')" title="удалить запись и снять долг">🗑</button></span></div></div>';
+      +(x.paid?'':' <button class="sm sec" onclick="subEdit(\''+attr(x.id)+'\')" title="поправить запись: кол-во, операцию, подрядчика, сумму">✎</button>'
+      +' <button class="sm sec" onclick="subSum(\''+attr(x.id)+'\','+x.sub+')" title="поправить только сумму подрядчику">₽</button>'
+      +' <button class="sm sec" onclick="subDel(\''+attr(x.id)+'\')" title="удалить запись и снять долг в Фин.гении">🗑</button>')
+      +'</span></div></div>';
   }).join('');
   el.innerHTML=head+byc+'<div class="sect">Записи</div>'+rows;
 }
-function subEdit(id,cur){
+function subEdit(id){
+  var it=((SUBDATA&&SUBDATA.items)||[]).filter(function(x){ return x.id===id; })[0];
+  if(!it){ alert('Запись не найдена — обновите список'); return; }
+  subAddToggle(it);
+}
+function subSum(id,cur){
   askInline('Сколько платим подрядчику, ₽ (было '+cur+'):', String(cur), function(v){
     var s=Number(String(v||'').replace(',','.'));
     if(isNaN(s)||s<0){ alert('Сумма — число от нуля'); return; }
@@ -453,7 +485,7 @@ function subEdit(id,cur){
   });
 }
 function subDel(id){
-  if(!confirm('Удалить запись подряда? Заказ откатится на эту работу, долг перед подрядчиком снимется.')) return;
+  if(!confirm('Удалить запись подряда?\n\nЗаказ откатится на эту работу, а строка расхода в Фин.гении удалится вместе с ней.\nЕсли долг уже оплачен — сначала снимите оплату в Фин.гении.')) return;
   api({vapi:'subcondel',id:id}).then(function(r){
     if(!r||!r.ok){ alert((r&&r.error)||'не удалось удалить'); return; }
     loadSub();
