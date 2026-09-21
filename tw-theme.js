@@ -57,6 +57,7 @@
     plan:'<path d="M3 21V10l5 3V10l5 3V10l8 4v7z"/><path d="M7 21v-3M12 21v-3M17 21v-3"/>',
     prodplan:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M7 14h4M7 17h7"/>',
     wipstore:'<path d="M3 9l9-5 9 5v11H3z"/><path d="M8 20v-6h8v6M8 17h8"/>',
+    transfer:'<path d="M4 4h12l4 4v12H4z"/><path d="M8 10h8M8 14h8M8 18h5"/>',
     vyrab:'<path d="M14 4l6 6-3 3-6-6z"/><path d="M11 7L3 15l3 3 8-8"/>',
     vcheck:'<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.7 2.7L16 9.8"/>',
     otk:'<path d="M12 3l7 3v6c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z"/><path d="M9 12l2 2 4-4"/>',
