@@ -7,6 +7,14 @@
 <title>Выработка — Тигервуд</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
+  /* окно поверх экрана (правила оплаты раскроя) — тот же рисунок, что в производстве */
+  .mvov{ position:fixed; inset:0; background:var(--scrim); display:flex; align-items:center; justify-content:center; z-index:60; padding:var(--s-4); }
+  .mvbox{ background:var(--card); border:1px solid var(--line); border-radius:var(--r-card); max-width:560px; width:100%;
+          max-height:86vh; overflow:auto; padding:var(--s-5); box-shadow:var(--shadow-pop); }
+  .mvbox h3{ margin:0 0 var(--s-1); font:var(--t-heading); }
+  .mvclose{ float:right; color:var(--muted); cursor:pointer; font:var(--t-heading); line-height:1; }
+  .mvn{ display:flex; align-items:center; gap:var(--s-2); flex-wrap:wrap; border-top:1px solid var(--line); padding:var(--s-2) 0; font:var(--t-small); }
+  .mvn select{ max-width:100%; }
   /* ⚠ showTab/setBar пишут document.body.className='hasbar'|'' и стирают класс w-narrow —
      поэтому ширину узкой колонки держим прямо на body, а не только классом */
   body{ --page-w:880px; }
@@ -144,6 +152,7 @@ window.onerror=function(msg,src,line){
 </div>
 <div id="pane-m" style="display:none">
   <div class="note" id="mhint">Подтвердите, измените кол-во или отклоните — рабочий получит уведомление.</div>
+  <div class="row" style="margin-bottom:var(--s-2)"><button class="sm sec" onclick="payRulesOpen()" title="ЧПУ — платим за лист, вручную — за деталь">💸 За что платим при раскрое</button></div>
   <div id="qcwait"></div>
   <div id="otkmine"></div>
   <div class="sect" id="mh2">На проверке</div>
@@ -294,6 +303,63 @@ function payNote(l){
   // деталь оплачивается листом, а листа в наряде нет — это ошибка ввода, а не «так и задумано»
   if(l&&!l.sheet) return 'оплата за лист — листа в наряде нет';
   return 'оплачено листом';
+}
+// ── ЗА ЧТО ПЛАТИМ ПРИ РАСКРОЕ ──
+// Расценка детали = трудоёмкость, а ЗП — отдельно: на ЧПУ платим за лист, вручную — за деталь.
+// Правило стоит у пары «деталь · операция» в «Расценках». Диспетчер меняет его прямо в наряде:
+// проблема видна именно тут, и бегать в справочник (и тем более писать разработчику) незачем.
+function payFixBtn(master,l,rid){
+  if(!master || !l || l.paid!==false || l.kind==='лист' || !l.detail) return '';
+  return ' <button class="sm sec" onclick="payByDetail(\''+attr(l.detail)+'\',\''+attr(l.op)+'\',\''+esc(rid)+'\')"'
+    +' title="эту деталь распускают вручную, а не на ЧПУ — платить по расценке детали">💸 платить за деталь</button>';
+}
+function payByDetail(detail,op,rid){
+  if(!confirm('Платить за «'+detail+' · '+op+'» по расценке детали?\n\nПравило запомнится: эту деталь распускают вручную, а не на ЧПУ. Лист за неё оплачиваться не будет. Наряд пересчитается сразу.')) return;
+  act({vapi:'setratepay',detail:detail,op:op,mode:'за деталь',report:rid}, null);
+}
+// полный список правил — на случай «поправить заранее, а не в наряде»
+var PAYRULES=null;
+function payRulesOpen(){
+  var ov=document.createElement('div'); ov.className='mvov'; ov.id='prov';
+  ov.onclick=function(e){ if(e.target===ov) payRulesClose(); };
+  ov.innerHTML='<div class="mvbox"><span class="mvclose" onclick="payRulesClose()">✕</span>'
+    +'<h3>За что платим при раскрое</h3>'
+    +'<div class="muted small">ЧПУ режет лист — платим за лист. Вручную распускают деталь — платим за деталь. Расценку детали правило не меняет: она остаётся трудоёмкостью для заказа.</div>'
+    +'<div id="prbody" style="margin-top:var(--s-3)" class="muted">загрузка…</div></div>';
+  document.body.appendChild(ov);
+  api({vapi:'cutpaylist'}).then(function(r){
+    var b=document.getElementById('prbody'); if(!b) return;
+    if(!r||!r.ok){ b.innerHTML='<div class="err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
+    PAYRULES=r.rows||[];
+    b.innerHTML='<input id="prq" placeholder="поиск детали…" oninput="payRulesDraw()" style="width:100%;margin-bottom:var(--s-2)">'
+      +'<div id="prlist"></div>';
+    payRulesDraw();
+  });
+}
+function payRulesClose(){ var o=document.getElementById('prov'); if(o) o.remove(); }
+function payRulesDraw(){
+  var q=((document.getElementById('prq')||{}).value||'').toLowerCase();
+  var rows=(PAYRULES||[]).filter(function(x){ return !q || (x.detail+' '+x.op).toLowerCase().indexOf(q)>=0; });
+  var opts=['','за лист','за деталь','за лист и деталь'];
+  var names={'':'по умолчанию (с листом — лист, без листа — деталь)','за лист':'за лист (ЧПУ)','за деталь':'за деталь (вручную)','за лист и деталь':'за лист и деталь'};
+  var el=document.getElementById('prlist'); if(!el) return;
+  el.innerHTML=rows.slice(0,120).map(function(x,i){
+    return '<div class="mvn"><span style="flex:1">'+esc(x.detail)+' <span class="muted">· '+esc(x.op)+' · '+x.rate+' р.</span></span>'
+      +'<select onchange="payRuleSet('+i+',this.value,this)">'+opts.map(function(m){ return '<option value="'+esc(m)+'"'+(m===(x.mode||'')?' selected':'')+'>'+esc(names[m])+'</option>'; }).join('')+'</select></div>';
+  }).join('')+(rows.length>120?'<div class="muted small">показаны первые 120 — уточните поиск</div>':'')
+   +(rows.length?'':'<div class="muted">ничего не найдено</div>');
+  PAYRULES_VIEW=rows;
+}
+var PAYRULES_VIEW=[];
+function payRuleSet(i,mode,sel){
+  var x=PAYRULES_VIEW[i]; if(!x) return;
+  sel.disabled=true;
+  api({vapi:'setratepay',detail:x.detail,op:x.op,mode:mode}).then(function(r){
+    sel.disabled=false;
+    if(!r||!r.ok){ alert((r&&r.error)||'не сохранено'); return; }
+    x.mode=mode;
+    for(var k=0;k<(PAYRULES||[]).length;k++) if(PAYRULES[k].detail===x.detail&&PAYRULES[k].op===x.op) PAYRULES[k].mode=mode;
+  }).catch(function(e){ sel.disabled=false; alert('сеть: '+e.message); });
 }
 function showTab(t){
   ['w','c','o','m','j'].forEach(function(x){
@@ -927,7 +993,7 @@ function renderPending(r){
         }
         return '<div style="border-top:1px solid var(--line);padding-top:var(--s-1)">'
           +'<div class="row"><span>'+kindBadge(l)+esc(l.detail)+' · '+esc(l.op)+' · '+l.qty+' шт'+kbadge+dupb+'</span>'
-          +'<span>'+(l.paid===false?'<span class="muted">0 р. · '+payNote(l)+'</span>':(l.sum+' р.'))+acts+'</span></div>'
+          +'<span>'+(l.paid===false?'<span class="muted">0 р. · '+payNote(l)+'</span>'+payFixBtn(master,l,rid):(l.sum+' р.'))+acts+'</span></div>'
           +vsel+'<div id="le-'+esc(l.id)+'"></div></div>';
       }).join('');
       var night=(rp.shift==='ночь');
