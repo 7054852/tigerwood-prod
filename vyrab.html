@@ -308,6 +308,8 @@ function actWorkers(){
 // значение внутри onclick='...' — апостроф обязателен к экранированию, иначе строка ломает разметку
 function attr(s){ return esc(s).replace(/'/g,'&#39;'); }
 function payNote(l){
+  // ⚠ у подряда SUM=0 ВСЕГДА (зарплату не платим) — без своей ветки он читался как ошибка ввода листа
+  if(l&&l.kind==='подряд') return 'подряд — платим подрядчику по акту, не зарплатой';
   if(l&&l.kind==='лист') return 'оплачено деталями';
   // деталь оплачивается листом, а листа в наряде нет — это ошибка ввода, а не «так и задумано»
   if(l&&!l.sheet) return 'оплата за лист — листа в наряде нет';
@@ -1451,6 +1453,7 @@ function renderJournal(){
   // ЗП считаем по ПОКАЗАННЫМ строкам — иначе при фильтре по заказу итог не сойдётся со списком
   var pm={}, pord=[];
   items.forEach(function(it){ if(it.status!=='подтверждено') return;   // ждущее приёмку в ЗП не входит
+    if(it.kind==='подряд') return;   // подрядчик — не работник: его деньги идут расходом в Фин.гений
     if(pm[it.worker]==null){ pm[it.worker]=0; pord.push(it.worker); } pm[it.worker]+=it.sum||0; });
   var pr=pord.map(function(w){ return {worker:w, sum:Math.round(pm[w]*100)/100}; }).sort(function(a,b){ return b.sum-a.sum; });
   pay.innerHTML='';
@@ -1480,7 +1483,9 @@ function renderJournal(){
         var acts = '';
         if(master){
           var del='<button class="sm sec" onclick="delJournal(\''+esc(it.id)+'\')">🗑</button><span id="jm-'+esc(it.id)+'" class="msg"></span>';
-          acts = (it.kind==='повременно')   // у доплаты правится СУММА (кол-во у неё всегда 1)
+          acts = (it.kind==='подряд')       // сумма подрядчику и долг живут вместе — правим их в реестре
+            ? ' <button class="sm sec" onclick="showTab(\'s\')" title="правка и удаление — во вкладке «Подряд», вместе с долгом в Фин.гении">🤝 в реестр</button>'
+            : (it.kind==='повременно')   // у доплаты правится СУММА (кол-во у неё всегда 1)
             ? ' <button class="sm sec" onclick="editTimePay(\''+esc(it.id)+'\','+it.sum+',\''+esc(it.note||'')+'\')" title="изменить сумму">✏️</button>'+del
             : ' <button class="sm sec" onclick="editJournal(\''+esc(it.id)+'\','+it.qty+',\''+esc(it.date)+'\')">✏️</button>'
               +'<button class="sm sec" onclick="setKoefJ(\''+esc(it.id)+'\','+koef+')" title="коэффициент к сумме">×k</button>'+del;
@@ -1502,9 +1507,12 @@ function renderJournal(){
           +'<div class="row"><span>'+body+'</span><span>'+money+' '+acts+'</span></div>'+qc+'</div>';
       }).join('');
       var bonRid = rep||('_'+g.lines[0].id);
-      var bonBtn = master ? '<button class="sm sec" onclick="addBonus(\''+esc(bonRid)+'\',\''+esc(g.worker)+'\',\'j\')" title="премия за наряд">🎁 + премия</button>' : '';
-      var dateBtn = master ? '<button class="sm sec" onclick="setRepDate(\''+esc(g.key)+'\',\''+esc(g.date)+'\',loadJournal)" title="за какой день работа">📅 дата</button>' : '';
-      var shiftCtl = (master && !g.single && rep)
+      // наряд подрядчика: премия, смена и дата управляют надбавками к ЗП, которой тут нет —
+      // показывать их значит предлагать кнопки, на которые сервер ответит отказом
+      var isSub = g.lines.length && g.lines.every(function(L){ return L.kind==='подряд'; });
+      var bonBtn = (master && !isSub) ? '<button class="sm sec" onclick="addBonus(\''+esc(bonRid)+'\',\''+esc(g.worker)+'\',\'j\')" title="премия за наряд">🎁 + премия</button>' : '';
+      var dateBtn = (master && !isSub) ? '<button class="sm sec" onclick="setRepDate(\''+esc(g.key)+'\',\''+esc(g.date)+'\',loadJournal)" title="за какой день работа">📅 дата</button>' : '';
+      var shiftCtl = isSub ? '' : (master && !g.single && rep)
         ? '<div class="row" style="margin:var(--s-2) 0 0;justify-content:flex-start"><div class="seg"><button class="'+(night?'':'on')+'" onclick="setRepShiftJ(\''+esc(rep)+'\',\'день\')">☀️ День</button><button class="'+(night?'on':'')+'" onclick="setRepShiftJ(\''+esc(rep)+'\',\'ночь\')">🌙 Ночь</button></div>'+dateBtn+'</div>'
         : (master?('<div class="row" style="margin:var(--s-2) 0 0;justify-content:flex-start">'+(night?'<span class="muted" style="font-size:13px;margin-right:var(--s-2)">🌙 ночная</span>':'')+dateBtn+'</div>')
                  : (night?'<div class="muted" style="font-size:13px">🌙 ночная</div>':''));
@@ -1519,9 +1527,11 @@ function renderJournal(){
       var nQC=0; for(var qq=0;qq<g.lines.length;qq++) if(g.lines[qq].status==='ждёт ОТК') nQC++;
       var cut=(full[g.key]||g.lines.length)>g.lines.length;
       var qcNote = nQC ? '<div class="muted" style="font-size:13px;border-top:1px solid var(--line);padding-top:var(--s-1)">🔎 '+nQC+' из '+g.lines.length+' поз. ждут приёмку ОТК — их сумма в итог пока не входит</div>' : '';
-      var bdHtml = cut
+      var bdHtml = isSub
+        ? '<div class="muted" style="font-size:13px;border-top:1px solid var(--line);padding-top:var(--s-1)">🤝 работа подрядчика: в зарплату не идёт, сумма к оплате и долг — во вкладке «Подряд»</div>'
+        : (cut
         ? '<div class="muted" style="font-size:13px;border-top:1px solid var(--line);padding-top:var(--s-1)">показана часть наряда ('+g.lines.length+' из '+full[g.key]+' оп.) — надбавки считаются по всему наряду, снимите фильтр</div>'
-        : bonusBlockHtml(gbd);
+        : bonusBlockHtml(gbd));
       // дата смены — заметной, как в приёмке и у мастера. Тут ничего не «горит», поэтому без
       // красного: журнал листают, чтобы найти нужный день, а не чтобы поймать просрочку.
       return '<div class="card"><div class="row"><b>'+esc(g.worker)+'</b>'
@@ -1589,7 +1599,7 @@ function renderOtk(){
       // читалась как шум, и владелец её попросту не нашёл на экране.
       var late=(l.ageH>48);
       return '<div style="border-top:1px solid var(--line);padding-top:var(--s-1)">'
-        +'<div class="row"><span>'+esc(l.worker)+' · <b>'+l.qty+' шт</b></span>'
+        +'<div class="row"><span>'+kindBadge(l)+esc(l.worker)+' · <b>'+l.qty+' шт</b></span>'
         +'<span><button class="sm" onclick="otkOne(\''+esc(l.id)+'\')">✅</button>'
         +'<button class="sm sec" onclick="otkBadOpen(\''+esc(l.id)+'\')">⚠ брак</button></span></div>'
         +'<div class="muted" style="font-size:13px">📅 сдано <b>'+esc(l.date)+'</b> · '+esc(l.shift||'день')
@@ -2053,6 +2063,7 @@ function loadCutLog(){
 // бейдж вида строки: раскрой листа / доплата (исторические строки «повременно» тоже показываем)
 function kindBadge(it){
   if(!it) return '';
+  if(it.kind==='подряд') return '<span class="pill warn" title="работу выполнил подрядчик: в зарплату не идёт, платим по акту">🤝 подряд</span> ';
   if(it.kind==='повременно') return '<span class="pill mute" title="доплата за работу по времени">💵 доплата</span> ';
   if(it.kind==='лист') return '<span class="pill info" title="раскрой листа на ЧПУ — оплата за лист">📐 лист</span> ';
   if(it.paid===false) return '<span class="pill info" title="деталь вышла с листа: ЗП уже начислена за лист, работа в заказе зачтена">🪚 с листа</span> ';
