@@ -105,6 +105,7 @@ window.onerror=function(msg,src,line){
   <button id="tab-c" onclick="showTab('c')" style="display:none">Раскрой</button>
   <button id="tab-o" onclick="showTab('o')" style="display:none">Приёмка</button>
   <button id="tab-m" onclick="showTab('m')">Проверка</button>
+  <button id="tab-s" onclick="showTab('s')" style="display:none">Подряд</button>
   <button id="tab-j" onclick="showTab('j')">Журнал</button>
 </div>
 <!-- выбор «за кого», дата и смена нужны только вкладкам «Выработка» и «Раскрой»: #whead показывает showTab -->
@@ -181,6 +182,13 @@ window.onerror=function(msg,src,line){
   <div id="oqual" style="display:none;margin-top:var(--s-2)"></div>
   <div class="sect">Приёмка по качеству</div>
   <div id="olist">Загрузка…</div>
+</div>
+<div id="pane-s" style="display:none">
+  <div class="note">Работа, выполненная на стороне. Заказ двигается по нашей расценке, а то, сколько мы платим подрядчику, ложится долгом в Фин.гений.</div>
+  <div class="row" style="margin-bottom:var(--s-2)"><button class="sm" onclick="subAddToggle()">➕ Внести работу подрядчика</button>
+    <input id="sb_from" type="date"><input id="sb_to" type="date"><button class="sm sec" onclick="loadSub()">Показать</button></div>
+  <div id="sadd"></div>
+  <div id="slist">Загрузка…</div>
 </div>
 <div id="pane-j" style="display:none">
   <div class="toolbar">
@@ -274,8 +282,9 @@ function applyMode(){
   if(mhi) mhi.textContent = DATA.canCheck ? 'Подтвердите, измените кол-во или отклоните — рабочий получит уведомление.' : 'Пока мастер не подтвердил, количество можно поправить.';
   // Раздел «Приёмка ОТК» (?tab=otk) и роль контролёра: только «Приёмка» — выработка, раскрой,
   // проверка и журнал здесь лишние для любого; у них в сервисе свои разделы.
+  var ts=document.getElementById('tab-s'); if(ts) ts.style.display = DATA.canCheck ? '' : 'none';
   var qcOnly = !!DATA.canQC && (qp('tab')==='otk' || (DATA.role==='контролёр' && !DATA.canCheck));
-  ['tab-w','tab-m','tab-j'].forEach(function(id){ var b=document.getElementById(id); if(b) b.style.display = qcOnly?'none':''; });
+  ['tab-w','tab-m','tab-j','tab-s'].forEach(function(id){ var b=document.getElementById(id); if(b && (id!=='tab-s' || DATA.canCheck)) b.style.display = qcOnly?'none':''; });
   if(qcOnly){ if(lc) lc.style.display='none'; if(document.getElementById('pane-o').style.display==='none') showTab('o'); }
   fillJWorkers();
 }
@@ -308,6 +317,148 @@ function payNote(l){
 // Расценка детали = трудоёмкость, а ЗП — отдельно: на ЧПУ платим за лист, вручную — за деталь.
 // Правило стоит у пары «деталь · операция» в «Расценках». Диспетчер меняет его прямо в наряде:
 // проблема видна именно тут, и бегать в справочник (и тем более писать разработчику) незачем.
+// ── ПОДРЯД: работа, выполненная на стороне ──
+// Для заказа это тот же наряд (двигается по нашей расценке), но зарплата не начисляется:
+// подрядчику платят деньгами, и сумма ложится долгом в Фин.гений. Отдельно отмечать передачу
+// деталей не нужно — «лежит» на предыдущей операции уменьшится само.
+var SUBREFS=null, SUBDATA=null;
+function subAddToggle(){
+  var b=document.getElementById('sadd'); if(!b) return;
+  if(b.innerHTML){ b.innerHTML=''; return; }
+  b.innerHTML='<div class="card muted">загрузка справочников…</div>';
+  if(SUBREFS){ subForm(); return; }
+  api({vapi:'subconrefs'}).then(function(r){
+    if(!r||!r.ok){ b.innerHTML='<div class="card err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
+    SUBREFS=r; subForm();
+  });
+}
+function subForm(){
+  var b=document.getElementById('sadd'); if(!b) return;
+  var opt=function(v,t){ return '<option value="'+attr(v)+'">'+esc(t||v)+'</option>'; };
+  var eqs=Object.keys(otkComp()).sort(function(a,c){ return a.localeCompare(c,'ru'); });
+  var bopts=(DATA.batches||[]).map(function(x){ return opt(x.id,x.num+(x.name?(' · '+x.name):'')); }).join('');
+  var wl=(SUBREFS.wallets||[]), cash=(SUBREFS.cash||[]);
+  var wopts=wl.map(function(w){ return opt(w, w+(cash.indexOf(w)>=0?' (наличные)':' (безнал)')); }).join('');
+  var names=(SUBREFS.suppliers||[]).map(function(x){ return '<option value="'+attr(x.name)+'">'; }).join('');
+  b.innerHTML='<div class="card"><b>Внести работу подрядчика</b>'
+    +'<div class="muted" style="font-size:13px;margin:var(--s-1) 0">Заказ продвинется по нашей расценке. Сумма, которую платим подрядчику, станет долгом в Фин.гении — погасите его там, когда рассчитаетесь.</div>'
+    +'<label>Заказ<select id="sb_b">'+bopts+'</select></label>'
+    +'<label>Оборудование<select id="sb_e" onchange="subDet()">'+eqs.map(function(e){return opt(e);}).join('')+'</select></label>'
+    +'<label>Деталь<select id="sb_d" onchange="subOp()"></select></label>'
+    +'<label>Операция<select id="sb_o" onchange="subCalc()"></select></label>'
+    +'<label>Сделано, шт<input id="sb_q" type="number" min="0" inputmode="numeric" oninput="subCalc()"></label>'
+    +'<label>Подрядчик<input id="sb_c" list="sb_names" placeholder="начните вводить…"><datalist id="sb_names">'+names+'</datalist></label>'
+    +'<label>Платим подрядчику, ₽<input id="sb_s" type="number" min="0" step="0.01" inputmode="decimal" oninput="subCalc()"></label>'
+    +'<label>Кошелёк<select id="sb_w">'+wopts+'</select></label>'
+    +'<label>Статья расхода<select id="sb_st">'+(SUBREFS.statyi||[]).map(function(x){return opt(x);}).join('')+'</select></label>'
+    +'<label>Дата<input id="sb_dt" type="date" value="'+attr(todayIso())+'"></label>'
+    +'<label>Комментарий<input id="sb_n" placeholder="за что, по какому акту…"></label>'
+    +'<div class="sum" id="sb_sum">—</div>'
+    +'<div class="row"><button id="sb_go" onclick="subGo()">🤝 Записать работу</button><span class="msg" id="sb_msg"></span></div></div>';
+  subDet();
+}
+function subDet(){
+  var eq=(document.getElementById('sb_e')||{}).value||'', p=(otkComp()[eq]||{});
+  document.getElementById('sb_d').innerHTML=(p.order||[]).map(function(n){return '<option>'+esc(n)+'</option>';}).join('')||'<option value="">нет деталей</option>';
+  subOp();
+}
+function subOp(){
+  var eq=(document.getElementById('sb_e')||{}).value||'', d=(document.getElementById('sb_d')||{}).value||'';
+  var ops=((otkComp()[eq]||{}).details||{})[d]||[];
+  document.getElementById('sb_o').innerHTML=ops.map(function(o){ return '<option value="'+attr(o.op)+'">'+esc(o.op+' — '+o.rate+' р.')+'</option>'; }).join('')||'<option value="">нет операций</option>';
+  subCalc();
+}
+function subRate(){
+  var eq=(document.getElementById('sb_e')||{}).value||'', d=(document.getElementById('sb_d')||{}).value||'', o=(document.getElementById('sb_o')||{}).value||'';
+  var ops=((otkComp()[eq]||{}).details||{})[d]||[];
+  for(var i=0;i<ops.length;i++) if(ops[i].op===o) return Number(ops[i].rate)||0;
+  return 0;
+}
+// ⚠ только textContent: перерисовка формы уводит фокус из поля после каждой цифры
+function subCalc(){
+  var q=Number((document.getElementById('sb_q')||{}).value)||0, r=subRate();
+  var s=Number((document.getElementById('sb_s')||{}).value)||0;
+  var e=document.getElementById('sb_sum'); if(!e) return;
+  if(!(r>0)){ e.textContent='нет расценки — заказ двигать нечем'; return; }
+  var labor=Math.round(q*r*100)/100;
+  e.textContent='наша расценка: '+labor+' р. (на неё продвинется заказ) · платим подрядчику: '+s+' р.'
+    +(s>0?(' · разница '+(Math.round((labor-s)*100)/100)+' р.'):'');
+}
+function subGo(){
+  var b=(document.getElementById('sb_b')||{}).value||'', eq=(document.getElementById('sb_e')||{}).value||'';
+  var d=(document.getElementById('sb_d')||{}).value||'', o=(document.getElementById('sb_o')||{}).value||'';
+  var q=Number((document.getElementById('sb_q')||{}).value)||0, s=Number((document.getElementById('sb_s')||{}).value)||0;
+  var c=((document.getElementById('sb_c')||{}).value||'').trim();
+  if(!b){ otkMsg('sb_msg','<span class="err">выберите заказ</span>'); return; }
+  if(!(q>0)){ otkMsg('sb_msg','<span class="err">укажите количество</span>'); return; }
+  if(!c){ otkMsg('sb_msg','<span class="err">укажите подрядчика</span>'); return; }
+  var labor=Math.round(q*subRate()*100)/100;
+  if(!confirm('Записать работу подрядчика?\n\n'+d+' · '+o+' · '+q+' шт\nподрядчик: '+c
+    +'\n\nзаказ продвинется на '+labor+' р. (наша расценка)\nдолг перед подрядчиком: '+s+' р.')) return;
+  var btn=document.getElementById('sb_go'); if(btn){ btn.disabled=true; btn.textContent='вношу…'; }
+  var data={batch:b,equip:eq,detail:d,op:o,qty:q,contractor:c,sum:s,
+            wallet:(document.getElementById('sb_w')||{}).value||'',
+            statya:(document.getElementById('sb_st')||{}).value||'',
+            date:ruOfIso((document.getElementById('sb_dt')||{}).value||''),
+            note:(document.getElementById('sb_n')||{}).value||''};
+  api({vapi:'subconadd',data:JSON.stringify(data)}).then(function(r){
+    if(btn){ btn.disabled=false; btn.textContent='🤝 Записать работу'; }
+    if(!r||!r.ok){ otkMsg('sb_msg','<span class="err">'+esc((r&&r.error)||'не записано')+'</span>'); return; }
+    otkMsg('sb_msg','<span class="ok">записано'+(r.waitQC?' — ждёт приёмки ОТК':'')+'</span>');
+    document.getElementById('sadd').innerHTML=''; loadSub();
+  }).catch(function(e){ if(btn){ btn.disabled=false; btn.textContent='🤝 Записать работу'; } otkMsg('sb_msg','<span class="err">сеть: '+esc(e.message)+'</span>'); });
+}
+function loadSub(){
+  var el=document.getElementById('slist'); if(!el) return;
+  var f=(document.getElementById('sb_from')||{}).value||'', t=(document.getElementById('sb_to')||{}).value||'';
+  el.innerHTML='<div class="muted">Загрузка…</div>';
+  api({vapi:'subconlist',from:f?ruOfIso(f):'',to:t?ruOfIso(t):''}).then(function(r){
+    SUBDATA=r; renderSub(r);
+  }).catch(function(e){ el.innerHTML='<div class="err">сеть: '+esc(e.message)+'</div>'; });
+}
+function renderSub(r){
+  var el=document.getElementById('slist'); if(!el) return;
+  if(!r||!r.ok){ el.innerHTML='<div class="err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
+  var it=r.items||[], T=r.totals||{};
+  if(!it.length){ el.innerHTML='<div class="card muted">Подрядных работ пока нет.</div>'; return; }
+  var head='<div class="card"><b>Итого: наша расценка '+(T.labor||0)+' р. · платим '+(T.sub||0)+' р.</b>'
+    +'<div class="muted" style="font-size:13px;margin-top:var(--s-1)">долг перед подрядчиками <b class="err">'+(T.debt||0)+' р.</b>'
+    +(T.paid?(' · уже оплачено '+T.paid+' р.'):'')+' · разница с нашей расценкой '+(T.margin||0)+' р.</div>'
+    +(r.finErr?('<div class="err" style="font-size:13px">Фин.гений: '+esc(r.finErr)+'</div>'):'')+'</div>';
+  var byc=(r.byContractor||[]).map(function(g){
+    return '<div class="card"><b>'+esc(g.name)+'</b> <span class="muted">· '+g.rows+' зап. · '+g.qty+' шт</span>'
+      +'<div style="font-size:13px;margin-top:var(--s-1)">наша расценка '+g.labor+' р. · платим '+g.sub+' р. · '
+      +(g.debt?('<b class="err">долг '+g.debt+' р.</b>'):'<span class="ok">долга нет</span>')+'</div></div>';
+  }).join('');
+  var rows=it.map(function(x){
+    return '<div class="card"><div class="row"><span><b>'+esc(x.detail)+'</b> · '+esc(x.op)+' · '+x.qty+' шт'
+      +(x.waitQC?' <span class="pill warn">ждёт ОТК</span>':'')+'</span>'
+      +'<span class="muted">'+esc(x.date)+' · '+esc(x.batch)+'</span></div>'
+      +'<div class="row" style="font-size:13px"><span>'+esc(x.contractor)+' · наша расценка '+x.labor+' р. · платим <b>'+x.sub+' р.</b>'
+      +(x.wallet?(' <span class="muted">('+esc(x.wallet)+')</span>'):'')+'</span>'
+      +'<span>'+(x.sub>0?(x.paid?('<span class="ok">оплачено'+(x.paidDate?(' '+esc(x.paidDate)):'')+'</span>'):'<span class="err">не оплачено</span>'):'<span class="muted">без оплаты</span>')
+      +' <button class="sm sec" onclick="subEdit(\''+attr(x.id)+'\','+x.sub+')" title="поправить сумму подрядчику">✎</button>'
+      +' <button class="sm sec" onclick="subDel(\''+attr(x.id)+'\')" title="удалить запись и снять долг">🗑</button></span></div></div>';
+  }).join('');
+  el.innerHTML=head+byc+'<div class="sect">Записи</div>'+rows;
+}
+function subEdit(id,cur){
+  askInline('Сколько платим подрядчику, ₽ (было '+cur+'):', String(cur), function(v){
+    var s=Number(String(v||'').replace(',','.'));
+    if(isNaN(s)||s<0){ alert('Сумма — число от нуля'); return; }
+    api({vapi:'subconsetsum',id:id,sum:s}).then(function(r){
+      if(!r||!r.ok){ alert((r&&r.error)||'не сохранено'); return; }
+      loadSub();
+    });
+  });
+}
+function subDel(id){
+  if(!confirm('Удалить запись подряда? Заказ откатится на эту работу, долг перед подрядчиком снимется.')) return;
+  api({vapi:'subcondel',id:id}).then(function(r){
+    if(!r||!r.ok){ alert((r&&r.error)||'не удалось удалить'); return; }
+    loadSub();
+  });
+}
 function payFixBtn(master,l,rid){
   if(!master || !l || l.paid!==false || l.kind==='лист' || !l.detail) return '';
   return ' <button class="sm sec" onclick="payByDetail(\''+attr(l.detail)+'\',\''+attr(l.op)+'\',\''+esc(rid)+'\')"'
@@ -362,7 +513,7 @@ function payRuleSet(i,mode,sel){
   }).catch(function(e){ sel.disabled=false; alert('сеть: '+e.message); });
 }
 function showTab(t){
-  ['w','c','o','m','j'].forEach(function(x){
+  ['w','c','o','m','s','j'].forEach(function(x){
     document.getElementById('pane-'+x).style.display = x===t?'':'none';
     document.getElementById('tab-'+x).className = x===t?'active':'';
   });
@@ -374,6 +525,7 @@ function showTab(t){
   if(t==='c') loadCut();
   if(t==='o') loadOtk();
   if(t==='m') loadPending();
+  if(t==='s') loadSub();
   if(t==='j') loadJournal();
 }
 function load(){

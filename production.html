@@ -139,6 +139,13 @@
   table.floor.only-base .br-nat, table.floor.only-base .br-col,
   table.floor.only-nat .br-base, table.floor.only-nat .br-col,
   table.floor.only-col .br-base, table.floor.only-col .br-nat{ display:none; }
+  /* форма подряда */
+  .subrow{ display:flex; gap:var(--s-3); flex-wrap:wrap; align-items:flex-end; margin-bottom:var(--s-2); }
+  .subrow label{ display:flex; flex-direction:column; gap:2px; font:var(--t-label); color:var(--muted); }
+  .subrow input,.subrow select{ font:var(--t-body); }
+  .submoney{ background:var(--bg); border:1px solid var(--line); border-radius:var(--r-ctl); padding:var(--s-2) var(--s-3);
+             font:var(--t-small); margin-top:var(--s-2); }
+  .submoney .subok{ color:var(--green); } .submoney .subbad{ color:var(--red); }
   .flahead{ color:var(--amber); font-size:11px; cursor:help; }
   .fllift{ color:var(--blue); font:var(--t-label); cursor:help; }
   .flover{ display:block; font:var(--t-label); color:var(--amber); font-variant-numeric:tabular-nums; }
@@ -472,6 +479,7 @@ function renderDetail(){
       +'<button class="sec" title="обычно это происходит само при открытии заказа; кнопка — если нужно прямо сейчас" onclick="recalcOps(\''+b.id+'\')">↻ Пересобрать сейчас</button>'
       +'<button class="sec" title="печатный лист: пойти в цех и пересчитать детали по стадиям" onclick="inventSheet(\''+b.id+'\')">📋 Ведомость переучёта</button>'
       +'<button class="sec" title="взять в этот заказ детали, оставшиеся от прошлых партий" onclick="wipOffer(\''+b.id+'\')">🧩 Склад деталей</button>'
+      +'<button class="sec" title="часть работы сделал подрядчик: заказ продвинется по нашей расценке, а долг перед ним ляжет в Фин.гений" onclick="openSub(\''+b.id+'\')">🤝 Подряд</button>'
       +'<button class="sec" onclick="ship(\''+b.id+'\')">📦 '+((b.shipped||0)>0?'Довезти остаток':'Отгрузить')+'</button>'
       +((b.shipped||0)>0?('<button class="sec" title="что и когда увозили" onclick="shipLog(\''+b.id+'\')">🚚 История отгрузок</button>'):'')
       +''
@@ -892,7 +900,7 @@ var FLOORROWS={};   // id заказа → { opId: строка операции
 function indexOps(id,r){
   var m={};
   (r.products||[]).forEach(function(p){ (p.ops||[]).forEach(function(o){
-    m[o.id]={eq:p.eq,model:p.model,detail:o.detail,op:o.op,fact:o.fact,need:o.need,
+    m[o.id]={eq:p.eq,model:p.model,detail:o.detail,op:o.op,fact:o.fact,need:o.need,rate:o.rate,
              ready:o.ready,done:o.done,stock:o.stock,left:o.left,nextOp:o.nextOp,nextReady:o.nextReady};
   }); });
   FLOORROWS[id]=m;
@@ -959,6 +967,108 @@ function saveFact(id){
     });
   };
   step(false);
+}
+// ── РАБОТА ПОДРЯДЧИКА ──
+// Часть операций делают на стороне. Для заказа это тот же наряд: продвигается он по НАШЕЙ
+// расценке, а то, сколько мы платим подрядчику, — отдельная цифра, она ложится долгом
+// в Фин.гений. Детали не задваиваются: зачёт по операции подрядчика сам уменьшает «лежит»
+// на предыдущей — отмечать передачу не нужно.
+var SUBREFS=null, SUBORDER='';
+function closeSub(){ var o=$('subov'); if(o) o.remove(); }
+function openSub(id){
+  SUBORDER=id;
+  var M=FLOORROWS[id]||{}, prods={}, order=[];
+  Object.keys(M).forEach(function(oid){
+    var o=M[oid], pk=o.eq+' · '+o.model;
+    if(!prods[pk]){ prods[pk]={dets:{},dOrder:[]}; order.push(pk); }
+    var P=prods[pk];
+    if(!P.dets[o.detail]){ P.dets[o.detail]=[]; P.dOrder.push(o.detail); }
+    P.dets[o.detail].push({id:oid,op:o.op});
+  });
+  SUBTREE=prods; SUBPK=order;
+  var ov=document.createElement('div'); ov.className='mvov'; ov.id='subov';
+  ov.onclick=function(e){ if(e.target===ov) closeSub(); };
+  ov.innerHTML='<div class="mvbox"><span class="mvclose" onclick="closeSub()">✕</span>'
+    +'<h3>🤝 Работа подрядчика</h3>'
+    +'<div class="muted small">Отмечаем результат: что подрядчик сделал и сколько мы ему платим. Детали возьмутся с предыдущей операции сами — передачу отмечать не нужно.</div>'
+    +'<div id="subbody" class="muted" style="margin-top:var(--s-3)">загрузка справочников…</div></div>';
+  document.body.appendChild(ov);
+  if(SUBREFS){ subForm(); return; }
+  api({vapi:'subconrefs'}).then(function(r){
+    if(!r||!r.ok){ var b=$('subbody'); if(b) b.innerHTML='<div class="err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
+    SUBREFS=r; subForm();
+  });
+}
+var SUBTREE={}, SUBPK=[];
+function subForm(){
+  var b=$('subbody'); if(!b) return;
+  var opt=function(list,v){ return list.map(function(x){ return '<option'+(x===v?' selected':'')+'>'+esc(x)+'</option>'; }).join(''); };
+  var wl=(SUBREFS.wallets||[]), cash=(SUBREFS.cash||[]);
+  var wopts=wl.map(function(w){ return '<option value="'+esc(w)+'">'+esc(w)+(cash.indexOf(w)>=0?' (наличные)':' (безнал)')+'</option>'; }).join('');
+  var names=(SUBREFS.suppliers||[]).map(function(x){ return '<option value="'+esc(x.name)+'">'; }).join('');
+  b.innerHTML=
+    '<div class="subrow"><label>Изделие<select id="sb_p" onchange="subDet()">'+opt(SUBPK,'')+'</select></label>'
+    +'<label>Деталь<select id="sb_d" onchange="subOp()"></select></label>'
+    +'<label>Операция<select id="sb_o" onchange="subCalc()"></select></label>'
+    +'<label>Кол-во<input id="sb_q" class="q" value="" inputmode="decimal" oninput="subCalc()"></label></div>'
+    +'<div id="sb_hint" class="muted small" style="margin:var(--s-2) 0"></div>'
+    +'<div class="subrow"><label style="flex:1;min-width:200px">Подрядчик<input id="sb_c" list="sb_names" placeholder="начните вводить…" style="width:100%"><datalist id="sb_names">'+names+'</datalist></label>'
+    +'<label>Платим, ₽<input id="sb_s" class="q" value="" inputmode="decimal" oninput="subCalc()"></label>'
+    +'<label>Кошелёк<select id="sb_w">'+wopts+'</select></label></div>'
+    +'<div class="subrow"><label>Статья<select id="sb_st">'+opt(SUBREFS.statyi||[],SUBREFS.statya)+'</select></label>'
+    +'<label>Дата<input id="sb_dt" value="'+esc(subToday())+'" style="width:110px"></label>'
+    +'<label style="flex:1;min-width:160px">Комментарий<input id="sb_n" style="width:100%"></label></div>'
+    +'<div id="sb_sum" class="submoney"></div>'
+    +'<div class="row" style="margin-top:var(--s-3);gap:var(--s-2)"><button onclick="subGo()">Записать работу</button>'
+    +'<button class="sec" onclick="closeSub()">Отмена</button><span class="msg" id="sb_msg"></span></div>';
+  subDet();
+}
+function subToday(){ var d=new Date(); return ('0'+d.getDate()).slice(-2)+'.'+('0'+(d.getMonth()+1)).slice(-2)+'.'+d.getFullYear(); }
+function subDet(){
+  var pk=($('sb_p')||{}).value||'', P=SUBTREE[pk]||{dOrder:[]};
+  $('sb_d').innerHTML=(P.dOrder||[]).map(function(d){ return '<option>'+esc(d)+'</option>'; }).join('');
+  subOp();
+}
+function subOp(){
+  var pk=($('sb_p')||{}).value||'', d=($('sb_d')||{}).value||'', P=SUBTREE[pk]||{dets:{}};
+  var ops=(P.dets||{})[d]||[];
+  $('sb_o').innerHTML=ops.map(function(o){ return '<option value="'+esc(o.id)+'">'+esc(o.op)+'</option>'; }).join('');
+  subCalc();
+}
+// ⚠ только textContent/innerHTML отдельных узлов: перерисовка формы уводит фокус из поля
+function subCalc(){
+  var oid=($('sb_o')||{}).value||'', o=(FLOORROWS[SUBORDER]||{})[oid];
+  var q=Number(String((($('sb_q')||{}).value)||'').replace(',','.'))||0;
+  var s=Number(String((($('sb_s')||{}).value)||'').replace(',','.'))||0;
+  var h=$('sb_hint'), m=$('sb_sum'); if(!o){ if(h) h.textContent=''; if(m) m.textContent=''; return; }
+  if(h) h.innerHTML='по операции: нужно '+r1(o.need)+' · прошло '+r1(o.ready)+' · осталось '+r1(o.left)
+    +' · лежит сейчас '+r1(o.fact)+(o.nextOp?(' · дальше «'+esc(o.nextOp)+'»'):'');
+  var labor=Math.round(q*(Number(o.rate)||0)*100)/100;
+  if(m) m.innerHTML='<div><b>Наша расценка:</b> '+r1(q)+' × '+(o.rate||0)+' = <b>'+money(labor)+' ₽</b> <span class="muted">— на неё продвинется заказ</span></div>'
+    +'<div><b>Платим подрядчику:</b> '+money(s)+' ₽ <span class="muted">— ляжет долгом в Фин.гений</span></div>'
+    +(s>0?('<div class="'+(labor-s<0?'subbad':'subok')+'">разница: '+(labor-s>0?'+':'')+money(labor-s)+' ₽</div>'):'');
+}
+function subGo(){
+  var msg=$('sb_msg'); if(msg) msg.textContent='';
+  var oid=($('sb_o')||{}).value||'', o=(FLOORROWS[SUBORDER]||{})[oid];
+  if(!o){ if(msg) msg.textContent='выберите операцию'; return; }
+  var q=Number(String($('sb_q').value||'').replace(',','.'))||0;
+  if(!(q>0)){ if(msg) msg.textContent='укажите количество'; return; }
+  var c=($('sb_c').value||'').trim();
+  if(!c){ if(msg) msg.textContent='укажите подрядчика'; return; }
+  var s=Number(String($('sb_s').value||'').replace(',','.'))||0;
+  var labor=Math.round(q*(Number(o.rate)||0)*100)/100;
+  if(!confirm('Записать работу подрядчика?\n\n'+o.detail+' · '+o.op+' · '+r1(q)+' шт\nподрядчик: '+c
+      +'\n\nзаказ продвинется на '+money(labor)+' ₽ (наша расценка)\nдолг перед подрядчиком: '+money(s)+' ₽')) return;
+  if(msg) msg.textContent='…';
+  var data={batch:SUBORDER,equip:o.eq,model:o.model,detail:o.detail,op:o.op,qty:q,contractor:c,
+            sum:s,wallet:$('sb_w').value,statya:$('sb_st').value,date:$('sb_dt').value,note:$('sb_n').value};
+  api({vapi:'subconadd',data:JSON.stringify(data)}).then(function(r){
+    if(!r||!r.ok){ if(msg) msg.textContent=''; alert((r&&r.error)||'не записано'); return; }
+    closeSub();
+    if(r.waitQC) alert('Записано. Операция — точка контроля ОТК: работа зачтётся в заказ после приёмки контролёром.');
+    loadOps(SUBORDER);
+  }).catch(function(e){ if(msg) msg.textContent=''; alert('сеть: '+e.message); });
 }
 function opLeftCss(o){ return o.left>0?'color:var(--red)':'color:var(--green)'; }
 function opLeftHtml(o){
