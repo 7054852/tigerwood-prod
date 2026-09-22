@@ -9,7 +9,7 @@
   .muted{ font-size:13px; }
   .cols{ display:flex; gap:var(--s-3); align-items:flex-start; }
   .left{ flex:0 0 320px; max-width:320px; }
-  .right{ flex:1 1 auto; min-width:0; }
+  .right{ flex:1 1 auto; min-width:0; overflow:hidden; }
   @media (max-width:860px){ .cols{ display:block; } .left{ max-width:none; margin-bottom:var(--s-3); } }
 
   .sums{ display:flex; flex-wrap:wrap; gap:var(--s-2); margin-bottom:var(--s-3); }
@@ -28,7 +28,8 @@
   .cl .none{ color:var(--muted); }
   .cl.new{ border-style:dashed; text-align:center; color:var(--muted); }
 
-  table.w{ width:100%; border-collapse:separate; border-spacing:0; font-size:12px; }
+  .tw{ overflow:auto; overscroll-behavior:contain; }
+  table.w{ width:100%; min-width:max-content; border-collapse:separate; border-spacing:0; font-size:12px; }
   table.w th,table.w td{ padding:4px 7px; border-bottom:1px solid var(--line); text-align:left; white-space:nowrap; }
   table.w th{ font:var(--t-label); color:var(--muted); }
   table.w td.n,table.w th.n{ text-align:right; font-variant-numeric:tabular-nums; }
@@ -152,31 +153,31 @@ function cardHtml(c){
 
   var ops=(c.ops||[]).length
     ? '<div class="box"><div class="sect"><b>Что делает и по какой цене</b></div>'
-      +'<table class="w"><thead><tr><th>Операция</th><th class="n">Сделано</th><th class="n">Наша расценка</th>'
+      +'<div class="tw"><table class="w"><thead><tr><th>Операция</th><th class="n">Сделано</th><th class="n">Наша расценка</th>'
       +'<th class="n">Цена подрядчика</th><th class="n">Заплатим</th><th>Последняя работа</th></tr></thead><tbody>'
       +c.ops.map(function(o){ return '<tr><td>'+esc(o.op)+'</td><td class="n">'+m0(o.qty)+' шт</td>'
         +'<td class="n">'+money(o.ourPrice)+' ₽/шт</td><td class="n"><b>'+money(o.price)+' ₽/шт</b></td>'
         +'<td class="n">'+money(o.sub)+' ₽</td><td class="muted">'+esc(o.last)+'</td></tr>'; }).join('')
-      +'</tbody></table></div>'
+      +'</tbody></table></div></div>'
     : '<div class="box muted">Работ по этому подрядчику ещё не записано.</div>';
 
   var det=(c.details||[]).length
     ? '<div class="box"><div class="sect"><b>По деталям</b></div>'
-      +'<table class="w"><thead><tr><th>Деталь</th><th>Операция</th><th class="n">Шт</th>'
+      +'<div class="tw"><table class="w"><thead><tr><th>Деталь</th><th>Операция</th><th class="n">Шт</th>'
       +'<th class="n">Наша расценка</th><th class="n">Цена подрядчика</th></tr></thead><tbody>'
       +c.details.map(function(x){ return '<tr><td>'+esc(x.detail)+'</td><td>'+esc(x.op)+'</td><td class="n">'+m0(x.qty)+'</td>'
         +'<td class="n">'+money(x.ourPrice)+' ₽/шт</td><td class="n">'+money(x.price)+' ₽/шт</td></tr>'; }).join('')
-      +'</tbody></table></div>' : '';
+      +'</tbody></table></div></div>' : '';
 
   var works=(c.works||[]).length
     ? '<div class="box"><div class="sect"><b>История работ</b></div>'
-      +'<table class="w"><thead><tr><th>Дата</th><th>Заказ</th><th>Деталь · операция</th><th class="n">Шт</th>'
+      +'<div class="tw"><table class="w"><thead><tr><th>Дата</th><th>Заказ</th><th>Деталь · операция</th><th class="n">Шт</th>'
       +'<th class="n">Наша расценка</th><th class="n">Платим</th><th>Оплата</th></tr></thead><tbody>'
       +c.works.map(function(w){ return '<tr><td>'+esc(w.date)+'</td><td>'+esc(w.batch)+'</td>'
         +'<td>'+esc(w.detail)+' · '+esc(w.op)+(w.waitQC?' <span class="pill warn">ждёт ОТК</span>':'')+'</td>'
         +'<td class="n">'+m0(w.qty)+'</td><td class="n">'+money(w.labor)+' ₽</td><td class="n">'+money(w.sub)+' ₽</td>'
         +'<td>'+(w.sub>0?(w.paid?('<span class="ok">оплачено'+(w.paidDate?(' '+esc(w.paidDate)):'')+'</span>'):'<span class="err">не оплачено</span>'):'<span class="muted">без оплаты</span>')+'</td></tr>'; }).join('')
-      +'</tbody></table></div>' : '';
+      +'</tbody></table></div></div>' : '';
 
   return head+fields+ops+det+works;
 }
