@@ -40,6 +40,8 @@
   table.trf thead .dn{ z-index:6; background:var(--card2); }
   th.n,td.n{ text-align:right; font-variant-numeric:tabular-nums; }
   .s2{ display:block; font-size:10px; line-height:13px; color:var(--muted); font-variant-numeric:tabular-nums; }
+  .can .s2{ white-space:nowrap; line-height:11px; margin-top:-1px; }
+  .can .s2.ok{ color:var(--green); }
   /* зебра: на 44 строках глаз без неё съезжает со строки */
   tbody.blk tr.drow:nth-of-type(even) td,tbody.blk tr.drow:nth-of-type(even) td.dn{ background:var(--card2); }
   tbody.blk tr.drow:hover td,tbody.blk tr.drow:hover td.dn{ background:var(--accent-bg); }
@@ -297,7 +299,12 @@ function canHtml(r){
   var cls=r.ready?'ok':'wait';
   var tip=r.ready?('лежат прямо перед «'+V.op+'» — можно брать в работу')
     :('доступно '+m0(r.can)+' шт, из них готово сейчас '+m0(r.avail)+(r.waitOp?('; остальные ждут «'+r.waitOp+'»'):''));
-  return '<span class="dot '+cls+'" title="'+attr(tip)+'"></span><span title="'+attr(tip)+'">'+m0(r.can)+'</span>';
+  // вторая строка отвечает на вопрос «а где они сейчас лежат»: сколько готово прямо сейчас
+  // и какая операция держит остальное
+  var sub=r.ready?'всё готово'
+    :(m0(r.avail)+' гот · '+(r.waitOp||'ждёт'));
+  return '<span class="dot '+cls+'" title="'+attr(tip)+'"></span><span title="'+attr(tip)+'">'+m0(r.can)+'</span>'
+    +'<span class="s2'+(r.ready?' ok':'')+'" title="'+attr(tip)+'">'+esc(sub)+'</span>';
 }
 function giveHtml(r){
   if(!r.plan && !r.given) return '<button class="plus noprint" title="запланировать и отдать подрядчику" onclick="openGive(\''+attr(r.key)+'\')">📤</button>';
