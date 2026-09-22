@@ -8,65 +8,75 @@
 <style>
   .muted{ font-size:13px; }
   /* ⚠ имя .bar занято темой (полоса прогресса, height:6px) — панель действий зовётся .toolbar */
-  /* чипы операций — как ветки в цехе: видно, где лежат деньги */
-  /* операций в заказе бывает 25 — без ограничения фильтр съедал четверть экрана */
   .ops{ display:flex; flex-wrap:wrap; gap:var(--s-1); margin-bottom:var(--s-3); max-height:96px; overflow:auto; }
-  .opc{ border:1px solid var(--line); border-radius:999px; padding:4px 10px; font-size:13px; cursor:pointer; background:var(--card);
+  .opc{ border:1px solid var(--line); border-radius:999px; padding:3px 9px; font-size:12px; cursor:pointer; background:var(--card);
         white-space:nowrap; transition:border-color .12s var(--ease), background .12s var(--ease); }
   .opc:hover{ border-color:var(--accent); }
   .opc.on{ background:var(--accent); border-color:var(--accent); color:#fff; }
   .opc .q{ color:var(--muted); }
-  .opc.on .q{ color:rgba(255,255,255,.8); }
+  .opc.on .q{ color:rgba(255,255,255,.85); }
 
-  .sheet{ border:1px solid var(--line); border-radius:var(--r-card); background:var(--card); padding:var(--s-4); }
-  .shead{ display:flex; flex-wrap:wrap; gap:var(--s-3); align-items:flex-end; margin-bottom:var(--s-3); }
-  .stitle{ font:var(--t-title); }
-  .sline{ font-size:13px; color:var(--muted); }
-  .fill{ display:inline-block; min-width:140px; border-bottom:1px solid var(--muted); }
+  .sheet{ border:1px solid var(--line); border-radius:var(--r-card); background:var(--card); padding:var(--s-3) var(--s-4); }
+  .shead{ display:flex; flex-wrap:wrap; gap:var(--s-3); align-items:flex-end; margin-bottom:var(--s-2); }
+  .stitle{ font:var(--t-heading); }
+  .sline{ font-size:12px; color:var(--muted); }
+  .fill{ display:inline-block; min-width:130px; border-bottom:1px solid var(--muted); }
 
-  /* итоги: шесть чисел с РАЗНЫМИ смыслами — каждое со своей подписью, иначе их путают */
-  .sums{ display:flex; flex-wrap:wrap; gap:var(--s-3); margin-bottom:var(--s-3); }
-  .sum{ border:1px solid var(--line); border-radius:var(--r-ctl); padding:var(--s-2) var(--s-3); background:var(--card2); min-width:120px; }
-  .sum .v{ font:var(--t-heading); font-variant-numeric:tabular-nums; }
-  .sum .n{ font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
-  .sum.our .v{ color:var(--green); }
-  .sum.sub .v{ color:var(--amber); }
-  .sum.qc .v{ color:var(--accent-text); }
+  /* итоги — одной компактной полосой: пять чисел, у каждого своя подпись */
+  .sums{ display:flex; flex-wrap:wrap; gap:var(--s-2); margin:var(--s-2) 0; }
+  .sum{ border:1px solid var(--line); border-radius:var(--r-ctl); padding:3px 9px; background:var(--card2); }
+  .sum .v{ font:var(--t-body-strong); font-variant-numeric:tabular-nums; }
+  .sum .n{ font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+  .sum .x{ font-size:11px; color:var(--muted); }
+  .sum.our .v{ color:var(--green); } .sum.sub .v{ color:var(--amber); } .sum.can .v{ color:var(--accent-text); }
 
   /* ⚠ прокрутка ВНУТРИ обёртки — иначе sticky цепляется за страницу и шапка уезжает */
-  .twrap{ overflow:auto; max-height:72vh; overscroll-behavior:contain; }
-  table.trf{ border-collapse:separate; border-spacing:0; width:100%; font-size:13px; }
-  table.trf th,table.trf td{ border-bottom:1px solid var(--line); padding:6px 8px; text-align:left; vertical-align:middle; }
-  table.trf thead th{ position:sticky; top:0; z-index:3; background:var(--card2); font:var(--t-label); white-space:nowrap; }
-  table.trf .dn{ position:sticky; left:0; z-index:1; background:var(--card); min-width:190px; }
-  table.trf thead .dn{ z-index:4; background:var(--card2); }
-  table.trf td.num,table.trf th.num{ text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
-  table.trf tr.drow:hover td{ background:var(--card2); }
-  table.trf tr.drow.sel td{ background:var(--accent-bg); }
-  table.trf tr.drow.norate td.dn{ color:var(--muted); }
+  .twrap{ overflow:auto; max-height:74vh; overscroll-behavior:contain; }
+  /* width:auto — колонки жмутся к детали, а не растягиваются на весь экран */
+  table.trf{ width:auto; margin-right:auto; border-collapse:separate; border-spacing:0; font-size:12px; line-height:16px; }
+  table.trf th,table.trf td{ padding:3px 7px; border-bottom:1px solid var(--line); white-space:nowrap; vertical-align:middle; }
+  table.trf thead th{ position:sticky; top:0; z-index:5; background:var(--card2); font:var(--t-label); padding:4px 7px; }
+  table.trf .dn{ position:sticky; left:0; z-index:2; background:var(--card); max-width:320px; overflow:hidden; text-overflow:ellipsis; }
+  table.trf thead .dn{ z-index:6; background:var(--card2); }
+  th.n,td.n{ text-align:right; font-variant-numeric:tabular-nums; }
+  .s2{ display:block; font-size:10px; line-height:13px; color:var(--muted); font-variant-numeric:tabular-nums; }
+  /* зебра: на 44 строках глаз без неё съезжает со строки */
+  tbody.blk tr.drow:nth-of-type(even) td,tbody.blk tr.drow:nth-of-type(even) td.dn{ background:var(--card2); }
+  tbody.blk tr.drow:hover td,tbody.blk tr.drow:hover td.dn{ background:var(--accent-bg); }
+  tr.drow.norate td.dn{ color:var(--muted); }
+  .sh{ font-size:10px; color:var(--muted); }
 
-  tr.bh td{ background:var(--card2); font-weight:600; border-top:2px solid var(--line); cursor:pointer; }
-  tbody.blk.closed tr.drow{ display:none; }
-  tr.bh .car{ display:inline-block; width:12px; color:var(--muted); transition:transform .12s var(--ease); }
+  /* блок — видимая перегородка: полоса сверху, цветная шапка, воздух перед ней */
+  tr.gap td{ height:9px; padding:0; border:0; background:transparent; }
+  tr.bh td{ background:var(--accent-bg); color:var(--accent-text); font-weight:600; padding:5px 9px;
+            border-top:2px solid var(--accent); border-bottom:1px solid var(--accent);
+            box-shadow:inset 4px 0 0 var(--accent); cursor:pointer; }
+  tr.bh.target td{ outline:2px solid var(--accent); outline-offset:-2px; }
+  tr.bh .car{ display:inline-block; width:12px; }
   tbody.blk.closed tr.bh .car{ transform:rotate(-90deg); }
-  tr.bh.target td{ background:var(--accent-bg); box-shadow:inset 0 0 0 2px var(--accent); }
-  tr.bh .bt{ cursor:pointer; }
-  tr.bh .bx{ color:var(--muted); cursor:pointer; margin-left:var(--s-2); font-weight:400; }
-  tr.bh .bs{ color:var(--muted); font-weight:400; font-size:12px; margin-left:var(--s-2); }
-  .grab{ cursor:grab; user-select:none; -webkit-user-select:none; }
+  tbody.blk.closed tr.drow{ display:none; }
+  tr.bh .bs{ font-weight:400; font-size:11px; opacity:.85; margin-left:var(--s-2); }
+  tr.bh .bx{ cursor:pointer; margin-left:var(--s-2); font-weight:400; }
 
-  td.cell{ text-align:center; min-width:62px; }
-  td.cell input{ width:56px; text-align:center; border:1px solid var(--line); border-radius:var(--r-xs); background:transparent; font:inherit; color:inherit; padding:2px 0; }
-  td.cell input:focus{ outline:2px solid var(--accent); }
-  td.cell .v{ font-weight:600; font-variant-numeric:tabular-nums; cursor:pointer; }
-  td.cell .s{ display:block; font-size:11px; color:var(--muted); }
-  .s2{ display:block; font-size:11px; color:var(--muted); font-variant-numeric:tabular-nums; }
+  /* маркер готовности: точка перед числом — два состояния и ничего больше */
+  .dot{ display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:5px; vertical-align:middle; }
+  .dot.ok{ background:var(--green); } .dot.wait{ background:var(--amber); } .dot.no{ background:var(--line2); }
+
+  .plus{ border:1px solid var(--line); border-radius:var(--r-xs); background:var(--card); color:var(--fg);
+         cursor:pointer; font-size:12px; line-height:1; padding:3px 6px; min-height:0; }
+  .plus:hover{ border-color:var(--accent); color:var(--accent-text); }
+  .mv{ border:0; background:transparent; color:var(--muted); cursor:pointer; padding:0 4px 0 0; font-size:12px; min-height:0; }
+  .mv:hover{ color:var(--accent-text); }
+  input.pl{ width:52px; text-align:right; font:inherit; color:inherit; background:transparent;
+            border:1px solid var(--line); border-radius:var(--r-xs); padding:1px 3px; min-height:0; }
+  input.pl:focus{ outline:2px solid var(--accent); }
+  select.who{ font-size:12px; padding:1px 4px; min-height:0; max-width:150px; }
+  .giv .o{ font-size:10px; color:var(--muted); margin-left:4px; }
+  .giv .over{ color:var(--amber); }
   .wqc{ color:var(--accent-text); }
-  .give{ cursor:pointer; white-space:nowrap; }
-  .give .g{ font-weight:600; font-variant-numeric:tabular-nums; }
-  .give .o{ display:block; font-size:11px; color:var(--amber); }
-  select.who{ max-width:170px; font-size:13px; padding:2px 6px; min-height:0; }
   .pr{ display:none; }
+  .dcol{ display:none; }
+  body.showd .dcol{ display:table-cell; }
 
   .mvov{ position:fixed; inset:0; background:var(--scrim); display:flex; align-items:center; justify-content:center; z-index:50; padding:var(--s-4); }
   .mvbox{ background:var(--card); border:1px solid var(--line); border-radius:var(--r-card); max-width:520px; width:100%; max-height:86vh; overflow:auto; padding:var(--s-5); box-shadow:var(--shadow-pop); }
@@ -74,36 +84,37 @@
   .mvbox input,.mvbox select{ width:100%; max-width:100%; }
   .mvn{ display:flex; align-items:center; gap:var(--s-2); flex-wrap:wrap; border-top:1px solid var(--line); padding:var(--s-2) 0; font-size:13px; }
   .mvclose{ float:right; color:var(--muted); cursor:pointer; }
-  .hint{ font-size:13px; color:var(--muted); margin:var(--s-2) 0; }
+  .blist button{ width:100%; text-align:left; margin-bottom:var(--s-1); }
+  .hint{ font-size:12px; color:var(--muted); margin:var(--s-1) 0; }
   .warn{ color:var(--amber); }
 
-  /* на телефоне шесть плиток в столбик съедали экран до таблицы — кладём их в две колонки */
-  @media (max-width:640px){
-    .sums{ display:grid; grid-template-columns:1fr 1fr; gap:var(--s-2); }
-    .sum{ min-width:0; padding:var(--s-1) var(--s-2); }
-    .sum .v{ font:var(--t-body-strong); }
-    .sum .n{ font-size:10px; }
-    .twrap{ max-height:60vh; }
+  @media (max-width:760px){
+    table.trf{ font-size:13px; }
+    table.trf th,table.trf td{ padding:5px 7px; }
+    th.who,td.who,th.rub,td.rub{ display:none; }        /* исполнитель и деньги — в оверлее строки */
+    .plus,.mv{ min-width:32px; min-height:30px; }        /* палец, а не курсор */
+    .twrap{ max-height:64vh; }
+    .sums{ gap:var(--s-1); }
   }
 
   /* «печатать пустую»: цифры прячем, место под ручку оставляем */
-  body.blank td.cell .v, body.blank td.cell .s{ visibility:hidden; }
-  body.blank .give .g, body.blank .give .o{ visibility:hidden; }
+  body.blank .giv,body.blank td.shp .v,body.blank .can .n{ visibility:hidden; }
 
   @media print{
     .noprint{ display:none !important; }
     .sheet{ border:0; border-radius:0; padding:0; }
     .twrap{ overflow:visible; max-height:none; }
-    table.trf{ font-size:10px; }
-    table.trf th,table.trf td{ padding:2px 4px; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    table.trf{ width:100%; font-size:10px; }
+    table.trf th,table.trf td{ padding:2px 4px; white-space:normal; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
     table.trf thead{ display:table-header-group; }
     table.trf tr{ page-break-inside:avoid; }
-    table.trf td.cell{ height:22px; border-left:1px solid var(--line2); }
-    table.trf td.cell input{ border:0; box-shadow:none; }
-    table.trf th.cell{ border-left:1px solid var(--line2); }
-    select.who{ display:none; }
+    table.trf td.dn,table.trf thead .dn{ position:static; }
+    tr.bh td{ position:static; background:#eef1f5 !important; color:#000 !important; box-shadow:none; }
+    .dcol{ display:table-cell !important; }              /* журнал по датам нужен на бумаге */
+    td.dcol{ height:22px; border-left:1px solid var(--line2); }
+    .plus,.mv,select.who{ display:none !important; }
     .pr{ display:inline; }
-    .sum{ padding:2px 6px; }
+    th.who,td.who,th.rub,td.rub{ display:table-cell; }
   }
 </style>
 <style id="pagecss">@page{ size:A4 landscape; margin:10mm; }</style>
@@ -114,15 +125,16 @@
 <div class="hi noprint">📋 Ведомость передачи работы</div>
 <div class="toolbar noprint">
   <select id="ord" onchange="pickOrder(this.value)"><option>загрузка…</option></select>
+  <label class="chk"><input type="checkbox" id="showd" onchange="setShowD(this.checked)"> журнал по датам</label>
+  <label class="chk"><input type="checkbox" id="blank" onchange="setBlank(this.checked)"> печатать пустую</label>
   <div class="seg" id="orient" title="ориентация листа при печати">
     <button id="or_portrait" onclick="setOrient('portrait')">книжная</button>
     <button id="or_landscape" onclick="setOrient('landscape')">альбомная</button>
   </div>
-  <label class="chk"><input type="checkbox" id="blank" onchange="setBlank(this.checked)"> печатать пустую</label>
   <span class="msg" id="msg"></span>
   <div class="end">
     <button class="sec" onclick="addBlock()">＋ блок</button>
-    <button class="sec" onclick="load()">⟳</button>
+    <button class="sec" onclick="load(1)">⟳</button>
     <button onclick="doPrint()">🖨 Печать</button>
   </div>
 </div>
@@ -158,12 +170,14 @@ function pad2(v){ return (v<10?'0':'')+v; }
 function todayRu(){ var d=new Date(); return pad2(d.getDate())+'.'+pad2(d.getMonth()+1)+'.'+d.getFullYear(); }
 function msg(h){ var e=$('msg'); if(e) e.innerHTML=h||''; }
 
-var SELF='__self__';
-var B=qp('batch')||'', OP=qp('op')||'', D=null, BATCHES=[], SEL='', OPEN={}, REFS=null, EXTRA=[], SAVET=null, BLANK=0;
+var TOUCH=('ontouchstart' in window)||navigator.maxTouchPoints>0;   // на телефоне перетаскивание выключаем совсем
+var B=qp('batch')||'', OP=qp('op')||'', D=null, V=null, BATCHES=[], SEL='', OPEN={}, REFS=null, SAVET=null, SHOWD=0;
 
-/* ═══ загрузка ═══ */
+/* ═══ загрузка: один вызов на все операции заказа ═══ */
+// ⚠ расчёт заказа на сервере стоит ~11 с. Раньше он платился на каждый щелчок по чипу операции;
+// теперь грузим заказ целиком один раз, а переключение операций идёт из памяти вкладки.
 function boot(){
-  initOrient();
+  initOrient(); initShowD();
   api({vapi:'batches'}).then(function(r){
     BATCHES=(r&&r.batches)||[];
     var s=$('ord'); if(!s) return;
@@ -174,13 +188,17 @@ function boot(){
     load();
   }).catch(function(e){ $('pane').innerHTML='<div class="err">сеть: '+esc(e.message)+'</div>'; });
 }
-function pickOrder(id){ B=id; OP=''; SEL=''; load(); }
-function pickOp(op){ OP=op; SEL=''; load(); }
+function pickOrder(id){ B=id; OP=''; SEL=''; D=null; load(); }
+function pickOp(op){ OP=op; SEL=''; V=(D&&D.byOp&&D.byOp[op])||null; render(); }
 function load(){
   if(!B){ $('pane').innerHTML='<div class="muted">Выберите заказ.</div>'; return; }
-  api({vapi:'transfer',batch:B,op:OP}).then(function(r){
+  $('pane').innerHTML='<div class="center muted">Считаю заказ… это занимает около 10 секунд, зато дальше операции переключаются мгновенно.</div>';
+  api({vapi:'transfer',batch:B,all:1}).then(function(r){
     if(!r||!r.ok){ $('pane').innerHTML='<div class="err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
-    D=r; EXTRA=EXTRA.filter(function(d){ return (D.dates||[]).indexOf(d)<0; });
+    D=r;
+    var keys=Object.keys(D.byOp||{});
+    if(!OP||!D.byOp[OP]) OP=keys.length?keys[0]:'';
+    V=OP?D.byOp[OP]:null;
     render();
   }).catch(function(e){ $('pane').innerHTML='<div class="err">сеть: '+esc(e.message)+'</div>'; });
 }
@@ -188,57 +206,61 @@ function load(){
 /* ═══ отрисовка ═══ */
 function render(){
   var o=$('ops');
-  // закрытые операции (остаток 0) в фильтре не нужны — отдавать там нечего
-  o.innerHTML=(D.ops||[]).filter(function(t){ return t.leftQty>0 || t.op===D.op; }).map(function(t){
-    return '<span class="opc'+(t.op===D.op?' on':'')+'" onclick="pickOp(\''+attr(t.op)+'\')">'+esc(t.op)
+  o.innerHTML=(D.ops||[]).filter(function(t){ return t.leftQty>0; }).map(function(t){
+    return '<span class="opc'+(t.op===OP?' on':'')+'" onclick="pickOp(\''+attr(t.op)+'\')">'+esc(t.op)
       +' <span class="q">'+m0(t.leftQty)+' шт · '+money(t.leftRub)+' ₽</span></span>';
   }).join('');
-  if(!D.op){ $('pane').innerHTML='<div class="sheet"><div class="muted">Выберите операцию — покажу детали, остаток и стоимость работы.</div></div>'; return; }
+  if(!V){ $('pane').innerHTML='<div class="sheet"><div class="muted">Выберите операцию — покажу детали, остаток и стоимость работы.</div></div>'; return; }
 
-  var T=D.totals||{}, dates=(D.dates||[]).concat(EXTRA);
-  var qcNote=D.qcOp?'<div class="hint warn">⚠ «'+esc(D.op)+'» — точка контроля ОТК: привезённое от подрядчика зачтётся в заказ только после приёмки контролёром.</div>':'';
-  var head='<div class="shead"><div><div class="stitle">'+esc(D.order.num)+' · '+esc(D.op)+'</div>'
-    +'<div class="sline">'+esc(D.order.name||'')+(D.order.plan?(' · срок '+esc(D.order.plan)):'')+' · деталей '+(D.rows||[]).length+'</div></div>'
-    +'<div class="sline" style="margin-left:auto">ведомость от <span class="fill">&nbsp;'+todayRu()+'</span><br>'
+  var T=V.totals||{}, dates=V.dates||[];
+  var qcNote=V.qcOp?'<div class="hint warn">⚠ «'+esc(V.op)+'» — точка контроля ОТК: привезённое от подрядчика зачтётся в заказ после приёмки контролёром.</div>':'';
+  var head='<div class="shead"><div><div class="stitle">'+esc(D.order.num)+' · '+esc(V.op)+'</div>'
+    +'<div class="sline">'+esc(D.order.name||'')+(D.order.plan?(' · срок '+esc(D.order.plan)):'')+' · деталей '+(V.rows||[]).length+'</div></div>'
+    +'<div class="sline" style="margin-left:auto">ведомость от <span class="fill">&nbsp;'+todayRu()+'</span> · '
     +'передал <span class="fill">&nbsp;</span> · принял <span class="fill">&nbsp;</span></div></div>';
 
-  var sums='<div class="sums">'
-    +sumBox('осталось сделать', m0(T.leftQty)+' шт', money(T.leftRub)+' ₽','')
-    +sumBox('планируем сами', money(T.planOurRub)+' ₽','по назначению исполнителя','our')
-    +sumBox('отдаём подрядчикам', money(T.planSubRub)+' ₽','по назначению исполнителя','sub')
-    +sumBox('сейчас у подрядчиков', m0(T.outQty)+' шт','отдано минус привезено','sub')
-    +(T.qc?sumBox('ждёт приёмки ОТК', m0(T.qc)+' шт','привезли, контролёр не принял','qc'):'')
-    +sumBox('нам делать', m0(T.ourQty)+' шт', money(T.ourRub)+' ₽','our')
-    +'</div>';
+  var sums='<div class="sums" id="sums">'+sumsHtml(T)+'</div>';
 
-  var cols=dates.map(function(d){ return '<th class="num cell">'+esc(d.slice(0,5))+'</th>'; }).join('');
-  var thead='<thead><tr><th class="dn">Деталь</th><th class="num">Осталось, шт</th><th class="num">Работы, ₽<br><span class="muted">наша расценка</span></th>'
-    +'<th>Кому отдаём</th><th class="num">Отдано, шт</th>'+cols
-    +'<th class="num noprint"><span class="opc" onclick="addDateCol()">＋ дата</span></th>'
-    +'<th class="num">Нам делать</th></tr></thead>';
+  var cols=dates.map(function(d){ return '<th class="n dcol">📥 '+esc(d.slice(0,5))+'</th>'; }).join('');
+  var thead='<thead><tr>'
+    +'<th class="dn">Деталь</th>'
+    +'<th class="n">Осталось</th>'
+    +'<th class="n" title="сколько деталей доступно под эту операцию: зелёная точка — лежат прямо перед ней, янтарная — сначала нужны промежуточные операции">Можно сделать</th>'
+    +'<th class="n">Отдаём</th>'
+    +'<th class="n">Привезли</th>'
+    +'<th class="n">Нам делать</th>'
+    +'<th class="rub n" title="во сколько оценена работа, которую делаем сами">₽ нам</th>'
+    +'<th class="who">Кому</th>'+cols+'</tr></thead>';
 
-  var byKey={}; (D.rows||[]).forEach(function(r){ byKey[r.key]=r; });
-  var body=(D.blocks||[]).map(function(b,bi){ return blockHtml(b,bi,byKey,dates); }).join('');
+  var byKey={}; (V.rows||[]).forEach(function(r){ byKey[r.key]=r; });
+  var body=(V.blocks||[]).map(function(b,bi){ return blockHtml(b,bi,byKey,dates); }).join('');
   $('pane').innerHTML='<div class="sheet">'+head+qcNote+sums
     +'<div class="twrap"><table class="trf">'+thead+body+'</table></div>'
-    +'<div class="hint noprint">Перетащите деталь на заголовок блока — или нажмите на деталь, потом на блок. Клик по пустой клетке даты — записать, что привёз подрядчик.</div>'
-    +'<div class="foot sline" style="margin-top:var(--s-4)">Передал: ______________________ / ______________ &nbsp;&nbsp; Принял: ______________________ / ______________</div>'
+    +'<div class="hint noprint">📤 — отдали подрядчику · 📥 — привезли обратно · ☰ — переложить деталь в другой блок · клик по заголовку блока сворачивает его.</div>'
+    +'<div class="foot sline" style="margin-top:var(--s-3)">Передал: ______________________ / ______________ &nbsp;&nbsp; Принял: ______________________ / ______________</div>'
     +'</div>';
+}
+function sumsHtml(T){
+  return sumBox('осталось сделать', m0(T.leftQty)+' шт', money(T.leftRub)+' ₽','')
+    +sumBox('можно сделать', m0(T.canQty)+' шт','из них готово сейчас '+m0(T.availQty),'can')
+    +sumBox('план передачи', m0(T.subQty)+' шт', money(T.subRub)+' ₽','sub')
+    +sumBox('у подрядчиков', m0(T.outQty)+' шт',(T.qc?('ждёт ОТК '+m0(T.qc)):'отдано минус привезено'),'sub')
+    +sumBox('нам делать', m0(T.ourQty)+' шт', money(T.ourRub)+' ₽','our');
 }
 function sumBox(name,v,sub,cls){
   return '<div class="sum '+(cls||'')+'"><div class="n">'+esc(name)+'</div><div class="v">'+v+'</div>'
-    +(sub?('<div class="n" style="text-transform:none;letter-spacing:0">'+esc(sub)+'</div>'):'')+'</div>';
+    +(sub?('<div class="x">'+esc(sub)+'</div>'):'')+'</div>';
 }
 function blockHtml(b,bi,byKey,dates){
   var rows=(b.d||[]).map(function(k){ return byKey[k]; }).filter(function(x){ return !!x; });
-  var lq=0,lr=0,our=0;
-  rows.forEach(function(r){ lq+=r.left; lr+=r.leftRub; our+=r.ourRub; });
-  var span=5+dates.length+2;
-  var h='<tbody class="blk'+(OPEN[b.t]===0?' closed':'')+'" id="blk'+bi+'">'
-    +'<tr class="bh" id="bh'+bi+'" ondragover="event.preventDefault();this.classList.add(\'target\')" ondragleave="this.classList.remove(\'target\')"'
-    +' ondrop="blockDrop(event,'+bi+')" onclick="blockTap('+bi+')">'
-    +'<td class="dn" colspan="'+span+'"><span class="car">▾</span><span class="grab">⠿</span> <span class="bt" onclick="event.stopPropagation();renameBlock('+bi+')">'+esc(b.t)+'</span>'
-    +'<span class="bs">'+rows.length+' дет · осталось '+m0(lq)+' шт · '+money(lr)+' ₽ · нам '+money(our)+' ₽</span>'
+  var lq=0,can=0,our=0;
+  rows.forEach(function(r){ lq+=r.left; can+=r.can; our+=r.ourRub; });
+  // colspan с запасом: набор колонок меняется тумблером дат, пересчитывать его каждый раз незачем
+  var h=(bi?'<tbody class="blk"><tr class="gap"><td colspan="99"></td></tr></tbody>':'')
+    +'<tbody class="blk'+(OPEN[b.t]===0?' closed':'')+'" id="blk'+bi+'">'
+    +'<tr class="bh" id="bh'+bi+'"'+(TOUCH?'':' ondragover="event.preventDefault();this.classList.add(\'target\')" ondragleave="this.classList.remove(\'target\')" ondrop="blockDrop(event,'+bi+')"')+' onclick="blockTap('+bi+')">'
+    +'<td colspan="99"><span class="car">▾</span> <span onclick="event.stopPropagation();renameBlock('+bi+')">'+esc(b.t)+'</span>'
+    +'<span class="bs">'+rows.length+' дет · осталось '+m0(lq)+' шт · можно '+m0(can)+' · нам '+money(our)+' ₽</span>'
     +'<span class="bx noprint" onclick="event.stopPropagation();delBlock('+bi+')">🗑</span></td></tr>';
   h+=rows.map(function(r){ return rowHtml(r,dates); }).join('');
   return h+'</tbody>';
@@ -246,185 +268,256 @@ function blockHtml(b,bi,byKey,dates){
 function rowHtml(r,dates){
   var cells=dates.map(function(d){
     var c=(r.cells||{})[d];
-    if(!c) return '<td class="cell"><input inputmode="numeric" data-k="'+attr(r.key)+'" data-d="'+attr(d)+'"'
-      +(r.noRate?' disabled title="нет расценки — записать работу нельзя"':'')+' onchange="cellIn(this)"></td>';
-    return '<td class="cell"><span class="v'+(c.qc?' wqc':'')+'" onclick="openCell(\''+attr(r.key)+'\',\''+attr(d)+'\')">'+m0(c.qty)+(c.qc?' ⏳':'')+'</span>'
-      +'<span class="s">'+money(c.sub)+' ₽</span></td>';
+    return '<td class="n dcol">'+(c?('<span class="'+(c.qc?'wqc':'')+'" onclick="openShipLog(\''+attr(r.key)+'\')">'+m0(c.qty)+(c.qc?' ⏳':'')+'</span>'):'')+'</td>';
   }).join('');
   var who=r.who||'';
-  var opts='<option value="">— наши силы —</option>'+(D.contractors||[]).map(function(n){
+  var opts='<option value="">— сами —</option>'+(D.contractors||[]).map(function(n){
     return '<option value="'+attr(n)+'"'+(n===who?' selected':'')+'>'+esc(n)+'</option>'; }).join('')
-    +((who&&(D.contractors||[]).indexOf(who)<0)?('<option value="'+attr(who)+'" selected>'+esc(who)+'</option>'):'');
-  return '<tr class="drow'+(SEL===r.key?' sel':'')+(r.noRate?' norate':'')+'" draggable="true" ondragstart="rowDrag(event,\''+attr(r.key)+'\')">'
-    +'<td class="dn grab" onclick="rowTap(\''+attr(r.key)+'\')">'+esc(r.detail)
-      +(r.shared?' <span class="muted" title="деталь идёт в нескольких изделиях">·общая</span>':'')
+    +((who&&(D.contractors||[]).indexOf(who)<0)?('<option value="'+attr(who)+'" selected>'+esc(who)+'</option>'):'')
+    +'<option value="__add__">＋ подрядчик…</option>';
+  return '<tr class="drow'+(r.noRate?' norate':'')+'" id="tr_'+attr(r.key)+'"'
+      +(TOUCH?'':' draggable="true" ondragstart="rowDrag(event,\''+attr(r.key)+'\')"')+'>'
+    +'<td class="dn"><button class="mv noprint" title="переложить в другой блок" onclick="openMove(\''+attr(r.key)+'\')">☰</button>'+esc(r.detail)
+      +(r.shared?' <span class="sh" title="деталь идёт в нескольких изделиях">общая</span>':'')
       +(r.noRate?' <span class="warn" title="нет расценки: заведите её в «Операциях и расценках»">нет расценки</span>':'')+'</td>'
-    +'<td class="num">'+m0(r.left)+'</td>'
-    +'<td class="num">'+money(r.leftRub)+'</td>'
-    +'<td><select class="who noprint" onchange="setWho(\''+attr(r.key)+'\',this.value)">'+opts+'</select>'
+    +'<td class="n">'+m0(r.left)+'</td>'
+    +'<td class="n can">'+canHtml(r)+'</td>'
+    +'<td class="n giv" id="gv_'+attr(r.key)+'">'+giveHtml(r)+'</td>'
+    +'<td class="n shp" id="sp_'+attr(r.key)+'">'+shipHtml(r)+'</td>'
+    +'<td class="n" id="ou_'+attr(r.key)+'">'+m0(r.ourQty)+'</td>'
+    +'<td class="rub n" id="or_'+attr(r.key)+'" title="сколько стоит работа, которую делаем сами">'+money(r.ourRub)+'</td>'
+    +'<td class="who"><select class="who noprint" onchange="setWho(\''+attr(r.key)+'\',this.value)">'+opts+'</select>'
       +'<span class="pr">'+(who?esc(who):'<span class="fill">&nbsp;</span>')+'</span></td>'
-    +'<td class="num give" onclick="openGive(\''+attr(r.key)+'\')"><span class="g">'+(r.given?m0(r.given):'—')+'</span>'
-      +(r.outQty?('<span class="o">у него '+m0(r.outQty)+'</span>'):'')+'</td>'
-    +cells
-    +'<td class="num noprint"></td>'
-    +'<td class="num">'+m0(r.ourQty)+' шт<span class="s2">'+money(r.ourRub)+' ₽</span></td>'
-    +'</tr>';
+    +cells+'</tr>';
 }
-function rowOf(k){ var f=null; (D.rows||[]).forEach(function(r){ if(r.key===k) f=r; }); return f; }
+// можно сделать: цифра + точка готовности. Зелёная — лежат прямо перед операцией; янтарная —
+// заготовки есть, но сначала нужны промежуточные операции; серая — деталей ещё нет.
+function canHtml(r){
+  if(!r.can) return '<span class="dot no"></span><span class="muted">—</span>';
+  var cls=r.ready?'ok':'wait';
+  var tip=r.ready?('лежат прямо перед «'+V.op+'» — можно брать в работу')
+    :('доступно '+m0(r.can)+' шт, из них готово сейчас '+m0(r.avail)+(r.waitOp?('; остальные ждут «'+r.waitOp+'»'):''));
+  return '<span class="dot '+cls+'" title="'+attr(tip)+'"></span><span title="'+attr(tip)+'">'+m0(r.can)+'</span>';
+}
+function giveHtml(r){
+  if(!r.plan && !r.given) return '<button class="plus noprint" title="запланировать и отдать подрядчику" onclick="openGive(\''+attr(r.key)+'\')">📤</button>';
+  var over=(r.given>r.plan);
+  return '<input class="pl noprint" value="'+m0(r.plan)+'" inputmode="numeric" title="сколько всего планируем отдать" onchange="setPlan(\''+attr(r.key)+'\',this.value)">'
+    +'<span class="pr">'+m0(r.plan)+'</span> '
+    +'<button class="plus noprint" title="отметить, сколько уехало" onclick="openGive(\''+attr(r.key)+'\')">📤</button>'
+    +'<span class="o'+(over?' over':'')+'">'+(r.given?('уехало '+m0(r.given)+(over?' — больше плана':'')):'ещё не уехало')+'</span>';
+}
+function shipHtml(r){
+  return (r.ship?('<span class="v" onclick="openShipLog(\''+attr(r.key)+'\')" title="что привезли — по датам">'+m0(r.ship)+(r.qc?' ⏳':'')+'</span> '):'')
+    +'<button class="plus noprint" title="записать, что подрядчик привёз" onclick="openShip(\''+attr(r.key)+'\')"'+(r.noRate?' disabled':'')+'>📥</button>';
+}
+function rowOf(k){ var f=null; (V.rows||[]).forEach(function(r){ if(r.key===k) f=r; }); return f; }
 
-/* ═══ блоки: перетаскивание и тап (телефон) ═══ */
+/* ═══ пересчёт без перерисовки таблицы (иначе ввод плана теряет фокус) ═══ */
+function recalcRow(r){
+  r.outQty=Math.max(0,r.given-r.ship);
+  var reserve=Math.max(0,r.plan-r.given);
+  r.subQty=Math.min(r.left,r.outQty+reserve);
+  r.ourQty=Math.max(0,r.left-r.outQty-r.qc-reserve);
+  r.ourRub=Math.round((r.ourQty===r.left?r.leftRub:r.ourQty*(r.rate||0))*100)/100;
+}
+function repaintRow(k){
+  var r=rowOf(k); if(!r) return;
+  recalcRow(r);
+  var g=$('gv_'+k); if(g) g.innerHTML=giveHtml(r);
+  var s=$('sp_'+k); if(s) s.innerHTML=shipHtml(r);
+  var o=$('ou_'+k); if(o) o.textContent=m0(r.ourQty);
+  var or=$('or_'+k); if(or) or.textContent=money(r.ourRub);
+  repaintTotals();
+}
+function repaintTotals(){
+  var T=V.totals||{};
+  T.plan=0; T.given=0; T.outQty=0; T.subQty=0; T.subRub=0; T.ourQty=0; T.ourRub=0;
+  (V.rows||[]).forEach(function(r){
+    T.plan+=r.plan; T.given+=r.given; T.outQty+=r.outQty; T.subQty+=r.subQty;
+    T.subRub+=r.subQty*(r.rate||0); T.ourQty+=r.ourQty; T.ourRub+=r.ourRub;
+  });
+  T.subRub=Math.round(T.subRub*100)/100; T.ourRub=Math.round(T.ourRub*100)/100;
+  var e=$('sums'); if(e) e.innerHTML=sumsHtml(T);
+}
+
+/* ═══ план передачи ═══ */
+function setPlan(k,val){
+  var r=rowOf(k); if(!r) return;
+  var v=Math.max(0,num(val));
+  if(v>r.left+r.ship) msg('<span class="warn">план больше остатка — проверьте</span>');
+  r.plan=v; repaintRow(k);
+  var o={}; o[k]=v; queueSave({plan:o});
+}
+function setWho(k,v){
+  if(v==='__add__'){ openAddContractor(k); return; }
+  var r=rowOf(k); if(r) r.who=v;
+  var o={}; o[k]=v; queueSave({assign:o});
+}
+// раскладка, исполнители и план уходят ОДНИМ запросом с задержкой: каждый вызов сервера стоит секунды
+var PEND={blocks:null,assign:{},plan:{}};
+function queueSave(part){
+  if(part.blocks) PEND.blocks=part.blocks;
+  if(part.assign) Object.keys(part.assign).forEach(function(k){ PEND.assign[k]=part.assign[k]; });
+  if(part.plan) Object.keys(part.plan).forEach(function(k){ PEND.plan[k]=part.plan[k]; });
+  if(SAVET) clearTimeout(SAVET);
+  msg('<span class="muted">сохраняю…</span>');
+  SAVET=setTimeout(flushSave,700);
+}
+function flushSave(){
+  var data={};
+  if(PEND.blocks) data.blocks=PEND.blocks;
+  if(Object.keys(PEND.assign).length) data.assign=PEND.assign;
+  if(Object.keys(PEND.plan).length) data.plan=PEND.plan;
+  PEND={blocks:null,assign:{},plan:{}};
+  if(!Object.keys(data).length){ msg(''); return; }
+  apiPost({vapi:'transfersave',batch:B,op:V.op,data:JSON.stringify(data)}).then(function(r){
+    if(!r||!r.ok){ msg('<span class="err">'+esc((r&&r.error)||'не сохранено')+'</span>'); return; }
+    msg('<span class="ok">сохранено</span>'); setTimeout(function(){ msg(''); },1500);
+  }).catch(function(e){ msg('<span class="err">сеть: '+esc(e.message)+'</span>'); });
+}
+
+/* ═══ блоки ═══ */
 function rowDrag(ev,k){ SEL=k; try{ ev.dataTransfer.setData('text/plain',k); }catch(e){} }
 function blockDrop(ev,bi){ ev.preventDefault(); var k=''; try{ k=ev.dataTransfer.getData('text/plain'); }catch(e){} moveTo(k||SEL,bi); }
-function rowTap(k){ SEL=(SEL===k)?'':k; render(); }
 function blockTap(bi){
-  if(SEL){ moveTo(SEL,bi); return; }
-  var b=D.blocks[bi]; if(!b) return;
+  var b=V.blocks[bi]; if(!b) return;
   OPEN[b.t]=(OPEN[b.t]===0)?1:0;
-  var el=document.getElementById('blk'+bi); if(el) el.classList.toggle('closed',OPEN[b.t]===0);
+  var el=$('blk'+bi); if(el) el.classList.toggle('closed',OPEN[b.t]===0);
+}
+// перенос детали — только явным действием: на телефоне случайный свайп ничего не перекладывает
+function openMove(k){
+  var r=rowOf(k); if(!r) return;
+  var cur=r.block||'';
+  ovOpen('<b>☰ Переложить деталь</b> <span class="mvclose" onclick="ovClose()">✕</span>'
+    +'<div class="hint">'+esc(r.detail)+'</div><div class="blist">'
+    +(V.blocks||[]).map(function(b,bi){
+      var on=(b.t===cur);
+      return '<button class="'+(on?'sec':'')+'"'+(on?' disabled':'')+' onclick="moveTo(\''+attr(k)+'\','+bi+');ovClose()">'
+        +(on?'✓ ':'')+esc(b.t)+' <span class="muted">'+(b.d||[]).length+' дет</span></button>';
+    }).join('')
+    +'<button class="sec" onclick="ovClose();addBlock(\''+attr(k)+'\')">＋ новый блок</button></div>');
 }
 function moveTo(k,bi){
-  if(!k||!D||!D.blocks[bi]) return;
-  D.blocks.forEach(function(b){ b.d=(b.d||[]).filter(function(x){ return x!==k; }); });
-  D.blocks[bi].d.push(k);
-  D.blocks=D.blocks.filter(function(b){ return b.d.length; });
-  SEL=''; render(); saveLayout();
+  if(!k||!V||!V.blocks[bi]) return;
+  V.blocks.forEach(function(b){ b.d=(b.d||[]).filter(function(x){ return x!==k; }); });
+  V.blocks[bi].d.push(k);
+  V.blocks=V.blocks.filter(function(b){ return b.d.length; });
+  var r=rowOf(k); if(r) r.block=V.blocks[bi].t;
+  SEL=''; render(); queueSave({blocks:V.blocks});
 }
-function addBlock(){
+function addBlock(moveKey){
   askBox('Название нового блока','Новый блок',function(v){
     v=String(v||'').trim(); if(!v) return;
-    D.blocks.push({t:v,d:[]}); render(); saveLayout();
+    V.blocks.push({t:v,d:[]});
+    if(moveKey) moveTo(moveKey,V.blocks.length-1); else { render(); queueSave({blocks:V.blocks}); }
   });
 }
 function renameBlock(bi){
-  var b=D.blocks[bi]; if(!b) return;
+  var b=V.blocks[bi]; if(!b) return;
   askBox('Название блока',b.t,function(v){
     v=String(v||'').trim(); if(!v) return;
-    b.t=v; render(); saveLayout();
+    b.t=v; render(); queueSave({blocks:V.blocks});
   });
 }
 function delBlock(bi){
-  var b=D.blocks[bi]; if(!b) return;
+  var b=V.blocks[bi]; if(!b) return;
   if(b.d.length && !confirm('Удалить блок «'+b.t+'»?\n\nЕго '+b.d.length+' деталей переедут в «Прочее» — ничего не потеряется.')) return;
-  var keys=b.d||[]; D.blocks.splice(bi,1);
+  var keys=b.d||[]; V.blocks.splice(bi,1);
   if(keys.length){
-    var rest=null; D.blocks.forEach(function(x){ if(x.t==='Прочее') rest=x; });
-    if(!rest){ rest={t:'Прочее',d:[]}; D.blocks.push(rest); }
+    var rest=null; V.blocks.forEach(function(x){ if(x.t==='Прочее') rest=x; });
+    if(!rest){ rest={t:'Прочее',d:[]}; V.blocks.push(rest); }
     rest.d=rest.d.concat(keys);
   }
-  render(); saveLayout();
-}
-function setWho(k,v){
-  var r=rowOf(k); if(r) r.who=v;
-  var T=D.totals||{};                       // плановые итоги пересчитываем на месте, без запроса
-  T.planOurRub=0; T.planSubRub=0;
-  (D.rows||[]).forEach(function(x){ if(x.who) T.planSubRub+=x.leftRub; else T.planOurRub+=x.leftRub; });
-  T.planOurRub=Math.round(T.planOurRub*100)/100; T.planSubRub=Math.round(T.planSubRub*100)/100;
-  render(); saveLayout();
-}
-// раскладка сохраняется ОДНИМ запросом с задержкой: каждый вызов сервера стоит 3-9 с,
-// а человек раскладывает детали очередями по десятку
-function saveLayout(){
-  if(SAVET) clearTimeout(SAVET);
-  msg('<span class="muted">сохраняю…</span>');
-  SAVET=setTimeout(function(){
-    var assign={};
-    (D.rows||[]).forEach(function(r){ assign[r.key]=r.who||''; });
-    apiPost({vapi:'transfersave',batch:B,op:D.op,data:JSON.stringify({blocks:D.blocks,assign:assign})}).then(function(r){
-      if(!r||!r.ok){ msg('<span class="err">'+esc((r&&r.error)||'не сохранено')+'</span>'); return; }
-      msg('<span class="ok">сохранено</span>'); setTimeout(function(){ msg(''); },1500);
-    }).catch(function(e){ msg('<span class="err">сеть: '+esc(e.message)+'</span>'); });
-  },800);
+  render(); queueSave({blocks:V.blocks});
 }
 
-/* ═══ отдано подрядчику ═══ */
+/* ═══ 📤 отдали подрядчику ═══ */
 function openGive(k){
   var r=rowOf(k); if(!r) return;
   var rows=(r.give||[]).map(function(g,i){
     return '<div class="mvn"><span>'+esc(g.d)+' · <b>'+m0(g.q)+' шт</b>'+(g.c?(' · '+esc(g.c)):'')+(g.n?(' · '+esc(g.n)):'')+'</span>'
       +'<button class="sm sec" style="margin-left:auto" onclick="giveDel(\''+attr(k)+'\','+i+')">🗑</button></div>';
   }).join('')||'<div class="mvn muted">Передач пока не было.</div>';
-  ovOpen('<b>📤 Отдали подрядчику</b> <span class="mvclose" onclick="ovClose()">✕</span>'
-    +'<div class="hint">'+esc(r.detail)+' · '+esc(D.op)+'. Передача не двигает заказ — она объясняет, почему деталей нет в цеху, и считает, сколько работы осталось нам.</div>'
-    +rows
-    +'<label>Отдали, шт<input id="gq" type="number" min="0" inputmode="numeric"></label>'
+  ovOpen('<b>📤 Отдаём подрядчику</b> <span class="mvclose" onclick="ovClose()">✕</span>'
+    +'<div class="hint">'+esc(r.detail)+' · '+esc(V.op)+' · осталось '+m0(r.left)+' шт, можно сделать '+m0(r.can)+'</div>'
+    +'<label>Планируем отдать всего, шт<input id="gp" type="number" min="0" inputmode="numeric" value="'+m0(r.plan)+'"></label>'
+    +'<div class="hint">План сразу уменьшает «нам делать» — видно, сколько работы остаётся своими силами.</div>'
+    +'<div class="sect" style="margin-top:var(--s-3)">Уже уехало</div>'+rows
+    +'<label>Уехало сейчас, шт<input id="gq" type="number" min="0" inputmode="numeric"></label>'
     +'<label>Дата<input id="gd" type="date" value="'+isoToday()+'"></label>'
     +'<label>Подрядчик<input id="gc" list="gcl" value="'+attr(r.who||'')+'" placeholder="кому отдали"><datalist id="gcl">'
       +(D.contractors||[]).map(function(n){ return '<option value="'+attr(n)+'">'; }).join('')+'</datalist></label>'
     +'<label>Примечание<input id="gn" placeholder="по какой накладной, кто увёз"></label>'
-    +'<div class="row" style="margin-top:var(--s-3)"><button id="ggo" onclick="giveAdd(\''+attr(k)+'\')">Записать передачу</button>'
+    +'<div class="row" style="margin-top:var(--s-3)"><button id="ggo" onclick="giveAdd(\''+attr(k)+'\')">Сохранить</button>'
     +'<button class="sec" onclick="ovClose()">Закрыть</button><span class="msg" id="gmsg"></span></div>');
 }
 function giveAdd(k){
-  var q=num(($('gq')||{}).value); if(!(q>0)){ omsg('gmsg','<span class="err">укажите количество</span>'); return; }
+  var r=rowOf(k); if(!r) return;
+  var p=Math.max(0,num(($('gp')||{}).value)), q=num(($('gq')||{}).value);
+  if(p!==r.plan){ r.plan=p; var o={}; o[k]=p; queueSave({plan:o}); }
+  if(!(q>0)){ repaintRow(k); ovClose(); return; }                 // меняли только план
   var b=$('ggo'); if(b){ b.disabled=true; b.textContent='…'; }
-  apiPost({vapi:'transfergive',batch:B,op:D.op,detail:rowOf(k).detail,
+  apiPost({vapi:'transfergive',batch:B,op:V.op,detail:r.detail,
     data:JSON.stringify({act:'add',qty:q,date:ruOfIso(($('gd')||{}).value||''),contractor:($('gc')||{}).value||'',note:($('gn')||{}).value||''})})
-  .then(function(r){
-    if(b){ b.disabled=false; b.textContent='Записать передачу'; }
-    if(!r||!r.ok){ omsg('gmsg','<span class="err">'+esc((r&&r.error)||'не записано')+'</span>'); return; }
-    ovClose(); load();
-  }).catch(function(e){ if(b){ b.disabled=false; b.textContent='Записать передачу'; } omsg('gmsg','<span class="err">сеть: '+esc(e.message)+'</span>'); });
+  .then(function(rr){
+    if(b){ b.disabled=false; b.textContent='Сохранить'; }
+    if(!rr||!rr.ok){ omsg('gmsg','<span class="err">'+esc((rr&&rr.error)||'не записано')+'</span>'); return; }
+    r.give=rr.give||[]; r.given=rr.given||0; repaintRow(k); ovClose();
+  }).catch(function(e){ if(b){ b.disabled=false; b.textContent='Сохранить'; } omsg('gmsg','<span class="err">сеть: '+esc(e.message)+'</span>'); });
 }
 function giveDel(k,i){
+  var r=rowOf(k); if(!r) return;
   if(!confirm('Удалить запись о передаче?')) return;
-  apiPost({vapi:'transfergive',batch:B,op:D.op,detail:rowOf(k).detail,data:JSON.stringify({act:'del',idx:i})}).then(function(r){
-    if(!r||!r.ok){ alert((r&&r.error)||'не удалено'); return; }
-    ovClose(); load();
+  apiPost({vapi:'transfergive',batch:B,op:V.op,detail:r.detail,data:JSON.stringify({act:'del',idx:i})}).then(function(rr){
+    if(!rr||!rr.ok){ alert((rr&&rr.error)||'не удалено'); return; }
+    r.give=rr.give||[]; r.given=rr.given||0; repaintRow(k); ovClose();
   });
 }
 
-/* ═══ привезли: запись подряда (двигает заказ и создаёт долг) ═══ */
-function addDateCol(){
-  askBox('Какая дата? (дд.мм.гггг)',todayRu(),function(v){
-    v=String(v||'').trim(); if(!/^\d{2}\.\d{2}\.\d{4}$/.test(v)){ alert('Дата в формате дд.мм.гггг'); return; }
-    if((D.dates||[]).indexOf(v)<0 && EXTRA.indexOf(v)<0) EXTRA.push(v);
-    render();
-  });
-}
-function cellIn(el){
-  var q=num(el.value); if(!(q>0)){ el.value=''; return; }
-  openShip(el.getAttribute('data-k'), el.getAttribute('data-d'), q);
-  el.value='';
-}
-function openShip(k,date,qty){
+/* ═══ 📥 привезли: запись подряда (двигает заказ и создаёт долг) ═══ */
+function openShip(k){
   var r=rowOf(k); if(!r) return;
-  if(r.noRate){ alert('У этой детали нет расценки на «'+D.op+'» — заведите её в «Операциях и расценках», иначе работу записать нельзя.'); return; }
+  if(r.noRate){ alert('У этой детали нет расценки на «'+V.op+'» — заведите её в «Операциях и расценках», иначе работу записать нельзя.'); return; }
   refs(function(){
     var wl=(REFS.wallets||[]), cash=(REFS.cash||[]);
     var eqSel=(r.eqs&&r.eqs.length>1)
       ? '<label>Изделие<select id="sb_e">'+r.eqs.map(function(e){ return '<option'+(e===r.eq?' selected':'')+'>'+esc(e)+'</option>'; }).join('')+'</select></label>' : '';
     ovOpen('<b>📥 Привёз подрядчик</b> <span class="mvclose" onclick="ovClose()">✕</span>'
-      +'<div class="hint">'+esc(r.detail)+' · '+esc(D.op)+' · <b>'+m0(qty)+' шт</b> · '+esc(date)
-      +(D.qcOp?'<br><span class="warn">операция — точка ОТК: зачтётся в заказ после приёмки контролёром</span>':'')+'</div>'
+      +'<div class="hint">'+esc(r.detail)+' · '+esc(V.op)+(r.outQty?(' · у подрядчика сейчас '+m0(r.outQty)+' шт'):'')
+      +(V.qcOp?'<br><span class="warn">операция — точка ОТК: зачтётся в заказ после приёмки контролёром</span>':'')+'</div>'
+      +'<label>Привезли, шт<input id="sb_q" type="number" min="0" inputmode="numeric" value="'+(r.outQty?m0(r.outQty):'')+'" oninput="shipCalc('+(r.rate||0)+')"></label>'
       +eqSel
       +'<label>Подрядчик<input id="sb_c" list="scl" value="'+attr(r.who||'')+'"><datalist id="scl">'
         +(D.contractors||[]).map(function(n){ return '<option value="'+attr(n)+'">'; }).join('')+'</datalist></label>'
-      +'<label>Платим подрядчику, ₽<input id="sb_s" type="number" min="0" step="0.01" inputmode="decimal" oninput="shipCalc('+qty+','+r.rate+')"></label>'
-      +'<label>Кошелёк<select id="sb_w">'+wl.map(function(w){ return '<option>'+esc(w)+(cash.indexOf(w)>=0?' ':'')+'</option>'; }).join('')+'</select>'
+      +'<label>Платим подрядчику, ₽<input id="sb_s" type="number" min="0" step="0.01" inputmode="decimal" oninput="shipCalc('+(r.rate||0)+')"></label>'
+      +'<label>Кошелёк<select id="sb_w">'+wl.map(function(w){ return '<option>'+esc(w)+'</option>'; }).join('')+'</select>'
         +'<span class="hint">наличные: '+esc(cash.join(', ')||'—')+'</span></label>'
       +'<label>Статья<select id="sb_st">'+(REFS.statyi||[]).map(function(s){ return '<option>'+esc(s)+'</option>'; }).join('')+'</select></label>'
-      +'<label>Дата<input id="sb_d" type="date" value="'+isoOfRu(date)+'"></label>'
+      +'<label>Дата<input id="sb_d" type="date" value="'+isoToday()+'"></label>'
       +'<label>Комментарий<input id="sb_n"></label>'
-      +'<div class="hint" id="sb_sum">наша расценка: '+money(qty*r.rate)+' ₽ — на неё продвинется заказ</div>'
-      +'<div class="row" style="margin-top:var(--s-3)"><button id="sb_go" onclick="shipGo(\''+attr(k)+'\','+qty+')">Записать работу</button>'
+      +'<div class="hint" id="sb_sum">наша расценка: '+money((r.outQty||0)*(r.rate||0))+' ₽ — на неё продвинется заказ</div>'
+      +'<div class="row" style="margin-top:var(--s-3)"><button id="sb_go" onclick="shipGo(\''+attr(k)+'\')">Записать работу</button>'
       +'<button class="sec" onclick="ovClose()">Отмена</button><span class="msg" id="smsg"></span></div>');
   });
 }
-function shipCalc(qty,rate){
-  var s=num(($('sb_s')||{}).value), e=$('sb_sum'); if(!e) return;
-  var labor=Math.round(qty*rate*100)/100;
+function shipCalc(rate){
+  var q=num(($('sb_q')||{}).value), s=num(($('sb_s')||{}).value), e=$('sb_sum'); if(!e) return;
+  var labor=Math.round(q*rate*100)/100;
   e.textContent='наша расценка: '+money(labor)+' ₽ — на неё продвинется заказ · платим подрядчику: '+money(s)+' ₽ — ляжет долгом в Фин.гений'
     +(s?(' · разница '+money(labor-s)+' ₽'):'');
 }
-function shipGo(k,qty){
+function shipGo(k){
   var r=rowOf(k); if(!r) return;
+  var q=num(($('sb_q')||{}).value);
+  if(!(q>0)){ omsg('smsg','<span class="err">укажите количество</span>'); return; }
   var c=(($('sb_c')||{}).value||'').trim();
   if(!c){ omsg('smsg','<span class="err">укажите подрядчика</span>'); return; }
   var b=$('sb_go'); if(b){ b.disabled=true; b.textContent='…'; }
   var eq=($('sb_e')||{}).value||r.eq;
-  // модель не указываем у общей детали — система разложит по изделиям сама (тот же путь, что у нарядов)
+  // модель не указываем у общей детали — система разложит по изделиям сама (как у обычных нарядов)
   var model=(r.models&&r.models.length===1)?r.models[0]:'';
-  api({vapi:'subconadd',data:JSON.stringify({batch:B,equip:eq,detail:r.detail,op:D.op,model:model,qty:qty,
+  api({vapi:'subconadd',data:JSON.stringify({batch:B,equip:eq,detail:r.detail,op:V.op,model:model,qty:q,
       contractor:c,sum:num(($('sb_s')||{}).value),wallet:($('sb_w')||{}).value||'',statya:($('sb_st')||{}).value||'',
       date:ruOfIso(($('sb_d')||{}).value||''),note:($('sb_n')||{}).value||''})})
   .then(function(rr){
@@ -432,18 +525,20 @@ function shipGo(k,qty){
     if(!rr||!rr.ok){ omsg('smsg','<span class="err">'+esc((rr&&rr.error)||'не записано')+'</span>'); return; }
     ovClose();
     if(rr.waitQC) alert('Записано. Операция — точка контроля ОТК: работа зачтётся в заказ после приёмки контролёром.');
-    load();
+    load();                                        // привоз меняет остаток заказа — пересчитываем
   }).catch(function(e){ if(b){ b.disabled=false; b.textContent='Записать работу'; } omsg('smsg','<span class="err">сеть: '+esc(e.message)+'</span>'); });
 }
-function openCell(k,date){
-  var r=rowOf(k), c=(r&&r.cells&&r.cells[date])||null; if(!c) return;
-  var ids=c.ids||[];
-  ovOpen('<b>📥 Привезли '+esc(date)+'</b> <span class="mvclose" onclick="ovClose()">✕</span>'
-    +'<div class="hint">'+esc(r.detail)+' · '+esc(D.op)+' · <b>'+m0(c.qty)+' шт</b> · платим '+money(c.sub)+' ₽'
-    +(c.contractor?(' · '+esc(c.contractor)):'')+(c.qc?'<br><span class="warn">⏳ ждёт приёмки ОТК — в заказ пока не зачтено</span>':'')+'</div>'
-    +ids.map(function(id,i){ return '<div class="mvn"><span>запись '+(i+1)+'</span>'
-      +'<button class="sm sec" style="margin-left:auto" onclick="cellDel(\''+attr(id)+'\')">🗑 удалить</button></div>'; }).join('')
-    +'<div class="hint">Правится во вкладке «Подряд» в «Выработке» — там же сумма и долг.</div>'
+function openShipLog(k){
+  var r=rowOf(k); if(!r) return;
+  var dts=Object.keys(r.cells||{});
+  ovOpen('<b>📥 Что привезли</b> <span class="mvclose" onclick="ovClose()">✕</span>'
+    +'<div class="hint">'+esc(r.detail)+' · '+esc(V.op)+' · всего '+m0(r.ship)+' шт'+(r.qc?(' · ⏳ ждёт ОТК '+m0(r.qc)):'')+'</div>'
+    +dts.map(function(d){
+      var c=r.cells[d];
+      return '<div class="mvn"><span>'+esc(d)+' · <b>'+m0(c.qty)+' шт</b> · '+money(c.sub)+' ₽'+(c.contractor?(' · '+esc(c.contractor)):'')+(c.qc?' · ⏳':'')+'</span>'
+        +(c.ids||[]).map(function(id){ return '<button class="sm sec" onclick="cellDel(\''+attr(id)+'\')">🗑</button>'; }).join('')+'</div>';
+    }).join('')
+    +'<div class="hint">Сумма и долг правятся во вкладке «Подряд» в «Выработке».</div>'
     +'<div class="row" style="margin-top:var(--s-3)"><button class="sec" onclick="ovClose()">Закрыть</button></div>');
 }
 function cellDel(id){
@@ -451,6 +546,59 @@ function cellDel(id){
   api({vapi:'subcondel',id:id}).then(function(r){
     if(!r||!r.ok){ alert((r&&r.error)||'не удалено'); return; }
     ovClose(); load();
+  });
+}
+
+/* ═══ подрядчики ═══ */
+// в списке исполнителей только отмеченные: из 247 контрагентов Фин.гения выбирать невозможно
+function openAddContractor(k){
+  api({vapi:'supplierlist'}).then(function(r){
+    if(!r||!r.ok){ alert((r&&r.error)||'не загрузился список'); return; }
+    var all=(r.suppliers||[]);
+    window.__sup=all; window.__supk=k||'';
+    ovOpen('<b>＋ Наши подрядчики</b> <span class="mvclose" onclick="ovClose()">✕</span>'
+      +'<div class="hint">Отмеченные попадают в список исполнителей. Сейчас отмечено '
+      +all.filter(function(x){return x.sub;}).length+' из '+(r.total||all.length)+'.</div>'
+      +'<label>Поиск среди всех контрагентов<input id="supq" oninput="supDraw()" placeholder="начните вводить название"></label>'
+      +'<div id="suplist"></div>'
+      +'<label>Или заведите нового<input id="supnew" placeholder="ООО «Название»"></label>'
+      +'<div class="row" style="margin-top:var(--s-2)"><button onclick="supAdd()">Завести и отметить</button>'
+      +'<button class="sec" onclick="ovClose()">Закрыть</button><span class="msg" id="supmsg"></span></div>');
+    supDraw();
+  });
+}
+function supDraw(){
+  var q=(($('supq')||{}).value||'').toLowerCase().trim();
+  var all=window.__sup||[];
+  var list=q ? all.filter(function(x){ return x.name.toLowerCase().indexOf(q)>=0; })
+             : all.filter(function(x){ return x.sub; });
+  var e=$('suplist'); if(!e) return;
+  e.innerHTML=list.slice(0,40).map(function(x){
+    return '<div class="mvn"><span>'+(x.sub?'✓ ':'')+esc(x.name)+'</span>'
+      +'<button class="sm sec" style="margin-left:auto" onclick="supFlag(\''+attr(x.name)+'\','+(x.sub?0:1)+')">'
+      +(x.sub?'убрать':'отметить')+'</button></div>';
+  }).join('')||'<div class="mvn muted">'+(q?'никого не нашлось':'подрядчики пока не отмечены — найдите в поиске')+'</div>';
+}
+function supFlag(name,on){
+  api({vapi:'supplierflag',name:name,on:on?1:0}).then(function(r){
+    if(!r||!r.ok){ omsg('supmsg','<span class="err">'+esc((r&&r.error)||'не вышло')+'</span>'); return; }
+    (window.__sup||[]).forEach(function(x){ if(x.name===name) x.sub=!!on; });
+    D.contractors=(D.contractors||[]).filter(function(n){ return n!==name; });
+    if(on) D.contractors.push(name);
+    supDraw(); render();
+  });
+}
+function supAdd(){
+  var nm=(($('supnew')||{}).value||'').trim(), k=window.__supk||'';
+  if(nm.length<3){ omsg('supmsg','<span class="err">введите название</span>'); return; }
+  api({vapi:'supplieradd',data:JSON.stringify({name:nm,type:'юр'})}).then(function(r){
+    if(!r||!r.ok){ omsg('supmsg','<span class="err">'+esc((r&&r.error)||'не завели')+'</span>'); return; }
+    return api({vapi:'supplierflag',name:nm,on:1}).then(function(){
+      if((D.contractors||[]).indexOf(nm)<0) D.contractors.push(nm);
+      ovClose();
+      if(k){ var row=rowOf(k); if(row){ row.who=nm; var o={}; o[k]=nm; queueSave({assign:o}); } }
+      render();
+    });
   });
 }
 
@@ -478,21 +626,21 @@ function askBox(title,val,cb){
 }
 function askOk(){ var v=($('askv')||{}).value||''; var cb=window.__askcb; ovClose(); if(cb) cb(v); }
 function isoToday(){ var d=new Date(); return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate()); }
-function isoOfRu(s){ var p=String(s||'').split('.'); return p.length===3?(p[2]+'-'+p[1]+'-'+p[0]):isoToday(); }
 function ruOfIso(s){ var p=String(s||'').split('-'); return p.length===3?(p[2]+'.'+p[1]+'.'+p[0]):todayRu(); }
 function setOrient(v){
   var css=$('pagecss'); if(css) css.textContent='@page{ size:A4 '+(v==='portrait'?'portrait':'landscape')+'; margin:10mm; }';
-  document.body.className='w-full '+(v==='portrait'?'port':'land');
   var a=$('or_portrait'), b=$('or_landscape');
   if(a) a.className=(v==='portrait'?'on':''); if(b) b.className=(v==='portrait'?'':'on');
   try{ localStorage.setItem('tw_trf_orient',v); }catch(e){}
 }
 function initOrient(){ var v=''; try{ v=localStorage.getItem('tw_trf_orient')||''; }catch(e){} setOrient(v||'landscape'); }
-function setBlank(on){ BLANK=on?1:0; document.body.classList.toggle('blank',!!on); }
+function setShowD(on){ SHOWD=on?1:0; document.body.classList.toggle('showd',!!on); try{ localStorage.setItem('tw_trf_showd',on?'1':'0'); }catch(e){} }
+function initShowD(){ var v=''; try{ v=localStorage.getItem('tw_trf_showd')||''; }catch(e){} var c=$('showd'); if(c) c.checked=(v==='1'); setShowD(v==='1'); }
+function setBlank(on){ document.body.classList.toggle('blank',!!on); }
 // печать из iframe оболочки утащила бы на бумагу весь интерфейс — открываем своей вкладкой
 function doPrint(){
   if(window.top!==window.self){
-    var u='transfer.html?batch='+encodeURIComponent(B)+'&op='+encodeURIComponent(D&&D.op||'')+(TGID?('&tgid='+encodeURIComponent(TGID)):'');
+    var u='transfer.html?batch='+encodeURIComponent(B)+'&op='+encodeURIComponent(OP||'')+(TGID?('&tgid='+encodeURIComponent(TGID)):'');
     var tk=twTok(); if(tk) u+='&tok='+encodeURIComponent(tk);
     window.open(u,'_blank'); return;
   }
