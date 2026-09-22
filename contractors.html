@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="tw-theme.js"></script>
+<title>Тигервуд — подрядчики</title>
+<style>
+  .muted{ font-size:13px; }
+  .cols{ display:flex; gap:var(--s-3); align-items:flex-start; }
+  .left{ flex:0 0 320px; max-width:320px; }
+  .right{ flex:1 1 auto; min-width:0; }
+  @media (max-width:860px){ .cols{ display:block; } .left{ max-width:none; margin-bottom:var(--s-3); } }
+
+  .sums{ display:flex; flex-wrap:wrap; gap:var(--s-2); margin-bottom:var(--s-3); }
+  .sum{ border:1px solid var(--line); border-radius:var(--r-ctl); padding:3px 9px; background:var(--card2); }
+  .sum .v{ font:var(--t-body-strong); font-variant-numeric:tabular-nums; }
+  .sum .n{ font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+  .sum.debt .v{ color:var(--red); } .sum.ok .v{ color:var(--green); }
+
+  .cl{ border:1px solid var(--line); border-radius:var(--r-ctl); background:var(--card); padding:var(--s-2) var(--s-3);
+       margin-bottom:var(--s-2); cursor:pointer; transition:border-color .12s var(--ease); }
+  .cl:hover{ border-color:var(--accent); }
+  .cl.on{ border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-bg); }
+  .cl .nm{ font:var(--t-body-strong); }
+  .cl .ln{ font-size:12px; color:var(--muted); margin-top:2px; }
+  .cl .dg{ color:var(--red); font-weight:600; }
+  .cl .none{ color:var(--muted); }
+  .cl.new{ border-style:dashed; text-align:center; color:var(--muted); }
+
+  table.w{ width:100%; border-collapse:separate; border-spacing:0; font-size:12px; }
+  table.w th,table.w td{ padding:4px 7px; border-bottom:1px solid var(--line); text-align:left; white-space:nowrap; }
+  table.w th{ font:var(--t-label); color:var(--muted); }
+  table.w td.n,table.w th.n{ text-align:right; font-variant-numeric:tabular-nums; }
+  table.w tr:nth-child(even) td{ background:var(--card2); }
+  .sect{ margin-top:var(--s-3); }
+  .fields{ display:flex; flex-wrap:wrap; gap:var(--s-2); }
+  .fields label{ display:block; font:var(--t-label); color:var(--muted); flex:1 1 200px; }
+  .fields input{ width:100%; }
+  .pill{ font-size:11px; }
+  .hint{ font-size:12px; color:var(--muted); margin:var(--s-1) 0; }
+
+  .mvov{ position:fixed; inset:0; background:var(--scrim); display:flex; align-items:center; justify-content:center; z-index:50; padding:var(--s-4); }
+  .mvbox{ background:var(--card); border:1px solid var(--line); border-radius:var(--r-card); max-width:520px; width:100%; max-height:86vh; overflow:auto; padding:var(--s-5); box-shadow:var(--shadow-pop); }
+  .mvbox label{ display:block; font:var(--t-label); color:var(--muted); margin-top:var(--s-2); }
+  .mvbox input{ width:100%; }
+  .mvn{ display:flex; align-items:center; gap:var(--s-2); flex-wrap:wrap; border-top:1px solid var(--line); padding:var(--s-2) 0; font-size:13px; }
+  .mvclose{ float:right; color:var(--muted); cursor:pointer; }
+
+  @media print{ .noprint{ display:none !important; } .left{ display:none; } }
+</style>
+</head>
+<body class="w-full">
+<div id="twload"><i></i></div>
+<div class="hi noprint">🤝 Подрядчики</div>
+<div class="toolbar noprint">
+  <span class="msg" id="msg"></span>
+  <div class="end">
+    <button class="sec" onclick="openAdd()">＋ подрядчик</button>
+    <button class="sec" onclick="load()">⟳</button>
+  </div>
+</div>
+<div id="pane"><div class="center muted">Загрузка…</div></div>
+
+<script>
+var BASE='https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';
+var APP='tw7prod';
+function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
+var TGID=qp('tgid')||(function(){try{return localStorage.getItem('tw_tgid')||'';}catch(e){return '';}})();
+try{ if(window.Telegram&&Telegram.WebApp){ var u0=Telegram.WebApp.initDataUnsafe&&Telegram.WebApp.initDataUnsafe.user; if(u0) TGID=String(u0.id); } }catch(e){}
+if(TGID){ try{localStorage.setItem('tw_tgid',TGID);}catch(e){} }
+function twQp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
+function twTok(){ try{ return twQp('tok')||localStorage.getItem('tw_tok')||''; }catch(e){ return twQp('tok')||''; } }
+(function(){ var t=twQp('tok'); if(t){ try{ localStorage.setItem('tw_tok',t); }catch(e){} } })();
+function twAuthWall(r){
+  if(r&&r.needAuth){ document.body.innerHTML='<div style="padding:var(--s-6);font:var(--t-body);color:var(--fg)">'
+    +'<div style="font:var(--t-title);margin-bottom:var(--s-3)">🔒 Нужен вход</div>'
+    +'<div>'+String(r.error||'Откройте сервис из бота @TWOtchbot или войдите по личному коду.')+'</div></div>'; }
+  return r;
+}
+function api(p){ var _t=twTok(); if(_t) p.tok=_t; p.app=APP; if(TGID&&!p.tgid) p.tgid=TGID; var q=Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]==null?'':p[k]);}).join('&'); return fetch(BASE+'?'+q).then(function(r){return r.json();}).then(twAuthWall); }
+function apiPost(p){ var _t=twTok(); if(_t) p.tok=_t; p.app=APP; if(TGID&&!p.tgid) p.tgid=TGID; var b=Object.keys(p).map(function(k){return encodeURIComponent(k)+'='+encodeURIComponent(p[k]==null?'':p[k]);}).join('&'); return fetch(BASE,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body:b}).then(function(r){return r.json();}).then(twAuthWall); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function attr(s){ return esc(s).replace(/'/g,'&#39;'); }
+function $(id){ return document.getElementById(id); }
+function money(n){ n=Number(n)||0; return n.toFixed(2).replace('.',','); }
+function m0(n){ return Math.round(Number(n)||0); }
+function plural(n,a,b,c){ n=Math.abs(n)%100; var n1=n%10; if(n>10&&n<20) return n+' '+c; if(n1>1&&n1<5) return n+' '+b; if(n1===1) return n+' '+a; return n+' '+c; }
+function msg(h){ var e=$('msg'); if(e) e.innerHTML=h||''; }
+
+var D=null, SEL=qp('name')||'';
+
+function load(){
+  $('pane').innerHTML='<div class="center muted">Считаю работы подрядчиков…</div>';
+  api({vapi:'contractors',name:SEL}).then(function(r){
+    if(!r||!r.ok){ $('pane').innerHTML='<div class="err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
+    D=r; render();
+  }).catch(function(e){ $('pane').innerHTML='<div class="err">сеть: '+esc(e.message)+'</div>'; });
+}
+function pick(n){ SEL=n; load(); }
+
+function render(){
+  var T=D.totals||{};
+  var sums='<div class="sums">'
+    +sum('подрядчиков', m0(T.contractors)+'','')
+    +sum('работ выполнено', plural(m0(T.rows),'запись','записи','записей'),'')
+    +sum('заплатим им', money(T.sub)+' ₽','')
+    +sum('долг сейчас', money(T.debt)+' ₽',T.debt>0?'debt':'ok')
+    +'</div>';
+
+  var left=(D.list||[]).map(function(x){ return cardLine(x); }).join('')
+    +(D.unlisted||[]).map(function(x){ return cardLine(x); }).join('')
+    +'<div class="cl new noprint" onclick="openAdd()">＋ добавить подрядчика</div>';
+
+  $('pane').innerHTML=sums
+    +'<div class="cols"><div class="left noprint">'+left+'</div><div class="right">'+(D.card?cardHtml(D.card):
+      '<div class="box"><div class="muted">Выберите подрядчика слева — покажу контакты, цены и историю работ.</div></div>')+'</div></div>';
+}
+function sum(n,v,cls){ return '<div class="sum '+(cls||'')+'"><div class="n">'+esc(n)+'</div><div class="v">'+v+'</div></div>'; }
+function cardLine(x){
+  var on=(x.name===SEL);
+  return '<div class="cl'+(on?' on':'')+'" onclick="pick(\''+attr(x.name)+'\')">'
+    +'<div class="nm">'+esc(x.name)+(x.unlisted?' <span class="pill warn">не в списке</span>':'')+'</div>'
+    +'<div class="ln">'+(x.rows?(plural(x.rows,'работа','работы','работ')+' · '+m0(x.qty)+' шт · платим '+money(x.sub)+' ₽'):'работ пока не было')+'</div>'
+    +'<div class="ln">'+(x.debt>0?('<span class="dg">долг '+money(x.debt)+' ₽</span>'):'<span class="none">долга нет</span>')
+      +(x.phone?(' · '+esc(x.phone)):'')+(x.manager?(' · ведёт '+esc(x.manager)):'')+'</div></div>';
+}
+function cardHtml(c){
+  var s=c.supplier||{}, sm=c.summary||{};
+  var head='<div class="box"><div class="row"><b style="font:var(--t-heading)">'+esc(s.name)+'</b>'
+    +'<span class="muted">'+(s.unp?('УНП '+esc(s.unp)):'без УНП')+(s.type?(' · '+esc(s.type)):'')+'</span></div>'
+    +'<div class="sums" style="margin-top:var(--s-2)">'
+      +sum('работ', plural(m0(sm.rows),'запись','записи','записей'),'')
+      +sum('сделано', m0(sm.qty)+' шт','')
+      +sum('наша расценка', money(sm.labor)+' ₽','')
+      +sum('заплатим', money(sm.sub)+' ₽','')
+      +sum('долг', money(sm.debt)+' ₽',sm.debt>0?'debt':'ok')
+      +sum('разница', money(sm.margin)+' ₽',sm.margin>=0?'ok':'debt')
+    +'</div>'
+    +'<div class="hint">«Разница» — насколько работа на стороне дороже или дешевле нашей расценки: плюс значит, что мы заплатили меньше, чем оценили работу у себя.</div>'
+    +'</div>';
+
+  var fields='<div class="box"><div class="sect"><b>Контакты и ответственный</b></div>'
+    +'<div class="fields">'
+    +fld('c_person','Контактное лицо',s.person)+fld('c_phone','Телефон',s.phone)
+    +fld('c_manager','Наш ответственный',s.manager)+fld('c_addr','Адрес',s.addr)
+    +fld('c_unp','УНП',s.unp)+fld('c_note','Заметка',s.note)
+    +'</div>'
+    +'<div class="row" style="margin-top:var(--s-2)"><button onclick="saveCard(\''+attr(s.name)+'\')">Сохранить</button>'
+    +'<button class="sec" onclick="unflag(\''+attr(s.name)+'\')" title="убрать из списка подрядчиков — контрагент останется в Фин.гении">убрать из подрядчиков</button>'
+    +'<span class="msg" id="cmsg"></span></div></div>';
+
+  var ops=(c.ops||[]).length
+    ? '<div class="box"><div class="sect"><b>Что делает и по какой цене</b></div>'
+      +'<table class="w"><thead><tr><th>Операция</th><th class="n">Сделано</th><th class="n">Наша расценка</th>'
+      +'<th class="n">Цена подрядчика</th><th class="n">Заплатим</th><th>Последняя работа</th></tr></thead><tbody>'
+      +c.ops.map(function(o){ return '<tr><td>'+esc(o.op)+'</td><td class="n">'+m0(o.qty)+' шт</td>'
+        +'<td class="n">'+money(o.ourPrice)+' ₽/шт</td><td class="n"><b>'+money(o.price)+' ₽/шт</b></td>'
+        +'<td class="n">'+money(o.sub)+' ₽</td><td class="muted">'+esc(o.last)+'</td></tr>'; }).join('')
+      +'</tbody></table></div>'
+    : '<div class="box muted">Работ по этому подрядчику ещё не записано.</div>';
+
+  var det=(c.details||[]).length
+    ? '<div class="box"><div class="sect"><b>По деталям</b></div>'
+      +'<table class="w"><thead><tr><th>Деталь</th><th>Операция</th><th class="n">Шт</th>'
+      +'<th class="n">Наша расценка</th><th class="n">Цена подрядчика</th></tr></thead><tbody>'
+      +c.details.map(function(x){ return '<tr><td>'+esc(x.detail)+'</td><td>'+esc(x.op)+'</td><td class="n">'+m0(x.qty)+'</td>'
+        +'<td class="n">'+money(x.ourPrice)+' ₽/шт</td><td class="n">'+money(x.price)+' ₽/шт</td></tr>'; }).join('')
+      +'</tbody></table></div>' : '';
+
+  var works=(c.works||[]).length
+    ? '<div class="box"><div class="sect"><b>История работ</b></div>'
+      +'<table class="w"><thead><tr><th>Дата</th><th>Заказ</th><th>Деталь · операция</th><th class="n">Шт</th>'
+      +'<th class="n">Наша расценка</th><th class="n">Платим</th><th>Оплата</th></tr></thead><tbody>'
+      +c.works.map(function(w){ return '<tr><td>'+esc(w.date)+'</td><td>'+esc(w.batch)+'</td>'
+        +'<td>'+esc(w.detail)+' · '+esc(w.op)+(w.waitQC?' <span class="pill warn">ждёт ОТК</span>':'')+'</td>'
+        +'<td class="n">'+m0(w.qty)+'</td><td class="n">'+money(w.labor)+' ₽</td><td class="n">'+money(w.sub)+' ₽</td>'
+        +'<td>'+(w.sub>0?(w.paid?('<span class="ok">оплачено'+(w.paidDate?(' '+esc(w.paidDate)):'')+'</span>'):'<span class="err">не оплачено</span>'):'<span class="muted">без оплаты</span>')+'</td></tr>'; }).join('')
+      +'</tbody></table></div>' : '';
+
+  return head+fields+ops+det+works;
+}
+function fld(id,name,v){ return '<label>'+esc(name)+'<input id="'+id+'" value="'+attr(v||'')+'"></label>'; }
+function saveCard(name){
+  var d={ person:($('c_person')||{}).value||'', phone:($('c_phone')||{}).value||'',
+          manager:($('c_manager')||{}).value||'', addr:($('c_addr')||{}).value||'',
+          unp:($('c_unp')||{}).value||'', note:($('c_note')||{}).value||'', sub:true };
+  apiPost({vapi:'contractorsave',name:name,data:JSON.stringify(d)}).then(function(r){
+    if(!r||!r.ok){ var e=$('cmsg'); if(e) e.innerHTML='<span class="err">'+esc((r&&r.error)||'не сохранено')+'</span>'; return; }
+    var e=$('cmsg'); if(e) e.innerHTML='<span class="ok">сохранено</span>';
+    setTimeout(function(){ var x=$('cmsg'); if(x) x.innerHTML=''; },1500);
+  });
+}
+function unflag(name){
+  if(!confirm('Убрать «'+name+'» из списка подрядчиков?\n\nКонтрагент и вся история работ останутся — он просто перестанет предлагаться в ведомости.')) return;
+  api({vapi:'supplierflag',name:name,on:0}).then(function(r){
+    if(!r||!r.ok){ alert((r&&r.error)||'не вышло'); return; }
+    SEL=''; load();
+  });
+}
+function openAdd(){
+  api({vapi:'supplierlist'}).then(function(r){
+    if(!r||!r.ok){ alert((r&&r.error)||'не загрузился список'); return; }
+    window.__sup=(r.suppliers||[]);
+    ovOpen('<b>＋ Подрядчик</b> <span class="mvclose" onclick="ovClose()">✕</span>'
+      +'<div class="hint">Отмечаем тех, кому отдаём работу. Сейчас отмечено '
+      +window.__sup.filter(function(x){return x.sub;}).length+' из '+(r.total||window.__sup.length)+' контрагентов.</div>'
+      +'<label>Найти среди контрагентов<input id="supq" oninput="supDraw()" placeholder="начните вводить название"></label>'
+      +'<div id="suplist"></div>'
+      +'<label>Или завести нового<input id="supnew" placeholder="ООО «Название»"></label>'
+      +'<div class="row" style="margin-top:var(--s-2)"><button onclick="supAdd()">Завести и отметить</button>'
+      +'<button class="sec" onclick="ovClose()">Закрыть</button><span class="msg" id="supmsg"></span></div>');
+    supDraw();
+  });
+}
+function supDraw(){
+  var q=(($('supq')||{}).value||'').toLowerCase().trim(), all=window.__sup||[];
+  var list=q?all.filter(function(x){ return x.name.toLowerCase().indexOf(q)>=0; }):all.filter(function(x){ return x.sub; });
+  var e=$('suplist'); if(!e) return;
+  e.innerHTML=list.slice(0,40).map(function(x){
+    return '<div class="mvn"><span>'+(x.sub?'✓ ':'')+esc(x.name)+'</span>'
+      +'<button class="sm sec" style="margin-left:auto" onclick="supFlag(\''+attr(x.name)+'\','+(x.sub?0:1)+')">'
+      +(x.sub?'убрать':'отметить')+'</button></div>';
+  }).join('')||'<div class="mvn muted">'+(q?'никого не нашлось':'подрядчики пока не отмечены — найдите в поиске')+'</div>';
+}
+function supFlag(name,on){
+  api({vapi:'supplierflag',name:name,on:on?1:0}).then(function(r){
+    if(!r||!r.ok){ var e=$('supmsg'); if(e) e.innerHTML='<span class="err">'+esc((r&&r.error)||'не вышло')+'</span>'; return; }
+    (window.__sup||[]).forEach(function(x){ if(x.name===name) x.sub=!!on; });
+    supDraw();
+  });
+}
+function supAdd(){
+  var nm=(($('supnew')||{}).value||'').trim();
+  if(nm.length<3){ var e=$('supmsg'); if(e) e.innerHTML='<span class="err">введите название</span>'; return; }
+  api({vapi:'supplieradd',data:JSON.stringify({name:nm,type:'юр'})}).then(function(r){
+    if(!r||!r.ok){ var e=$('supmsg'); if(e) e.innerHTML='<span class="err">'+esc((r&&r.error)||'не завели')+'</span>'; return; }
+    return api({vapi:'supplierflag',name:nm,on:1}).then(function(){ ovClose(); SEL=nm; load(); });
+  });
+}
+function ovOpen(html){
+  ovClose();
+  var ov=document.createElement('div'); ov.className='mvov'; ov.id='ovbox';
+  ov.onclick=function(e){ if(e.target===ov) ovClose(); };
+  ov.innerHTML='<div class="mvbox">'+html+'</div>';
+  document.body.appendChild(ov);
+}
+function ovClose(){ var e=$('ovbox'); if(e) e.remove(); }
+
+/* ═══ заслонка загрузки ═══ */
+var TWL=0;
+function twLoadOn(){ TWL++; var b=$('twload'); if(b) b.style.display='block'; }
+function twLoadOff(){ TWL=Math.max(0,TWL-1); if(TWL) return; var b=$('twload'); if(b) b.style.display='none'; }
+(function(){
+  var _api=api, _post=apiPost;
+  var wrap=function(fn){ return function(p){ twLoadOn(); return fn(p).then(function(r){ twLoadOff(); return r; }, function(e){ twLoadOff(); throw e; }); }; };
+  api=wrap(_api); apiPost=wrap(_post);
+})();
+
+load();
+(function(){
+  try{ var m=/[?&]twsec=([^&]+)/.exec(location.search); window.top.postMessage({tw:'hello',sec:m?decodeURIComponent(m[1]):''},'*'); }catch(e){}
+  window.addEventListener('message',function(e){ var d=e&&e.data; if(d&&d.tw==='refresh'){ try{ load(); }catch(err){} } });
+})();
+</script>
+</body>
+</html>
