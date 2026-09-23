@@ -120,25 +120,45 @@ if(!window.fetch){window.fetch=function(url){return new window.Promise(function(
 </script>
 
 <script>
-// Страховка от «белого экрана» на старых телефонах: если скрипт упал — покажем причину, а не пустоту
-window.onerror=function(msg,src,line){
-  try{
-    var b=document.getElementById('app')||document.body;
-    b.innerHTML='<div class="plain"><div class="box">'
+function CARD(e){ return '<div class="plain"><div class="box">'
       +'<div class="hi">Не удалось открыть приложение</div>'
       +'<div class="muted">Покажите это сообщение руководителю:</div>'
-      +'<div class="note warn" style="margin:var(--s-3) 0;word-break:break-word"><span class="err">'+String(msg)+' (строка '+line+')</span></div>'
-      +'<div class="muted">Часто помогает: закрыть приложение и открыть заново из бота.</div></div></div>';
-  }catch(e){}
-  return false;
-};
+      +'<div class="note warn" style="margin:var(--s-3) 0;word-break:break-word"><span class="err">'
+      +String(e.msg)+(e.file?(' — '+e.file+':'+e.line):'')+'</span></div>'
+      +'<div class="muted">Часто помогает: закрыть приложение и открыть заново из бота.</div>'
+      +'<button class="sec" style="margin-top:var(--s-3)" onclick="location.reload()">↻ Попробовать ещё раз</button>'
+      +'</div></div>'; }
+  // Страховка от «белого экрана»: показываем причину, а не пустоту.
+// ⚠ Экран стираем ТОЛЬКО если сервис так и не отрисовался. Раньше любая ошибка уносила
+// рабочий экран вместе с собой, а приходят они чаще всего из чужого telegram-web-app.js:
+// в Telegram на Android он умеет ругаться на события, которых не знает старый клиент.
+// Такая ошибка приходит как «Script error.» без файла и строки (CORS прячет детали) —
+// судить по ней не о чем, и мешать работе она не должна.
+(function(){
+  var last=null, shown=false;
+  function bare(){ var a=document.getElementById('app'); if(!a) return false;
+    return String(a.textContent||'').replace(/\s+/g,'').length < 40; }
+  function show(){
+    if(shown||!last||!bare()) return; shown=true;
+    try{ document.getElementById('app').innerHTML = CARD(last); }catch(e){}
+  }
+  window.onerror=function(msg,src,line){
+    var file=String(src||'').split('/').pop().split('?')[0];
+    var cross=(!file || String(msg).indexOf('Script error')>=0);
+    last={ msg:String(msg), file:file, line:line||0, cross:cross };
+    if(!cross) show();              // своя ошибка — причина видна, показываем сразу
+    return false;
+  };
+  // чужая ошибка на старте: даём сервису шанс отрисоваться и только потом жалуемся
+  setTimeout(show, 12000);
+})();
 </script>
 
 <div id="app"><div class="center">Загрузка…</div></div>
 <script>
 var BASE='https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';
 var APP='tw7prod', TGID='', ME=null, ROLE='', app=document.getElementById('app');
-var VER='20260923a';
+var VER='20260923b';
 var RUN=String(Date.now());   // одна метка на загрузку оболочки — сбивает кеш встроенных страниц   // бамп при изменении встраиваемых stat-страниц — сбивает кеш GitHub Pages в iframe
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
@@ -153,9 +173,12 @@ function twAuthWall(r){
   return r;
 }
 function api(p){ var _t=twTok(); if(_t) p.tok=_t; p.app=APP; var q=Object.keys(p).map(function(k){return k+'='+encodeURIComponent(p[k]);}).join('&'); return fetch(BASE+'?'+q).then(function(r){return r.json();}).then(twAuthWall); }
-var INITDATA='', DEVKEY=qp('dev')||'', CODE=qp('code')||localStorage.getItem('tw_code')||'';   // подпись Telegram / dev-ключ / личный код
+// ⚠ localStorage в try/catch ВЕЗДЕ: в Telegram на Android при запрете данных сайта
+// обращение к нему бросает, и страница умирает ещё до первой отрисовки — белый экран.
+function twLS(k){ try{ return localStorage.getItem(k)||''; }catch(e){ return ''; } }
+var INITDATA='', DEVKEY=qp('dev')||'', CODE=qp('code')||twLS('tw_code');   // подпись Telegram / dev-ключ / личный код
 try{ if(window.Telegram&&Telegram.WebApp){ Telegram.WebApp.ready(); Telegram.WebApp.expand(); INITDATA=Telegram.WebApp.initData||''; var u=Telegram.WebApp.initDataUnsafe&&Telegram.WebApp.initDataUnsafe.user; if(u) TGID=String(u.id); } }catch(e){}
-if(!TGID){ TGID=qp('tgid')||localStorage.getItem('tw_tgid')||''; } if(TGID){ try{localStorage.setItem('tw_tgid',TGID);}catch(e){} }
+if(!TGID){ TGID=qp('tgid')||twLS('tw_tgid'); } if(TGID){ try{localStorage.setItem('tw_tgid',TGID);}catch(e){} }
 // вход в сервис: strict — сервер пускает ТОЛЬКО по подписи Telegram, личному коду или dev-ключу (чужой ?tgid= доступа не даёт)
 function meParams(){ var p={vapi:'me',tgid:TGID,strict:1}; if(INITDATA) p.initdata=INITDATA; if(DEVKEY) p.dev=DEVKEY; if(CODE) p.code=CODE; return p; }
 

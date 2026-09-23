@@ -85,19 +85,38 @@ if(!window.fetch){window.fetch=function(url){return new window.Promise(function(
 </script>
 
 <script>
-// Страховка от «белого экрана» на старых телефонах: если скрипт упал — покажем причину, а не пустоту
-window.onerror=function(msg,src,line){
-  try{
-    var b=document.getElementById('app')||document.body;
-    b.innerHTML='<div style="padding:var(--s-4);line-height:1.5">'
+function CARD(e){ return '<div style="padding:var(--s-4);line-height:1.5">'
       +'<div style="font:var(--t-heading);margin-bottom:var(--s-2)">Не удалось открыть приложение</div>'
       +'<div style="color:var(--muted);font-size:13px">Покажите это сообщение руководителю:</div>'
       +'<div style="background:var(--red-bg);color:var(--red);border-radius:var(--r-ctl);padding:var(--s-2);margin-top:var(--s-2);font-size:13px;word-break:break-word">'
-      +String(msg)+' (строка '+line+')</div>'
-      +'<div style="margin-top:var(--s-3);font-size:13px;color:var(--muted)">Часто помогает: закрыть приложение и открыть заново из бота.</div></div>';
-  }catch(e){}
-  return false;
-};
+      +String(e.msg)+(e.file?(' — '+e.file+':'+e.line):'')+'</div>'
+      +'<div style="margin-top:var(--s-3);font-size:13px;color:var(--muted)">Часто помогает: закрыть приложение и открыть заново из бота.</div>'
+      +'<button class="sec" style="margin-top:var(--s-3)" onclick="location.reload()">↻ Попробовать ещё раз</button>'
+      +'</div>'; }
+  // Страховка от «белого экрана»: показываем причину, а не пустоту.
+// ⚠ Экран стираем ТОЛЬКО если сервис так и не отрисовался. Раньше любая ошибка уносила
+// рабочий экран вместе с собой, а приходят они чаще всего из чужого telegram-web-app.js:
+// в Telegram на Android он умеет ругаться на события, которых не знает старый клиент.
+// Такая ошибка приходит как «Script error.» без файла и строки (CORS прячет детали) —
+// судить по ней не о чем, и мешать работе она не должна.
+(function(){
+  var last=null, shown=false;
+  function bare(){ var a=document.getElementById('app'); if(!a) return false;
+    return String(a.textContent||'').replace(/\s+/g,'').length < 40; }
+  function show(){
+    if(shown||!last||!bare()) return; shown=true;
+    try{ document.getElementById('app').innerHTML = CARD(last); }catch(e){}
+  }
+  window.onerror=function(msg,src,line){
+    var file=String(src||'').split('/').pop().split('?')[0];
+    var cross=(!file || String(msg).indexOf('Script error')>=0);
+    last={ msg:String(msg), file:file, line:line||0, cross:cross };
+    if(!cross) show();              // своя ошибка — причина видна, показываем сразу
+    return false;
+  };
+  // чужая ошибка на старте: даём сервису шанс отрисоваться и только потом жалуемся
+  setTimeout(show, 12000);
+})();
 </script>
 
 <div class="tabs">
@@ -243,8 +262,9 @@ var WANT_CHECK = (qp('tab')==='check'||qp('tab')==='m'), TABSET=0;
 // вкладки рабочего (и не находит «Раскрой»), а потом всё перескакивает.
 function roleCache(v){
   try{
-    if(v){ localStorage.setItem('tw_role_'+TGID, JSON.stringify(v)); return v; }
-    var raw=localStorage.getItem('tw_role_'+TGID); return raw?JSON.parse(raw):null;
+    if(v){ try{ localStorage.setItem('tw_role_'+TGID, JSON.stringify(v)); }catch(e){} return v; }
+    var raw=''; try{ raw=localStorage.getItem('tw_role_'+TGID)||''; }catch(e){}
+    return raw?JSON.parse(raw):null;
   }catch(e){ return null; }
 }
 (function(){ var c=roleCache(); if(c){ DATA.canCheck=c.canCheck; DATA.canCut=c.canCut; DATA.canQC=c.canQC; DATA.role=c.role||''; DATA.worker=c.worker||''; } })();
@@ -823,14 +843,15 @@ function saveDraft(){
     var ws=document.getElementById('worker');
     DRAFT={ worker:(ws&&ws.value)||'', date:(document.getElementById('wdate')||{}).value||'',
             shift:SHIFT, cart:CART, sheets:SHEETS, addto:ADDTO, addinfo:ADDINFO, ts:new Date().getTime() };
-    localStorage.setItem(draftKey(), JSON.stringify(DRAFT));
+    try{ localStorage.setItem(draftKey(), JSON.stringify(DRAFT)); }catch(e){}
   }catch(e){}
 }
 function loadDraft(){
   try{
-    var raw=localStorage.getItem(draftKey()); if(!raw) return null;
+    var raw=''; try{ raw=localStorage.getItem(draftKey())||''; }catch(e){}
+    if(!raw) return null;
     var d=JSON.parse(raw);
-    if(!d || !d.ts || (new Date().getTime()-d.ts) > 14*3600*1000){ localStorage.removeItem(draftKey()); return null; }   // старше смены — не восстанавливаем
+    if(!d || !d.ts || (new Date().getTime()-d.ts) > 14*3600*1000){ try{ localStorage.removeItem(draftKey()); }catch(e){} return null; }   // старше смены — не восстанавливаем
     return d;
   }catch(e){ return null; }
 }
