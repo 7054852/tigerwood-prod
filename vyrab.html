@@ -30,6 +30,9 @@
   .sum{ font:var(--t-title); color:var(--green); margin-top:var(--s-3); text-align:center; font-variant-numeric:tabular-nums; }
   .msg{ font:var(--t-body); margin-top:var(--s-2); text-align:center; }
   .card{ margin-bottom:var(--s-2); }
+  /* приёмка: партия от подрядчика — своя тара и свой разговор о качестве, не путать со своими */
+  .card.subcard{ border-left:3px solid var(--amber); background:var(--amber-bg); }
+  .subttl{ display:flex; align-items:center; gap:var(--s-1); flex-wrap:wrap; }
   .row{ justify-content:space-between; }
   .muted{ font-size:13px; }
   /* вкладки переносим, а не выталкиваем за экран: на телефоне у контролёра их четыре,
@@ -1620,7 +1623,7 @@ function renderOtk(){
       // читалась как шум, и владелец её попросту не нашёл на экране.
       var late=(l.ageH>48);
       return '<div style="border-top:1px solid var(--line);padding-top:var(--s-1)">'
-        +'<div class="row"><span>'+kindBadge(l)+esc(l.worker)+' · <b>'+l.qty+' шт</b></span>'
+        +'<div class="row"><span>'+(g.sub?'':kindBadge(l))+esc(l.worker)+' · <b>'+l.qty+' шт</b></span>'
         +'<span><button class="sm" onclick="otkOne(\''+esc(l.id)+'\')">✅</button>'
         +'<button class="sm sec" onclick="otkBadOpen(\''+esc(l.id)+'\')">⚠ брак</button></span></div>'
         +'<div class="muted" style="font-size:13px">📅 сдано <b>'+esc(l.date)+'</b> · '+esc(l.shift||'день')
@@ -1631,11 +1634,16 @@ function renderOtk(){
     var ds={}, dl=[], amax=0;
     for(var z=0;z<g.lines.length;z++){ var dd=g.lines[z].date; if(!ds[dd]){ds[dd]=1;dl.push(dd);} if(g.lines[z].ageH>amax) amax=g.lines[z].ageH; }
     var dtxt=(dl.length===1)?dl[0]:(dl[dl.length-1]+' — '+dl[0]);
-    return '<div class="card"><div class="row"><b>'+esc(g.detail)+' · '+esc(g.op)+'</b><b>'+g.qty+' шт</b></div>'
-      +'<div class="row" style="font-size:13px"><span class="muted">'+(g.free?'🧰 вне заказа':esc(g.batch))+' · '+g.lines.length+' поз.</span>'
+    var head = g.sub
+      ? '<span class="subttl"><span class="pill warn">🤝 подряд</span><b>'+esc(g.contractor||'подрядчик')+'</b></span>'
+        +'<b>'+g.qty+' шт</b></div><div class="row"><b>'+esc(g.detail)+' · '+esc(g.op)+'</b>'
+      : '<b>'+esc(g.detail)+' · '+esc(g.op)+'</b><b>'+g.qty+' шт</b>';
+    return '<div class="card'+(g.sub?' subcard':'')+'"><div class="row">'+head+'</div>'
+      +'<div class="row" style="font-size:13px"><span class="muted">'+(g.free?'🧰 вне заказа':esc(g.batch))
+      +(g.sub?' · привезли со стороны':' · '+g.lines.length+' поз.')+'</span>'
       +'<span class="'+(amax>48?'err':'muted')+'">📅 '+esc(dtxt)+' · лежит '+otkAge(amax)+'</span></div>'
       +lines
-      +'<div class="row" style="margin-top:var(--s-2)"><button onclick="otkAll('+gi+')">✅ Принять всё как заявлено ('+g.qty+' шт)</button>'
+      +'<div class="row" style="margin-top:var(--s-2)"><button onclick="otkAll('+gi+')">✅ Принять '+(g.sub?'привезённое':'всё как заявлено')+' ('+g.qty+' шт)</button>'
       +'<span class="msg" id="og-'+gi+'"></span></div></div>';
   }).join('');
 }
