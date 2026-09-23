@@ -245,8 +245,10 @@ function cardView(){
   h+='<div class="card"><div style="font:var(--t-heading)">'+esc(e.fio)+'</div>'+
      '<div class="muted">'+esc(e.type||'тип по договору не определён')+' · '+esc(e.pos||'должность не указана')+(e.posCode?' ('+esc(e.posCode)+')':'')+' · '+esc(e.status||'')+
      ' <span class="small">(из договора)</span></div>';
-  h+='<div class="grid" style="margin-top:var(--s-3)"><div class="kv"><div class="k">Идент. номер</div><div>'+esc(e.idnum||'—')+'</div>'+
-     '<div class="k">Паспорт</div><div>'+esc(e.passport||'—')+'</div><div class="k">Р/с</div><div>'+esc(e.account||'—')+'</div></div>'+
+  h+='<div class="grid" style="margin-top:var(--s-3)"><div class="kv"><div class="k">Идент. номер</div><div id="pv_idnum">'+esc(e.idnum||'—')+'</div>'+
+     '<div class="k">Паспорт</div><div><span id="pv_passport">'+esc(e.passport||'—')+'</span>'+
+       ((e.idnum||e.passport)?' <button class="btn sm sec" id="pvBtn" onclick="passReveal()" title="показать целиком — просмотр пишется в журнал">👁 показать</button>':'')+'</div>'+
+     '<div class="k">Р/с</div><div>'+esc(e.account||'—')+'</div></div>'+
      '<div class="kv"><div class="k">Принят</div><div>'+esc(e.hired||'—')+'</div><div class="k">Уволен</div><div>'+esc(e.fired||'—')+'</div>'+
      '<div class="k">Telegram</div><div>'+(e.tgId?('<span class="pill ok">✓ привязан</span> <span class="muted">'+esc(e.tgId)+'</span>')
         :'<span class="muted">не привязан — доступа в приложение нет</span>')+'</div></div></div>'+
@@ -737,7 +739,18 @@ function backFromForm(){
 }
 function updHint(){ var e=$('reqHint'); if(e) e.innerHTML=reqHint(); }
 function newEmp(){ empForm({}); }
-function editEmp(){ empForm(CARD.emp); }
+// паспорт и личный номер приходят маской; целиком — отдельным запросом (сервер пишет просмотр в журнал)
+function passFull(eid){ return api({vapi:'hrpass',emp:eid}); }
+function passReveal(){ var eid=CARD.emp.id; busy(1);
+  passFull(eid).then(function(r){ busy(0); if(!r||!r.ok){ alert((r&&r.error)||'ошибка'); return; }
+    $('pv_idnum').textContent=r.idnum||'—'; $('pv_passport').textContent=r.passport||'—';
+    var b=$('pvBtn'); if(b) b.parentNode.removeChild(b); }); }
+function editEmp(){ var e=CARD.emp; busy(1);
+  passFull(e.id).then(function(r){ busy(0);
+    if(!r||!r.ok){ alert((r&&r.error)||'не удалось открыть паспортные данные'); return; }
+    var full={}; Object.keys(e).forEach(function(k){ full[k]=e[k]; });
+    ['idnum','passport','passDate','passOrg','birth','addr'].forEach(function(k){ if(r[k]!=null) full[k]=r[k]; });
+    empForm(full); }); }
 function empForm(e){
   // тип (штат/подряд), должность, код, даты приёма и увольнения задаются В ДОГОВОРЕ и выводятся из него
   var t=isCivil(e.type)?(String(e.type).toLowerCase()==='нпд'?'нпд':'подряд'):(e.type==='штат'?'контракт':null);
@@ -886,7 +899,7 @@ function conForm(c){
   var empMiss=(function(){ var e=CARD&&CARD.emp; if(!e) return []; var rq=reqSet(c.kind||'контракт','emp');
     return Object.keys(rq).filter(function(k){ return !String(e[k]||'').trim(); }).map(function(k){ return rq[k]; }); })();
   var note = empMiss.length ? ('<div class="misline">● в карточке сотрудника не заполнено: <b>'+esc(empMiss.join(', '))+
-    '</b> — <span class="back" onclick="empForm(CARD.emp)">открыть карточку</span></div>') : '';
+    '</b> — <span class="back" onclick="editEmp()">открыть карточку</span></div>') : '';
   saveCon=function(then){
       var d={id:c.id||'',emp:c.emp||CARD.emp.id};
       ['kind','num','date','end','pos','posCode','salary','tariff','advance','rate','termText','wStart','wBreak','wEnd',
