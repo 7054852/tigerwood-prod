@@ -174,11 +174,19 @@ function cardHtml(c){
 
   var fl=c.flow||{rows:[],journal:[]};
   var outRows=(fl.rows||[]).filter(function(x){ return x.out>0; });
-  var flow='<div class="box"><div class="sect"><b>Сейчас у подрядчика</b> <span class="muted">'+(fl.outQty?(m0(fl.outQty)+' шт по '+plural(fl.outRows,'позиции','позициям','позициям')):'ничего')+'</span></div>'
+  var ft=fl.totals||{};
+  var flow='<div class="box"><div class="sect"><b>Сейчас у подрядчика</b> <span class="muted">'+(fl.outQty?(m0(fl.outQty)+' шт по '+plural(fl.outRows,'позиции','позициям','позициям')+' · по нашим расценкам '+money(ft.outRub)+' ₽'):'ничего')+'</span></div>'
+    +'<div class="sums" style="margin-top:var(--s-2)">'
+      +sum('передали работы', money(ft.givenRub)+' ₽','')
+      +sum('привёз (наша расценка)', money(ft.shipLabor)+' ₽','')
+      +sum('заплатим за привезённое', money(ft.shipSub)+' ₽','')
+      +sum(ft.diff>=0?'сэкономили':'переплатили', money(Math.abs(ft.diff||0))+' ₽',ft.diff>=0?'ok':'debt')
+    +'</div>'
     +(outRows.length
-      ? '<div class="tw"><table class="w"><thead><tr><th>Заказ</th><th>Деталь · операция</th><th class="n">Отдано</th><th class="n">Привёз</th><th class="n">На руках</th><th>Отдано</th><th class="noprint"></th></tr></thead><tbody>'
+      ? '<div class="tw"><table class="w"><thead><tr><th>Заказ</th><th>Деталь · операция</th><th class="n">Отдано</th><th class="n">Привёз</th><th class="n">На руках</th><th class="n">Наша расценка</th><th>Отдано</th><th class="noprint"></th></tr></thead><tbody>'
         +outRows.map(function(x,i){ return '<tr><td>'+esc(x.batch)+'</td><td>'+esc(x.detail)+' · '+esc(x.op)+'</td>'
-          +'<td class="n">'+m0(x.given)+'</td><td class="n">'+m0(x.ship)+'</td><td class="n"><b>'+m0(x.out)+'</b></td><td class="muted">'+esc(x.lastGive)+'</td>'
+          +'<td class="n">'+m0(x.given)+'</td><td class="n">'+m0(x.ship)+'</td><td class="n"><b>'+m0(x.out)+'</b></td>'
+          +'<td class="n">'+money(x.rate)+' ₽/шт · '+money(x.outRub)+' ₽</td><td class="muted">'+esc(x.lastGive)+'</td>'
           +'<td class="noprint"><button class="sm" onclick="openShip('+i+')">📥 Принять</button> <button class="sm sec" onclick="openGive('+i+')">📤 Ещё</button></td></tr>'; }).join('')
         +'</tbody></table></div>'
       : '<div class="hint">Отдать детали можно кнопкой «📤 Передать детали» или из ведомости передачи.</div>')
@@ -186,11 +194,12 @@ function cardHtml(c){
   var jr=(fl.journal||[]);
   var journal=jr.length
     ? '<div class="box"><div class="sect"><b>История: отдали · привезли · оплатили</b></div>'
-      +'<div class="tw"><table class="w"><thead><tr><th>Дата</th><th>Что</th><th>Заказ</th><th>Деталь · операция</th><th class="n">Шт</th><th class="n">Сумма</th><th>Примечание</th></tr></thead><tbody>'
-      +jr.map(function(j){ var cls=j.kind==='оплата'?'ok':(j.kind==='отдали'?'muted':'');
+      +'<div class="tw"><table class="w"><thead><tr><th>Дата</th><th>Что</th><th>Заказ</th><th>Деталь · операция</th><th class="n">Шт</th><th class="n">Наша расценка</th><th class="n">Подрядчику</th><th>Примечание</th><th class="noprint"></th></tr></thead><tbody>'
+      +jr.map(function(j,i){ var cls=j.kind==='оплата'?'ok':(j.kind==='отдали'?'muted':'');
         return '<tr><td>'+esc(j.date)+'</td><td class="'+cls+'">'+esc(j.kind)+(j.waitQC?' <span class="pill warn">ждёт ОТК</span>':'')+'</td><td>'+esc(j.batch)+'</td>'
           +'<td>'+esc(j.detail)+(j.op?(' · '+esc(j.op)):'')+'</td><td class="n">'+(j.qty?m0(j.qty):'')+'</td>'
-          +'<td class="n">'+(j.sum?(money(j.sum)+' ₽'):'')+'</td><td class="muted">'+esc(j.note||'')+'</td></tr>'; }).join('')
+          +'<td class="n">'+(j.labor?(money(j.labor)+' ₽'):'')+'</td><td class="n">'+(j.sum?(money(j.sum)+' ₽'):'')+'</td><td class="muted">'+esc(j.note||'')+'</td>'
+          +'<td class="noprint">'+(j.kind==='привезли'?('<button class="sm sec" onclick="editShip('+i+')" title="поправить: сколько принято и по какой цене">✎</button> <button class="sm sec" onclick="delShip('+i+')">🗑</button>'):'')+'</td></tr>'; }).join('')
       +'</tbody></table></div></div>' : '';
 
   return head+flow+fields+ops+det+journal;
@@ -208,8 +217,9 @@ function openShip(i){
   var nm=D.card.supplier.name;
   ovOpen('<b>📥 Привёз '+esc(nm)+'</b> <span class="mvclose" onclick="ovClose()">✕</span>'
     +'<div class="hint">'+esc(x.batch)+' · '+esc(x.detail)+' · '+esc(x.op)+' · на руках '+m0(x.out)+' шт</div>'
-    +'<label>Привезли, шт<input id="sb_q" type="number" min="0" inputmode="numeric" value="'+m0(x.out)+'"></label>'
-    +'<label>Платим подрядчику за это, ₽ (по его цене)<input id="sb_s" type="number" min="0" step="0.01" inputmode="decimal"></label>'
+    +'<label>Привезли, шт<input id="sb_q" type="number" min="0" inputmode="numeric" value="'+m0(x.out)+'" oninput="shipCalc('+(x.rate||0)+')"></label>'
+    +'<label>Платим подрядчику за это, ₽ (по его цене)<input id="sb_s" type="number" min="0" step="0.01" inputmode="decimal" oninput="shipCalc('+(x.rate||0)+')"></label>'
+    +'<div class="hint" id="sb_sum">по нашей расценке '+money((x.out||0)*(x.rate||0))+' ₽</div>'
     +'<label>Дата<input id="sb_d" type="date" value="'+isoToday()+'"></label>'
     +'<label>Комментарий<input id="sb_n"></label>'
     +'<div class="hint">Заказ продвинется по нашей расценке; сумма подрядчику ляжет в его долг здесь. Если операция — точка ОТК, зачтётся после приёмки.</div>'
@@ -227,54 +237,97 @@ function shipGo(i){
     ovClose(); if(r.waitQC) alert('Записано. Операция — точка ОТК: зачтётся в заказ после приёмки контролёром.'); load();
   }).catch(function(e){ if(b){ b.disabled=false; b.textContent='Записать'; } omsg('smsg','<span class="err">сеть: '+esc(e.message)+'</span>'); });
 }
+function shipCalc(rate){ var q=num(($('sb_q')||{}).value), s=num(($('sb_s')||{}).value), e=$('sb_sum'); if(!e) return;
+  var labor=Math.round(q*rate*100)/100; e.textContent='по нашей расценке '+money(labor)+' ₽'+(s?(' · подрядчику '+money(s)+' ₽ · '+(labor-s>=0?'экономия ':'переплата ')+money(Math.abs(labor-s))+' ₽'):''); }
+function jrow(i){ return ((D.card&&D.card.flow&&D.card.flow.journal)||[])[i]||null; }
+// ── поправить принятое: количество, цена, дата, комментарий (apiSubconEdit — та же дверь, что в «Выработке»)
+function editShip(i){
+  var j=jrow(i); if(!j||!j.id) return;
+  var rate=j.qty>0?(j.labor||0)/j.qty:0;
+  ovOpen('<b>✎ Принято от '+esc(D.card.supplier.name)+'</b> <span class="mvclose" onclick="ovClose()">✕</span>'
+    +'<div class="hint">'+esc(j.batch)+' · '+esc(j.detail)+' · '+esc(j.op)+'</div>'
+    +'<label>Принято, шт<input id="sb_q" type="number" min="0" inputmode="numeric" value="'+m0(j.qty)+'" oninput="shipCalc('+rate+')"></label>'
+    +'<label>Платим подрядчику, ₽<input id="sb_s" type="number" min="0" step="0.01" inputmode="decimal" value="'+(j.sum||0)+'" oninput="shipCalc('+rate+')"></label>'
+    +'<label>Дата<input id="sb_d" type="date" value="'+isoOfRu(j.date)+'"></label>'
+    +'<label>Комментарий<input id="sb_n" value="'+attr(j.note||'')+'"></label>'
+    +'<div class="hint" id="sb_sum">по нашей расценке '+money(j.labor||0)+' ₽</div>'
+    +'<div class="row" style="margin-top:var(--s-3)"><button id="sb_go" onclick="editShipGo('+i+')">Сохранить</button><button class="sec" onclick="ovClose()">Отмена</button><span class="msg" id="smsg"></span></div>');
+}
+function editShipGo(i){
+  var j=jrow(i); if(!j) return;
+  var q=num(($('sb_q')||{}).value); if(!(q>0)){ omsg('smsg','<span class="err">укажите количество</span>'); return; }
+  var b=$('sb_go'); if(b){ b.disabled=true; b.textContent='…'; }
+  api({vapi:'subconedit',id:j.id,data:JSON.stringify({qty:q,sum:num(($('sb_s')||{}).value),date:ruOfIso(($('sb_d')||{}).value||''),note:($('sb_n')||{}).value||''})})
+  .then(function(r){
+    if(b){ b.disabled=false; b.textContent='Сохранить'; }
+    if(!r||!r.ok){ omsg('smsg','<span class="err">'+esc((r&&r.error)||'не сохранено')+'</span>'); return; }
+    ovClose(); load();
+  }).catch(function(e){ if(b){ b.disabled=false; b.textContent='Сохранить'; } omsg('smsg','<span class="err">сеть: '+esc(e.message)+'</span>'); });
+}
+function delShip(i){
+  var j=jrow(i); if(!j||!j.id) return;
+  if(!confirm('Удалить приёмку '+j.date+': '+j.detail+' · '+j.op+' · '+m0(j.qty)+' шт?\n\nЗаказ откатится на эту работу, долг подрядчика уменьшится на '+money(j.sum)+' ₽.')) return;
+  api({vapi:'subcondel',id:j.id}).then(function(r){ if(!r||!r.ok){ alert((r&&r.error)||'не удалено'); return; } load(); });
+}
+function isoOfRu(s){ var p=String(s||'').split('.'); return p.length===3?(p[2]+'-'+p[1]+'-'+p[0]):isoToday(); }
 // ── отдать детали: по известной позиции — сразу; без позиции — выбор заказа/операции/детали из ведомости
 function openGive(i){
   var x=(i===undefined)?null:flowRow(i);
   var nm=D.card.supplier.name;
-  if(!x){
-    api({vapi:'batches'}).then(function(r){
-      var bs=((r&&r.batches)||[]).filter(function(b){ return String(b.status||'').indexOf('отгруж')<0; });
-      ovOpen('<b>📤 Передать '+esc(nm)+'</b> <span class="mvclose" onclick="ovClose()">✕</span>'
-        +'<label>Заказ<select id="gv_b" onchange="giveOps()">'+bs.map(function(b){ return '<option value="'+attr(b.id)+'">'+esc(b.num+(b.name?(' · '+b.name):''))+'</option>'; }).join('')+'</select></label>'
-        +'<label>Операция<select id="gv_o" onchange="giveDets()"><option value="">загрузка…</option></select></label>'
-        +'<label>Деталь<select id="gv_d"><option value="">—</option></select></label>'
-        +'<label>Отдаём, шт<input id="gv_q" type="number" min="0" inputmode="numeric"></label>'
-        +'<label>Дата<input id="gv_dt" type="date" value="'+isoToday()+'"></label>'
-        +'<label>Примечание<input id="gv_n"></label>'
-        +'<div class="row" style="margin-top:var(--s-3)"><button id="gv_go" onclick="giveGo()">Записать передачу</button><button class="sec" onclick="ovClose()">Отмена</button><span class="msg" id="gmsg"></span></div>');
-      giveOps();
-    });
-    return;
-  }
-  ovOpen('<b>📤 Передать ещё '+esc(nm)+'</b> <span class="mvclose" onclick="ovClose()">✕</span>'
-    +'<div class="hint">'+esc(x.batch)+' · '+esc(x.detail)+' · '+esc(x.op)+'</div>'
-    +'<input type="hidden" id="gv_b" value="'+attr(x.batchId)+'"><input type="hidden" id="gv_o" value="'+attr(x.op)+'"><input type="hidden" id="gv_d" value="'+attr(x.detail)+'">'
-    +'<label>Отдаём, шт<input id="gv_q" type="number" min="0" inputmode="numeric"></label>'
-    +'<label>Дата<input id="gv_dt" type="date" value="'+isoToday()+'"></label>'
-    +'<label>Примечание<input id="gv_n"></label>'
-    +'<div class="row" style="margin-top:var(--s-3)"><button id="gv_go" onclick="giveGo()">Записать передачу</button><button class="sec" onclick="ovClose()">Отмена</button><span class="msg" id="gmsg"></span></div>');
+  api({vapi:'batches'}).then(function(r){
+    var bs=((r&&r.batches)||[]).filter(function(b){ return String(b.status||'').indexOf('отгруж')<0; });
+    ovOpen('<b>📤 Передать '+esc(nm)+'</b> <span class="mvclose" onclick="ovClose()">✕</span>'
+      +'<label>Заказ<select id="gv_b" onchange="giveOps()">'+bs.map(function(b){ return '<option value="'+attr(b.id)+'"'+(x&&b.id===x.batchId?' selected':'')+'>'+esc(b.num+(b.name?(' · '+b.name):''))+'</option>'; }).join('')+'</select></label>'
+      +'<label>Операция<select id="gv_o" onchange="giveDets()"><option value="">загрузка…</option></select></label>'
+      +'<label>Деталь<select id="gv_d" onchange="giveChain()"><option value="">—</option></select></label>'
+      +'<label>Отдаём, шт<input id="gv_q" type="number" min="0" inputmode="numeric" oninput="giveSum()"></label>'
+      +'<div id="gv_chain"></div>'
+      +'<label>Дата<input id="gv_dt" type="date" value="'+isoToday()+'"></label>'
+      +'<label>Примечание<input id="gv_n"></label>'
+      +'<div class="row" style="margin-top:var(--s-3)"><button id="gv_go" onclick="giveGo()">Записать передачу</button><button class="sec" onclick="ovClose()">Отмена</button><span class="msg" id="gmsg"></span></div>');
+    GVPRE=x?{op:x.op,detail:x.detail}:null;
+    giveOps();
+  });
 }
-var GVD=null;
+var GVD=null, GVPRE=null;
 function giveOps(){
   var b=($('gv_b')||{}).value; if(!b) return;
   var so=$('gv_o'); so.innerHTML='<option value="">считаю заказ…</option>';
   api({vapi:'transfer',batch:b,all:1}).then(function(r){
-    GVD=r; var ops=Object.keys((r&&r.byOp)||{});
-    so.innerHTML=ops.map(function(o){ return '<option>'+esc(o)+'</option>'; }).join('')||'<option value="">нет операций</option>';
+    GVD=r; var ops=(r&&r.ops||[]).map(function(t){ return t.op; });
+    so.innerHTML=ops.map(function(o){ return '<option'+(GVPRE&&GVPRE.op===o?' selected':'')+'>'+esc(o)+'</option>'; }).join('')||'<option value="">нет операций</option>';
     giveDets();
   });
 }
 function giveDets(){
   var o=($('gv_o')||{}).value, sd=$('gv_d'); if(!sd) return;
   var rows=((GVD&&GVD.byOp&&GVD.byOp[o])||{}).rows||[];
-  sd.innerHTML=rows.filter(function(r){ return r.left>0; }).map(function(r){ return '<option value="'+attr(r.detail)+'">'+esc(r.detail)+' — осталось '+m0(r.left)+(r.can!==undefined?(', можно '+m0(r.can)):'')+'</option>'; }).join('')||'<option value="">нет деталей с остатком</option>';
+  sd.innerHTML=rows.filter(function(r){ return r.left>0; }).map(function(r){ return '<option value="'+attr(r.detail)+'"'+(GVPRE&&GVPRE.detail===r.detail?' selected':'')+'>'+esc(r.detail)+' — осталось '+m0(r.left)+(r.can!==undefined?(', можно '+m0(r.can)):'')+'</option>'; }).join('')||'<option value="">нет деталей с остатком</option>';
+  GVPRE=null; giveChain();
+}
+// предыдущие операции цепочки по выбранной детали, которые ещё не сделаны — подрядчик обычно делает и их
+function giveRow(op,det){ var rows=((GVD&&GVD.byOp&&GVD.byOp[op])||{}).rows||[]; for(var i=0;i<rows.length;i++) if(rows[i].detail===det) return rows[i]; return null; }
+function giveChain(){
+  var o=($('gv_o')||{}).value, d=($('gv_d')||{}).value, box=$('gv_chain'); if(!box) return;
+  var ops=(GVD&&GVD.ops||[]).map(function(t){ return t.op; }), me=ops.indexOf(o), cur=giveRow(o,d), h='';
+  if(!d||!cur){ box.innerHTML=''; return; }
+  var prev=[]; for(var i=0;i<me;i++){ var r=giveRow(ops[i],d); if(r&&r.left>0) prev.push({op:ops[i],left:r.left,rate:r.rate||0,given:r.given||0}); }
+  if(prev.length) h+='<div class="sect">Подрядчик сделает и предыдущие операции?</div>'+prev.map(function(p){ return '<div class="mvn"><label style="margin:0;display:flex;gap:8px;align-items:center"><input type="checkbox" class="chk" data-op="'+attr(p.op)+'" onchange="giveSum()"> '+esc(p.op)+' <span class="muted">· осталось '+m0(p.left)+' шт · '+money(p.rate)+' ₽/шт'+(p.given?(' · уже отдано '+m0(p.given)):'')+'</span></label></div>'; }).join('');
+  h+='<div class="mvn"><span>'+esc(o)+' · по нашей расценке '+money(cur.rate||0)+' ₽/шт</span></div><div class="hint" id="gv_sum"></div>';
+  box.innerHTML=h; giveSum();
+}
+function chainOps(){ var a=[]; var cs=document.querySelectorAll('input.chk'); for(var i=0;i<cs.length;i++) if(cs[i].checked) a.push(cs[i].getAttribute('data-op')); return a; }
+function giveSum(){
+  var o=($('gv_o')||{}).value, d=($('gv_d')||{}).value, q=num(($('gv_q')||{}).value), e=$('gv_sum'), cur=giveRow(o,d); if(!e||!cur) return;
+  var sum=q*(cur.rate||0), sel=chainOps(); sel.forEach(function(op){ var r=giveRow(op,d); if(r) sum+=q*(r.rate||0); });
+  e.textContent=q>0?('передаём работы на '+money(sum)+' ₽ по нашим расценкам ('+m0(q)+' шт × '+(1+sel.length)+' оп.)'):'';
 }
 function giveGo(){
   var b=($('gv_b')||{}).value, o=($('gv_o')||{}).value, d=($('gv_d')||{}).value, q=num(($('gv_q')||{}).value);
   if(!b||!o||!d){ omsg('gmsg','<span class="err">выберите заказ, операцию и деталь</span>'); return; }
   if(!(q>0)){ omsg('gmsg','<span class="err">укажите количество</span>'); return; }
   var btn=$('gv_go'); if(btn){ btn.disabled=true; btn.textContent='…'; }
-  apiPost({vapi:'transfergive',batch:b,op:o,detail:d,data:JSON.stringify({act:'add',qty:q,contractor:D.card.supplier.name,date:ruOfIso(($('gv_dt')||{}).value||''),note:($('gv_n')||{}).value||''})})
+  apiPost({vapi:'transfergive',batch:b,op:o,detail:d,data:JSON.stringify({act:'add',qty:q,contractor:D.card.supplier.name,date:ruOfIso(($('gv_dt')||{}).value||''),note:($('gv_n')||{}).value||'',alsoOps:chainOps()})})
   .then(function(r){
     if(btn){ btn.disabled=false; btn.textContent='Записать передачу'; }
     if(!r||!r.ok){ omsg('gmsg','<span class="err">'+esc((r&&r.error)||'не записано')+'</span>'); return; }

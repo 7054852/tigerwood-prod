@@ -451,26 +451,52 @@ function openGive(k){
     +'<label>Планируем отдать всего, шт<input id="gp" type="number" min="0" inputmode="numeric" value="'+m0(r.plan)+'"></label>'
     +'<div class="hint">План сразу уменьшает «нам делать» — видно, сколько работы остаётся своими силами.</div>'
     +'<div class="sect" style="margin-top:var(--s-3)">Уже уехало</div>'+rows
-    +'<label>Уехало сейчас, шт<input id="gq" type="number" min="0" inputmode="numeric"></label>'
+    +'<label>Уехало сейчас, шт<input id="gq" type="number" min="0" inputmode="numeric" oninput="chainSum(\''+attr(k)+'\')"></label>'
     +'<label>Дата<input id="gd" type="date" value="'+isoToday()+'"></label>'
     +'<label>Подрядчик<input id="gc" list="gcl" value="'+attr(r.who||'')+'" placeholder="кому отдали"><datalist id="gcl">'
       +(D.contractors||[]).map(function(n){ return '<option value="'+attr(n)+'">'; }).join('')+'</datalist></label>'
     +'<label>Примечание<input id="gn" placeholder="по какой накладной, кто увёз"></label>'
+    +chainHtml(k)
     +'<div class="row" style="margin-top:var(--s-3)"><button id="ggo" onclick="giveAdd(\''+attr(k)+'\')">Сохранить</button>'
     +'<button class="sec" onclick="ovClose()">Закрыть</button><span class="msg" id="gmsg"></span></div>');
+}
+// предыдущие операции цепочки по этой детали, которые ещё не сделаны: подрядчик обычно делает
+// их вместе (торцы перед шлифовкой). Отмеченные получают ту же запись передачи.
+function chainPrev(k){
+  var out=[], ops=(D.ops||[]).map(function(t){ return t.op; }), me=ops.indexOf(V.op); if(me<0) me=ops.length;
+  for(var i=0;i<me;i++){ var o=ops[i], rr=((D.byOp&&D.byOp[o])||{}).rows||[];
+    for(var j=0;j<rr.length;j++) if(rr[j].key===k && rr[j].left>0){ out.push({op:o,left:rr[j].left,rate:rr[j].rate||0,given:rr[j].given||0}); break; } }
+  return out;
+}
+function chainHtml(k){
+  var r=rowOf(k), prev=chainPrev(k); if(!r) return '';
+  var cur='<div class="mvn"><span>'+esc(V.op)+' · по нашей расценке '+money(r.rate||0)+' ₽/шт</span></div>';
+  if(!prev.length) return '<div class="sect" style="margin-top:var(--s-3)">Операции этой передачи</div>'+cur+'<div class="hint" id="chainsum"></div>';
+  return '<div class="sect" style="margin-top:var(--s-3)">Подрядчик сделает и предыдущие операции?</div>'
+    +prev.map(function(p,i){ return '<div class="mvn"><label style="margin:0;display:flex;gap:8px;align-items:center"><input type="checkbox" class="chk" data-op="'+attr(p.op)+'" onchange="chainSum(\''+attr(k)+'\')"> '
+      +esc(p.op)+' <span class="muted">· осталось '+m0(p.left)+' шт · '+money(p.rate)+' ₽/шт'+(p.given?(' · уже отдано '+m0(p.given)):'')+'</span></label></div>'; }).join('')
+    +cur+'<div class="hint" id="chainsum"></div>';
+}
+function chainOps(){ var a=[]; var cs=document.querySelectorAll('input.chk'); for(var i=0;i<cs.length;i++) if(cs[i].checked) a.push(cs[i].getAttribute('data-op')); return a; }
+function chainSum(k){
+  var r=rowOf(k), q=num(($('gq')||{}).value), e=$('chainsum'); if(!r||!e) return;
+  var sum=q*(r.rate||0), sel=chainOps(); chainPrev(k).forEach(function(p){ if(sel.indexOf(p.op)>=0) sum+=q*p.rate; });
+  e.textContent=q>0?('передаём работы на '+money(sum)+' ₽ по нашим расценкам ('+m0(q)+' шт × '+(1+sel.length)+' оп.)'):'';
 }
 function giveAdd(k){
   var r=rowOf(k); if(!r) return;
   var p=Math.max(0,num(($('gp')||{}).value)), q=num(($('gq')||{}).value);
   if(p!==r.plan){ r.plan=p; var o={}; o[k]=p; queueSave({plan:o}); }
   if(!(q>0)){ repaintRow(k); ovClose(); return; }                 // меняли только план
+  var also=chainOps();
   var b=$('ggo'); if(b){ b.disabled=true; b.textContent='…'; }
   apiPost({vapi:'transfergive',batch:B,op:V.op,detail:r.detail,
-    data:JSON.stringify({act:'add',qty:q,date:ruOfIso(($('gd')||{}).value||''),contractor:($('gc')||{}).value||'',note:($('gn')||{}).value||''})})
+    data:JSON.stringify({act:'add',qty:q,date:ruOfIso(($('gd')||{}).value||''),contractor:($('gc')||{}).value||'',note:($('gn')||{}).value||'',alsoOps:also})})
   .then(function(rr){
     if(b){ b.disabled=false; b.textContent='Сохранить'; }
     if(!rr||!rr.ok){ omsg('gmsg','<span class="err">'+esc((rr&&rr.error)||'не записано')+'</span>'); return; }
     r.give=rr.give||[]; r.given=rr.given||0; repaintRow(k); ovClose();
+    if(also.length) load();                                         // передача легла и в другие операции — перечитать
   }).catch(function(e){ if(b){ b.disabled=false; b.textContent='Сохранить'; } omsg('gmsg','<span class="err">сеть: '+esc(e.message)+'</span>'); });
 }
 function giveDel(k,i){
