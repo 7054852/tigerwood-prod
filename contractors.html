@@ -46,6 +46,12 @@
   .mvbox label{ display:block; font:var(--t-label); color:var(--muted); margin-top:var(--s-2); }
   .mvbox input{ width:100%; }
   .mvn{ display:flex; align-items:center; gap:var(--s-2); flex-wrap:wrap; border-top:1px solid var(--line); padding:var(--s-2) 0; font-size:13px; }
+  .chkrow{ display:grid; grid-template-columns:auto 1fr auto; gap:var(--s-2); align-items:center; border-top:1px solid var(--line); padding:var(--s-2) 0; font-size:13px; margin:0; cursor:pointer; }
+  .chkrow input{ margin:0; width:16px; height:16px; }
+  .chkrow .op{ font:var(--t-body-strong); }
+  .chkrow .nums{ color:var(--muted); white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .chkrow.cur{ cursor:default; }
+  
   .mvclose{ float:right; color:var(--muted); cursor:pointer; }
 
   @media print{ .noprint{ display:none !important; } .left{ display:none; } }
@@ -249,7 +255,7 @@ function shipChain(x){
 }
 function shipChainHtml(x){
   var prev=shipChain(x); if(!prev.length) return '';
-  return '<div class="sect">Привёз сразу и по этим операциям?</div>'+prev.map(function(p){ return '<div class="mvn"><label style="margin:0;display:flex;gap:8px;align-items:center"><input type="checkbox" class="chk" data-op="'+attr(p.op)+'" data-rate="'+(p.rate||0)+'" checked onchange="shipCalc('+(x.rate||0)+')"> '+esc(p.op)+' <span class="muted">· на руках '+m0(p.out)+' шт · наша расценка '+money(p.rate)+' ₽/шт</span></label></div>'; }).join('');
+  return '<div class="sect">Привёз сразу и по этим операциям?</div>'+prev.map(function(p){ return '<label class="chkrow"><input type="checkbox" class="chk" data-op="'+attr(p.op)+'" data-rate="'+(p.rate||0)+'" checked onchange="shipCalc('+(x.rate||0)+')"><span class="op">'+esc(p.op)+'</span><span class="nums">на руках '+m0(p.out)+' шт · наша расценка '+money(p.rate)+' ₽/шт</span></label>'; }).join('');
 }
 function shipQty(i,rate){ var x=flowRow(i), lp=x?lastPrice(x):null; if(lp&&!SBM){ var q=num(($('sb_q')||{}).value); $('sb_s').value=Math.round(q*lp.price*100)/100; } shipCalc(rate); }
 function shipCalc(rate){ var q=num(($('sb_q')||{}).value), s=num(($('sb_s')||{}).value), e=$('sb_sum'); if(!e) return;
@@ -334,7 +340,7 @@ function giveChain(){
   var ops=(GVD&&GVD.ops||[]).map(function(t){ return t.op; }), me=ops.indexOf(o), cur=giveRow(o,d), h='';
   if(!d||!cur){ box.innerHTML=''; return; }
   var prev=[]; for(var i=0;i<me;i++){ var r=giveRow(ops[i],d); if(r&&r.left>0) prev.push({op:ops[i],left:r.left,rate:r.rate||0,given:r.given||0}); }
-  if(prev.length) h+='<div class="sect">Подрядчик сделает и предыдущие операции?</div>'+prev.map(function(p){ return '<div class="mvn"><label style="margin:0;display:flex;gap:8px;align-items:center"><input type="checkbox" class="chk" data-op="'+attr(p.op)+'" onchange="giveSum()"> '+esc(p.op)+' <span class="muted">· осталось '+m0(p.left)+' шт · '+money(p.rate)+' ₽/шт'+(p.given?(' · уже отдано '+m0(p.given)):'')+'</span></label></div>'; }).join('');
+  if(prev.length) h+='<div class="sect">Подрядчик сделает и предыдущие операции?</div>'+prev.map(function(p){ return '<label class="chkrow"><input type="checkbox" class="chk" data-op="'+attr(p.op)+'" onchange="giveSum()"><span class="op">'+esc(p.op)+'</span><span class="nums">осталось '+m0(p.left)+' шт · '+money(p.rate)+' ₽/шт'+(p.given?(' · отдано '+m0(p.given)):'')+'</span></label>'; }).join('');
   h+='<div class="mvn"><span>'+esc(o)+' · по нашей расценке '+money(cur.rate||0)+' ₽/шт</span></div><div class="hint" id="gv_sum"></div>';
   box.innerHTML=h; giveSum();
 }
