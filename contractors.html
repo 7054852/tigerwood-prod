@@ -199,7 +199,7 @@ function cardHtml(c){
         return '<tr><td>'+esc(j.date)+'</td><td class="'+cls+'">'+esc(j.kind)+(j.waitQC?' <span class="pill warn">ждёт ОТК</span>':'')+'</td><td>'+esc(j.batch)+'</td>'
           +'<td>'+esc(j.detail)+(j.op?(' · '+esc(j.op)):'')+'</td><td class="n">'+(j.qty?m0(j.qty):'')+'</td>'
           +'<td class="n">'+(j.labor?(money(j.labor)+' ₽'):'')+'</td><td class="n">'+(j.sum?(money(j.sum)+' ₽'):'')+'</td><td class="muted">'+esc(j.note||'')+'</td>'
-          +'<td class="noprint">'+(j.kind==='привезли'?('<button class="sm sec" onclick="editShip('+i+')" title="поправить: сколько принято и по какой цене">✎</button> <button class="sm sec" onclick="delShip('+i+')">🗑</button>'):'')+'</td></tr>'; }).join('')
+          +'<td class="noprint">'+(j.kind==='привезли'?('<button class="sm sec" onclick="editShip('+i+')" title="поправить: сколько принято и по какой цене">✎</button> <button class="sm sec" onclick="delShip('+i+')">🗑</button>'):(j.kind==='отдали'?'<button class="sm sec" onclick="delGive('+i+')" title="удалить запись о передаче">🗑</button>':''))+'</td></tr>'; }).join('')
       +'</tbody></table></div></div>' : '';
 
   return head+flow+fields+ops+det+journal;
@@ -219,6 +219,7 @@ function openShip(i){
     +'<div class="hint">'+esc(x.batch)+' · '+esc(x.detail)+' · '+esc(x.op)+' · на руках '+m0(x.out)+' шт</div>'
     +'<label>Привезли, шт<input id="sb_q" type="number" min="0" inputmode="numeric" value="'+m0(x.out)+'" oninput="shipCalc('+(x.rate||0)+')"></label>'
     +'<label>Платим подрядчику за это, ₽ (по его цене)<input id="sb_s" type="number" min="0" step="0.01" inputmode="decimal" oninput="shipCalc('+(x.rate||0)+')"></label>'
+    +shipChainHtml(x)
     +'<div class="hint" id="sb_sum">по нашей расценке '+money((x.out||0)*(x.rate||0))+' ₽</div>'
     +'<label>Дата<input id="sb_d" type="date" value="'+isoToday()+'"></label>'
     +'<label>Комментарий<input id="sb_n"></label>'
@@ -230,14 +231,25 @@ function shipGo(i){
   var q=num(($('sb_q')||{}).value); if(!(q>0)){ omsg('smsg','<span class="err">укажите количество</span>'); return; }
   var b=$('sb_go'); if(b){ b.disabled=true; b.textContent='…'; }
   api({vapi:'subconadd',data:JSON.stringify({batch:x.batchId,detail:x.detail,op:x.op,qty:q,contractor:D.card.supplier.name,
-      sum:num(($('sb_s')||{}).value),date:ruOfIso(($('sb_d')||{}).value||''),note:($('sb_n')||{}).value||''})})
+      sum:num(($('sb_s')||{}).value),date:ruOfIso(($('sb_d')||{}).value||''),note:($('sb_n')||{}).value||'',alsoOps:chainOps()})})
   .then(function(r){
     if(b){ b.disabled=false; b.textContent='Записать'; }
     if(!r||!r.ok){ omsg('smsg','<span class="err">'+esc((r&&r.error)||'не записано')+'</span>'); return; }
     ovClose(); if(r.waitQC) alert('Записано. Операция — точка ОТК: зачтётся в заказ после приёмки контролёром.'); load();
   }).catch(function(e){ if(b){ b.disabled=false; b.textContent='Записать'; } omsg('smsg','<span class="err">сеть: '+esc(e.message)+'</span>'); });
 }
+// другие операции той же детали в том же заказе, по которым у подрядчика тоже есть «на руках» —
+// принимаем одной записью (торцы + финиш), платим по цене один раз
+function shipChain(x){
+  var fl=(D.card&&D.card.flow)||{rows:[]};
+  return (fl.rows||[]).filter(function(y){ return y!==x && y.batchId===x.batchId && y.key===x.key && y.out>0; });
+}
+function shipChainHtml(x){
+  var prev=shipChain(x); if(!prev.length) return '';
+  return '<div class="sect">Привёз сразу и по этим операциям?</div>'+prev.map(function(p){ return '<div class="mvn"><label style="margin:0;display:flex;gap:8px;align-items:center"><input type="checkbox" class="chk" data-op="'+attr(p.op)+'" data-rate="'+(p.rate||0)+'" checked onchange="shipCalc('+(x.rate||0)+')"> '+esc(p.op)+' <span class="muted">· на руках '+m0(p.out)+' шт · наша расценка '+money(p.rate)+' ₽/шт</span></label></div>'; }).join('');
+}
 function shipCalc(rate){ var q=num(($('sb_q')||{}).value), s=num(($('sb_s')||{}).value), e=$('sb_sum'); if(!e) return;
+  var cs=document.querySelectorAll('input.chk'); for(var i=0;i<cs.length;i++) if(cs[i].checked) rate+=num(cs[i].getAttribute('data-rate'));
   var labor=Math.round(q*rate*100)/100; e.textContent='по нашей расценке '+money(labor)+' ₽'+(s?(' · подрядчику '+money(s)+' ₽ · '+(labor-s>=0?'экономия ':'переплата ')+money(Math.abs(labor-s))+' ₽'):''); }
 function jrow(i){ return ((D.card&&D.card.flow&&D.card.flow.journal)||[])[i]||null; }
 // ── поправить принятое: количество, цена, дата, комментарий (apiSubconEdit — та же дверь, что в «Выработке»)
@@ -270,6 +282,12 @@ function delShip(i){
   api({vapi:'subcondel',id:j.id}).then(function(r){ if(!r||!r.ok){ alert((r&&r.error)||'не удалено'); return; } load(); });
 }
 function isoOfRu(s){ var p=String(s||'').split('.'); return p.length===3?(p[2]+'-'+p[1]+'-'+p[0]):isoToday(); }
+function delGive(i){
+  var j=jrow(i); if(!j||j.gidx===undefined) return;
+  if(!confirm('Удалить передачу '+j.date+': '+j.detail+' · '+j.op+' · '+m0(j.qty)+' шт?\n\n«На руках» у подрядчика уменьшится на это количество.')) return;
+  apiPost({vapi:'transfergive',batch:j.batchId,op:j.gop,detail:j.gdet,data:JSON.stringify({act:'del',idx:j.gidx})})
+  .then(function(r){ if(!r||!r.ok){ alert((r&&r.error)||'не удалено'); return; } load(); });
+}
 // ── отдать детали: по известной позиции — сразу; без позиции — выбор заказа/операции/детали из ведомости
 function openGive(i){
   var x=(i===undefined)?null:flowRow(i);

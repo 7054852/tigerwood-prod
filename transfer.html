@@ -523,6 +523,7 @@ function openShip(k){
       +'<label>Подрядчик<input id="sb_c" list="scl" value="'+attr(r.who||'')+'"><datalist id="scl">'
         +(D.contractors||[]).map(function(n){ return '<option value="'+attr(n)+'">'; }).join('')+'</datalist></label>'
       +'<label>Платим подрядчику, ₽ (по его цене)<input id="sb_s" type="number" min="0" step="0.01" inputmode="decimal" oninput="shipCalc('+(r.rate||0)+')"></label>'
+      +shipChainHtml(k)
       +'<label>Дата<input id="sb_d" type="date" value="'+isoToday()+'"></label>'
       +'<label>Комментарий<input id="sb_n"></label>'
       +'<div class="hint" id="sb_sum">наша расценка: '+money((r.outQty||0)*(r.rate||0))+' ₽ — на неё продвинется заказ</div>'
@@ -530,8 +531,21 @@ function openShip(k){
       +'<button class="sec" onclick="ovClose()">Отмена</button><span class="msg" id="smsg"></span></div>');
   });
 }
+// предыдущие операции по этой детали, где она тоже «на руках» у подрядчика (given − ship > 0):
+// принимаем одной записью, платим по цене один раз
+function shipChain(k){
+  var out=[], ops=(D.ops||[]).map(function(t){ return t.op; }), me=ops.indexOf(V.op); if(me<0) me=ops.length;
+  for(var i=0;i<me;i++){ var o=ops[i], rr=((D.byOp&&D.byOp[o])||{}).rows||[];
+    for(var j=0;j<rr.length;j++) if(rr[j].key===k && (rr[j].given||0)-(rr[j].ship||0)>0){ out.push({op:o,out:(rr[j].given||0)-(rr[j].ship||0),rate:rr[j].rate||0}); break; } }
+  return out;
+}
+function shipChainHtml(k){
+  var prev=shipChain(k); if(!prev.length) return '';
+  return '<div class="sect">Привёз сразу и по этим операциям?</div>'+prev.map(function(p){ return '<div class="mvn"><label style="margin:0;display:flex;gap:8px;align-items:center"><input type="checkbox" class="chk" data-op="'+attr(p.op)+'" data-rate="'+p.rate+'" checked onchange="shipCalc('+((rowOf(k)||{}).rate||0)+')"> '+esc(p.op)+' <span class="muted">· на руках '+m0(p.out)+' шт · наша расценка '+money(p.rate)+' ₽/шт</span></label></div>'; }).join('');
+}
 function shipCalc(rate){
   var q=num(($('sb_q')||{}).value), s=num(($('sb_s')||{}).value), e=$('sb_sum'); if(!e) return;
+  var cs=document.querySelectorAll('input.chk'); for(var i=0;i<cs.length;i++) if(cs[i].checked) rate+=num(cs[i].getAttribute('data-rate'));
   var labor=Math.round(q*rate*100)/100;
   e.textContent='наша расценка: '+money(labor)+' ₽ — на неё продвинется заказ · платим подрядчику: '+money(s)+' ₽ — ляжет в его долг (раздел «Подрядчики»)'
     +(s?(' · разница '+money(labor-s)+' ₽'):'');
@@ -547,7 +561,7 @@ function shipGo(k){
   // модель не указываем у общей детали — система разложит по изделиям сама (как у обычных нарядов)
   var model=(r.models&&r.models.length===1)?r.models[0]:'';
   api({vapi:'subconadd',data:JSON.stringify({batch:B,equip:eq,detail:r.detail,op:V.op,model:model,qty:q,
-      contractor:c,sum:num(($('sb_s')||{}).value),
+      contractor:c,sum:num(($('sb_s')||{}).value),alsoOps:chainOps(),
       date:ruOfIso(($('sb_d')||{}).value||''),note:($('sb_n')||{}).value||''})})
   .then(function(rr){
     if(b){ b.disabled=false; b.textContent='Записать работу'; }
