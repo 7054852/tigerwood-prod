@@ -449,7 +449,7 @@ function openGive(k){
   ovOpen('<b>📤 Отдаём подрядчику</b> <span class="mvclose" onclick="ovClose()">✕</span>'
     +'<div class="hint">'+esc(r.detail)+' · '+esc(V.op)+' · осталось '+m0(r.left)+' шт, можно сделать '+m0(r.can)+'</div>'
     +'<label>Планируем отдать всего, шт<input id="gp" type="number" min="0" inputmode="numeric" value="'+m0(r.plan)+'"></label>'
-    +'<div class="hint">План сразу уменьшает «нам делать» — видно, сколько работы остаётся своими силами.</div>'
+    +'<div class="hint">План сразу уменьшает «нам делать» — видно, сколько работы остаётся своими силами. Отмеченные ниже операции цепочки получат тот же план и ту же передачу.</div>'
     +'<div class="sect" style="margin-top:var(--s-3)">Уже уехало</div>'+rows
     +'<label>Уехало сейчас, шт<input id="gq" type="number" min="0" inputmode="numeric" oninput="chainSum(\''+attr(k)+'\')"></label>'
     +'<label>Дата<input id="gd" type="date" value="'+isoToday()+'"></label>'
@@ -485,10 +485,10 @@ function chainSum(k){
 }
 function giveAdd(k){
   var r=rowOf(k); if(!r) return;
-  var p=Math.max(0,num(($('gp')||{}).value)), q=num(($('gq')||{}).value);
-  if(p!==r.plan){ r.plan=p; var o={}; o[k]=p; queueSave({plan:o}); }
-  if(!(q>0)){ repaintRow(k); ovClose(); return; }                 // меняли только план
-  var also=chainOps();
+  var p=Math.max(0,num(($('gp')||{}).value)), q=num(($('gq')||{}).value), also=chainOps();
+  if(p!==r.plan){ r.plan=p; var o={}; o[k]=p; queueSave({plan:o}); if(also.length) apiPost({vapi:'transfersave',batch:B,op:V.op,data:JSON.stringify({plan:o,alsoOps:also})}); }
+  if(!(q>0)){ repaintRow(k); if(also.length&&p!==r.plan) load(); ovClose(); return; }   // меняли только план
+  if(!(($('gc')||{}).value||'').trim()){ omsg('gmsg','<span class="err">укажите, кому отдали детали — без подрядчика передача не попадёт в его карточку</span>'); return; }
   var b=$('ggo'); if(b){ b.disabled=true; b.textContent='…'; }
   apiPost({vapi:'transfergive',batch:B,op:V.op,detail:r.detail,
     data:JSON.stringify({act:'add',qty:q,date:ruOfIso(($('gd')||{}).value||''),contractor:($('gc')||{}).value||'',note:($('gn')||{}).value||'',alsoOps:also})})
