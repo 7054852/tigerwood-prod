@@ -212,13 +212,16 @@ function goLedger(){
 }
 // ── принять детали от подрядчика: та же запись подряда, что и в ведомости (apiSubconAdd)
 function flowRow(i){ var fl=(D.card&&D.card.flow)||{rows:[]}; return (fl.rows||[]).filter(function(x){ return x.out>0; })[i]||null; }
+var SBM=0;   // сумму правили руками — больше не пересчитывать от количества
+function lastPrice(x){ var pr=(D.card&&D.card.prices)||{}; var k=String(x.detail||'').toLowerCase().replace(/ё/g,'е').replace(/\s+/g,' ').trim(); return pr[k]||null; }
 function openShip(i){
   var x=flowRow(i); if(!x) return;
-  var nm=D.card.supplier.name;
+  var nm=D.card.supplier.name, lp=lastPrice(x); SBM=0;
   ovOpen('<b>📥 Привёз '+esc(nm)+'</b> <span class="mvclose" onclick="ovClose()">✕</span>'
     +'<div class="hint">'+esc(x.batch)+' · '+esc(x.detail)+' · '+esc(x.op)+' · на руках '+m0(x.out)+' шт</div>'
-    +'<label>Привезли, шт<input id="sb_q" type="number" min="0" inputmode="numeric" value="'+m0(x.out)+'" oninput="shipCalc('+(x.rate||0)+')"></label>'
-    +'<label>Платим подрядчику за это, ₽ (по его цене)<input id="sb_s" type="number" min="0" step="0.01" inputmode="decimal" oninput="shipCalc('+(x.rate||0)+')"></label>'
+    +'<label>Привезли, шт<input id="sb_q" type="number" min="0" inputmode="numeric" value="'+m0(x.out)+'" oninput="shipQty('+i+','+(x.rate||0)+')"></label>'
+    +'<label>Платим подрядчику за это, ₽ (по его цене)<input id="sb_s" type="number" min="0" step="0.01" inputmode="decimal" value="'+(lp?(Math.round(m0(x.out)*lp.price*100)/100):'')+'" oninput="SBM=1;shipCalc('+(x.rate||0)+')"></label>'
+    +(lp?'<div class="hint">в прошлый раз платили <b>'+money(lp.price)+' ₽/шт</b> ('+esc(lp.date)+') — подставил, можно поправить</div>':'<div class="hint">цену подрядчика за эту деталь ещё не вводили — после первой приёмки запомнится</div>')
     +shipChainHtml(x)
     +'<div class="hint" id="sb_sum">по нашей расценке '+money((x.out||0)*(x.rate||0))+' ₽</div>'
     +'<label>Дата<input id="sb_d" type="date" value="'+isoToday()+'"></label>'
@@ -248,6 +251,7 @@ function shipChainHtml(x){
   var prev=shipChain(x); if(!prev.length) return '';
   return '<div class="sect">Привёз сразу и по этим операциям?</div>'+prev.map(function(p){ return '<div class="mvn"><label style="margin:0;display:flex;gap:8px;align-items:center"><input type="checkbox" class="chk" data-op="'+attr(p.op)+'" data-rate="'+(p.rate||0)+'" checked onchange="shipCalc('+(x.rate||0)+')"> '+esc(p.op)+' <span class="muted">· на руках '+m0(p.out)+' шт · наша расценка '+money(p.rate)+' ₽/шт</span></label></div>'; }).join('');
 }
+function shipQty(i,rate){ var x=flowRow(i), lp=x?lastPrice(x):null; if(lp&&!SBM){ var q=num(($('sb_q')||{}).value); $('sb_s').value=Math.round(q*lp.price*100)/100; } shipCalc(rate); }
 function shipCalc(rate){ var q=num(($('sb_q')||{}).value), s=num(($('sb_s')||{}).value), e=$('sb_sum'); if(!e) return;
   var cs=document.querySelectorAll('input.chk'); for(var i=0;i<cs.length;i++) if(cs[i].checked) rate+=num(cs[i].getAttribute('data-rate'));
   var labor=Math.round(q*rate*100)/100; e.textContent='по нашей расценке '+money(labor)+' ₽'+(s?(' · подрядчику '+money(s)+' ₽ · '+(labor-s>=0?'экономия ':'переплата ')+money(Math.abs(labor-s))+' ₽'):''); }

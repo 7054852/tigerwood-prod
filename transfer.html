@@ -513,16 +513,18 @@ function openShip(k){
   var r=rowOf(k); if(!r) return;
   if(r.noRate){ alert('У этой детали нет расценки на «'+V.op+'» — заведите её в «Операциях и расценках», иначе работу записать нельзя.'); return; }
   refs(function(){
+    var lp=lastPrice(r.who||'', r.detail); SBM=0;
     var eqSel=(r.eqs&&r.eqs.length>1)
       ? '<label>Изделие<select id="sb_e">'+r.eqs.map(function(e){ return '<option'+(e===r.eq?' selected':'')+'>'+esc(e)+'</option>'; }).join('')+'</select></label>' : '';
     ovOpen('<b>📥 Привёз подрядчик</b> <span class="mvclose" onclick="ovClose()">✕</span>'
       +'<div class="hint">'+esc(r.detail)+' · '+esc(V.op)+(r.outQty?(' · у подрядчика сейчас '+m0(r.outQty)+' шт'):'')
       +(V.qcOp?'<br><span class="warn">операция — точка ОТК: зачтётся в заказ после приёмки контролёром</span>':'')+'</div>'
-      +'<label>Привезли, шт<input id="sb_q" type="number" min="0" inputmode="numeric" value="'+(r.outQty?m0(r.outQty):'')+'" oninput="shipCalc('+(r.rate||0)+')"></label>'
+      +'<label>Привезли, шт<input id="sb_q" type="number" min="0" inputmode="numeric" value="'+(r.outQty?m0(r.outQty):'')+'" oninput="shipQty(\''+attr(k)+'\','+(r.rate||0)+')"></label>'
       +eqSel
       +'<label>Подрядчик<input id="sb_c" list="scl" value="'+attr(r.who||'')+'"><datalist id="scl">'
         +(D.contractors||[]).map(function(n){ return '<option value="'+attr(n)+'">'; }).join('')+'</datalist></label>'
-      +'<label>Платим подрядчику, ₽ (по его цене)<input id="sb_s" type="number" min="0" step="0.01" inputmode="decimal" oninput="shipCalc('+(r.rate||0)+')"></label>'
+      +'<label>Платим подрядчику, ₽ (по его цене)<input id="sb_s" type="number" min="0" step="0.01" inputmode="decimal" value="'+(lp&&r.outQty?(Math.round(m0(r.outQty)*lp.price*100)/100):'')+'" oninput="SBM=1;shipCalc('+(r.rate||0)+')"></label>'
+      +(lp?'<div class="hint">в прошлый раз '+esc(r.who||'подрядчику')+' платили <b>'+money(lp.price)+' ₽/шт</b> ('+esc(lp.date)+') — подставил, можно поправить</div>':'')
       +shipChainHtml(k)
       +'<label>Дата<input id="sb_d" type="date" value="'+isoToday()+'"></label>'
       +'<label>Комментарий<input id="sb_n"></label>'
@@ -531,6 +533,14 @@ function openShip(k){
       +'<button class="sec" onclick="ovClose()">Отмена</button><span class="msg" id="smsg"></span></div>');
   });
 }
+// цена подрядчика «как в прошлый раз» по детали (REFS.prices из subconrefs); ключи — как supKey_/qcNorm_ на сервере
+var SBM=0;
+// ⚠ без \b: на кириллице граница слова не работает — режем формы по пробелам, как на сервере
+function supKeyJs(n){ var s=String(n||'').toLowerCase().replace(/[«»"'`’‘]/g,' ').replace(/\s+/g,' ').trim();
+  ['ооо','ип','зао','оао','уп','чуп','одо','руп','сооо','чп','чтуп','чтпуп','птчуп','упп','туп','иооо'].forEach(function(fm){ s=s.replace(new RegExp('(^|\s)'+fm+'(\s|$)','g'),' '); });
+  return s.replace(/\s+/g,'').trim(); }
+function lastPrice(who,detail){ var pr=(REFS&&REFS.prices)||{}; var m=pr[supKeyJs(who)]; if(!m) return null; return m[String(detail||'').toLowerCase().replace(/ё/g,'е').replace(/\s+/g,' ').trim()]||null; }
+function shipQty(k,rate){ var r=rowOf(k), lp=r?lastPrice(($('sb_c')||{}).value||r.who,r.detail):null; if(lp&&!SBM){ $('sb_s').value=Math.round(num(($('sb_q')||{}).value)*lp.price*100)/100; } shipCalc(rate); }
 // предыдущие операции по этой детали, где она тоже «на руках» у подрядчика (given − ship > 0):
 // принимаем одной записью, платим по цене один раз
 function shipChain(k){
