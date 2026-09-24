@@ -1384,7 +1384,7 @@ function shipGo(id,close){
              : '\n\nЗаказ останется открытым — остаток можно довезти позже. Продолжить?';
   if(!confirm(txt)) return;
   var m=$('bm_'+id); m.textContent='отгружаю…'; $('ship_'+id).innerHTML='';
-  api({vapi:'shipbatch',batch:id,lines:JSON.stringify(items),close:close?1:0}).then(function(r){
+  api({vapi:'shipbatch',batch:id,lines:JSON.stringify(items),close:close?1:0}).catch(function(e){ return {ok:false,error:'связь оборвалась — проверьте журнал, прежде чем повторять'}; }).then(function(r){
     if(!r||!r.ok){ m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; return; }
     var w=(r.wip&&r.wip.ok&&r.wip.stat)?(' · на склад деталей '+r.wip.stat.qty+' шт'):'';
     m.innerHTML='<span class="ok">отгружено '+r.shipped+(r.closed?' · заказ закрыт':' · заказ открыт')+w+'</span>';
@@ -1453,7 +1453,7 @@ function wipGo(id){
   if(!t) return;
   if(!confirm('Взять со склада '+t+' деталей в этот заказ?\nОни спишутся со склада и попадут в начальные остатки.')) return;
   var m=$('bm_'+id); m.textContent='беру…'; $('wip_'+id).innerHTML='';
-  api({vapi:'wipissue',batch:id,items:JSON.stringify(items)}).then(function(r){
+  api({vapi:'wipissue',batch:id,items:JSON.stringify(items)}).catch(function(e){ return {ok:false,error:'связь оборвалась — проверьте журнал, прежде чем повторять'}; }).then(function(r){
     if(!r||!r.ok){ m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; return; }
     m.innerHTML='<span class="ok">взято со склада: '+t+' деталей</span>';
     setTimeout(reloadDetail,700);
@@ -1516,7 +1516,7 @@ function toStockGo(id,close){
     +'смена статуса в списке детали на склад НЕ переведёт.';
   if(!confirm(txt)) return;
   var m=$('bm_'+id); m.textContent='сдаю на склад…'; $('ship_'+id).innerHTML='';
-  api({vapi:'batchtostock',batch:id,lines:JSON.stringify(items),close:close?1:0}).then(function(r){
+  api({vapi:'batchtostock',batch:id,lines:JSON.stringify(items),close:close?1:0}).catch(function(e){ return {ok:false,error:'связь оборвалась — проверьте журнал, прежде чем повторять'}; }).then(function(r){
     if(!r||!r.ok){ m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; return; }
     var w=(r.wip&&r.wip.ok&&r.wip.stat)?(' · на склад деталей '+r.wip.stat.qty+' шт'):'';
     m.innerHTML='<span class="ok">сдано на склад: '+r.toStock+(r.closed?' · заказ закрыт':'')+w+'</span>';
@@ -1537,7 +1537,7 @@ function restOrder(id){
       +(r.stat.carry?('\nГотовые '+r.stat.carry+' шт войдут в новый заказ как уже сделанные — работать по ним не нужно.'):'');
     if(!confirm(t)) return;
     m.textContent='создаю…';
-    api({vapi:'batchfromrest',batch:id,close:1}).then(function(x){
+    api({vapi:'batchfromrest',batch:id,close:1}).catch(function(e){ return {ok:false,error:'связь оборвалась — проверьте журнал, прежде чем повторять'}; }).then(function(x){
       if(!x||!x.ok){ m.innerHTML='<span class="err">'+esc((x&&x.error)||'ошибка')+'</span>'; return; }
       var w=(x.wip&&x.wip.ok&&x.wip.stat)?(' · на склад деталей '+x.wip.stat.qty+' шт'):'';
       var o=(x.offer&&x.offer.ok&&x.offer.stat&&x.offer.stat.qty)?(' · со склада можно взять '+x.offer.stat.qty+' деталей'):'';
