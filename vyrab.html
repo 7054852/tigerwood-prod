@@ -344,8 +344,8 @@ function payNote(l){
 // проблема видна именно тут, и бегать в справочник (и тем более писать разработчику) незачем.
 // ── ПОДРЯД: работа, выполненная на стороне ──
 // Для заказа это тот же наряд (двигается по нашей расценке), но зарплата не начисляется:
-// подрядчику платят деньгами, и сумма ложится долгом в Фин.гений. Отдельно отмечать передачу
-// деталей не нужно — «лежит» на предыдущей операции уменьшится само.
+// сумма подрядчику копится его долгом в разделе «Подрядчики» (в Фин.гений не уходит —
+// счета выставляет сам подрядчик). «Лежит» на предыдущей операции уменьшится само.
 var SUBREFS=null, SUBDATA=null, SUBEDIT=null;   // SUBEDIT — правим существующую запись, а не вносим новую
 function subAddToggle(ed){
   var b=document.getElementById('sadd'); if(!b) return;
@@ -363,13 +363,11 @@ function subForm(){
   var opt=function(v,t){ return '<option value="'+attr(v)+'">'+esc(t||v)+'</option>'; };
   var eqs=Object.keys(otkComp()).sort(function(a,c){ return a.localeCompare(c,'ru'); });
   var bopts=(DATA.batches||[]).map(function(x){ return opt(x.id,x.num+(x.name?(' · '+x.name):'')); }).join('');
-  var wl=(SUBREFS.wallets||[]), cash=(SUBREFS.cash||[]);
-  var wopts=wl.map(function(w){ return opt(w, w+(cash.indexOf(w)>=0?' (наличные)':' (безнал)')); }).join('');
   var names=(SUBREFS.suppliers||[]).map(function(x){ return '<option value="'+attr(x.name)+'">'; }).join('');
   var ED=SUBEDIT;
   b.innerHTML='<div class="card"><b>'+(ED?'Поправить работу подрядчика':'Внести работу подрядчика')+'</b>'
     +'<div class="muted" style="font-size:13px;margin:var(--s-1) 0">'
-    +(ED?'Правка пересчитает заказ и ту же строку расхода в Фин.гении — вторая не появится. Оплаченный долг не правится: сначала снимите оплату в Фин.гении.'
+    +(ED?'Правка пересчитает заказ и долг подрядчика.'
         :'Заказ продвинется по нашей расценке. Сумма, которую платим подрядчику, станет долгом в Фин.гении — погасите его там, когда рассчитаетесь.')+'</div>'
     +'<label>Заказ<select id="sb_b">'+bopts+'</select></label>'
     +'<label>Оборудование<select id="sb_e" onchange="subDet()">'+eqs.map(function(e){return opt(e);}).join('')+'</select></label>'
@@ -378,8 +376,6 @@ function subForm(){
     +'<label>Сделано, шт<input id="sb_q" type="number" min="0" inputmode="numeric" oninput="subCalc()"></label>'
     +'<label>Подрядчик<input id="sb_c" list="sb_names" placeholder="начните вводить…"><datalist id="sb_names">'+names+'</datalist></label>'
     +'<label>Платим подрядчику, ₽<input id="sb_s" type="number" min="0" step="0.01" inputmode="decimal" oninput="subCalc()"></label>'
-    +'<label>Кошелёк<select id="sb_w">'+wopts+'</select></label>'
-    +'<label>Статья расхода<select id="sb_st">'+(SUBREFS.statyi||[]).map(function(x){return opt(x);}).join('')+'</select></label>'
     +'<label>Дата<input id="sb_dt" type="date" value="'+attr(todayIso())+'"></label>'
     +'<label>Комментарий<input id="sb_n" placeholder="за что, по какому акту…"></label>'
     +'<div class="sum" id="sb_sum">—</div>'
@@ -398,8 +394,6 @@ function subFill(x){
   set('sb_q', x.qty||0);
   set('sb_c', x.contractor||'');
   set('sb_s', x.sub||0);
-  if(x.wallet) set('sb_w', x.wallet);
-  if(x.statya) set('sb_st', x.statya);
   set('sb_dt', isoOfRu(x.date)||todayIso());
   set('sb_n', x.comment||'');
   subCalc();
@@ -443,11 +437,9 @@ function subGo(){
   var ED=SUBEDIT, labor=Math.round(q*subRate()*100)/100, ttl=ED?'💾 Сохранить':'🤝 Записать работу';
   if(!confirm((ED?'Сохранить правку?':'Записать работу подрядчика?')+'\n\n'+d+' · '+o+' · '+q+' шт\nподрядчик: '+c
     +'\n\nзаказ '+(ED?'пересчитается по ':'продвинется на ')+labor+' р. (наша расценка)\n'
-    +(ED?'долг в Фин.гении станет ':'долг перед подрядчиком: ')+s+' р.')) return;
+    +'долг перед подрядчиком: '+s+' р.')) return;
   var btn=document.getElementById('sb_go'); if(btn){ btn.disabled=true; btn.textContent=ED?'сохраняю…':'вношу…'; }
   var data={batch:b,equip:eq,detail:d,op:o,qty:q,contractor:c,sum:s,
-            wallet:(document.getElementById('sb_w')||{}).value||'',
-            statya:(document.getElementById('sb_st')||{}).value||'',
             date:ruOfIso((document.getElementById('sb_dt')||{}).value||''),
             note:(document.getElementById('sb_n')||{}).value||''};
   var req=ED?{vapi:'subconedit',id:ED.id,data:JSON.stringify(data)}:{vapi:'subconadd',data:JSON.stringify(data)};
@@ -473,7 +465,7 @@ function renderSub(r){
   if(!it.length){ el.innerHTML='<div class="card muted">Подрядных работ пока нет.</div>'; return; }
   var head='<div class="card"><b>Итого: наша расценка '+(T.labor||0)+' р. · платим '+(T.sub||0)+' р.</b>'
     +'<div class="muted" style="font-size:13px;margin-top:var(--s-1)">долг перед подрядчиками <b class="err">'+(T.debt||0)+' р.</b>'
-    +(T.paid?(' · уже оплачено '+T.paid+' р.'):'')+' · разница с нашей расценкой '+(T.margin||0)+' р.</div>'
+    +(T.paid?(' · оплачено им '+T.paid+' р.'):'')+' · разница с нашей расценкой '+(T.margin||0)+' р. · подробно — раздел «Подрядчики»</div>'
     +(r.finErr?('<div class="err" style="font-size:13px">Фин.гений: '+esc(r.finErr)+'</div>'):'')+'</div>';
   var byc=(r.byContractor||[]).map(function(g){
     return '<div class="card"><b>'+esc(g.name)+'</b> <span class="muted">· '+g.rows+' зап. · '+g.qty+' шт</span>'
@@ -486,10 +478,10 @@ function renderSub(r){
       +'<span class="muted">'+esc(x.date)+' · '+esc(x.batch)+'</span></div>'
       +'<div class="row" style="font-size:13px"><span>'+esc(x.contractor)+' · наша расценка '+x.labor+' р. · платим <b>'+x.sub+' р.</b>'
       +(x.wallet?(' <span class="muted">('+esc(x.wallet)+')</span>'):'')+'</span>'
-      +'<span>'+(x.sub>0?(x.paid?('<span class="ok">оплачено'+(x.paidDate?(' '+esc(x.paidDate)):'')+'</span>'):'<span class="err">не оплачено</span>'):'<span class="muted">без оплаты</span>')
-      +(x.paid?'':' <button class="sm sec" onclick="subEdit(\''+attr(x.id)+'\')" title="поправить запись: кол-во, операцию, подрядчика, сумму">✎</button>'
+      +'<span>'+(x.sub>0?'':'<span class="muted">без оплаты</span>')
+      +' <button class="sm sec" onclick="subEdit(\''+attr(x.id)+'\')" title="поправить запись: кол-во, операцию, подрядчика, сумму">✎</button>'
       +' <button class="sm sec" onclick="subSum(\''+attr(x.id)+'\','+x.sub+')" title="поправить только сумму подрядчику">₽</button>'
-      +' <button class="sm sec" onclick="subDel(\''+attr(x.id)+'\')" title="удалить запись и снять долг в Фин.гении">🗑</button>')
+      +' <button class="sm sec" onclick="subDel(\''+attr(x.id)+'\')" title="удалить запись (долг пересчитается)">🗑</button>'
       +'</span></div></div>';
   }).join('');
   el.innerHTML=head+byc+'<div class="sect">Записи</div>'+rows;

@@ -489,7 +489,7 @@ function renderDetail(){
       +'<button class="sec" title="печатный лист: пойти в цех и пересчитать детали по стадиям" onclick="inventSheet(\''+b.id+'\')">📋 Ведомость переучёта</button>'
       +'<button class="sec" title="что делаем сами, что отдаём подрядчикам — по операции, с печатью" onclick="trfSheet(\''+b.id+'\')">🤝📋 Передача работы</button>'
       +'<button class="sec" title="взять в этот заказ детали, оставшиеся от прошлых партий" onclick="wipOffer(\''+b.id+'\')">🧩 Склад деталей</button>'
-      +'<button class="sec" title="часть работы сделал подрядчик: заказ продвинется по нашей расценке, а долг перед ним ляжет в Фин.гений" onclick="openSub(\''+b.id+'\')">🤝 Подряд</button>'
+      +'<button class="sec" title="часть работы сделал подрядчик: заказ продвинется по нашей расценке, а долг перед ним появится в разделе «Подрядчики»" onclick="openSub(\''+b.id+'\')">🤝 Подряд</button>'
       +'<button class="sec" onclick="ship(\''+b.id+'\')">📦 '+((b.shipped||0)>0?'Довезти остаток':'Отгрузить')+'</button>'
       +((b.shipped||0)>0?('<button class="sec" title="что и когда увозили" onclick="shipLog(\''+b.id+'\')">🚚 История отгрузок</button>'):'')
       +''
@@ -1024,10 +1024,8 @@ function subForm(){
     +'<label>Кол-во<input id="sb_q" class="q" value="" inputmode="decimal" oninput="subCalc()"></label></div>'
     +'<div id="sb_hint" class="muted small" style="margin:var(--s-2) 0"></div>'
     +'<div class="subrow"><label style="flex:1;min-width:200px">Подрядчик<input id="sb_c" list="sb_names" placeholder="начните вводить…" style="width:100%"><datalist id="sb_names">'+names+'</datalist></label>'
-    +'<label>Платим, ₽<input id="sb_s" class="q" value="" inputmode="decimal" oninput="subCalc()"></label>'
-    +'<label>Кошелёк<select id="sb_w">'+wopts+'</select></label></div>'
-    +'<div class="subrow"><label>Статья<select id="sb_st">'+opt(SUBREFS.statyi||[],SUBREFS.statya)+'</select></label>'
-    +'<label>Дата<input id="sb_dt" value="'+esc(subToday())+'" style="width:110px"></label>'
+    +'<label>Платим, ₽<input id="sb_s" class="q" value="" inputmode="decimal" oninput="subCalc()"></label></div>'
+    +'<div class="subrow"><label>Дата<input id="sb_dt" value="'+esc(subToday())+'" style="width:110px"></label>'
     +'<label style="flex:1;min-width:160px">Комментарий<input id="sb_n" style="width:100%"></label></div>'
     +'<div id="sb_sum" class="submoney"></div>'
     +'<div class="row" style="margin-top:var(--s-3);gap:var(--s-2)"><button onclick="subGo()">Записать работу</button>'
@@ -1073,13 +1071,13 @@ function subGo(){
       +'\n\nзаказ продвинется на '+money(labor)+' ₽ (наша расценка)\nдолг перед подрядчиком: '+money(s)+' ₽')) return;
   if(msg) msg.textContent='…';
   var data={batch:SUBORDER,equip:o.eq,model:o.model,detail:o.detail,op:o.op,qty:q,contractor:c,
-            sum:s,wallet:$('sb_w').value,statya:$('sb_st').value,date:$('sb_dt').value,note:$('sb_n').value};
+            sum:s,date:$('sb_dt').value,note:$('sb_n').value};
   api({vapi:'subconadd',data:JSON.stringify(data)}).then(function(r){
     if(!r||!r.ok){ if(msg) msg.textContent=''; alert((r&&r.error)||'не записано'); return; }
     closeSub();
     if(r.waitQC) alert('Записано. Операция — точка контроля ОТК: работа зачтётся в заказ после приёмки контролёром.');
     // где потом править: реестр подряда живёт в «Выработке», там же ✎ и 🗑 со снятием долга
-    if(!r.waitQC) alert('Записано. Поправить или удалить эту запись можно в разделе «Выработка» → вкладка «🤝 Подряд» — долг в Фин.гении изменится вместе с ней.');
+    if(!r.waitQC) alert('Записано. Поправить или удалить эту запись можно в разделе «Выработка» → вкладка «🤝 Подряд» — долг подрядчика пересчитается сам.');
     loadOps(SUBORDER);
   }).catch(function(e){ if(msg) msg.textContent=''; alert('сеть: '+e.message); });
 }

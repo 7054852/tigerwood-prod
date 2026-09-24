@@ -487,7 +487,6 @@ function openShip(k){
   var r=rowOf(k); if(!r) return;
   if(r.noRate){ alert('У этой детали нет расценки на «'+V.op+'» — заведите её в «Операциях и расценках», иначе работу записать нельзя.'); return; }
   refs(function(){
-    var wl=(REFS.wallets||[]), cash=(REFS.cash||[]);
     var eqSel=(r.eqs&&r.eqs.length>1)
       ? '<label>Изделие<select id="sb_e">'+r.eqs.map(function(e){ return '<option'+(e===r.eq?' selected':'')+'>'+esc(e)+'</option>'; }).join('')+'</select></label>' : '';
     ovOpen('<b>📥 Привёз подрядчик</b> <span class="mvclose" onclick="ovClose()">✕</span>'
@@ -497,10 +496,7 @@ function openShip(k){
       +eqSel
       +'<label>Подрядчик<input id="sb_c" list="scl" value="'+attr(r.who||'')+'"><datalist id="scl">'
         +(D.contractors||[]).map(function(n){ return '<option value="'+attr(n)+'">'; }).join('')+'</datalist></label>'
-      +'<label>Платим подрядчику, ₽<input id="sb_s" type="number" min="0" step="0.01" inputmode="decimal" oninput="shipCalc('+(r.rate||0)+')"></label>'
-      +'<label>Кошелёк<select id="sb_w">'+wl.map(function(w){ return '<option>'+esc(w)+'</option>'; }).join('')+'</select>'
-        +'<span class="hint">наличные: '+esc(cash.join(', ')||'—')+'</span></label>'
-      +'<label>Статья<select id="sb_st">'+(REFS.statyi||[]).map(function(s){ return '<option>'+esc(s)+'</option>'; }).join('')+'</select></label>'
+      +'<label>Платим подрядчику, ₽ (по его цене)<input id="sb_s" type="number" min="0" step="0.01" inputmode="decimal" oninput="shipCalc('+(r.rate||0)+')"></label>'
       +'<label>Дата<input id="sb_d" type="date" value="'+isoToday()+'"></label>'
       +'<label>Комментарий<input id="sb_n"></label>'
       +'<div class="hint" id="sb_sum">наша расценка: '+money((r.outQty||0)*(r.rate||0))+' ₽ — на неё продвинется заказ</div>'
@@ -511,7 +507,7 @@ function openShip(k){
 function shipCalc(rate){
   var q=num(($('sb_q')||{}).value), s=num(($('sb_s')||{}).value), e=$('sb_sum'); if(!e) return;
   var labor=Math.round(q*rate*100)/100;
-  e.textContent='наша расценка: '+money(labor)+' ₽ — на неё продвинется заказ · платим подрядчику: '+money(s)+' ₽ — ляжет долгом в Фин.гений'
+  e.textContent='наша расценка: '+money(labor)+' ₽ — на неё продвинется заказ · платим подрядчику: '+money(s)+' ₽ — ляжет в его долг (раздел «Подрядчики»)'
     +(s?(' · разница '+money(labor-s)+' ₽'):'');
 }
 function shipGo(k){
@@ -525,7 +521,7 @@ function shipGo(k){
   // модель не указываем у общей детали — система разложит по изделиям сама (как у обычных нарядов)
   var model=(r.models&&r.models.length===1)?r.models[0]:'';
   api({vapi:'subconadd',data:JSON.stringify({batch:B,equip:eq,detail:r.detail,op:V.op,model:model,qty:q,
-      contractor:c,sum:num(($('sb_s')||{}).value),wallet:($('sb_w')||{}).value||'',statya:($('sb_st')||{}).value||'',
+      contractor:c,sum:num(($('sb_s')||{}).value),
       date:ruOfIso(($('sb_d')||{}).value||''),note:($('sb_n')||{}).value||''})})
   .then(function(rr){
     if(b){ b.disabled=false; b.textContent='Записать работу'; }
