@@ -238,6 +238,7 @@ var APP='tw7prod', DATA={equipments:[],batches:[],workers:[],comp:{},worker:''},
 var COMP={}, EQUIPS=[];   // состав операций ВЫБРАННОЙ партии (или весь каталог — для работ вне заказа)
 var FREE='__free__';      // «вне заказа»: работа без привязки к партии (в ЗП идёт, на заказ не влияет)
 function isFree(){ var b=document.getElementById('batch'); return b && b.value===FREE; }
+function kOf(k){ return (k===''||k==null||isNaN(Number(k)))?1:Number(k); }   // пусто = 1, явный 0 = 0
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function opt(v,t){ return '<option value="'+esc(v)+'">'+esc(t||v)+'</option>'; }
 // ⚠ ЛИЧНОСТЬ — ТОКЕНОМ, А НЕ АДРЕСОМ: ?tgid= в ссылке ничего не доказывает (Telegram ID виден
@@ -1169,7 +1170,7 @@ function renderPending(r){
     el.innerHTML=reps.map(function(rp){
       var rid=rp.report;
       var lines=rp.lines.map(function(l){
-        var koef=l.koef||1, kbadge=(koef!==1)?' <span class="muted" style="font-size:13px">×'+koef+'</span>':'';
+        var koef=kOf(l.koef), kbadge=(koef!==1)?' <span class="muted" style="font-size:13px">×'+koef+'</span>':'';
         // ⚠ дубль виден сразу: сверять наряды глазами мастер не должен
         var dupb=l.dup?(' <span class="pill bad" title="'+esc(l.dup)+'">⚠ дубль</span>'):'';
         var acts='';
@@ -1199,7 +1200,7 @@ function renderPending(r){
           +vsel+'<div id="le-'+esc(l.id)+'"></div></div>';
       }).join('');
       var night=(rp.shift==='ночь');
-      var koefs=rp.lines.map(function(l){return l.koef||1;});
+      var koefs=rp.lines.map(function(l){return kOf(l.koef);});
       var uniK=(koefs.length&&koefs.every(function(k){return k===koefs[0];}))?koefs[0]:null;
       var koefLbl='коэффициент'+(uniK!=null?(uniK!==1?' ×'+uniK:''):' (разный)');
       var ctrls = master
@@ -1495,7 +1496,7 @@ function renderJournal(){
     lst.innerHTML=groups.map(function(g){
       var rep=g.lines[0]&&g.lines[0].report||'', night=(g.lines[0]&&g.lines[0].shift==='ночь');
       var lines=g.lines.map(function(it){
-        var koef=it.koef||1, kbadge=(koef!==1)?' <span class="muted" style="font-size:13px">×'+koef+'</span>':'';
+        var koef=kOf(it.koef), kbadge=(koef!==1)?' <span class="muted" style="font-size:13px">×'+koef+'</span>':'';
         var acts = '';
         if(master){
           var del='<button class="sm sec" onclick="delJournal(\''+esc(it.id)+'\')">🗑</button><span id="jm-'+esc(it.id)+'" class="msg"></span>';
@@ -1535,7 +1536,7 @@ function renderJournal(){
       var effBase=0, gbon=0;
       for(var q=0;q<g.lines.length;q++){ var L=g.lines[q];
         if(L.status==='ждёт ОТК') continue;   // ещё не засчитано — в разбивку наряда не берём
-        if(L.kind==='премия') gbon+=L.sum||0; else if(L.paid!==false) effBase+=(L.base||0)*(L.koef||1); }
+        if(L.kind==='премия') gbon+=L.sum||0; else if(L.paid!==false) effBase+=(L.base||0)*kOf(L.koef); }
       var gbd=computeBreakdown(effBase, night);
       if(gbon){ gbd.bonus=Math.round(gbon*100)/100; gbd.total=Math.round((gbd.total+gbon)*100)/100; }
       // ⚠ премия за наряд и ночная считаются от ВСЕГО наряда. Если фильтр показал только часть строк,
