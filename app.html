@@ -508,7 +508,7 @@ function renderUsers(box,r){
     var proxyCell='';
     if(!u.tgId){ var pn=(proxyPeople.filter(function(x){ return String(x.tgId)===String(u.proxy||''); })[0]||{}).name||'';
       proxyCell='<br><span class="small">📝 отчёты вносит: '+(canManage?'<select onchange="setProxy(\''+nm+'\',this.value,'+i+')">'+proxyOpts(u.proxy)+'</select>':'<b>'+esc(pn||'никто')+'</b>')+'</span>'; }
-    var codeCell=u.tgId?'<br><span class="muted small">код: <b class="num">'+esc(u.code||'—')+'</b></span>':'';
+    var codeCell=u.tgId?'<br><span class="muted small">код: <b class="num">'+esc(u.code||(u.codeSet?'выдан (скрыт)':'—'))+'</b></span>':'';
     return '<tr'+(archived?' style="opacity:.6"':'')+'><td><b>'+esc(u.name)+'</b><br><span class="muted small num">'+esc(u.tgId||'')+'</span>'+codeCell+proxyCell+'</td><td>'+roleCell+'</td><td>'+masterCell+'</td><td>'+cutCell+'</td><td>'+otkCell+'</td><td>'+apprCell+'</td><td>'+snabCell+'</td><td>'+reg+'</td><td><span class="msg" id="um'+i+'"></span> '+acts+'</td></tr>';
   }
   // архивные — из общего списка вон, отдельным свёрнутым блоком внизу.
@@ -738,7 +738,8 @@ function setCode(tgId,cur){
   var v=prompt('Код входа сотрудника (свой — 6–24 знака).\nОставьте пусто — сгенерируется новый код:', cur||'');
   if(v===null) return;
   api({vapi:'setworkercode',tgid:TGID,target:tgId,code:v.trim()}).then(function(r){
-    if(r&&r.ok){ reloadUsers(); } else alert((r&&r.error)||'ошибка');
+    // новый сервер хранит код только в виде отпечатка: показать его можно один раз — сейчас
+    if(r&&r.ok){ if(r.code) alert('Код входа для '+(r.name||'сотрудника')+': '+r.code+'\nПередайте его сотруднику — повторно код не показывается.'); reloadUsers(); } else alert((r&&r.error)||'ошибка');
   }).catch(function(){ alert('сеть недоступна'); });
 }
 function archiveWorker(tgId,name){
