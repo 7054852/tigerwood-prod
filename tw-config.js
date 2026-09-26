@@ -7,7 +7,7 @@
     staging: 'https://prohub-staging.tigerwood.by/exec',
     prod: 'https://prohub.tigerwood.by/exec'
   };
-  var DEF = 'gas';   // ← переключение всех страниц на Прохаб: 'prod' (откат — обратно 'gas'); ?srv=prod — проверить одну страницу заранее
+  var DEF = 'prod';   // ← переключение всех страниц на Прохаб: 'prod' (откат — обратно 'gas'); ?srv=prod — проверить одну страницу заранее
   var pick = DEF;
   try {
     var m = /[?&]srv=([a-z]+)/.exec(location.search);
