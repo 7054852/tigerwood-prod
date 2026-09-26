@@ -75,6 +75,8 @@
 <script>
 var BASE=(window.TW_CFG&&TW_CFG.hub)||'https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';   // адрес задаёт tw-config.js; запасной — живой GAS
 var APP='tw7prod';
+// через Прохаб (не GAS): обратная загрузка из Google с предпросмотром, фото и «Ед.изм» в карточке; через хаб — всё как было
+var PROHUB=!!(window.TW_CFG&&TW_CFG.srv!=='gas');
 function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]*)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
 var TGID=qp('tgid')||(function(){try{return localStorage.getItem('tw_tgid')||'';}catch(e){return '';}})();
 try{ if(!TGID && window.Telegram && Telegram.WebApp && Telegram.WebApp.initDataUnsafe && Telegram.WebApp.initDataUnsafe.user) TGID=String(Telegram.WebApp.initDataUnsafe.user.id); }catch(e){}
@@ -221,7 +223,8 @@ function renderShell(){
     +'<button class="btn sec" onclick="load(true);msg(\'⟳ обновляю с сервера…\',1)" title="перечитать с сервера">Обновить</button>'
     +'<span id="regtools" style="display:contents"></span>'
     +'<button class="btn sec" onclick="doExport(this)" title="выгрузить в Google-таблицу, лист «Прохаб: выгрузка»">⬆️ В Google-реестр</button>'
-    +'<button class="btn sec" onclick="askImport()" title="импорт из Google-реестра — перезапишет правки системы">⋯</button>'
+    +(PROHUB?'<button class="btn sec" onclick="pullOpen()" title="прочитать Google-реестр и папки товаров на Drive: покажу, что изменится, применю только отмеченное">⬇️ Подтянуть из Google</button>'
+      :'<button class="btn sec" onclick="askImport()" title="импорт из Google-реестра — перезапишет правки системы">⋯</button>')
     +'<button class="btn pri" onclick="openCard(\'\')">＋ Товар</button>'
     +'</div></div>'
     +'<div id="msg"></div>'
@@ -294,6 +297,104 @@ function doImport(){
     msg('✓ импортировано '+r.count+' товаров (хабовских сохранено: '+(r.keptHub||0)+')', 1);
     load();
   });
+}
+
+/* ══ ⬇️ Подтянуть из Google (только Прохаб): предпросмотр с галочками → «Применить» ══ */
+// Сервер читает Google-реестр (лист «Реестр») и картинки в папках товаров, ничего не меняя; применяет только отмеченное.
+// ⚠ — конфликт: поле правили в Прохабе руками или там уже другое значение (первоисточник — Прохаб) — по умолчанию не отмечено.
+var PULL=null;
+function thumb(id){ return 'https://drive.google.com/thumbnail?id='+encodeURIComponent(id)+'&sz=w160'; }
+function photoStrip(list){
+  return '<div class="card"><b>🖼 Фото</b> <span class="muted" style="font-size:11px">из папки товара на Drive (подтягиваются кнопкой «⬇️ Подтянуть из Google»)</span>'
+    +'<div class="row" style="gap:var(--s-2);flex-wrap:wrap;margin-top:var(--s-2)">'
+    +list.map(function(x){ return '<a href="https://drive.google.com/file/d/'+esc(x.id)+'/view" target="_blank" title="'+esc(x.name)+'" style="display:block;width:96px;font-size:11px;color:var(--fg2);text-decoration:none">'
+      +'<img src="'+thumb(x.id)+'" alt="" loading="lazy" style="width:96px;height:72px;object-fit:cover;border-radius:var(--r-ctl);background:var(--bg2);display:block" onerror="this.style.display=\'none\'">'
+      +'<span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(x.name)+'</span></a>'; }).join('')
+    +'</div></div>';
+}
+function pullBox(){
+  var bg=$('pullBg');
+  if(!bg){ bg=document.createElement('div'); bg.id='pullBg'; bg.className='modal-bg';
+    bg.innerHTML='<div class="modal" id="pullBox" style="max-width:780px"></div>';
+    bg.onclick=function(e){ if(e.target===bg) pullClose(); };
+    document.body.appendChild(bg); }
+  bg.style.display='flex';
+  return $('pullBox');
+}
+function pullClose(){ var bg=$('pullBg'); if(bg) bg.style.display='none'; PULL=null; }
+function pullOpen(){
+  msgOff();
+  run(api({vapi:'syncproducts'}), function(r){ PULL=r; pullDraw(); }, 'Google-реестр не прочитан');
+}
+function pullDraw(){
+  var r=PULL, b=pullBox(), h='';
+  var val=function(v){ return v===''||v==null?'<span class="muted">—</span>':esc(v); };
+  h+='<h3>⬇️ Подтянуть из Google-реестра</h3>'
+    +'<div class="muted" style="font-size:12px;margin-bottom:var(--s-3)">Лист «'+esc(r.sheet)+'»: '+r.rows+' строк. Первоисточник — Прохаб. '
+    +'Размеры, вес, упаковка и фото отмечены сами, если их не правили здесь руками. <b>⚠</b> — в Прохабе значение другое или его правили: '
+    +'реестр мог устареть, отмечайте только если уверены. Пустая ячейка реестра ничего не стирает.</div>';
+  if(r.photoErr) h+='<div class="muted" style="color:var(--amber);margin-bottom:var(--s-2)">⚠ '+esc(r.photoErr)+'</div>';
+  (r.skipped||[]).forEach(function(x){ h+='<div class="muted" style="font-size:12px">строка '+x.row+' пропущена: '+esc(x.why)+'</div>'; });
+  var items=r.items||[], fresh=r.fresh||[];
+  if(!items.length && !fresh.length){
+    h+='<div class="card" style="background:var(--green-bg);color:var(--green)">✓ Изменений нет — Прохаб совпадает с реестром и папками на Drive.</div>'
+      +'<div class="row" style="justify-content:flex-end"><button class="btn" onclick="pullClose()">Закрыть</button></div>';
+    b.innerHTML=h; return;
+  }
+  if(r.nothing) h+='<div class="card" style="background:var(--green-bg);color:var(--green)">✓ Нового для автоматической загрузки нет. Ниже — только расхождения, которые решаете вы.</div>';
+  h+='<div class="row" style="gap:var(--s-2);margin-bottom:var(--s-2)">'
+    +'<button class="btn sm" onclick="pullMark(1)">Отметить всё без ⚠</button><button class="btn sm" onclick="pullMark(0)">Снять всё</button>'
+    +'<span class="muted" id="pullCnt" style="margin-left:auto"></span></div>';
+  items.forEach(function(it){
+    h+='<div class="dblk"><b>'+esc(it.sku)+'</b> <span class="muted" style="font-size:11px">строка реестра '+it.row+'</span>';
+    it.changes.forEach(function(c){
+      var k=it.sku+'|'+c.f, on=!c.conflict&&!c.bad;
+      h+='<label class="row prow" style="flex-wrap:nowrap;align-items:flex-start;cursor:'+(c.bad?'default':'pointer')+'"><input type="checkbox" style="width:auto;flex:none;margin:0" data-pk="'+esc(k)+'"'+(c.bad?' disabled':'')+(on?' checked data-def="1"':'')+' onchange="pullCount()">'
+        +'<span>'+esc(c.label)+': '+val(c.from)+' → <b>'+val(c.to)+'</b>'
+        +(c.conflict?' <span style="color:var(--amber)">⚠ '+esc(c.conflict)+'</span>':'')
+        +(c.bad?' <span style="color:var(--red)">✗ '+esc(c.bad)+' — исправьте в реестре или в карточке</span>':'')+'</span></label>';
+    });
+    if(it.photosAdd.length||it.photosDel.length){
+      h+='<label class="row prow" style="flex-wrap:nowrap;align-items:flex-start;cursor:pointer"><input type="checkbox" style="width:auto;flex:none;margin:0" data-pk="'+esc(it.sku+'|photos')+'" checked data-def="1" onchange="pullCount()"><span>🖼 Фото: '
+        +(it.photosAdd.length?'добавить '+it.photosAdd.length:'')+(it.photosAdd.length&&it.photosDel.length?', ':'')
+        +(it.photosDel.length?'убрать '+it.photosDel.length+' (нет в папке: '+it.photosDel.map(function(x){return esc(x.name);}).join(', ')+')':'')+'</span></label>';
+      if(it.photosAdd.length) h+='<div class="row" style="gap:var(--s-1);flex-wrap:wrap;margin-left:24px">'+it.photosAdd.slice(0,8).map(function(x){
+        return '<a href="https://drive.google.com/file/d/'+esc(x.id)+'/view" target="_blank" title="'+esc(x.name)+'"><img src="'+thumb(x.id)+'" alt="'+esc(x.name)+'" loading="lazy" style="width:64px;height:48px;object-fit:cover;border-radius:4px;background:var(--bg2)" onerror="this.style.display=\'none\'"></a>'; }).join('')
+        +(it.photosAdd.length>8?'<span class="muted">+'+(it.photosAdd.length-8)+'</span>':'')+'</div>';
+    }
+    it.info.forEach(function(t){ h+='<div class="muted" style="font-size:12px">ℹ '+esc(t)+'</div>'; });
+    h+='</div>';
+  });
+  if(fresh.length){
+    h+='<div style="margin-top:var(--s-3)"><b>Новые позиции реестра</b> <span class="muted" style="font-size:12px">— в Прохабе такого артикула нет; заводятся только отмеченные</span></div>';
+    fresh.forEach(function(f){
+      h+='<label class="row prow" style="flex-wrap:nowrap;align-items:flex-start"><input type="checkbox" style="width:auto;flex:none;margin:0" data-pk="'+esc('+'+f.sku)+'"'+(f.why?' disabled':'')+' onchange="pullCount()">'
+        +'<span><b>'+esc(f.sku)+'</b> · '+esc(f.equip)+' / '+esc(f.model)+(f.group?' · '+esc(f.group):'')+(f.photos&&f.photos.length?' · фото '+f.photos.length:'')
+        +(f.why?' <span style="color:var(--amber)">— '+esc(f.why)+'</span>':'')+'</span></label>';
+    });
+  }
+  h+='<div class="row" style="justify-content:flex-end;gap:var(--s-2);margin-top:var(--s-4)">'
+    +'<span id="pullErr" style="color:var(--red);margin-right:auto"></span>'
+    +'<button class="btn" onclick="pullClose()">Отмена</button><button class="btn pri" id="pullGo" onclick="pullApply()">Применить</button></div>';
+  b.innerHTML=h; pullCount();
+}
+function pullKeys(){ var a=[]; document.querySelectorAll('#pullBox input[data-pk]').forEach(function(e){ if(e.checked&&!e.disabled) a.push(e.getAttribute('data-pk')); }); return a; }
+function pullMark(on){ document.querySelectorAll('#pullBox input[data-pk]').forEach(function(e){ if(!e.disabled) e.checked=on?e.getAttribute('data-def')==='1':false; }); pullCount(); }
+function pullCount(){ var n=pullKeys().length, c=$('pullCnt'), g=$('pullGo'); if(c) c.textContent='отмечено: '+n; if(g){ g.disabled=!n; g.textContent=n?'Применить ('+n+')':'Ничего не отмечено'; } }
+function pullApply(){
+  var keys=pullKeys();
+  if(!keys.length){ msg('⚠ ничего не отмечено — поставьте галочки у того, что подтянуть'); return; }
+  var err=function(t){ var e=$('pullErr'); if(e) e.innerHTML='⚠ '+esc(t); else msg('⚠ '+esc(t)); };   // ошибка — в окне, отмеченное не теряется
+  if(BUSY) return; BUSY=1; $('pullErr').innerHTML='';
+  apiPost({vapi:'syncproducts',apply:1,pick:JSON.stringify(keys)}).then(function(r){
+    BUSY=0;
+    if(!r||!r.ok){ err((r&&r.error)||'не применилось'); return; }
+    var a=r.applied||{};
+    pullClose();
+    msg('✓ подтянуто из Google: товаров '+(a.products||0)+', полей '+(a.fields||0)+', фото +'+(a.photosAdded||0)+(a.photosRemoved?' / −'+a.photosRemoved:'')
+      +(a.created?', новых товаров '+a.created:'')+(r.warnings&&r.warnings.length?'<br>⚠ не применено: '+r.warnings.map(esc).join('; '):''), 1);
+    load(true);
+  }).catch(function(e){ BUSY=0; err('связь оборвалась: '+(e.message||e)+' — ничего не потеряно, нажмите «Применить» ещё раз'); });
 }
 
 /* ══════ 📋 РЕЕСТР ══════ */
@@ -791,6 +892,7 @@ function cardView(){
     +(!isNew?'<button class="btn danger" onclick="cardDelAsk()">🗑 Удалить</button>':'')
     +'<button class="btn pri" onclick="cardSave()">💾 Сохранить</button>'
     +'</div></div>';
+  if(!isNew && d.photos && d.photos.length) h+=photoStrip(d.photos);
   h+='<div class="card"><b>Основное</b><div class="grid" style="margin-top:var(--s-2)">'
     +'<div><label class="f">Артикул *</label><div class="row" style="gap:var(--s-1)"><input id="c_sku" value="'+esc(d.sku||'')+'" placeholder="выберите поля — соберётся сам" oninput="skuManual()">'
     +'<button class="btn sm" onclick="cardArtTgl()" title="собрать артикул из кодов вручную">🔧</button></div>'
@@ -803,6 +905,7 @@ function cardView(){
     +fld('equip','Оборудование *',d.equip,'',0,'dl_equip','skuAutoFill()')
     +fld('model','Модель *',d.model,'',0,'dl_model','skuAutoFill()')
     +fld('size','Размер',d.size,'',0,'dl_size','skuAutoFill()')
+    +(PROHUB?fld('unit','Ед.изм (к размеру)',d.unit,'см'):'')
     +fld('color','Расцветка',d.color,'',0,'dl_color','skuAutoFill()')
     +fld('kit','Комплектация',d.kit,'',0,'dl_kit','skuAutoFill()')
     +'<div><label class="f">Группа</label><select id="c_group">'+grpOpts+'</select></div>'
@@ -835,6 +938,7 @@ function cardCollect(){
   var d={};
   FIELDS.forEach(function(k){ var e=$('c_'+k); if(e) d[k]=e.value.trim(); });
   d.group=$('c_group')?$('c_group').value:'';
+  var u=$('c_unit'); if(u) d.unit=u.value.trim();   // только Прохаб: без поля сервер «Ед.изм» не трогает
   return d;
 }
 function cardSave(){

@@ -81,6 +81,7 @@
   <a id="t_detreg" onclick="tab('detreg')">Реестр деталей</a>
   <a id="t_opreg" onclick="tab('opreg')">Реестр операций</a>
   <a id="t_cut" onclick="tab('cut')">Раскрой ЧПУ</a>
+  <a id="t_dups" class="hide" onclick="tab('dups')">Дубли</a>
 </div>
 <div class="sub" id="pageSub">Материал + работа собираются в стоимость изделия. Элемент = одна вещь со стадиями (заготовка→деталь→узел). <span id="pushmsg" class="msg"></span></div>
 
@@ -252,6 +253,20 @@
   <table id="payTbl"><thead><tr><th>Деталь</th><th style="width:130px">Операция</th><th style="width:110px">Расценка (труд)</th><th style="width:180px">Оплата ЗП</th></tr></thead><tbody></tbody></table>
 </div>
 
+<!-- ═══ ДУБЛИ СПРАВОЧНИКОВ (только через Прохаб: у хаба этих маршрутов нет) ═══ -->
+<div id="pane_dups" class="hide">
+  <div class="toolbar"><button onclick="dupScan()">🔎 Проверить дубли</button><span class="msg" id="dupmsg"></span></div>
+  <div class="note"><div>Ищем вероятные дубли в справочниках: одинаковые после нормализации (регистр, ё/е, латиница/кириллица, знаки препинания), отличающиеся 1–2 буквами, с одинаковым кодом. «Левая/правая», разные числа и размеры S/M/L не склеиваются.
+  Рядом с каждой записью — где она используется: оставляйте ту, у которой больше ссылок. <b>Объединение</b> переводит на оставляемую всё — расценки, составы, выработку, заказы, склад; влитая уходит в архив с записью в журнале. Суммы нарядов не пересчитываются.</div></div>
+  <div id="dupBox"></div>
+</div>
+
+<!-- общий диалог вместо alert/confirm (в Telegram на части телефонов они не показываются) -->
+<div class="scrim" id="dlg" style="display:none"><div class="modal" style="max-width:640px;width:100%;max-height:88vh;overflow:auto">
+  <h3 id="dlgT"></h3><div id="dlgB"></div>
+  <div class="toolbar" style="margin:var(--s-4) 0 0"><div class="end"><button class="sec" id="dlgNo">Отмена</button><button id="dlgOk">OK</button></div></div>
+</div></div>
+
 <datalist id="opsCat"></datalist>
 <datalist id="eqGroups"></datalist>
 <datalist id="detNames"></datalist>
@@ -293,20 +308,37 @@ function opt(v){ return '<option value="'+esc(v)+'">'+esc(v)+'</option>'; }
 function fillSel(id, arr, cur){ el(id).innerHTML = arr.map(function(v){ return '<option'+(v===cur?' selected':'')+'>'+esc(v)+'</option>'; }).join(''); }
 function errOf(e){ return String((e&&e.message)||e||'ошибка'); }
 function setMsg(id, ok, t){ var m=el(id); if(!m) return; m.className='msg '+(ok?'ok':'err'); m.textContent=t||''; }
+// общий диалог: onOk(root) → false оставляет окно открытым; без onOk — просто сообщение с одной кнопкой
+var DLG=0;
+function dlg(title, html, onOk, okText, noText){
+  var my=++DLG, ok=el('dlgOk'), no=el('dlgNo');
+  el('dlgT').textContent=title; el('dlgB').innerHTML=html; ok.textContent=okText||'OK';
+  no.style.display=onOk?'':'none'; no.textContent=noText||'Отмена'; no.onclick=closeDlg;
+  ok.onclick=function(){ if(onOk && onOk(el('dlgB'))===false) return; if(DLG===my) closeDlg(); };
+  el('dlg').style.display='flex'; try{ ok.focus(); }catch(e){}
+}
+function closeDlg(){ el('dlg').style.display='none'; }
+/** отказ сервера — заметно: окно с текстом «что нельзя, почему, что сделать» */
+function nope(t){ dlg('Не получилось', '<div class="note bad" style="display:block">'+esc(t||'Сервер не ответил — повторите.')+'</div>'); }
+function ask(q, onOk, okText){ dlg('Подтвердите', '<div>'+esc(q).replace(/\n/g,'<br>')+'</div>', function(){ onOk(); }, okText||'Да'); }
+/** отказ в строке сообщения + окном (строка может быть далеко от кнопки) */
+function refused(mid, r, pre){ var t=(pre||'')+((r&&r.error)||'Сервер не ответил — повторите.'); if(mid) setMsg(mid,false,t); nope(t); }
 
 var HIDDEN={};
-function tab(t){ curTab=t; if(t==='cut'&&!CUTROWS.length){ loadCut(); loadPay(); } ['cost','elem','mat','ops','detreg','opreg','cut'].forEach(function(x){ el('pane_'+x).className = (x===t&&!HIDDEN[x])?'':'hide'; el('t_'+x).className = HIDDEN[x]?'hide':(x===t?'on':''); }); }
+function tab(t){ curTab=t; if(t==='cut'&&!CUTROWS.length){ loadCut(); loadPay(); } if(t==='dups'&&!DUPS) dupScan(); ['cost','elem','mat','ops','detreg','opreg','cut','dups'].forEach(function(x){ el('pane_'+x).className = (x===t&&!HIDDEN[x])?'':'hide'; el('t_'+x).className = HIDDEN[x]?'hide':(x===t?'on':''); }); }
 // разделение экранов: mode=ops — Операции, реестры, раскрой; mode=cost — Себестоимость / Элементы / Материалы
 var MODE=(qp('mode')||qp('page')||'cost')==='ops'?'ops':'cost';
+// «Дубли» — маршруты Прохаба (dupscan/dupmerge); через хаб (srv=gas) вкладку не показываем
+var PROHUB=!!(window.TW_CFG && TW_CFG.srv!=='gas'), DUPS=null;
 function applyMode(){
   if(MODE==='ops'){
-    HIDDEN={cost:1,elem:1,mat:1};
+    HIDDEN={cost:1,elem:1,mat:1,dups:PROHUB?0:1};
     tab('ops');
     el('pageTitle').textContent='🧰 Операции и расценки';
     el('pageSub').innerHTML='Расценки по деталям + реестры деталей и операций (коды). Формула: ставка часа ÷ штук/час × коэф. <span id="pushmsg" class="msg"></span>';
     document.title='Тигервуд — Операции и расценки';
   } else {
-    HIDDEN={ops:1,detreg:1,opreg:1,cut:1};
+    HIDDEN={ops:1,detreg:1,opreg:1,cut:1,dups:PROHUB?0:1};
     tab('cost');
     document.title='Тигервуд — Себестоимость';
   }
@@ -367,7 +399,7 @@ function saveCut(i){
   var r=CUTROWS[i]; if(!r) return;
   cmsg('сохраняю…');
   api({vapi:'setsheetrate',material:r.name,thick:el('ct'+i).value,size:el('cs'+i).value,rate:el('cm'+i).value}).then(function(res){
-    if(!res||!res.ok){ cmsg((res&&res.error)||'ошибка', true); return; }
+    if(!res||!res.ok){ cmsg((res&&res.error)||'ошибка', true); nope(res&&res.error); loadCut(); return; }
     cmsg('✓ '+r.name+' — '+res.rate+' р./лист'); loadCut();
   }).catch(function(e){ cmsg(errOf(e), true); });
 }
@@ -408,13 +440,14 @@ function savePay(i){
   var r=PAYROWS[i]; if(!r) return;
   paymsg('сохраняю…');
   api({vapi:'setratepay',detail:r.detail,op:r.op,mode:el('pm'+i).value}).then(function(res){
-    if(!res||!res.ok){ paymsg((res&&res.error)||'ошибка', true); return; }
+    if(!res||!res.ok){ paymsg((res&&res.error)||'ошибка', true); nope(res&&res.error); renderPay(); return; }
     r.mode=res.mode; paymsg('✓ '+r.detail+' — '+(res.mode||'по умолчанию'));
   }).catch(function(e){ paymsg(errOf(e), true); });
 }
 function payAll(kind){
   var m=(kind==='cnc')?PAYCNC:'';
-  if(!confirm(m?('Проставить «'+m+'» ВСЕМ строкам раскроя?\n\nПотом снимете с тех деталей, которые режут вручную.'):'Сбросить режим оплаты у ВСЕХ строк раскроя на «по умолчанию»?')) return;
+  ask(m?('Проставить «'+m+'» ВСЕМ строкам раскроя?\n\nПотом снимете с тех деталей, которые режут вручную.'):'Сбросить режим оплаты у ВСЕХ строк раскроя на «по умолчанию»?', function(){ payAllGo(m); }); }
+function payAllGo(m){
   paymsg('применяю…');
   api({vapi:'cutpaysetall',mode:m}).then(function(r){
     if(!r||!r.ok){ paymsg((r&&r.error)||'ошибка', true); return; }
@@ -423,7 +456,10 @@ function payAll(kind){
 }
 // смена режима не трогает уже сданные наряды — их пересчитывает этот вызов; «Что изменится» — тот же пересчёт с откатом
 function payRefresh(dry){
-  if(!dry && !confirm('Пересчитать ЗП по сданным нарядам за период по текущим правилам?\n\nСуммы в нарядах изменятся — сначала посмотрите «Что изменится в ЗП».')) return;
+  if(!dry){ ask('Пересчитать ЗП по сданным нарядам за период по текущим правилам?\n\nСуммы в нарядах изменятся — сначала посмотрите «Что изменится в ЗП».', function(){ payRefreshGo(0); }, 'Пересчитать'); return; }
+  payRefreshGo(1);
+}
+function payRefreshGo(dry){
   paymsg(dry?'считаю…':'пересчитываю…');
   api({vapi:'cutpayrefresh',from:el('payFrom').value,to:el('payTo').value,dry:dry?'1':''}).then(function(r){
     if(!r||!r.ok){ paymsg((r&&r.error)||'ошибка', true); return; }
@@ -512,11 +548,12 @@ function saveElem(){ var e={ code:el('e_code').value.trim(), name:el('e_name').v
   if(!e.code||!e.name){ setMsg('elemmsg',false,'нужны код и название'); return; }
   var rows = bomRows.map(function(r){ var c=String(r.comp||'').split(' — ')[0].trim(); return {comp:c,type:r.type,qty:num(r.qty),pack:r.pack}; }).filter(function(r){return r.comp;});
   el('elemmsg').className='msg'; el('elemmsg').textContent='сохраняю…';
-  apiPost({vapi:'saveelement',data:JSON.stringify(e),rows:JSON.stringify(rows)}).then(function(r){ setMsg('elemmsg', r&&r.ok, r&&r.ok?'сохранено':'ошибка: '+((r&&r.error)||'')); if(r&&r.ok) load(); })
+  apiPost({vapi:'saveelement',data:JSON.stringify(e),rows:JSON.stringify(rows)}).then(function(r){ if(!r||!r.ok){ refused('elemmsg',r); return; } setMsg('elemmsg',true,'сохранено'); load(); })
     .catch(function(x){ setMsg('elemmsg',false,errOf(x)); });
 }
-function delElem(){ var c=el('e_code').value.trim(); if(!c||!confirm('Удалить элемент '+c+' и его состав?')) return;
-  api({vapi:'delelement',code:c}).then(function(r){ if(!r||!r.ok){ setMsg('elemmsg',false,'ошибка: '+((r&&r.error)||'')); return; } hideEl('elemForm'); load(); })
+function delElem(){ var c=el('e_code').value.trim(); if(!c) return; ask('Удалить элемент '+c+' и его состав?', function(){ delElemGo(c); }, 'Удалить'); }
+function delElemGo(c){
+  api({vapi:'delelement',code:c}).then(function(r){ if(!r||!r.ok){ refused('elemmsg',r); return; } hideEl('elemForm'); load(); })
     .catch(function(x){ setMsg('elemmsg',false,errOf(x)); }); }
 function hideEl(id){ el(id).className='card hide'; }
 
@@ -530,11 +567,11 @@ function editMat(name){ var m=DATA.materials.filter(function(x){return x.name===
   el('m_name').value=m.name; el('m_unit').value=m.unit; el('m_price').value=m.price; el('m_norm').value=m.norm||''; el('m_sup').value=m.sup||''; fillSel('m_role',DATA.lists.roles,m.role); }
 function saveMat(){ var m={ name:el('m_name').value.trim(), unit:el('m_unit').value.trim(), price:num(el('m_price').value), role:el('m_role').value, norm:num(el('m_norm').value), sup:el('m_sup').value.trim() };
   if(!m.name){ setMsg('matmsg',false,'нужно название'); return; }
-  apiPost({vapi:'savematfull',data:JSON.stringify(m)}).then(function(r){ setMsg('matmsg', r&&r.ok, r&&r.ok?'сохранено':'ошибка: '+((r&&r.error)||'')); if(r&&r.ok) load(); })
+  apiPost({vapi:'savematfull',data:JSON.stringify(m)}).then(function(r){ if(!r||!r.ok){ refused('matmsg',r); return; } setMsg('matmsg',true,'сохранено'); load(); })
     .catch(function(x){ setMsg('matmsg',false,errOf(x)); }); }
-function delMat(name){ if(!confirm('Удалить материал «'+name+'»?')) return;
-  api({vapi:'delmaterial',name:name}).then(function(r){ if(!r||!r.ok) setMsg('matmsg',false,'ошибка: '+((r&&r.error)||'')); load(); })
-    .catch(function(x){ setMsg('matmsg',false,errOf(x)); }); }
+function delMat(name){ ask('Удалить материал «'+name+'»?', function(){
+  api({vapi:'delmaterial',name:name}).then(function(r){ if(!r||!r.ok){ refused('matmsg',r); return; } setMsg('matmsg',true,'удалено'); load(); })
+    .catch(function(x){ refused('matmsg',{error:errOf(x)}); }); }, 'Удалить'); }
 
 /* ── Операции: дерево Оборудование ▸ Деталь ▸ операции, редактор прямо в строке ── */
 var HR=15, OPENQ={}, EDIT='', NEWDET='';   // EDIT = det + SEP + op  (op===NEW → добавление новой операции); NEWDET = блок, где открыта строка «новая деталь»
@@ -562,15 +599,16 @@ function nameCell(kind,name){
 function editName(kind,name){ EDNAME=kind+'|'+name; if(kind==='det')renderDetReg(); else renderOpReg(); setTimeout(function(){ if(el('en_input')){el('en_input').focus();el('en_input').select();} },20); }
 function cancelName(){ var k=EDNAME.split('|')[0]; EDNAME=''; if(k==='det')renderDetReg(); else renderOpReg(); }
 function saveName(){ var i=EDNAME.indexOf('|'), kind=EDNAME.slice(0,i), oldN=EDNAME.slice(i+1), newN=el('en_input')?el('en_input').value.trim():'';
-  if(!newN){ alert('Название не может быть пустым'); return; }
+  if(!newN){ nope('Название не может быть пустым — впишите новое название или нажмите ✗.'); return; }
   if(newN===oldN){ cancelName(); return; }
   var list=(kind==='det'?DATA.detailsCatalog:DATA.opsCatalog)||[];
-  if(list.some(function(x){ return x.name!==oldN && x.name.toLowerCase()===newN.toLowerCase(); })){ alert('Такое название уже есть — выберите другое'); return; }
-  if(!confirm('Переименовать «'+oldN+'» → «'+newN+'» во ВСЕЙ системе (расценки, составы изделий, выработка)?')) return;
+  if(list.some(function(x){ return x.name!==oldN && x.name.toLowerCase()===newN.toLowerCase(); })){ nope('«'+newN+'» уже есть в реестре — две записи с одним именем быть не может. Выберите другое название'+(PROHUB?' или объедините их на вкладке «Дубли».':'.')); return; }
+  ask('Переименовать «'+oldN+'» → «'+newN+'» во ВСЕЙ системе (расценки, составы изделий, выработка)?', function(){ saveNameGo(kind,oldN,newN); }, 'Переименовать'); }
+function saveNameGo(kind,oldN,newN){
   EDNAME='';
   var mid=kind==='det'?'detRegMsg':'opRegMsg';
-  api({vapi:kind==='det'?'renamedetail':'renameop',old:oldN,name:newN}).then(function(r){ if(!r||!r.ok) setMsg(mid,false,(r&&r.error)||'ошибка'); load(); })
-    .catch(function(e){ setMsg(mid,false,errOf(e)); load(); });
+  api({vapi:kind==='det'?'renamedetail':'renameop',old:oldN,name:newN}).then(function(r){ if(!r||!r.ok) refused(mid,r); load(); })
+    .catch(function(e){ refused(mid,{error:errOf(e)}); load(); });
 }
 function renderDetReg(){ if(!DATA) return;
   var f=(el('detFilter')&&el('detFilter').value||'').toLowerCase();
@@ -596,42 +634,42 @@ function firstOpFor(det){
   if(rate===null) return;
   var m=el('detRegMsg'); m.className='msg'; m.textContent='добавляю…';
   api({vapi:'addoprate',detail:det,op:op.trim(),rate:rate}).then(function(r){
-    if(!r||!r.ok){ setMsg('detRegMsg',false,(r&&r.error)||'ошибка'); return; }
+    if(!r||!r.ok){ refused('detRegMsg',r); return; }
     setMsg('detRegMsg',true,'✓ «'+det+' · '+op.trim()+'» — '+r.rate+' р.'); load();
   }).catch(function(e){ setMsg('detRegMsg',false,'ошибка: '+errOf(e)); });
 }
 function refCall(p, mid, okText, after){
   var m=el(mid); m.className='msg'; m.textContent=p.vapi.indexOf('del')===0?'удаляю…':'добавляю…';
   api(p).then(function(r){
-    if(!r||!r.ok){ setMsg(mid,false,(r&&r.error)||'ошибка'); return; }
+    if(!r||!r.ok){ refused(mid,r); return; }
     setMsg(mid,true,okText(r)); if(after) after(); load();
-  }).catch(function(e){ setMsg(mid,false,'ошибка: '+errOf(e)); });
+  }).catch(function(e){ refused(mid,{error:errOf(e)}); });
 }
 function addDetRef(){
   var nm=(el('newDetName').value||'').trim(), cd=(el('newDetCode').value||'').trim();
   if(!nm){ setMsg('detRegMsg',false,'впишите наименование детали'); return; }
   refCall({vapi:'adddetref',name:nm,code:cd},'detRegMsg',function(r){ return '✓ «'+nm+'» в реестре, код '+r.code; },function(){ el('newDetName').value=''; el('newDetCode').value=''; });
 }
-function delDetRef(name){ if(!confirm('Убрать «'+name+'» из реестра деталей?')) return;
-  refCall({vapi:'deldetref',name:name},'detRegMsg',function(){ return '✓ убрано'; }); }
+function delDetRef(name){ ask('Убрать «'+name+'» из реестра деталей?', function(){
+  refCall({vapi:'deldetref',name:name},'detRegMsg',function(){ return '✓ убрано'; }); }, 'Убрать'); }
 function addOpRef(){
   var nm=(el('newOpName').value||'').trim(), cd=(el('newOpCode').value||'').trim();
   if(!nm){ setMsg('opRegMsg',false,'впишите название операции'); return; }
   refCall({vapi:'addopref',name:nm,code:cd},'opRegMsg',function(r){ return '✓ «'+nm+'» в реестре, код '+r.code; },function(){ el('newOpName').value=''; el('newOpCode').value=''; });
 }
-function delOpRef(name){ if(!confirm('Убрать «'+name+'» из реестра операций?')) return;
-  refCall({vapi:'delopref',name:name},'opRegMsg',function(){ return '✓ убрано'; }); }
+function delOpRef(name){ ask('Убрать «'+name+'» из реестра операций?', function(){
+  refCall({vapi:'delopref',name:name},'opRegMsg',function(){ return '✓ убрано'; }); }, 'Убрать'); }
 function editCode(kind,name){ EDCODE=kind+'|'+name; if(kind==='det')renderDetReg(); else renderOpReg(); setTimeout(function(){ if(el('ec_input')){el('ec_input').focus();el('ec_input').select();} },20); }
 function cancelCode(){ var k=EDCODE.split('|')[0]; EDCODE=''; if(k==='det')renderDetReg(); else renderOpReg(); }
 function saveCode(){ var i=EDCODE.indexOf('|'), kind=EDCODE.slice(0,i), name=EDCODE.slice(i+1), code=el('ec_input')?el('ec_input').value.trim():'';
-  if(!code){ alert('Код не может быть пустым'); return; }
+  if(!code){ nope('Код не может быть пустым — по нему строятся номера операций. Впишите код или нажмите ✗.'); return; }
   var list=(kind==='det'?DATA.detailsCatalog:DATA.opsCatalog)||[];
   var dup=list.filter(function(x){ return x.name!==name && String(x.code).trim()===code; });
-  if(dup.length){ alert('Код «'+code+'» уже у: '+dup.map(function(x){return x.name;}).join(', ')+'.\nКод должен быть уникальным — выберите другой.'); return; }
+  if(dup.length){ nope('Код «'+code+'» уже у: '+dup.map(function(x){return x.name;}).join(', ')+'. Код должен быть уникальным — выберите другой.'); return; }
   EDCODE='';
   var mid=kind==='det'?'detRegMsg':'opRegMsg';
-  api(kind==='det'?{vapi:'setdetcode',name:name,code:code}:{vapi:'setopcode',op:name,code:code}).then(function(r){ if(!r||!r.ok) setMsg(mid,false,(r&&r.error)||'ошибка'); load(); })
-    .catch(function(e){ setMsg(mid,false,errOf(e)); load(); });
+  api(kind==='det'?{vapi:'setdetcode',name:name,code:code}:{vapi:'setopcode',op:name,code:code}).then(function(r){ if(!r||!r.ok) refused(mid,r); load(); })
+    .catch(function(e){ refused(mid,{error:errOf(e)}); load(); });
 }
 function opBadge(o){
   var b='';
@@ -817,16 +855,17 @@ function delEquipBlock(e,n){
   var msg = n
     ? 'Убрать блок «'+e+'»?\n\nДеталей в нём: '+n+'. Сами детали и их расценки НЕ удаляются — они переедут в «Общие» (а детали без операций просто исчезнут с этого экрана и останутся в «Реестре деталей»).'
     : 'Убрать пустой блок «'+e+'»?';
-  if(!confirm(msg)) return;
+  ask(msg, function(){
   delete OPENQ[e];
-  api({vapi:'delequipblock',equip:e}).then(function(r){ if(!(r&&r.ok)) alert('Не удалось убрать блок: '+((r&&r.error)||'')); load(); })
-    .catch(function(er){ alert('Ошибка: '+errOf(er)); load(); });
+  api({vapi:'delequipblock',equip:e}).then(function(r){ if(!(r&&r.ok)) nope(r&&r.error); load(); })
+    .catch(function(er){ nope(errOf(er)); load(); });
+  }, 'Убрать');
 }
 function renameEquip(e){ var nn=prompt('Новое название блока (оборудования):', e); if(!nn||nn.trim()===e) return; nn=nn.trim();
   api({vapi:'renameequip',old:e,name:nn}).then(function(r){
-    if(!r||!r.ok){ alert('Не удалось переименовать: '+((r&&r.error)||'')); return; }
+    if(!r||!r.ok){ nope(r&&r.error); return; }
     if(OPENQ[e]){ OPENQ[nn]=1; delete OPENQ[e]; } load();
-  }).catch(function(er){ alert('Ошибка: '+errOf(er)); }); }
+  }).catch(function(er){ nope(errOf(er)); }); }
 function toggleOp(det,op){ var k=det+SEP+op; EDIT=(EDIT===k?'':k); renderOps(); }
 // ── ПОРЯДОК ОПЕРАЦИЙ: экран ведёт локальное состояние, на сервер уходит ПОЛНЫЙ порядок, запросы по детали строго по одному
 var SEQPEND={}, SEQBUSY={};
@@ -846,9 +885,9 @@ function seqSave(det){
   delete SEQPEND[det]; SEQBUSY[det]=1;
   apiPost({vapi:'reorderops',detail:det,ops:JSON.stringify(names)}).then(function(r){
     SEQBUSY[det]=0;
-    if(!r||!r.ok){ alert('Порядок не сохранился: '+((r&&r.error)||'')+'\nОбновляю список.'); load(); return; }
+    if(!r||!r.ok){ nope(((r&&r.error)||'Порядок не сохранился.')+' Список обновлён — порядок как на сервере.'); load(); return; }
     if(SEQPEND[det]) seqSave(det);
-  }).catch(function(e){ SEQBUSY[det]=0; alert('Порядок не сохранился: '+errOf(e)+'\nОбновляю список.'); load(); });
+  }).catch(function(e){ SEQBUSY[det]=0; nope('Порядок не сохранился: '+errOf(e)+'. Список обновлён — порядок как на сервере.'); load(); });
 }
 function addOp(det){ EDIT=det+SEP+NEW; renderOps(); setTimeout(function(){ if(el('e_op'))el('e_op').focus(); },30); }
 function cancelEdit(){ EDIT=''; renderOps(); }
@@ -861,20 +900,20 @@ function setInline(ri, det, op, field){
   else { p.perhour=num(phEl.value); p.koef=num(kEl.value)||1; }
   row.style.opacity=.55;
   api(p).then(function(r){
-    row.style.opacity=1; if(!r||!r.ok){ alert('Не сохранилось: '+((r&&r.error)||'')); return; }
+    row.style.opacity=1; if(!r||!r.ok){ nope(r&&r.error); load(); return; }
     if(rEl) rEl.value = (Math.round((r.rate||0)*10000)/10000);
     if(phEl && field!=='ph') phEl.value = r.perHour||'';
     if(kEl) kEl.value = r.koef||1;
     DATA.rates.forEach(function(o){ if(o.name===det&&o.op===op){ o.rate=r.rate; o.norm=r.perHour; o.koef=r.koef; } });
-  }).catch(function(){ row.style.opacity=1; });
+  }).catch(function(e){ row.style.opacity=1; nope('Не сохранилось: '+errOf(e)+'. Обновляю список.'); load(); });
 }
 // удалить операцию прямо из строки — сразу на экране, на сервере в фоне; отказ (операция в составах изделий) — вернуть
-function delOp(det, op){
-  if(!confirm('Удалить операцию «'+op+'» у детали «'+det+'»?')) return;
+function delOp(det, op){ ask('Удалить операцию «'+op+'» у детали «'+det+'»?', function(){ delOpGo(det, op); }, 'Удалить'); }
+function delOpGo(det, op){
   DATA.rates=(DATA.rates||[]).filter(function(o){ return !(o.name===det && o.op===op); });
   renderOps();
-  api({vapi:'delrate',name:det,op:op}).then(function(r){ if(!r||!r.ok){ alert('Не удалено: '+((r&&r.error)||'')); load(); } })
-    .catch(function(){ alert('Не удалось удалить — обновляю список'); load(); });
+  api({vapi:'delrate',name:det,op:op}).then(function(r){ if(!r||!r.ok){ nope(r&&r.error); load(); } })
+    .catch(function(e){ nope('Не удалось удалить: '+errOf(e)+'. Обновляю список.'); load(); });
 }
 function addOpsBlock(det){ EDIT=det+SEP+BLK; renderOps(); setTimeout(function(){ var b=el('blkList'); if(b) b.scrollIntoView({block:'nearest'}); },30); }
 function blockRow(det, db){
@@ -934,10 +973,12 @@ function doChief(){ doConfirm('начальник'); }
 function doRejectRecalc(){ var e=editParts();
   api({vapi:'rejectrecalc',name:e.det,op:e.op}).then(function(r){ setMsg('e_msg', r&&r.ok, r&&r.ok?'запрос отклонён — расценка прежняя':('ошибка: '+((r&&r.error)||''))); if(r&&r.ok) load(); })
     .catch(function(x){ setMsg('e_msg',false,errOf(x)); }); }
-function doDelRate(){ var e=editParts(); if(!confirm('Удалить операцию «'+e.op+'» у детали «'+e.det+'»?')) return;
-  api({vapi:'delrate',name:e.det,op:e.op}).then(function(r){ if(!r||!r.ok){ setMsg('e_msg',false,'не удалено: '+((r&&r.error)||'')); return; } EDIT=''; load(); })
+function doDelRate(){ var e=editParts(); ask('Удалить операцию «'+e.op+'» у детали «'+e.det+'»?', function(){ doDelRateGo(e); }, 'Удалить'); }
+function doDelRateGo(e){
+  api({vapi:'delrate',name:e.det,op:e.op}).then(function(r){ if(!r||!r.ok){ refused('e_msg',r); return; } EDIT=''; load(); })
     .catch(function(x){ setMsg('e_msg',false,errOf(x)); }); }
-function moveDetail(det,equip){ api({vapi:'setdeteq',detail:det,equip:equip==='Общие'?'':equip}).then(function(r){ if(!r||!r.ok) alert('Не перенесено: '+((r&&r.error)||'')); load(); }); }
+function moveDetail(det,equip){ api({vapi:'setdeteq',detail:det,equip:equip==='Общие'?'':equip}).then(function(r){ if(!r||!r.ok) nope(r&&r.error); load(); })
+  .catch(function(e){ nope('Не перенесено: '+errOf(e)); load(); }); }
 function toggleAddDet(){ var b=el('addDetBox'); b.className = b.className.indexOf('hide')>=0 ? 'card' : 'card hide'; if(b.className==='card'){ el('ad_eq').value=''; el('ad_det').value=''; el('admsg').textContent=''; el('ad_eq').focus(); } }
 function createDetail(){ var eq=el('ad_eq').value.trim(), det=el('ad_det').value.trim();
   if(!det){ setMsg('admsg',false,'введите название детали'); return; }
@@ -947,19 +988,110 @@ function createDetail(){ var eq=el('ad_eq').value.trim(), det=el('ad_det').value
     if(!(r&&r.ok)){ setMsg('admsg',false,'ошибка: '+((r&&r.error)||'')); return; }
     OPENQ[eq||'Общие']=1; el('addDetBox').className='card hide'; afterNewDetail(det, eq, r);
   }).catch(function(x){ setMsg('admsg',false,errOf(x)); }); }
-function delDetail(det){ if(!confirm('Убрать деталь «'+det+'» из блока? (операции детали, если есть, переедут в «Общие»)')) return;
+function delDetail(det){ ask('Убрать деталь «'+det+'» из блока? (операции детали, если есть, переедут в «Общие»)', function(){
   JUST=JUST.filter(function(j){ return j.detail!==det; });
-  api({vapi:'deldetequip',detail:det}).then(function(){ load(); }); }
+  api({vapi:'deldetequip',detail:det}).then(function(r){ if(!r||!r.ok) nope(r&&r.error); load(); })
+    .catch(function(e){ nope('Не убрано: '+errOf(e)); load(); }); }, 'Убрать'); }
 function fillNorms(force){ el('normsmsg').className='msg'; el('normsmsg').textContent='считаю…';
   api({vapi:'fillnorms',force:force?'1':''}).then(function(r){ setMsg('normsmsg', r&&r.ok, r&&r.ok?('готово: строк '+r.rows+', нормы '+r.filled+' (ставка '+r.hourRate+' р/ч)'):('ошибка: '+((r&&r.error)||''))); load(); })
     .catch(function(x){ setMsg('normsmsg',false,errOf(x)); }); }
+
+/* ── 🔁 ДУБЛИ СПРАВОЧНИКОВ: проверка (любой, кто видит раздел) и объединение (админ, директор, начальник производства) ── */
+var DUPP=null;   // {ki, gi, kind, keep, merge:[id], take:[key]}
+function dupScan(){
+  setMsg('dupmsg',true,'проверяю…');
+  api({vapi:'dupscan'}).then(function(r){
+    if(!r||!r.ok){ refused('dupmsg',r); return; }
+    DUPS=r; setMsg('dupmsg',true,''); renderDups();
+  }).catch(function(e){ refused('dupmsg',{error:errOf(e)}); });
+}
+function refsText(refs){
+  var L=(DUPS&&DUPS.labels)||{}, ks=Object.keys(refs||{});
+  return ks.length ? ks.map(function(k){ return refs[k]+' '+(L[k]||k); }).join(' · ') : 'нигде не используется';
+}
+function renderDups(){
+  var total=0;
+  var h=DUPS.kinds.map(function(k,ki){
+    total+=k.groups.length;
+    var head='<div class="sect">'+esc(k.title)+' <span class="n">· групп: '+k.groups.length+'</span></div>'
+      +(k.note?'<div class="note info"><div>'+esc(k.note)+'</div></div>':'');
+    if(!k.groups.length) return head+'<div class="empty">вероятных дублей не найдено</div>';
+    return head+k.groups.map(function(g,gi){
+      return '<div class="card"><div class="hint" style="margin-bottom:var(--s-1)">'+esc(g.reason)+'</div><table style="width:100%"><tbody>'
+        +g.items.map(function(it,ii){
+          var btn=(DUPS.canMerge&&k.mergeable)?'<button class="sm" onclick="dupStart('+ki+','+gi+','+ii+')">Объединить в эту</button>':'';
+          return '<tr><td><b>'+esc(it.name)+'</b>'+(it.code?' <span class="hint">код '+esc(it.code)+'</span>':'')+'</td>'
+            +'<td class="hint">'+esc(refsText(it.refs))+'</td><td style="text-align:right;white-space:nowrap">'+btn+'</td></tr>';
+        }).join('')+'</tbody></table></div>';
+    }).join('');
+  }).join('');
+  el('dupBox').innerHTML=(total?'':'<div class="note ok"><div>✓ Вероятных дублей нет.</div></div>')+h
+    +(DUPS.canMerge?'':'<div class="note"><div>Объединять записи могут администратор, директор и начальник производства — вам доступна проверка. Покажите им найденное.</div></div>');
+}
+function dupStart(ki,gi,ii){
+  var k=DUPS.kinds[ki], g=k.groups[gi], keep=g.items[ii];
+  DUPP={ki:ki, gi:gi, kind:k.kind, keep:keep.id, merge:g.items.filter(function(x){ return x.id!==keep.id; }).map(function(x){ return x.id; }), take:[]};
+  dupPlan();
+}
+function dupPlan(){
+  var p=DUPP; if(!p) return;
+  if(!p.merge.length){ nope('Отметьте хотя бы одну запись, которую влить в оставляемую.'); return; }
+  setMsg('dupmsg',true,'считаю, что изменится…');
+  api({vapi:'dupmerge',kind:p.kind,keep:p.keep,merge:p.merge.join(','),take:JSON.stringify(p.take),dry:'1'}).then(function(r){
+    if(!r||!r.ok){ refused('dupmsg',r); return; }
+    setMsg('dupmsg',true,''); dupShow(r);
+  }).catch(function(e){ refused('dupmsg',{error:errOf(e)}); });
+}
+function dupToggle(id,on){ var m=DUPP.merge.filter(function(x){ return x!==id; }); if(on) m.push(id); DUPP.merge=m; dupPlan(); }
+function dupTake(key,on){ var t=DUPP.take.filter(function(x){ return x!==key; }); if(on) t.push(key); DUPP.take=t; dupPlan(); }
+function dupShow(r){
+  var g=DUPS.kinds[DUPP.ki].groups[DUPP.gi], keep=null;
+  g.items.forEach(function(x){ if(x.id===DUPP.keep) keep=x; });
+  var others=g.items.filter(function(x){ return x.id!==DUPP.keep; });
+  var h='<div>Оставляем: <b>'+esc(keep?keep.name:r.keep.name)+'</b></div>'
+    +'<div style="margin-top:var(--s-2)">Вливаем'+(others.length>1?' (снимите галочку, если не нужно)':'')+':</div>'
+    +others.map(function(x){ var on=DUPP.merge.indexOf(x.id)>=0;
+      return '<label style="display:flex;gap:var(--s-2);align-items:center;margin:var(--s-1) 0"><input type="checkbox" style="width:auto" '+(on?'checked':'')+(others.length>1?'':' disabled')
+        +' onchange="dupToggle('+jsq(x.id)+',this.checked)"> '+esc(x.name)+' <span class="hint">'+esc(refsText(x.refs))+'</span></label>'; }).join('');
+  var mv=Object.keys(r.moved||{});
+  h+='<div class="sect">Что переедет на оставляемую</div>'+(mv.length?'<div>'+mv.map(function(k){ return esc(k)+': <b>'+r.moved[k]+'</b>'; }).join('<br>')+'</div>'
+    :'<div class="hint">Ссылок нет — влитая просто уйдёт в архив.</div>');
+  if((r.conflicts||[]).length){
+    h+='<div class="sect">Конфликты — у обеих есть одно и то же</div>'+r.conflicts.map(function(c){
+      var rate=c.key.indexOf('rate:')===0;
+      return '<div class="note warn" style="display:block;margin-bottom:var(--s-2)">'+esc(c.text)
+        +(rate?'<div style="margin-top:var(--s-1)"><label style="display:inline-flex;gap:var(--s-1);align-items:center;margin-right:var(--s-3)"><input type="radio" style="width:auto" name="tk_'+esc(c.key)+'" '+(c.take?'':'checked')+' onchange="dupTake('+jsq(c.key)+',false)"> оставить расценку оставляемой</label>'
+          +'<label style="display:inline-flex;gap:var(--s-1);align-items:center"><input type="radio" style="width:auto" name="tk_'+esc(c.key)+'" '+(c.take?'checked':'')+' onchange="dupTake('+jsq(c.key)+',true)"> взять цифры влитой</label></div>':'')
+        +'</div>'; }).join('');
+  }
+  if((r.notes||[]).length) h+='<div class="sect">Обратите внимание</div><div>'+r.notes.map(esc).join('<br>')+'</div>';
+  var ef=r.effects||{}, ok='<span style="color:var(--green)">✓ не меняется</span>';
+  function lst(a,fmt){ return a.slice(0,12).map(function(x){ return esc(x.key)+': '+fmt(x.was)+' → <b>'+fmt(x.now)+'</b>'; }).join('<br>')+(a.length>12?'<br>… ещё '+(a.length-12):''); }
+  h+='<div class="sect">Последствия</div>'
+    +'<div>ЗП работников: '+((ef.zp||[]).length?'<br>'+lst(ef.zp,fmtR):ok)+'</div>'
+    +'<div>% готовности заказов: '+((ef.pct||[]).length?'<br>'+lst(ef.pct,function(v){ return v+'%'; }):ok)+'</div>'
+    +'<div>Труд изделий по составу: '+((ef.labor||[]).length?'<br>'+lst(ef.labor,fmtR):ok)+'</div>'
+    +'<div>Строк составов: '+(ef.comp&&ef.comp.was!==ef.comp.now?ef.comp.was+' → <b>'+ef.comp.now+'</b> (совпавшие строки сложены)':ok)+'</div>'
+    +'<div class="note" style="margin-top:var(--s-3)"><div>Влитые записи уйдут в архив, журнал сохранит «влита в …». Выработка и заказы сохраняются, суммы нарядов не пересчитываются. Вернуть из экрана нельзя.</div></div>';
+  dlg('Объединить дубли', h, function(){ dupApply(); }, 'Объединить');
+}
+function dupApply(){
+  var p=DUPP; setMsg('dupmsg',true,'объединяю…');
+  api({vapi:'dupmerge',kind:p.kind,keep:p.keep,merge:p.merge.join(','),take:JSON.stringify(p.take)}).then(function(r){
+    if(!r||!r.ok){ refused('dupmsg',r); return; }
+    var mv=Object.keys(r.moved||{}).map(function(k){ return esc(k)+': '+r.moved[k]; }).join('<br>');
+    setMsg('dupmsg',true,'✓ объединено в «'+r.keep.name+'»');
+    dlg('Готово', '<div>Влито в <b>'+esc(r.keep.name)+'</b>: '+r.merge.map(function(x){ return esc(x.name); }).join(', ')+'</div>'+(mv?'<div style="margin-top:var(--s-2)">'+mv+'</div>':''));
+    DUPP=null; dupScan(); load();
+  }).catch(function(e){ refused('dupmsg',{error:errOf(e)}); });
+}
 
 load();
 
 // авто-обновление: оболочка шлёт «refresh» при возврате на раздел — перечитываем данные без перезагрузки страницы
 (function(){
   try{ window.top.postMessage({tw:'hello',sec:qp('twsec')},'*'); }catch(e){}
-  window.addEventListener('message',function(e){ var d=e&&e.data; if(d&&d.tw==='refresh'){ try{ load(); if(CUTROWS.length){ loadCut(); loadPay(); } }catch(err){} } });
+  window.addEventListener('message',function(e){ var d=e&&e.data; if(d&&d.tw==='refresh'){ try{ load(); if(CUTROWS.length){ loadCut(); loadPay(); } if(DUPS) dupScan(); }catch(err){} } });
 })();
 </script>
 </body>

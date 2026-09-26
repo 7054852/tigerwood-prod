@@ -1234,10 +1234,115 @@ function setStock(batchId,opId,val,inp,force){
   }).catch(function(e){ delete pendingStock[opId]; if(inp){ inp.style.background='var(--red-bg)'; } alert('Ошибка: '+(e.message||e)); });
 }
 function planNow(){
+  if(spOn()) return planPreview();   // через Прохаб — сначала окно: каждая позиция продажи должна быть товаром каталога
   api({vapi:'planprod'}).then(function(r){
     if(!r||!r.ok){ alert((r&&r.error)||'не удалось спланировать'); return; }
     load();
   }).catch(function(e){ alert('Ошибка: '+(e.message||e)); });
+}
+// ── «Заказ из продаж» через Прохаб (решение владельца 26.09.2026): позиция заказа — всегда товар каталога. Позицию продажи без
+// артикула (или с неоднозначной парой оборудование+модель) человек привязывает сам: «Выбрать товар» → поиск / «Завести карточку».
+// Выбор по тексту Прохаб запоминает — та же формулировка в следующих продажах сопоставится сама. Через хаб (srv=gas) — как раньше.
+var SP={rows:[], head:null, cur:-1, busy:false};
+function spOn(){ return !!(window.TW_CFG&&TW_CFG.srv!=='gas'); }
+function spDlg(){
+  var ov=$('spOv');
+  if(!ov){ ov=document.createElement('div'); ov.id='spOv'; ov.className='scrim'; ov.onclick=function(e){ if(e.target===ov) spClose(); };
+    ov.innerHTML='<div class="modal" id="spDlg" role="dialog" aria-modal="true" style="max-width:760px"></div>'; document.body.appendChild(ov); }
+  ov.style.display='flex'; return $('spDlg');
+}
+function spClose(){ var ov=$('spOv'); if(ov) ov.style.display='none'; }
+var SP_VIA={'артикул':'по артикулу','пара':'по оборудованию и модели','выбор':'выбрано вручную'};
+function spProd(p){ return p ? esc([p.equip,p.model,p.kit].filter(Boolean).join(' · '))+(p.sku?' <span class="muted">'+esc(p.sku)+'</span>':'') : ''; }
+function planPreview(msg){
+  var d=spDlg(); d.innerHTML='<div class="center muted">Смотрю открытые продажи…</div>';
+  api({vapi:'planprodpreview'}).then(function(r){
+    if(!r||!r.ok){ d.innerHTML='<div class="err">'+esc((r&&r.error)||'не удалось загрузить продажи')+'</div><div class="row" style="margin-top:var(--s-3)"><button class="sec" onclick="spClose()">Закрыть</button></div>'; return; }
+    SP.rows=r.rows||[]; SP.head=r; spRender(msg);
+  }).catch(function(e){ d.innerHTML='<div class="err">Ошибка: '+esc(e.message||e)+'</div>'; });
+}
+function spRender(msg){
+  var r=SP.head;
+  var rows=SP.rows.map(function(x,i){
+    var what=x.empty?'<span class="pill warn">в продаже не указано изделие</span>':esc(x.text);
+    var prod=x.need?'<span class="pill bad">нужна привязка</span> <button class="sm" onclick="spPick('+i+')">Выбрать товар</button>'
+      :spProd(x.product)+' <span class="pill '+(x.via==='выбор'?'info':'ok')+'">'+esc(SP_VIA[x.via]||x.via)+'</span>'+(x.via==='выбор'?' <button class="sm ghost" onclick="spPick('+i+')">сменить</button>':'');
+    return '<tr><td>'+esc(x.num||'')+'</td><td>'+what+'</td><td class="num">'+x.qty+'</td><td>'+prod+'</td></tr>';
+  }).join('');
+  var n=SP.rows.filter(function(x){ return x.need; }).length;
+  spDlg().innerHTML='<h3>⚙️ Заказ из продаж</h3>'
+    +'<div class="muted" style="margin-bottom:var(--s-3)">Позиции открытых продаж (сделок: '+(r?r.deals:'')+'). Заказ собирается только из товаров каталога.</div>'
+    +(msg?'<div class="'+(msg.ok?'ok':'err')+'" style="margin-bottom:var(--s-3)">'+esc(msg.text)+'</div>':'')
+    +'<div class="box"><table><thead><tr><th>Сделка</th><th>Позиция продажи</th><th class="num">Кол-во</th><th>Товар каталога</th></tr></thead><tbody>'
+    +(rows||'<tr><td colspan=4 class="muted">открытых продаж нет</td></tr>')+'</tbody></table></div>'
+    +(n?'<div class="note warn" style="margin-top:var(--s-3)">Не привязано позиций: '+n+'. Укажите для каждой товар из каталога или заведите карточку — иначе заказ не соберётся.</div>':'')
+    +'<div class="row" style="margin-top:var(--s-4);gap:var(--s-2);justify-content:flex-end"><button class="sec" onclick="spClose()">Закрыть</button>'
+    +'<button id="spGo" onclick="spPlan()"'+(n?' disabled':'')+'>Собрать заказ</button></div>';
+}
+function spPlan(){
+  if(SP.busy) return; SP.busy=true; var b=$('spGo'); if(b){ b.disabled=true; b.textContent='Собираю…'; }
+  api({vapi:'planprod'}).then(function(r){
+    SP.busy=false;
+    if(!r||!r.ok){ var m={ok:false,text:(r&&r.error)||'не удалось собрать заказ'}; if(r&&r.needLink) planPreview(m); else spRender(m); return; }
+    spClose(); load();
+    alert(r.num?('Собран заказ '+r.num+': позиций '+r.positions+(r.reserved?(', из наличия '+r.fromStock+' шт'):'')):('Всё покрыто наличием: в резерв '+r.fromStock+' шт'));
+  }).catch(function(e){ SP.busy=false; spRender({ok:false,text:'Ошибка: '+(e.message||e)}); });
+}
+// окно «Какой это товар из каталога?»: подсказки похожих сверху, поиск по оборудованию / модели / артикулу, «Завести карточку»
+function spPick(i){
+  var x=SP.rows[i]; if(!x) return; SP.cur=i; if(!MODELS.length) loadModels();
+  spDlg().innerHTML='<h3>Какой это товар из каталога?</h3>'
+    +'<div style="margin-bottom:var(--s-2)">Сделка '+esc(x.num||'')+': '+(x.empty?'<b>в продаже не указано изделие</b>':'«'+esc(x.text)+'»')+'</div>'
+    +'<div class="muted" style="margin-bottom:var(--s-3)">'+(x.empty?'Выбор относится только к этой продаже.':'Выбор запомнится: продажи с той же формулировкой сопоставятся сами.')+'</div>'
+    +'<input id="spQ" type="search" placeholder="Поиск: оборудование, модель, артикул…" style="width:100%" oninput="spList()" autocomplete="off">'
+    +'<div id="spL" style="margin-top:var(--s-3)"></div>'
+    +'<div class="row" style="margin-top:var(--s-4);gap:var(--s-2);justify-content:space-between"><button class="sec" onclick="spRender()">← Назад</button>'
+    +'<button class="sec" onclick="spNew()">＋ Завести карточку</button></div>';
+  spList();
+}
+function spItemHtml(m){ return '<div class="row" style="justify-content:space-between;gap:var(--s-2);padding:var(--s-2) 0;border-bottom:1px solid var(--line)"><div>'+spProd(m)
+  +([m.size,m.color].filter(Boolean).length?' <span class="muted">'+esc([m.size,m.color].filter(Boolean).join(' '))+'</span>':'')+'</div>'
+  +'<button class="sm" data-sku="'+esc(m.sku)+'" onclick="spLink(this.getAttribute(\'data-sku\'))">Выбрать</button></div>'; }
+function spList(){
+  var x=SP.rows[SP.cur], el=$('spL'); if(!x||!el) return;
+  var q=String(($('spQ')||{}).value||'').toLowerCase().replace(/ё/g,'е').split(/\s+/).filter(Boolean);
+  var sugg=q.length?[]:(x.candidates||[]);
+  var hit=q.length?MODELS.filter(function(m){ if(!m.sku) return false; var s=[m.sku,m.equip,m.model,m.kit,m.name,m.size,m.color].join(' ').toLowerCase().replace(/ё/g,'е');
+    return q.every(function(w){ return s.indexOf(w)>=0; }); }).slice(0,40):[];
+  el.innerHTML=(sugg.length?'<div class="muted">Похожие</div>'+sugg.map(spItemHtml).join(''):'')
+    +(q.length?(hit.length?hit.map(spItemHtml).join(''):'<div class="muted">Ничего не нашлось. Если такого товара нет — «Завести карточку».</div>')
+      :(!sugg.length?'<div class="muted">Начните вводить название или артикул.</div>':''));
+}
+function spLink(sku){
+  var x=SP.rows[SP.cur]; if(!x||SP.busy) return; SP.busy=true;
+  api({vapi:'salelink', item:x.item, sku:sku}).then(function(r){
+    SP.busy=false;
+    if(!r||!r.ok){ alert((r&&r.error)||'не удалось привязать'); return; }
+    planPreview();
+  }).catch(function(e){ SP.busy=false; alert('Ошибка: '+(e.message||e)); });
+}
+function spNew(){
+  var x=SP.rows[SP.cur]; if(!x) return;
+  var parts=x.empty?[]:String(x.text||'').split(' · ').filter(function(p){ return p.replace(/[-\s]/g,''); }), eq=parts[0]||'', mo=parts.slice(1).join(' · ');
+  var f=function(id,label,v){ return '<label style="display:block;margin-bottom:var(--s-2)"><span class="muted">'+label+'</span><input id="'+id+'" value="'+esc(v)+'" style="width:100%" autocomplete="off"></label>'; };
+  spDlg().innerHTML='<h3>Новая карточка товара</h3>'
+    +'<div class="note warn" style="margin-bottom:var(--s-3)">У нового товара нет состава — операции и готовность появятся, когда заполните состав в «Каталоге изделий».</div>'
+    +f('spSku','Артикул (обязательно)','')+f('spEq','Оборудование',eq)+f('spMo','Модель',mo)+f('spKit','Комплектация','')
+    +'<div id="spErr" class="err"></div>'
+    +'<div class="row" style="margin-top:var(--s-4);gap:var(--s-2);justify-content:space-between"><button class="sec" onclick="spPick(SP.cur)">← Назад</button>'
+    +'<button id="spSave" onclick="spCreate()">Завести и выбрать</button></div>';
+  var s=$('spSku'); if(s) s.focus();
+}
+function spCreate(){
+  if(SP.busy) return;
+  var v=function(id){ return String(($(id)||{}).value||'').trim(); }, sku=v('spSku');
+  if(!sku||!v('spEq')||!v('spMo')){ $('spErr').textContent='Нужны артикул, оборудование и модель'; return; }
+  SP.busy=true; $('spSave').disabled=true;
+  api({vapi:'productsave', data:JSON.stringify({sku:sku, equip:v('spEq'), model:v('spMo'), kit:v('spKit')})}).then(function(r){
+    SP.busy=false;
+    if(!r||!r.ok){ $('spErr').textContent=(r&&r.error)||'не удалось завести карточку'; $('spSave').disabled=false; return; }
+    MODELS=[]; loadModels(); spLink(r.sku||sku);
+  }).catch(function(e){ SP.busy=false; $('spErr').textContent='Ошибка: '+(e.message||e); $('spSave').disabled=false; });
 }
 function saveTarget(i){
   var n=NEEDS[i], v=$('tg'+i).value;

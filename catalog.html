@@ -174,6 +174,11 @@
   <h3 id="askT"></h3><div id="askB"></div>
   <div class="toolbar" style="margin:var(--s-4) 0 0"><div class="end"><button class="sm sec" onclick="hide('askmodal')">Отмена</button><button class="sm" id="askOk">OK</button></div></div>
 </div></div>
+<!-- отказ сервера — поверх любых окон: «что нельзя, почему, что сделать» (строка #msg вверху страницы под окном не видна) -->
+<div class="scrim" id="oopsmodal" style="display:none;z-index:60"><div class="modal sm">
+  <h3>Не получилось</h3><div id="oopsB" class="note bad" style="display:block"></div>
+  <div class="toolbar" style="margin:var(--s-4) 0 0"><div class="end"><button class="sm" onclick="hide('oopsmodal')">Понятно</button></div></div>
+</div></div>
 <datalist id="detList"></datalist><datalist id="opsList"></datalist>
 
 <script>
@@ -203,11 +208,12 @@ function write(p, say, ok, post){
   if(BUSY) return; BUSY=1;
   var w=el('twwait'); el('twwt').textContent=say||'Сохраняю…'; w.style.display='flex';
   (post?apiPost(p):api(p)).then(function(r){ BUSY=0; w.style.display='none';
-    if(!r||!r.ok){ msg('⚠ '+esc((r&&r.error)||'не сохранилось')); return; }
+    if(!r||!r.ok){ var t=(r&&r.error)||'Не сохранилось — сервер не ответил. Повторите.'; msg('⚠ '+esc(t)); oops(t); return; }
     if(ok) ok(r);
-  }).catch(function(e){ BUSY=0; w.style.display='none'; msg('⚠ связь оборвалась: '+esc(e.message||e)); });
+  }).catch(function(e){ BUSY=0; w.style.display='none'; var t='Связь оборвалась: '+(e.message||e)+'. Проверьте интернет и повторите — если не уверены, сохранилось ли, обновите страницу.'; msg('⚠ '+esc(t)); oops(t); });
 }
 function el(id){ return document.getElementById(id); }
+function oops(t){ el('oopsB').textContent=t||'Сервер не ответил — повторите.'; el('oopsmodal').style.display='flex'; }
 function hide(id){ el(id).style.display='none'; }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
 function jsq(s){ return esc(String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'")); }
@@ -335,7 +341,7 @@ function compDetailsHtml(details){
 function loadComp(mEl){
   var box=mEl.querySelector('.dets'); if(!box || box.getAttribute('data-loaded')) return;
   box.setAttribute('data-loaded','1'); box.innerHTML='<span class="gsub">Загрузка состава…</span>';
-  api({vapi:'varcomp',art:box.getAttribute('data-art')}).then(function(r){ box.innerHTML=(r&&r.ok)?compDetailsHtml(r.details):'<span class="gsub">не удалось загрузить</span>'; })
+  api({vapi:'varcomp',art:box.getAttribute('data-art')}).then(function(r){ if(!(r&&r.ok)) box.removeAttribute('data-loaded'); box.innerHTML=(r&&r.ok)?compDetailsHtml(r.details):'<span class="gsub" style="color:var(--red)">Состав не загрузился: '+esc((r&&r.error)||'сервер не ответил')+'</span>'; })
     .catch(function(){ box.removeAttribute('data-loaded'); box.innerHTML='<span class="gsub">ошибка загрузки</span>'; });
 }
 function setAsm(btn,art){
@@ -598,9 +604,10 @@ function izdAddRow(){
 function izdCopyFrom(){
   var a=el('sArt').value; if(!a) return; el('sMsg').textContent='Загружаю…';
   api({vapi:'izdcomp',eq:'',mod:'',artikul:a}).then(function(r){
+    if(!r||!r.ok){ el('sMsg').innerHTML=''; oops('Состав не загрузился: '+((r&&r.error)||'сервер не ответил')+' — текущая таблица не тронута.'); return; }
     COMP=((r&&r.rows)||[]).map(function(x){ return {detail:x.detail, op:x.op, qty:x.qty, rate:x.rate, level:x.level}; });
     izdRender(); el('sMsg').innerHTML='<span style="color:var(--green)">✅ загружено '+COMP.length+' оп. — проверьте и сохраните в текущий вариант</span>';
-  }).catch(function(e){ el('sMsg').textContent=e.message||e; });
+  }).catch(function(e){ el('sMsg').textContent=''; oops('Связь оборвалась: '+(e.message||e)+' — текущая таблица не тронута.'); });
 }
 function izdSave(){
   var art=el('iArt').value; if(!art){ el('iMsg').textContent='выберите вариант'; return; }
