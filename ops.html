@@ -255,7 +255,7 @@
 
 <!-- ═══ ДУБЛИ СПРАВОЧНИКОВ (только через Прохаб: у хаба этих маршрутов нет) ═══ -->
 <div id="pane_dups" class="hide">
-  <div class="toolbar"><button onclick="dupScan()">🔎 Проверить дубли</button><span class="msg" id="dupmsg"></span></div>
+  <div class="toolbar"><button onclick="dupScan()">🔎 Проверить дубли</button><button class="sec" onclick="packCheck()" title="упаковка товара, фурнитура и коробка — по оборудованию товара, а не по блоку операций">📦 Проверить упаковку</button><span class="msg" id="dupmsg"></span></div>
   <div class="note"><div>Ищем вероятные дубли в справочниках: одинаковые после нормализации (регистр, ё/е, латиница/кириллица, знаки препинания), отличающиеся 1–2 буквами, с одинаковым кодом. «Левая/правая», разные числа и размеры S/M/L не склеиваются.
   Рядом с каждой записью — где она используется: оставляйте ту, у которой больше ссылок. <b>Объединение</b> переводит на оставляемую всё — расценки, составы, выработку, заказы, склад; влитая уходит в архив с записью в журнале. Суммы нарядов не пересчитываются.</div></div>
   <div id="dupBox"></div>
@@ -1065,15 +1065,54 @@ function dupShow(r){
         +'</div>'; }).join('');
   }
   if((r.notes||[]).length) h+='<div class="sect">Обратите внимание</div><div>'+r.notes.map(esc).join('<br>')+'</div>';
-  var ef=r.effects||{}, ok='<span style="color:var(--green)">✓ не меняется</span>';
+  h+=effectsHtml(r.effects)
+    +'<div class="note" style="margin-top:var(--s-3)"><div>Влитые записи уйдут в архив, журнал сохранит «влита в …». Выработка и заказы сохраняются, суммы нарядов не пересчитываются. Вернуть из экрана нельзя.</div></div>';
+  dlg('Объединить дубли', h, function(){ dupApply(); }, 'Объединить');
+}
+// последствия правки справочника: ЗП, % готовности, труд изделий, строки составов (было → стало)
+function effectsHtml(ef){
+  ef=ef||{}; var ok='<span style="color:var(--green)">✓ не меняется</span>';
   function lst(a,fmt){ return a.slice(0,12).map(function(x){ return esc(x.key)+': '+fmt(x.was)+' → <b>'+fmt(x.now)+'</b>'; }).join('<br>')+(a.length>12?'<br>… ещё '+(a.length-12):''); }
-  h+='<div class="sect">Последствия</div>'
+  return '<div class="sect">Последствия</div>'
     +'<div>ЗП работников: '+((ef.zp||[]).length?'<br>'+lst(ef.zp,fmtR):ok)+'</div>'
     +'<div>% готовности заказов: '+((ef.pct||[]).length?'<br>'+lst(ef.pct,function(v){ return v+'%'; }):ok)+'</div>'
     +'<div>Труд изделий по составу: '+((ef.labor||[]).length?'<br>'+lst(ef.labor,fmtR):ok)+'</div>'
-    +'<div>Строк составов: '+(ef.comp&&ef.comp.was!==ef.comp.now?ef.comp.was+' → <b>'+ef.comp.now+'</b> (совпавшие строки сложены)':ok)+'</div>'
-    +'<div class="note" style="margin-top:var(--s-3)"><div>Влитые записи уйдут в архив, журнал сохранит «влита в …». Выработка и заказы сохраняются, суммы нарядов не пересчитываются. Вернуть из экрана нельзя.</div></div>';
-  dlg('Объединить дубли', h, function(){ dupApply(); }, 'Объединить');
+    +'<div>Строк составов: '+(ef.comp&&ef.comp.was!==ef.comp.now?ef.comp.was+' → <b>'+ef.comp.now+'</b> (совпавшие строки сложены)':ok)+'</div>';
+}
+
+/* ── 📦 УПАКОВКА ПО ОБОРУДОВАНИЮ ТОВАРА (packtidy): план — любой, кто видит раздел; применить — админ, директор, начальник производства ── */
+function packItemsHtml(r){
+  return (r.items||[]).map(function(it){
+    return '<div class="card"><b>'+esc(it.detail)+'</b> <span class="hint">'+esc(it.kind)+' · блок «'+esc(it.block||'Общие')+'» · '+esc(it.skus.join(', '))+'</span>'
+      +'<div style="margin-top:var(--s-1)">'+it.text.map(esc).join('<br>')+'</div>'
+      +(it.conflicts.length?'<div class="note warn" style="display:block;margin-top:var(--s-1)">'+it.conflicts.map(esc).join('<br>')+'</div>':'')+'</div>';
+  }).join('')+((r.notes||[]).length?'<div class="sect">Не сделается само — решите вручную</div><div class="note warn" style="display:block">'+r.notes.map(esc).join('<br>')+'</div>':'');
+}
+function packCheck(){
+  setMsg('dupmsg',true,'проверяю упаковку…');
+  api({vapi:'packtidy',dry:'1'}).then(function(r){
+    if(!r||!r.ok){ refused('dupmsg',r); return; }
+    setMsg('dupmsg',true,'');
+    if(!(r.items||[]).length){ dlg('Упаковка', '<div class="note ok"><div>✓ '+esc(r.message||'Упаковка в порядке.')+'</div></div>'); return; }
+    var steps=r.done&&(r.done.renamed||r.done.blocks||r.done.comps);
+    var h='<div class="hint">Упаковка товара, фурнитура и коробка называются по <b>оборудованию товара</b> и лежат в его блоке. Блоки операций («Стол Качалка», «Дом 2») — производственные узлы, их названия не меняются.</div>'
+      +packItemsHtml(r)+(steps?effectsHtml(r.effects)
+      +'<div class="note" style="margin-top:var(--s-3)"><div>Выработка и заказы не трогаются: суммы нарядов и % готовности те же. Если одна деталь стоит у товаров с разным оборудованием, каждому оборудованию заводится своя (расценки копируются), история остаётся на старой. Всё — одной транзакцией, с журналом.</div></div>'
+      +(r.canApply?'':'<div class="note"><div>Применить могут администратор, директор и начальник производства — покажите им план.</div></div>'):'');
+    if(steps&&r.canApply) dlg('Навести порядок в упаковке', h, function(){ packApply(); }, 'Применить');
+    else dlg('Навести порядок в упаковке', h);
+  }).catch(function(e){ refused('dupmsg',{error:errOf(e)}); });
+}
+function packApply(){
+  setMsg('dupmsg',true,'навожу порядок в упаковке…');
+  api({vapi:'packtidy',dry:'0'}).then(function(r){
+    if(!r||!r.ok){ refused('dupmsg',r); return; }
+    var d=r.done||{};
+    setMsg('dupmsg',true,'✓ упаковка: переименовано '+(d.renamed||0)+', перенесено в блок '+(d.blocks||0)+', строк составов перевешено '+(d.comps||0));
+    dlg('Готово', '<div>Переименовано деталей: <b>'+(d.renamed||0)+'</b> · перенесено в блок товара: <b>'+(d.blocks||0)+'</b> · новых деталей: <b>'+(d.created||0)+'</b> · строк составов перевешено: <b>'+(d.comps||0)+'</b></div>'
+      +((r.notes||[]).length?'<div class="note warn" style="display:block;margin-top:var(--s-2)">'+r.notes.map(esc).join('<br>')+'</div>':''));
+    if(DUPS) dupScan(); load();
+  }).catch(function(e){ refused('dupmsg',{error:errOf(e)}); });
 }
 function dupApply(){
   var p=DUPP; setMsg('dupmsg',true,'объединяю…');

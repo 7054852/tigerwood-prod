@@ -956,7 +956,7 @@ function compRender(){
   // тогда «✎ Редактировать» открывается мгновенно, а не двумя запросами по 4 секунды
   if(!EDC[pkey(p.sku)] && p.equip && p.model){
     EDC[pkey(p.sku)]='loading';
-    api({vapi:'izdcomp',eq:p.equip,mod:p.model,artikul:p.sku}).then(function(r){
+    api({vapi:'izdcomp',eq:p.equip,mod:p.model,artikul:p.sku,blk:'1'}).then(function(r){
       EDC[pkey(p.sku)]=(r&&r.ok)?r:null;
       // блок упаковки в карточке строится по составу с уровнями строк — дорисовываем, когда он пришёл
       var cur=prodBy(CARD); if(!EMODE && cur && pkey(cur.sku)===pkey(p.sku)) compRender();
@@ -966,7 +966,7 @@ function compRender(){
   var c=COMP[pkey(p.sku)];
   if(!c){
     box.innerHTML='<div class="card"><b>🧩 Состав и операции</b><div class="empty">⏳ загружаю состав…</div></div>';
-    api({vapi:'varcomp',art:p.sku}).then(function(r){
+    api({vapi:'varcomp',art:p.sku,blk:'1'}).then(function(r){
       COMP[pkey(p.sku)]=r&&r.ok?r:{ok:false,error:(r&&r.error)||'не загрузился'};
       compRender();
     }).catch(function(e){ COMP[pkey(p.sku)]={ok:false,error:String(e.message||e)}; compRender(); });
@@ -999,7 +999,7 @@ function compRender(){
   }).join('')+'</div>';
   h+='<div style="margin-top:var(--s-2)">'+(c.details||[]).map(function(dd){
     return '<div class="dblk">'
-      +'<b style="font-size:13px">'+esc(dd.name)+'</b> <span style="float:right;color:var(--green);font-weight:600">'+(dd.cost||0).toLocaleString('ru-RU',{minimumFractionDigits:2})+' р.</span>'
+      +'<b style="font-size:13px">'+esc(dd.name)+'</b>'+(dd.block?' <span class="muted" style="font-size:11px">блок: '+esc(dd.block)+'</span>':'')+' <span style="float:right;color:var(--green);font-weight:600">'+(dd.cost||0).toLocaleString('ru-RU',{minimumFractionDigits:2})+' р.</span>'
       +'<table style="margin-top:var(--s-1)"><tr><th>Операция</th><th class="num">Кол-во</th><th class="num">Расц.</th><th class="num">Стоим.</th></tr>'
       +(dd.ops||[]).map(function(o){ return '<tr><td>'+esc(o.op)+'</td><td class="num">'+o.qty+'</td><td class="num">'+o.rate+'</td><td class="num">'+(o.cost||0).toLocaleString('ru-RU',{minimumFractionDigits:2})+'</td></tr>'; }).join('')
       +'</table></div>';
@@ -1060,7 +1060,7 @@ function editOpen(){
   }
   var box=$('compSec'); if(box) box.innerHTML='<div class="card"><b>✎ Редактор</b><div class="empty">⏳ загружаю состав и справочник…</div></div>';
   Promise.all([
-    api({vapi:'izdcomp',eq:EDEQ,mod:EDMOD,artikul:EDART}),
+    api({vapi:'izdcomp',eq:EDEQ,mod:EDMOD,artikul:EDART,blk:'1'}),
     IZDREF?Promise.resolve({ok:true}):api({vapi:'izddata'})
   ]).then(function(rs){
     var r=rs[0], ref=rs[1];
@@ -1076,7 +1076,7 @@ function emBuild(r){
   var order=[], by={};
   (r.rows||[]).forEach(function(row){
     var d=row.detail;
-    if(!by[d]){ by[d]={qty:(Number(row.qty)||1), level:row.level||'деталь', seq:[]}; order.push(d); }
+    if(!by[d]){ by[d]={qty:(Number(row.qty)||1), level:row.level||'деталь', block:row.block||'', seq:[]}; order.push(d); }
     if(String(row.level||'')==='изделие') by[d].level='изделие';
     by[d].seq.push({op:row.op, rate:Number(row.rate)||0, on:true, orig:Number(row.rate)||0});
   });
@@ -1086,7 +1086,7 @@ function emBuild(r){
     b.seq.forEach(function(o){ have[pkey(o.op)]=1; });
     var extra=(refOps[d]||((IZDREF&&IZDREF.ratesByDetail&&IZDREF.ratesByDetail[d])||[])).filter(function(o){ return !have[pkey(o.op)]; })
       .map(function(o){ return {op:o.op, rate:Number(o.rate)||0, on:false, fresh:true}; });
-    return {detail:d, qty:b.qty, level:b.level, ops:b.seq.concat(extra)};
+    return {detail:d, qty:b.qty, level:b.level, block:b.block, ops:b.seq.concat(extra)};
   });
 }
 function emTotal(){
@@ -1122,6 +1122,12 @@ function packKindOf(detail,level){
   if(k.indexOf('коробка')===0) return 'box';
   return '';
 }
+// правило (26.09.2026): упаковка называется по ОБОРУДОВАНИЮ ТОВАРА — «<оборудование>», «Фурнитура <оборудование>», «Коробка <оборудование>»
+function packRuleName(kind,eq){ return kind==='product'?eq:(kind==='furn'?'Фурнитура ':'Коробка ')+eq; }
+function packNameNote(kind,detail,eq,block){
+  if(!eq||pkey(detail)===pkey(packRuleName(kind,eq))) return '';
+  return '<div style="font-size:11px;color:var(--amber)">⚠ названа по блоку «'+esc(block||detail)+'», а не по товару «'+esc(eq)+'» — наведите порядок: Операции → Дубли → «📦 Проверить упаковку»</div>';
+}
 function rub(x){ return (Number(x)||0).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:4}); }
 
 /* карточка товара: что заведено и сколько стоит, правка ставки в один клик */
@@ -1133,7 +1139,7 @@ function packCardHtml(p){
   var by={};
   (r.rows||[]).forEach(function(x){
     var k=packKindOf(x.detail,x.level); if(!k) return;
-    if(!by[k]) by[k]={detail:x.detail, ops:[]};
+    if(!by[k]) by[k]={detail:x.detail, block:x.block||'', ops:[]};
     if(pkey(by[k].detail)===pkey(x.detail)) by[k].ops.push({op:x.op, rate:Number(x.rate)||0});
   });
   PACK_KINDS.forEach(function(kind){
@@ -1157,7 +1163,7 @@ function packCardHtml(p){
         +'<button class="btn sm'+(kind==='product'?' pri':'')+'" onclick="packStart(\''+kind+'\')">＋ завести</button></div>';
       return;
     }
-    h+='<span style="flex:1">'+esc(it.detail)+'</span>';
+    h+='<span style="flex:1">'+esc(it.detail)+packNameNote(kind,it.detail,p.equip,it.block)+'</span>';
     it.ops.forEach(function(o,oi){
       var ed=PACKEDIT&&PACKEDIT.sku===pkey(p.sku)&&PACKEDIT.kind===kind&&PACKEDIT.oi===oi;
       h+='<span class="muted">'+esc(o.op)+'</span>';
@@ -1219,7 +1225,7 @@ function packBlockHtml(){
       return;
     }
     var d=EM[di];
-    h+='<span style="flex:1">'+esc(d.detail)+'</span>';
+    h+='<span style="flex:1">'+esc(d.detail)+packNameNote(kind,d.detail,EDEQ,d.block)+'</span>';
     d.ops.forEach(function(o,oi){
       if(!o.on) return;
       h+='<span class="muted">'+esc(o.op)+'</span>'
