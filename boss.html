@@ -28,6 +28,16 @@
   .obody td{ white-space:nowrap; }
   .rin{ width:64px; text-align:right; font-variant-numeric:tabular-nums; }
   .rreset{ margin-left:var(--s-1); }
+  .man{ margin-left:var(--s-1); cursor:help; }
+  /* диалог пересчёта ставок (.scrim/.modal темы; .ov.on — открыт) */
+  .scrim.ov{ display:none; } .scrim.ov.on{ display:flex; }
+  .modal .muted{ margin-bottom:var(--s-3); }
+  button.opt{ display:flex; flex-direction:column; align-items:flex-start; gap:2px; width:100%; min-height:0; padding:var(--s-3) var(--s-4);
+              margin-bottom:var(--s-2); text-align:left; white-space:normal; }
+  button.opt span{ font:var(--t-small); color:var(--fg2); font-weight:400; }
+  .dlgbtns{ justify-content:flex-end; margin-top:var(--s-4); }
+  .modal .note{ margin-top:var(--s-3); }
+  .modal table td{ white-space:normal; }
 </style>
 </head>
 <body class="w-narrow">
@@ -36,6 +46,7 @@
 <div class="hi">🏭 Начальник производства</div>
 <div class="muted sub0">Оклад + мотивация за упакованные изделия. Ставки задаёт директор.</div>
 <div id="app"><div class="center">Загрузка…</div></div>
+<div class="scrim ov" id="ov" onclick="if(event.target===this)closeDlg()"><div class="modal" id="dlg" role="dialog" aria-modal="true"></div></div>
 <script>
 var BASE=(window.TW_CFG&&TW_CFG.hub)||'https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';   // адрес задаёт tw-config.js; запасной — живой GAS
 var APP='tw7prod';
@@ -58,11 +69,17 @@ function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); ret
 var TGID=qp('tgid')||(function(){try{return localStorage.getItem('tw_tgid')||'';}catch(e){return '';}})();
 if(TGID){ try{localStorage.setItem('tw_tgid',TGID);}catch(e){} }
 var ORDERS=[], MO={}, DIR=false, OPEN={};   // DIR=директор/админ (может менять ставки); OPEN — какие заказы раскрыты
+// Прохаб различает ручные и расчётные базовые ставки и пересчитывает с выбором режима; хаб (srv=gas) режимов не знает — затирает всё
+var PX=!!(window.TW_CFG&&TW_CFG.srv&&TW_CFG.srv!=='gas');
+var MAN={}, MANN=null, RRMSG='';   // ручные базовые ставки: артикул → {rate, calc}; MANN — сколько (null — не знаем)
 
 function load(){
-  Promise.all([ api({vapi:'bossmonth'}), api({vapi:'bossorders'}), TGID?api({vapi:'me',tgid:TGID}):Promise.resolve(null) ]).then(function(r){
+  Promise.all([ api({vapi:'bossmonth'}), api({vapi:'bossorders'}), TGID?api({vapi:'me',tgid:TGID}):Promise.resolve(null),
+                PX?api({vapi:'bossrates'}).catch(function(){ return null; }):Promise.resolve(null) ]).then(function(r){
     MO=r[0]||{}; ORDERS=(r[1]||{}).orders||[];
     var me=r[2]; DIR=!!(me&&me.ok&&(me.role==='директор'||me.role==='админ'));
+    var br=r[3]; MAN={}; MANN=null;   // список ставок — только руководству (остальным сервер отвечает «нет прав»)
+    if(br&&br.ok){ MANN=0; (br.rates||[]).forEach(function(x){ if(x.manual){ MAN[x.sku]=x; MANN++; } }); }
     render();
   }).catch(function(e){ $('app').innerHTML='<div class="center">Сеть недоступна</div>'; });
 }
@@ -70,7 +87,7 @@ function render(){
   var app=$('app'), mo=MO;
   // каркас: панель действий → уведомление → плитки месяца → группа заказов
   var month='<div class="toolbar"><span class="meta">Этот месяц ('+esc(mo.month||'')+')'+(DIR?' — начальник производства':'')+'</span>'
-    +(DIR? '<div class="end"><span class="msg" id="rrMsg"></span><button class="sec" onclick="recalcRates()" title="пересчитать базовые ставки от текущего труда изделий">↻ Пересчитать ставки от труда</button></div>' : '')
+    +(DIR? '<div class="end"><span class="msg" id="rrMsg">'+RRMSG+'</span><button class="sec" onclick="recalcRates()" title="пересчитать базовые ставки от текущего труда изделий">'+(PX?'↻ Пересчитать ставки':'↻ Пересчитать ставки от труда')+'</button></div>' : '')
     +'</div>'
     +(mo.packedNoVariant? '<div class="note warn"><div>⚠ '+mo.packedNoVariant+' шт упаковки без указанного варианта — мастер не проставил изделие, мотивация по ним не начислена.</div></div>':'')
     +'<div class="tiles">'
@@ -98,6 +115,8 @@ function riskPill(k){
 function rateCell(o,p){
   if(DIR){
     var reset = p.overridden ? ' <button class="rreset ic" title="вернуть к расчётной ('+p.base+' ₽/шт)" onclick="resetRate(\''+esc(o.id)+'\',\''+esc(p.sku)+'\',this)">↩</button>' : '';
+    var m=MAN[p.sku];   // базовая ставка артикула задана вручную (в заказе не переопределена)
+    if(m&&!p.overridden) reset+='<span class="man" title="базовая ставка задана вручную'+(m.calc!=null?'; расчётная от труда — '+m.calc+' ₽/шт':'')+'">✋</span>';
     return '<td class="num" style="white-space:nowrap"><input class="rin" value="'+p.rate+'" inputmode="decimal" title="ставка ₽/шт (расчётная '+p.base+')" onchange="saveRate(\''+esc(o.id)+'\',\''+esc(p.sku)+'\',this.value,this)">'+reset+'</td>';
   }
   return '<td class="num">'+p.rate+'</td>';   // начальник: только число, без индикатора правки
@@ -134,12 +153,64 @@ function orderCard(o,i){
     +'</div></div>';
 }
 function tog(id){ var c=$('oc_'+id); if(c){ var open=c.classList.toggle('open'); OPEN[id]=open; } }
+// ── пересчёт базовых ставок: свой диалог (не confirm) ──
+function openDlg(h){ $('dlg').innerHTML=h; $('ov').classList.add('on'); }
+function closeDlg(){ $('ov').classList.remove('on'); }
+function rrSay(h){ RRMSG=h; var m=$('rrMsg'); if(m) m.innerHTML=h; }   // переживает перерисовку после load()
+document.addEventListener('keydown',function(e){ if(e.key==='Escape') closeDlg(); });
+function dlgErr(r){ openDlg('<h3>Не получилось</h3><div class="note warn"><div>'+esc((r&&r.error)||'сервер не ответил — проверьте связь и попробуйте ещё раз')+'</div></div>'
+  +'<div class="row dlgbtns"><button class="sec" onclick="closeDlg()">Закрыть</button></div>'); }
 function recalcRates(){
-  var m=$('rrMsg'); if(m) m.textContent='пересчитываю…';
+  if(!PX){   // хаб: один режим — всё от труда, ручные затираются
+    openDlg('<h3>Пересчитать ставки от труда?</h3>'
+      +'<div class="note warn"><div>Все базовые ставки ₽/шт будут пересчитаны от текущего труда изделий. <b>Ставки, выставленные вручную, будут затёрты</b> — хаб не отличает ручные от расчётных.</div></div>'
+      +'<div class="muted" style="margin-top:var(--s-3)">Ставки, заданные в конкретном заказе, не меняются.</div>'
+      +'<div class="row dlgbtns"><button class="sec" onclick="closeDlg()">Отмена</button><button onclick="runHubRecalc()">Пересчитать</button></div>');
+    return;
+  }
+  var n=MANN, keep, all;
+  if(n==null){ keep='ручные ставки останутся как есть, остальные пересчитаются от труда'; all='ручные ставки будут заменены расчётными'; }
+  else if(!n){ keep='ручных ставок сейчас нет — пересчитаются все'; all='ручных ставок сейчас нет — результат тот же'; }
+  else { keep=n+' шт. ручных останутся как есть, остальные пересчитаются от труда'; all='ручные ставки ('+n+' шт.) будут заменены расчётными'; }
+  openDlg('<h3>Пересчитать ставки</h3>'
+    +'<div class="muted">Базовая ставка ₽/шт — доля труда изделия. Сначала покажу, что изменится; применится только после «Применить». Ставки, заданные в конкретном заказе, не меняются.</div>'
+    +'<button class="sec opt" onclick="rrPreview(\'keep\')"><b>Обновить, сохранив ручные</b><span>'+keep+'</span></button>'
+    +'<button class="sec opt" onclick="rrPreview(\'all\')"><b>Обновить все</b><span>'+all+'</span></button>'
+    +'<div class="row dlgbtns"><button class="sec" onclick="closeDlg()">Отмена</button></div>');
+}
+function rrRow(name,sku,was,now,tag){ return '<tr><td>'+esc(name)+' <span class="muted">'+esc(sku)+'</span>'+(tag||'')+'</td><td class="num">'+was+'</td><td class="num">'+now+'</td></tr>'; }
+function rrPreview(mode){
+  openDlg('<div class="center">Считаю, что изменится…</div>');
+  api({vapi:'recalcbossrates',mode:mode,dry:1}).then(function(r){
+    if(!r||!r.ok) return dlgErr(r);
+    var rows=(r.changed||[]).map(function(c){ return rrRow(c.model,c.sku,c.was,c.now,c.manual?' <span class="pill warn">✋ ручная</span>':''); })
+      .concat((r.addedList||[]).map(function(a){ return rrRow(a.model,a.sku,'—',a.now,' <span class="pill info">новая</span>'); }));
+    var man=r.manual||[], manList=man.map(function(m){ return esc(m.model)+' '+m.rate+(Math.abs(m.rate-m.calc)>0.001?' (расчётная '+m.calc+')':''); }).join(', ');
+    var note = !man.length? '' : mode==='all'
+      ? '<div class="note warn"><div><b>Будут затёрты ручные ('+man.length+' шт.):</b> '+manList+'</div></div>'
+      : '<div class="note"><div><b>Останутся как есть — ручные ('+man.length+' шт.):</b> '+manList+'</div></div>';
+    var title=mode==='all'?'Обновить все':'Обновить, сохранив ручные';
+    if(!rows.length){ openDlg('<h3>'+title+'</h3><div class="note ok"><div>Изменений нет — '+(mode==='all'?'все ставки уже совпадают с расчётными':'расчётные ставки уже актуальны')+'.</div></div>'+note
+      +'<div class="row dlgbtns"><button class="sec" onclick="recalcRates()">Назад</button><button class="sec" onclick="closeDlg()">Закрыть</button></div>'); return; }
+    openDlg('<h3>'+title+': что изменится</h3>'
+      +'<div class="tbwrap"><table><thead><tr><th>Изделие</th><th class="num">Было ₽/шт</th><th class="num">Станет</th></tr></thead><tbody>'+rows.join('')+'</tbody></table></div>'
+      +note
+      +'<div class="row dlgbtns"><button class="sec" onclick="recalcRates()">Назад</button><button class="sec" onclick="closeDlg()">Отмена</button>'
+      +'<button onclick="rrApply(\''+mode+'\')">Применить ('+rows.length+')</button></div>');
+  }).catch(function(){ dlgErr(null); });
+}
+function rrApply(mode){
+  api({vapi:'recalcbossrates',mode:mode,dry:0}).then(function(r){
+    if(!r||!r.ok) return dlgErr(r);
+    closeDlg(); rrSay('<span class="ok">обновлено ставок: '+(r.changedCount||0)+(r.added?', добавлено: '+r.added:'')+'</span>'); load();
+  }).catch(function(){ dlgErr(null); });
+}
+function runHubRecalc(){
+  closeDlg(); rrSay('пересчитываю…');
   api({vapi:'recalcbossrates'}).then(function(r){
-    if(r&&r.ok){ if(m) m.innerHTML='<span class="ok">обновлено ставок: '+(r.changedCount||0)+'</span>'; load(); }
-    else if(m) m.innerHTML='<span class="err">'+((r&&r.error)||'ошибка')+'</span>';
-  }).catch(function(){ if(m) m.innerHTML='<span class="err">сеть</span>'; });
+    if(r&&r.ok){ rrSay('<span class="ok">обновлено ставок: '+(r.changedCount||0)+'</span>'); load(); }
+    else rrSay('<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>');
+  }).catch(function(){ rrSay('<span class="err">сеть</span>'); });
 }
 function saveRate(orderId,sku,val,el){
   var v=String(val).trim().replace(',','.'); if(el) el.disabled=true;
