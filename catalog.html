@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="tw-theme.js"></script>
+<script src="tw-config.js"></script>
+<title>Тигервуд — Каталог изделий</title>
+<!-- Замена GAS-панелей хаба CatalogPanel (?page=catalog) и IzdPanel (?page=izd): каталог вариантов, состав «от детали»,
+     сравнение, клон, привязка «сирот», удаление, «собрано» + вкладка «Таблица состава» (бывший конструктор IzdPanel).
+     ?find=<артикул|модель> — фокус на изделии (ссылка из заказа production.html). ES5: открывается в Telegram на старых Android. -->
+<style>
+  .grp{ background:var(--card); border:1px solid var(--line); border-radius:var(--r-card); margin-bottom:var(--s-3); overflow:hidden; box-shadow:var(--shadow-card); }
+  .ghead{ display:flex; justify-content:space-between; align-items:center; gap:var(--s-2); padding:var(--s-3) var(--s-4); cursor:pointer; }
+  .ghead:hover, .m2head:hover, .mhead:hover{ background:var(--card2); }
+  .gname{ font:var(--t-heading); }
+  .gsub{ font:var(--t-small); color:var(--muted); }
+  .gbody, .mbody{ border-left:1px solid var(--line); margin-left:var(--s-3); }
+  .m2{ border-top:1px solid var(--line); }
+  .m2head{ display:flex; justify-content:space-between; align-items:center; gap:var(--s-2); padding:var(--s-3) var(--s-4) var(--s-3) var(--s-5); cursor:pointer; background:var(--card2); }
+  .m{ border-top:1px solid var(--line); transition:background-color .3s; }
+  .m.focus-hl{ background:var(--amber-bg); }
+  .mhead{ display:flex; align-items:center; gap:var(--s-3); padding:var(--s-3) var(--s-4) var(--s-3) var(--s-5); flex-wrap:wrap; }
+  .mname{ font-weight:600; flex:1; min-width:160px; cursor:pointer; }
+  .cost{ font-weight:600; color:var(--green); font-variant-numeric:tabular-nums; }
+  .price{ color:var(--accent-text); font-variant-numeric:tabular-nums; }
+  .share{ font:var(--t-small); color:var(--amber); }
+  .hrs{ font:var(--t-small); font-weight:600; color:var(--fg2); }
+  .detail{ display:none; padding:var(--s-1) var(--s-4) var(--s-4) var(--s-5); } .m.open .detail{ display:block; }
+  .stage{ display:flex; align-items:center; gap:var(--s-2); font:var(--t-small); margin:var(--s-1) 0; }
+  .stage .sb{ display:inline-block; height:8px; border-radius:var(--r-pill); background:var(--bar); }
+  .stage .nm{ width:150px; color:var(--muted); }
+  .dblk{ border:1px solid var(--line); border-radius:var(--r-ctl); padding:var(--s-2) var(--s-3); margin:var(--s-2) 0; background:var(--card2); }
+  .dblk table, table.cmp, table.izd{ font:var(--t-small); margin-top:var(--s-1); }
+  .dblk th, .dblk td, table.cmp th, table.cmp td{ padding:var(--s-1) var(--s-2); }
+  td.n, th.n{ text-align:right; font-variant-numeric:tabular-nums; }
+  .dhead{ font-weight:600; } .dcost{ color:var(--green); font-weight:600; float:right; font-variant-numeric:tabular-nums; }
+  .cmpbar{ position:fixed; bottom:0; left:0; right:0; background:var(--card); border-top:1px solid var(--line); box-shadow:var(--shadow-pop); padding:var(--s-3) var(--s-4); display:flex; gap:var(--s-3); align-items:center; justify-content:center; z-index:40; }
+  .scrim{ align-items:flex-start; overflow:auto; }
+  .scrim>.modal{ max-width:900px; width:100%; max-height:none; overflow:visible; }
+  .scrim>.modal.sm{ max-width:480px; }
+  .opline{ display:flex; align-items:center; gap:var(--s-2); margin:var(--s-1) 0; }
+  .opline.off{ opacity:.5; }
+  .opline label{ display:inline-flex; align-items:center; gap:var(--s-1); font-size:13px; cursor:pointer; }
+  input[type=checkbox]{ width:auto; }
+  #msg{ display:none; margin:0 0 var(--s-4); padding:var(--s-3) var(--s-4); border-radius:var(--r-card); font:var(--t-small); }
+  #msg.ok{ display:block; background:var(--green-bg); color:var(--green); }
+  #msg.err{ display:block; background:var(--red-bg); color:var(--red); }
+  table.izd{ width:100%; } table.izd td input{ width:84px; }
+  table.izd tr.norate td{ background:var(--red-bg); }
+  .pick{ display:flex; flex-direction:column; gap:var(--s-1); margin:var(--s-2) 0; }
+  .pick label{ display:flex; gap:var(--s-2); align-items:center; font:var(--t-small); cursor:pointer; padding:var(--s-1) var(--s-2); border-radius:var(--r-xs); }
+  .pick label:hover{ background:var(--card2); }
+  .fl{ display:block; font:var(--t-small); color:var(--muted); margin:var(--s-2) 0 var(--s-1); }
+  @media (max-width:640px){
+    .ghead{ padding:var(--s-3); }
+    .mhead{ padding:var(--s-3) var(--s-3) var(--s-3) var(--s-4); gap:var(--s-1) var(--s-2); }
+    .mname{ flex:1 1 100%; }
+    .detail{ padding:var(--s-2) var(--s-2) var(--s-3) var(--s-3); }
+    .stage .nm{ width:104px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .dblk{ padding:var(--s-2); overflow-x:auto; } .dblk table{ min-width:420px; }
+    .cmpbar{ flex-wrap:wrap; padding:var(--s-3); gap:var(--s-2); }
+    .scrim{ padding:var(--s-2); } .scrim>.modal{ padding:var(--s-3); }
+    .tbwrap{ overflow-x:auto; } table.izd{ min-width:560px; }
+  }
+</style>
+</head>
+<body>
+<div id="twload"><i></i></div>
+<div id="twwait"><div class="wb"><div class="sp"></div><div class="wt" id="twwt">Сохраняю…</div><div class="wh">идёт обмен с сервером — не нажимайте</div></div></div>
+<div class="hi">📦 Каталог изделий</div>
+<div class="sub">Модели → варианты (артикулы), состав по деталям и операциям, себестоимость труда.</div>
+<div class="tabs" id="tabs">
+  <button class="on" data-tab="cat" onclick="setTab('cat')">Каталог</button>
+  <button data-tab="izd" onclick="setTab('izd')">Таблица состава</button>
+</div>
+<div id="msg"></div>
+
+<!-- ═══ вкладка «Каталог» (бывшая CatalogPanel) ═══ -->
+<div id="tabCat">
+  <div class="toolbar">
+    <input id="q" type="search" class="search" placeholder="🔎 поиск: оборудование, модель, артикул" oninput="render()">
+    <select id="sort" onchange="render()" style="width:auto">
+      <option value="name">по названию</option>
+      <option value="cost">по себестоимости ↓</option>
+      <option value="share">по доле труда ↓</option>
+    </select>
+    <span class="meta" id="cnt"></span>
+    <div class="end"><button class="sm" onclick="newModel()">＋ Новая модель</button></div>
+  </div>
+  <div id="list"><div class="empty">Загрузка…</div></div>
+</div>
+
+<!-- ═══ вкладка «Таблица состава» (бывшая IzdPanel) ═══ -->
+<div id="tabIzd" style="display:none">
+  <div class="card">
+    <div class="toolbar" style="margin-bottom:0">
+      <div><label class="fl">Оборудование</label><select id="iEq" onchange="izdFillModels()"></select></div>
+      <div><label class="fl">Модель</label><select id="iMod" onchange="izdFillVars()"></select></div>
+      <div><label class="fl">Вариант (артикул)</label><select id="iArt"></select></div>
+      <div style="align-self:flex-end"><button onclick="izdLoad()">Загрузить состав</button></div>
+      <span class="gsub" id="iTop" style="align-self:flex-end"></span>
+    </div>
+  </div>
+  <div id="izdEd" style="display:none;margin-top:var(--s-3)">
+    <div class="card">
+      <div class="tbwrap"><table class="izd"><thead><tr><th>Деталь</th><th>Операция</th><th class="n">Кол-во</th><th class="n">Расценка</th><th class="n">Стоимость</th><th></th></tr></thead><tbody id="iTb"></tbody></table></div>
+      <div id="iTot" class="cost" style="margin-top:var(--s-3);font-size:16px"></div>
+      <div class="tray" style="margin-top:var(--s-3)">
+        <div class="toolbar" style="margin:0">
+          <div style="flex:1;min-width:220px"><label class="fl">Деталь</label><input id="aDet" list="detList" placeholder="начните вводить…" onchange="izdFillOps()"></div>
+          <div><label class="fl">Операция</label><select id="aOp" onchange="izdNewOpTgl()" style="width:auto;min-width:180px"></select></div>
+          <div><label class="fl">Кол-во</label><input id="aQty" type="number" min="0" value="1" style="width:80px"></div>
+          <div style="align-self:flex-end"><button class="sm" onclick="izdAddRow()">＋ Добавить</button></div>
+        </div>
+        <div class="toolbar" id="aNew" style="display:none;margin:var(--s-2) 0 0">
+          <div style="flex:1;min-width:220px"><label class="fl">Название новой операции</label><input id="nName" list="opsList" placeholder="напр. Фрезеровка паза"></div>
+          <div><label class="fl">Расценка, р./шт</label><input id="nRate" type="number" min="0" step="0.01" style="width:110px"></div>
+          <span class="gsub" id="nMsg" style="align-self:flex-end">операция получит свой номер и попадёт в справочник</span>
+        </div>
+      </div>
+      <div class="tray" style="margin-top:var(--s-3)">
+        <label class="fl" style="margin-top:0">📋 Скопировать все операции из другого варианта (напр. «под лаком» → «без лака»)</label>
+        <div class="toolbar" style="margin:0">
+          <select id="sArt" style="flex:1;min-width:220px"></select>
+          <button class="sm" onclick="izdCopyFrom()">Загрузить операции сюда</button>
+          <span class="gsub" id="sMsg"></span>
+        </div>
+      </div>
+      <div class="toolbar" style="margin:var(--s-4) 0 0">
+        <button class="green" onclick="izdSave()">💾 Сохранить состав</button>
+        <button class="sm" onclick="izdSyncRates()" title="показать расценки строк по справочнику «Расценки»">⟳ Расценки из справочника</button>
+        <span class="gsub" id="iMsg"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="cmpbar" id="cmpbar" style="display:none">
+  <span>Выбрано для сравнения: <b id="cmpn">0</b></span>
+  <button class="sm" onclick="showCompare()">Сравнить рядом</button>
+  <button class="sm sec" onclick="clearCmp()">Сбросить</button>
+</div>
+<div class="scrim" id="cmpmodal" style="display:none"><div class="modal">
+  <div class="toolbar" style="margin:0"><h3 style="margin:0">Сравнение моделей</h3><div class="end"><button class="sm sec" onclick="hide('cmpmodal')">Закрыть</button></div></div>
+  <div id="cmpbody" style="margin-top:var(--s-3);overflow:auto"></div>
+</div></div>
+
+<!-- редактор состава «от детали» -->
+<div class="scrim" id="edmodal" style="display:none"><div class="modal">
+  <div class="toolbar" style="margin:0">
+    <h3 style="margin:0" id="edtitle">Состав модели</h3>
+    <div class="end"><b class="cost" id="edtot"></b><button class="sm sec" onclick="closeEdit()">Закрыть</button></div>
+  </div>
+  <div id="edhead" style="margin-top:var(--s-2)"></div>
+  <div class="toolbar" style="margin-top:var(--s-3)">
+    <input id="edAddDet" list="detList" placeholder="＋ добавить деталь (начните вводить)" style="flex:1;min-width:220px">
+    <button class="sm green" onclick="addDet()">Добавить деталь</button>
+    <button class="sm sec" onclick="refreshRefs()" title="перечитать операции и расценки — если только что правили их в «Операциях и расценках»">↻ справочник</button>
+    <span id="refsMsg" class="gsub"></span>
+  </div>
+  <p class="gsub" style="margin:var(--s-1) 0">Деталь приносит все свои операции — снимите галочку с ненужных, поставьте кол-во детали в изделии.
+    <b>Порядок операций — свой у этой модели</b>: стрелки ↑↓ меняют его только здесь. Операции без галочки показаны в конце — включите нужную и поставьте на место.</p>
+  <div id="edwarn" style="margin-top:var(--s-2)"></div>
+  <div id="edbody" style="margin-top:var(--s-2)"></div>
+  <div class="toolbar" style="margin:var(--s-4) 0 0">
+    <button class="green" onclick="saveModel()">💾 Сохранить состав</button>
+    <span id="edmsg" class="gsub"></span>
+  </div>
+</div></div>
+
+<!-- общий диалог вместо prompt/confirm (в Telegram на части телефонов они не показываются) -->
+<div class="scrim" id="askmodal" style="display:none"><div class="modal sm">
+  <h3 id="askT"></h3><div id="askB"></div>
+  <div class="toolbar" style="margin:var(--s-4) 0 0"><div class="end"><button class="sm sec" onclick="hide('askmodal')">Отмена</button><button class="sm" id="askOk">OK</button></div></div>
+</div></div>
+<datalist id="detList"></datalist><datalist id="opsList"></datalist>
+
+<script>
+var BASE=(window.TW_CFG&&TW_CFG.hub)||'https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';   // адрес задаёт tw-config.js
+var APP='tw7prod';
+function twQp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
+var TGID=twQp('tgid')||(function(){try{return localStorage.getItem('tw_tgid')||'';}catch(e){return '';}})();
+try{ if(!TGID && window.Telegram && Telegram.WebApp && Telegram.WebApp.initDataUnsafe && Telegram.WebApp.initDataUnsafe.user) TGID=String(Telegram.WebApp.initDataUnsafe.user.id); }catch(e){}
+// личность — токеном (?tok= или сохранённым после входа), а не адресом
+function twTok(){ try{ return twQp('tok')||localStorage.getItem('tw_tok')||''; }catch(e){ return twQp('tok')||''; } }
+(function(){ var t=twQp('tok'); if(t){ try{ localStorage.setItem('tw_tok',t); }catch(e){} } })();
+function twAuthWall(r){
+  if(r&&r.needAuth){ document.body.innerHTML='<div style="padding:var(--s-6);font:var(--t-body);color:var(--fg)"><div style="font:var(--t-title);margin-bottom:var(--s-3)">🔒 Нужен вход</div><div>'
+    +esc(r.error||'Откройте сервис из бота @TWOtchbot или войдите по личному коду.')+'</div></div>'; }
+  return r;
+}
+function qs(p){ var t=twTok(); if(t) p.tok=t; p.app=APP; if(TGID&&!p.tgid) p.tgid=TGID;
+  return Object.keys(p).map(function(k){ return k+'='+encodeURIComponent(p[k]==null?'':p[k]); }).join('&'); }
+function done(pr){ return pr.then(function(r){ loadOff(); return r.json(); }, function(e){ loadOff(); throw e; }).then(twAuthWall); }
+function api(p){ loadOn(); return done(fetch(BASE+'?'+qs(p))); }
+function apiPost(p){ loadOn(); return done(fetch(BASE,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:qs(p)})); }
+var LD=0; function loadOn(){ LD++; var b=el('twload'); if(b) b.style.display='block'; }
+function loadOff(){ LD=Math.max(0,LD-1); if(!LD){ var b=el('twload'); if(b) b.style.display='none'; } }
+var BUSY=0;
+/** запись: заслонка «не нажимайте», повторный клик не уходит; ответ {ok:false} → сообщение */
+function write(p, say, ok, post){
+  if(BUSY) return; BUSY=1;
+  var w=el('twwait'); el('twwt').textContent=say||'Сохраняю…'; w.style.display='flex';
+  (post?apiPost(p):api(p)).then(function(r){ BUSY=0; w.style.display='none';
+    if(!r||!r.ok){ msg('⚠ '+esc((r&&r.error)||'не сохранилось')); return; }
+    if(ok) ok(r);
+  }).catch(function(e){ BUSY=0; w.style.display='none'; msg('⚠ связь оборвалась: '+esc(e.message||e)); });
+}
+function el(id){ return document.getElementById(id); }
+function hide(id){ el(id).style.display='none'; }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+function jsq(s){ return esc(String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'")); }
+function fmt(n){ return (Number(n)||0).toLocaleString('ru-RU',{maximumFractionDigits:2}); }
+function num(v){ return Number(String(v==null?'':v).replace(',','.'))||0; }
+function r2(n){ return Math.round((Number(n)||0)*100)/100; }
+function hrs(min){ var h=Math.floor(min/60), m=Math.round(min%60); return (h?h+' ч ':'')+m+' мин'; }
+function msg(t,ok){ var m=el('msg'); m.className=ok?'ok':'err'; m.innerHTML=t; if(ok){ clearTimeout(msg._t); msg._t=setTimeout(function(){ m.className=''; m.innerHTML=''; },5000); } }
+/** диалог: body — html, onOk(root) → false оставляет окно открытым */
+function ask(title, body, onOk, okText){
+  el('askT').textContent=title; el('askB').innerHTML=body; el('askOk').textContent=okText||'OK';
+  el('askOk').onclick=function(){ if(onOk(el('askB'))!==false) hide('askmodal'); };
+  el('askmodal').style.display='flex';
+  var f=el('askB').querySelector('input,select'); if(f) try{ f.focus(); }catch(e){}
+}
+var TAB='cat';
+function setTab(t){ TAB=t; el('tabCat').style.display=t==='cat'?'':'none'; el('tabIzd').style.display=t==='izd'?'':'none';
+  var bs=el('tabs').querySelectorAll('button'); for(var i=0;i<bs.length;i++) bs[i].className=bs[i].getAttribute('data-tab')===t?'on':'';
+  if(t==='izd') izdInit(); updateCmpBar(); }
+
+/* ══════════ КАТАЛОГ ══════════ */
+var DATA=[], RD={}, DETS=[], EQMOD={equipments:[],modelsByEq:{}}, OPSREF=[], RDAT=0, FOCUS=twQp('find');
+function loadCat(){
+  api({vapi:'catalog'}).then(function(r){
+    if(!r||!r.ok){ el('list').innerHTML='<div class="empty">Ошибка: '+esc((r&&r.error)||'нет ответа')+'</div>'; return; }
+    DATA=r.groups||[];
+    if(FOCUS && !el('q').value) el('q').value=FOCUS;   // фокус из заказа: ?find=<артикул/модель>
+    render();
+    if(FOCUS){ var f=FOCUS; FOCUS=''; setTimeout(function(){ focusVariant(f); },120); }
+    if(TAB==='izd') izdInit();
+  }).catch(function(e){ el('list').innerHTML='<div class="empty">Ошибка: '+esc(e.message||e)+'</div>'; });
+}
+// справочник расценок по деталям (редактор «от детали», таблица состава) — читается заново при возврате в раздел
+function loadRefs(cb){
+  api({vapi:'izddata'}).then(function(d){
+    if(!d||!d.ok){ if(d&&d.error) msg('⚠ справочник: '+esc(d.error)); return; }
+    RD=d.ratesByDetail||{}; DETS=d.details||[]; EQMOD={equipments:d.equipments||[],modelsByEq:d.modelsByEq||{}}; OPSREF=d.opsRef||[]; RDAT=Date.now();
+    el('detList').innerHTML=DETS.map(function(x){ return '<option value="'+esc(x)+'">'; }).join('');
+    el('opsList').innerHTML=OPSREF.map(function(o){ return '<option value="'+esc(o.name)+'">'; }).join('');
+    if(cb) cb();
+  }).catch(function(){});
+}
+loadCat(); loadRefs();
+window.addEventListener('message',function(e){ var d=e&&e.data; if(d&&d.tw==='refresh'){ loadRefs(); loadCat(); } });
+
+function allVariants(){ var out=[]; DATA.forEach(function(g){ g.models.forEach(function(m){ m.variants.forEach(function(v){ out.push(v); }); }); }); return out; }
+function variantInfo(art){ var a=allVariants(); for(var i=0;i<a.length;i++) if(a[i].art===art) return a[i]; return null; }
+function vdesc(v){ return [v.size,v.color,v.compl].filter(Boolean).join(' · ')||v.name||v.mod||v.art; }
+function focusVariant(art){
+  art=String(art||'').trim().toLowerCase(); if(!art) return;
+  var nodes=document.querySelectorAll('#list .m[data-art]');
+  for(var i=0;i<nodes.length;i++) if((nodes[i].getAttribute('data-art')||'').toLowerCase()===art){
+    var m=nodes[i]; m.classList.add('open'); loadComp(m); m.classList.add('focus-hl');
+    m.scrollIntoView({behavior:'smooth',block:'center'}); setTimeout(function(){ m.classList.remove('focus-hl'); },3500); return;
+  }
+}
+function vmatch(g,m,v,q){ return !q || (g.eq+' '+m.mod+' '+v.art+' '+v.name+' '+v.size+' '+v.color+' '+v.compl).toLowerCase().indexOf(q)>=0; }
+function render(){
+  var q=(el('q').value||'').toLowerCase().trim(), sort=el('sort').value, totalV=0, totalG=0;
+  var html=DATA.map(function(g,gi){
+    var models=g.models.map(function(m){ return {mod:m.mod, variants:m.variants.filter(function(v){ return vmatch(g,m,v,q); })}; }).filter(function(m){ return m.variants.length; });
+    if(!models.length) return '';
+    if(sort==='cost') models.forEach(function(m){ m.variants.sort(function(a,b){ return b.cost-a.cost; }); });
+    if(sort==='share') models.forEach(function(m){ m.variants.sort(function(a,b){ return (b.laborShare||0)-(a.laborShare||0); }); });
+    var nv=0; models.forEach(function(m){ nv+=m.variants.length; }); totalV+=nv; totalG++;
+    var orph=models.reduce(function(s,m){ return s+m.variants.filter(function(v){ return v.orphan; }).length; },0);
+    var badge=orph?'<span class="pill warn" title="внутри есть составы архивных товаров ('+orph+')">⏳ есть вопросы</span>':'<span class="pill ok">✓ в реестре</span>';
+    var gid='g'+gi, open=!!q;
+    return '<div class="grp"><div class="ghead" onclick="tgl(\''+gid+'\')"><span class="gname"><span id="'+gid+'a">'+(open?'▾':'▸')+'</span> '+esc(g.eq)+' '+badge+'</span>'
+      +'<span class="gsub">'+nv+' вар. · средн. себест. '+fmt(g.avgCost)+' р.</span></div>'
+      +'<div id="'+gid+'b" class="gbody" style="'+(open?'':'display:none')+'">'+models.map(function(m,mi){ return modelBlock(m,gi,mi,q); }).join('')+'</div></div>';
+  }).filter(Boolean).join('');
+  el('cnt').textContent='оборудования: '+totalG+' · вариантов: '+totalV;
+  el('list').innerHTML=html||'<div class="empty">Ничего не найдено</div>';
+  updateCmpBar();
+}
+function tgl(id){ var b=el(id+'b'), a=el(id+'a'); if(!b) return; var vis=b.style.display!=='none'; b.style.display=vis?'none':''; if(a) a.textContent=vis?'▸':'▾'; }
+function modelBlock(m,gi,mi,q){
+  var id='mm'+gi+'_'+mi, done=m.variants.filter(function(v){ return v.hasComp; }).length, asm=m.variants.filter(function(v){ return v.assembled; }).length;
+  var morph=m.variants.some(function(v){ return v.orphan; }), single=m.variants.length===1, open=!!q||single;
+  return '<div class="m2"><div class="m2head" onclick="tgl(\''+id+'\')"><span style="font-weight:600"><span id="'+id+'a">'+(open?'▾':'▸')+'</span> '
+    +(morph?'<span class="pill warn">⏳ не в реестре</span> ':'')+esc(m.mod||'(без модели)')+'</span>'
+    +'<span class="gsub">'+m.variants.length+(single?' вариант':' вариантов')+' · состав '+done+'/'+m.variants.length
+    +' · <b class="asmcount" style="color:'+(asm===m.variants.length&&asm>0?'var(--green)':'var(--amber)')+'">собрано '+asm+'/'+m.variants.length+'</b></span></div>'
+    +'<div id="'+id+'b" class="mbody" style="'+(open?'':'display:none')+'">'+m.variants.map(function(v,vi){ return variantRow(m,v,gi,mi,vi); }).join('')+'</div></div>';
+}
+var CMP={};
+function variantRow(m,v,gi,mi,vi){
+  var id='v'+gi+'_'+mi+'_'+vi, a=jsq(v.art), e=jsq(v.eq), mo=jsq(v.mod);
+  var stagesHtml='';
+  if(v.hasComp){ var mx=Math.max.apply(null,v.stages.map(function(s){ return s.cost; }).concat([1]));
+    stagesHtml=v.stages.map(function(s){ return '<div class="stage"><span class="nm">'+esc(s.op)+'</span><span class="sb" style="width:'+Math.max(6,Math.round(s.cost/mx*180))+'px"></span> '+fmt(s.cost)+' р.'+(s.min?' · '+hrs(s.min):'')+'</div>'; }).join(''); }
+  var actions;
+  if(v.orphan){   // состав архивного товара → привязать к варианту или удалить
+    actions='<span class="pill warn">⏳ не привязан к варианту</span>'
+      +'<button class="sm sec" onclick="reassignOrphan(\''+e+'\',\''+mo+'\')" title="перенести состав в вариант реестра (сохранить работу)">🔗 привязать</button>'
+      +'<button class="sm danger sec" onclick="delComp(\'\',\''+e+'\',\''+mo+'\')">🗑 удалить</button>';
+  } else {
+    actions='<button class="sm sec asmbtn" onclick="setAsm(this,\''+a+'\')" title="отметка директора: изделие полностью расписано по операциям" style="border-color:transparent;'
+      +(v.assembled?'background:var(--green-bg);color:var(--green)':'background:var(--amber-bg);color:var(--amber)')+'">'+(v.assembled?'✔ собрано':'☐ отметить собранным')+'</button>'
+      +'<button class="sm sec" onclick="openEdit(\''+a+'\',\''+e+'\',\''+mo+'\')">✎ '+(v.hasComp?'править':'задать')+'</button>'
+      +'<button class="sm sec" onclick="cloneVariant(\''+a+'\',\''+e+'\',\''+mo+'\')" title="скопировать состав из другого варианта">⎘ клон</button>'
+      +(v.hasComp?'<button class="sm danger sec" onclick="delComp(\''+a+'\',\'\',\'\')" title="удалить состав">🗑</button>':'');
+  }
+  var metrics=v.hasComp
+    ? '<span class="cost">себест. '+fmt(v.cost)+' р.</span><span class="hrs">⏱ '+hrs(v.hours*60)+'</span>'
+      +(v.price?'<span class="price">цена '+fmt(v.price)+' р.</span>':'<span class="gsub">цена —</span>')
+      +(v.laborShare!=null?'<span class="share">труд '+v.laborShare+'% цены</span>':'')
+      +'<span class="pill">'+v.detailsCount+' дет. · '+v.opsCount+' оп.</span>'
+    : '<span class="pill warn">⏳ состав не задан</span>'+(v.price?'<span class="price">цена '+fmt(v.price)+' р.</span>':'');
+  return '<div class="m" id="'+id+'" data-art="'+esc(v.art)+'"><div class="mhead">'
+    +(v.hasComp?'<input type="checkbox" onclick="toggleCmp(\''+a+'\')" '+(CMP[v.art]?'checked':'')+' title="сравнить">':'<span style="width:14px;display:inline-block"></span>')
+    +'<span class="mname" onclick="tg(\''+id+'\')"><span class="pill '+(v.orphan?'warn':'ok')+'">'+(v.orphan?'⏳ нет в реестре':'✓ реестр')+'</span> '
+    +esc(vdesc(v))+' <span class="gsub">'+esc(v.art)+'</span></span>'+metrics+actions+'</div>'
+    +(v.hasComp?'<div class="detail"><div style="margin:var(--s-2) 0"><b class="label">Труд по этапам:</b>'+stagesHtml+'</div><b class="label">По деталям:</b>'
+      +'<div class="dets" data-art="'+esc(v.art)+'"><span class="gsub">разверните, чтобы загрузить состав…</span></div></div>':'')+'</div>';
+}
+function tg(id){ var e=el(id); if(!e) return; var opening=!e.classList.contains('open'); e.classList.toggle('open'); if(opening) loadComp(e); }
+function compDetailsHtml(details){
+  return (details||[]).map(function(d){
+    return '<div class="dblk"><div class="dhead">'+esc(d.name)+' <span class="dcost">'+fmt(d.cost)+' р.</span></div><table><tr><th>Операция</th><th class="n">Кол-во</th><th class="n">Расц.</th><th class="n">Стоим.</th></tr>'
+      +d.ops.map(function(o){ return '<tr><td>'+esc(o.op)+'</td><td class="n">'+o.qty+'</td><td class="n">'+fmt(o.rate)+'</td><td class="n">'+fmt(o.cost)+'</td></tr>'; }).join('')+'</table></div>';
+  }).join('')||'<span class="gsub">состав не задан</span>';
+}
+function loadComp(mEl){
+  var box=mEl.querySelector('.dets'); if(!box || box.getAttribute('data-loaded')) return;
+  box.setAttribute('data-loaded','1'); box.innerHTML='<span class="gsub">Загрузка состава…</span>';
+  api({vapi:'varcomp',art:box.getAttribute('data-art')}).then(function(r){ box.innerHTML=(r&&r.ok)?compDetailsHtml(r.details):'<span class="gsub">не удалось загрузить</span>'; })
+    .catch(function(){ box.removeAttribute('data-loaded'); box.innerHTML='<span class="gsub">ошибка загрузки</span>'; });
+}
+function setAsm(btn,art){
+  var on=/☐/.test(btn.textContent);
+  write({vapi:'setassembled',art:art,val:on?'1':''}, 'Сохраняю отметку…', function(){
+    var v=variantInfo(art); if(v) v.assembled=on;
+    btn.style.background=on?'var(--green-bg)':'var(--amber-bg)'; btn.style.color=on?'var(--green)':'var(--amber)'; btn.textContent=on?'✔ собрано':'☐ отметить собранным';
+    var m2=btn.closest?btn.closest('.m2'):null;
+    if(m2){ var ab=m2.querySelectorAll('.asmbtn'), k=0; for(var i=0;i<ab.length;i++) if(/✔/.test(ab[i].textContent)) k++;
+      var c=m2.querySelector('.asmcount'); if(c){ c.textContent='собрано '+k+'/'+ab.length; c.style.color=(k===ab.length&&k>0)?'var(--green)':'var(--amber)'; } }
+  });
+}
+
+/* ── сравнение ── */
+function toggleCmp(key){ if(CMP[key]) delete CMP[key]; else CMP[key]=1; updateCmpBar(); }
+function updateCmpBar(){ var n=Object.keys(CMP).length; el('cmpbar').style.display=(n&&TAB==='cat')?'':'none'; el('cmpn').textContent=n; }
+function clearCmp(){ CMP={}; render(); }
+function showCompare(){
+  var items=Object.keys(CMP).map(variantInfo).filter(Boolean); if(items.length<2){ msg('⚠ отметьте хотя бы два варианта'); return; }
+  var all={}; items.forEach(function(it){ it.stages.forEach(function(s){ all[s.op]=1; }); });
+  function row(label,fn){ return '<tr><td class="gsub">'+label+'</td>'+items.map(function(it){ return '<td class="n">'+fn(it)+'</td>'; }).join('')+'</tr>'; }
+  el('cmpbody').innerHTML='<table class="cmp"><tr><th>Показатель</th>'+items.map(function(it){ return '<th>'+esc(it.eq)+'<br><span class="gsub">'+esc(it.mod)+' · '+esc(vdesc(it))+'</span></th>'; }).join('')+'</tr>'
+    +row('Себестоимость труда',function(it){ return fmt(it.cost)+' р.'; })+row('Нормо-часы',function(it){ return hrs(it.hours*60); })
+    +row('Цена продажи',function(it){ return it.price?fmt(it.price)+' р.':'—'; })+row('Труд в цене',function(it){ return it.laborShare!=null?it.laborShare+'%':'—'; })
+    +row('Деталей',function(it){ return it.detailsCount; })+row('Операций',function(it){ return it.opsCount; })
+    +'<tr><td colspan="'+(items.length+1)+'" class="label" style="padding-top:var(--s-3)">Труд по этапам, р.:</td></tr>'
+    +Object.keys(all).map(function(op){ return row(esc(op),function(it){ var s=it.stages.filter(function(x){ return x.op===op; })[0]; return s?fmt(s.cost):'—'; }); }).join('')+'</table>';
+  el('cmpmodal').style.display='flex';
+}
+
+/* ══ РЕДАКТОР «ОТ ДЕТАЛИ» ══ */
+var EDEQ='', EDMOD='', EDART='', EM=[];   // EM=[{detail, qty, level, ops:[{op,rate,code,on,fresh}]}]
+function refreshRefs(){
+  el('refsMsg').textContent='читаю…';
+  loadRefs(function(){
+    el('refsMsg').textContent='✓ справочник обновлён, деталей: '+DETS.length;
+    if(EDART && el('edmodal').style.display!=='none')
+      ask('Перечитать состав?','<div class="gsub">Несохранённые правки в этом окне пропадут.</div>',function(){ openEdit(EDART,EDEQ,EDMOD); },'Перечитать');
+  });
+}
+function opsForDetail(det){ return (RD[det]||[]).map(function(o){ return {op:o.op, rate:Number(o.rate)||0, code:o.code||'', on:true}; }); }
+function openEdit(art,eq,mod){
+  EDART=art; EDEQ=eq; EDMOD=mod;
+  if(Date.now()-RDAT>20000) loadRefs();
+  var v=variantInfo(art), desc=v?vdesc(v):mod;
+  el('edtitle').textContent='Состав: '+eq+(desc?' — '+desc:''); el('edmsg').textContent='загрузка…'; el('edbody').innerHTML=''; el('edwarn').innerHTML='';
+  el('edhead').innerHTML='<span class="gsub">Оборудование <b>'+esc(eq)+'</b> · Модель <b>'+esc(mod)+'</b> · Артикул <b>'+esc(art)+'</b></span>';
+  el('edmodal').style.display='flex';
+  api({vapi:'izdcomp',eq:eq,mod:mod,artikul:art}).then(function(r){
+    if(!r||!r.ok){ el('edmsg').textContent='ошибка: '+((r&&r.error)||''); return; }
+    warnBox(r.warns||[]);
+    var by={}, order=[];
+    (r.rows||[]).forEach(function(x){
+      if(!by[x.detail]){ by[x.detail]={qty:x.qty||1, ops:{}, seq:[], level:'деталь'}; order.push(x.detail); }
+      by[x.detail].ops[x.op]={rate:x.rate}; by[x.detail].seq.push(x.op); if(x.qty) by[x.detail].qty=x.qty;
+      if(x.level==='изделие') by[x.detail].level='изделие';
+    });
+    EM=order.map(function(det){
+      var have=by[det].ops, ops=[], seen={};
+      // порядок — свой у модели (как лежат строки), неиспользуемые операции детали — следом, из справочника С СЕРВЕРА (refOps)
+      by[det].seq.forEach(function(op){ if(seen[op]) return; seen[op]=1; ops.push({op:op, rate:(have[op]&&have[op].rate)||0, code:'', on:true}); });
+      var fresh=(r.refOps||{})[det]||opsForDetail(det);
+      fresh.forEach(function(o){ if(!seen[o.op]){ seen[o.op]=1; ops.push({op:o.op, rate:Number(o.rate)||0, code:o.code||'', on:false, fresh:true}); } });
+      return {detail:det, qty:by[det].qty||1, ops:ops, level:by[det].level};
+    });
+    el('edmsg').textContent=''; renderEditor();
+  }).catch(function(e){ el('edmsg').textContent='ошибка: '+(e.message||e); });
+}
+function newModel(){
+  var eqs=EQMOD.equipments||[];
+  if(!eqs.length){ msg('⚠ справочник ещё не загрузился — повторите'); return; }
+  ask('Новый состав','<label class="fl">Оборудование</label><select id="nmEq" onchange="nmFill()">'+eqs.map(function(e){ return '<option>'+esc(e)+'</option>'; }).join('')+'</select>'
+    +'<label class="fl">Модель</label><select id="nmMod" onchange="nmFillArt()"></select><label class="fl">Вариант (артикул)</label><select id="nmArt"></select>'
+    +'<div class="gsub" style="margin-top:var(--s-2)">Новый товар заводится в «Товарах» — здесь задаётся его состав.</div>',
+    function(){ var a=el('nmArt').value; if(!a){ return false; } var v=variantInfo(a); closeAsk(); openEdit(a, v?v.eq:el('nmEq').value, v?v.mod:el('nmMod').value); }, 'Открыть редактор');
+  nmFill();
+}
+function closeAsk(){ hide('askmodal'); }
+function nmFill(){ var e=el('nmEq').value; el('nmMod').innerHTML=((EQMOD.modelsByEq||{})[e]||[]).map(function(m){ return '<option>'+esc(m)+'</option>'; }).join('')||'<option value="">(без модели)</option>'; nmFillArt(); }
+function nmFillArt(){ var e=el('nmEq').value, m=el('nmMod').value;
+  el('nmArt').innerHTML=allVariants().filter(function(v){ return v.eq===e && v.mod===m && !v.orphan; })
+    .map(function(v){ return '<option value="'+esc(v.art)+'">'+esc(vdesc(v))+' ['+esc(v.art)+']'+(v.hasComp?' — состав есть':'')+'</option>'; }).join(''); }
+function cloneVariant(toArt,eq,mod){
+  var sibs=allVariants().filter(function(v){ return v.eq===eq && v.mod===mod && v.art!==toArt && v.hasComp && !v.orphan; });
+  if(!sibs.length){ msg('⚠ в этой модели нет варианта с готовым составом. Сначала задайте состав хотя бы одному варианту.'); return; }
+  var v0=variantInfo(toArt);
+  ask('Скопировать состав','<div class="gsub">В «'+esc(v0?vdesc(v0):toArt)+'» из варианта:</div><div class="pick">'
+    +sibs.map(function(v,i){ return '<label><input type="radio" name="cl" value="'+esc(v.art)+'"'+(i?'':' checked')+'> '+esc(vdesc(v))+' <span class="gsub">'+esc(v.art)+' · '+fmt(v.cost)+' р.</span></label>'; }).join('')+'</div>',
+    function(root){ var p=root.querySelector('input[name=cl]:checked'); if(!p) return false;
+      write({vapi:'clonevariant',from:p.value,eq:eq,mod:mod,to:toArt}, 'Копирую состав — заказы пересоберутся…', function(){ msg('✓ состав скопирован',1); loadCat(); openEdit(toArt,eq,mod); }); }, 'Скопировать');
+}
+function emTotal(){ return EM.reduce(function(s,d){ return s+(Number(d.qty)||0)*d.ops.reduce(function(a,o){ return a+(o.on?o.rate:0); },0); },0); }
+// упаковка товара — операция над изделием целиком: отдельный блок и предупреждение, если её нет
+function packBlockHtml(){
+  var pi=-1; EM.forEach(function(d,i){ if(d.level==='изделие') pi=i; });
+  var inner;
+  if(pi>=0){ var d=EM[pi];
+    inner=d.ops.map(function(o,oi){ return '<label style="display:inline-flex;align-items:center;gap:var(--s-2);font-size:13px;cursor:pointer;margin-right:var(--s-4)">'
+      +'<input type="checkbox" '+(o.on?'checked':'')+' onchange="EM['+pi+'].ops['+oi+'].on=this.checked;renderEditor()">'+esc(o.op)+' <span class="gsub">'+fmt(o.rate)+' р.'+(o.rate<=0?' ⚠':'')+'</span></label>'; }).join('')
+      +'<div class="gsub" style="margin-top:var(--s-1)">строка изделия: <b>'+esc(d.detail)+'</b> · 1 шт на товар</div>';
+  } else inner='<div class="note warn" style="margin:0">У модели нет операции упаковки изделия. Без неё не работают отгрузка партии, склад деталей и переучёт по упакованным товарам.</div>';
+  return '<div class="tray" style="margin-bottom:var(--s-3)"><div style="font-weight:600;margin-bottom:var(--s-2)">📦 Сборка и упаковка изделия</div>'+inner
+    +'<div class="toolbar" style="margin:var(--s-2) 0 0">'+(pi>=0?'':'<button class="sm" onclick="packAdd(\'product\')">＋ упаковка изделия</button>')
+    +'<button class="sm sec" onclick="packAdd(\'furn\')">＋ фурнитура</button><button class="sm sec" onclick="packAdd(\'box\')">＋ коробка</button></div><div id="packmsg"></div></div>';
+}
+function packMsg(t,c){ var b=el('packmsg'); if(b) b.innerHTML=t?'<div class="gsub" style="margin-top:var(--s-2);color:'+(c||'var(--fg2)')+'">'+esc(t)+'</div>':''; }
+// заводит недостающую деталь/расценку упаковки по образцу другого варианта того же оборудования
+function packAdd(kind){
+  packMsg('подбираю по образцу…');
+  api({vapi:'packtemplate',eq:EDEQ,mod:EDMOD,art:EDART}).then(function(t){
+    if(!t||!t.ok){ packMsg('ошибка: '+((t&&t.error)||'нет ответа сервера'),'var(--red)'); return; }
+    var spec=kind==='product'?t.product:(kind==='furn'?t.furn:t.box);
+    if(!spec){ packMsg('нечего добавить','var(--amber)'); return; }
+    if(EM.some(function(d){ return d.detail.toLowerCase()===spec.detail.toLowerCase(); })){ packMsg('«'+spec.detail+'» уже есть в составе — смотрите ниже','var(--amber)'); return; }
+    function go(rate){
+      write({vapi:'packrate',detail:spec.detail,op:spec.op,rate:rate,pdet:(t.product&&t.product.detail)||'',eqname:EDEQ}, 'Завожу расценку…', function(rr){
+        EM.push({detail:spec.detail, qty:1, level:kind==='product'?'изделие':'деталь', ops:[{op:spec.op, rate:rate, code:'', on:true}]});
+        renderEditor();
+        packMsg('добавлено: '+spec.detail+' · '+spec.op+' · '+fmt(rate)+' р.'+(rr.existed?'':' (расценка заведена в справочнике)')+'. Не забудьте «Сохранить состав».','var(--green)');
+      });
+    }
+    if(spec.rate>0) return go(spec.rate);
+    packMsg('');
+    ask('Расценка упаковки','<label class="fl">«'+esc(spec.detail)+' · '+esc(spec.op)+'», р. за штуку</label><input id="pkRate" type="number" step="0.01" min="0" value="0.15">',
+      function(){ var r=num(el('pkRate').value); if(!(r>0)){ el('pkRate').style.borderColor='var(--red)'; return false; } go(r); }, 'Завести');
+  }).catch(function(e){ packMsg('ошибка: '+(e.message||e),'var(--red)'); });
+}
+function renderEditor(){
+  var dets=EM.filter(function(d){ return d.level!=='изделие'; });
+  el('edbody').innerHTML=packBlockHtml()+(dets.length?EM.map(function(d,di){
+    if(d.level==='изделие') return '';
+    var dsum=(Number(d.qty)||0)*d.ops.reduce(function(a,o){ return a+(o.on?o.rate:0); },0);
+    return '<div class="dblk"><div class="dhead">'+esc(d.detail)+' <span style="float:right"><input type="number" min="0" value="'+esc(d.qty)+'" onchange="EM['+di+'].qty=this.value;renderEditor()" style="width:72px;text-align:right;display:inline-block"> шт · '
+      +'<b class="dcost" style="float:none">'+fmt(dsum)+' р.</b> <button class="sm danger sec" onclick="EM.splice('+di+',1);renderEditor()">✕</button></span></div><div style="margin-top:var(--s-2)">'
+      +d.ops.map(function(o,oi){ return '<div class="opline'+(o.on?'':' off')+'"><span class="muted" style="font:var(--t-label);width:16px;text-align:right">'+(oi+1)+'.</span>'
+        +'<button class="ic" '+(oi===0?'disabled':'')+' onclick="moveOp('+di+','+oi+',-1)" title="выше по порядку работ">↑</button>'
+        +'<button class="ic" '+(oi===d.ops.length-1?'disabled':'')+' onclick="moveOp('+di+','+oi+',1)" title="ниже">↓</button>'
+        +'<label><input type="checkbox" '+(o.on?'checked':'')+' onchange="EM['+di+'].ops['+oi+'].on=this.checked;renderEditor()">'+esc(o.op)+' <span class="gsub">'+fmt(o.rate)+' р.'+(o.rate<=0?' ⚠':'')+'</span>'
+        +(o.fresh?' <span class="pill info" style="white-space:normal;height:auto">ⓘ новая из справочника — поставьте галочку, если нужна здесь</span>':'')+'</label></div>'; }).join('')+'</div></div>';
+  }).join(''):'<div class="empty">Добавьте детали — их операции подтянутся автоматически.</div>');
+  el('edtot').textContent='труд: '+fmt(emTotal())+' р.';
+}
+function moveOp(di,oi,dir){ var a=EM[di].ops, j=oi+dir; if(j<0||j>=a.length) return; var t=a[oi]; a[oi]=a[j]; a[j]=t; renderEditor(); }
+function addDet(){
+  var det=el('edAddDet').value.trim(); if(!det) return;
+  if(EM.some(function(d){ return d.detail.toLowerCase()===det.toLowerCase(); })){ el('edmsg').textContent='деталь уже добавлена'; return; }
+  var ops=opsForDetail(det);
+  el('edmsg').innerHTML=ops.length?'':'<span class="warn">у детали «'+esc(det)+'» нет операций в справочнике — задайте их в «Операциях и расценках»</span>';
+  EM.push({detail:det, qty:1, ops:ops, level:'деталь'}); el('edAddDet').value=''; renderEditor();
+}
+function saveModel(){
+  if(!EDART){ el('edmsg').textContent='не выбран вариант'; return; }
+  var rows=[];
+  EM.forEach(function(d){ d.ops.forEach(function(o){ if(o.on) rows.push({detail:d.detail, op:o.op, qty:Number(d.qty)||0, rate:o.rate, level:d.level||'деталь'}); }); });
+  write({vapi:'savemodel',eq:EDEQ,mod:EDMOD,art:EDART,rows:JSON.stringify(rows)}, 'Сохраняю состав — заказы пересоберутся…', function(r){
+    el('edmsg').innerHTML='<span style="color:var(--green)">✅ сохранено: '+r.saved+' строк, труд '+fmt(r.total)+' р.'+(r.autoLevel?' · «изделие»: '+esc(r.autoLevel):'')+'</span>';
+    warnBox(r.warns||[]); loadCat();
+    if(!(r.warns&&r.warns.length)) setTimeout(closeEdit,700);   // с замечаниями окно не закрываем
+  }, true);
+}
+function warnBox(w){
+  var b=el('edwarn');
+  if(!w||!w.length){ b.innerHTML='<div class="note ok" style="margin:0">✓ порядок операций выглядит логично</div>'; return; }
+  var by={}; w.forEach(function(x){ (by[x.detail]=by[x.detail]||[]).push(x.msg); });
+  b.innerHTML='<div class="note warn" style="margin:0;display:block"><b>⚠ Проверьте порядок операций — по нему считается вся работа цеха</b><div class="gsub" style="margin-top:var(--s-2)">'
+    +Object.keys(by).map(function(d){ return '<b>'+esc(d)+'</b>: '+by[d].map(esc).join('; '); }).join('<br>')
+    +'</div><div class="gsub" style="margin-top:var(--s-2)">Переставьте стрелками ↑↓. Если так и делают в цеху — оставьте, это подсказка, а не запрет.</div></div>';
+}
+function closeEdit(){ hide('edmodal'); el('edwarn').innerHTML=''; }
+function delComp(art,eq,mod){
+  ask('Удалить состав?','<div>Состав «'+esc(art||(eq+' / '+mod))+'» будет удалён: операции пропадут из будущих заказов. Если товар стоит в незакрытом заказе, удалить не получится.</div>',
+    function(){ write({vapi:'delvariant',artikul:art,eq:eq,mod:mod}, 'Удаляю состав…', function(r){ msg('✓ удалено строк: '+r.removed,1); loadCat(); }); }, 'Удалить');
+}
+function reassignOrphan(eq,mod){
+  var same=allVariants().filter(function(v){ return !v.hasComp && !v.orphan && v.eq===eq && v.mod===mod; });
+  ask('Привязать состав к варианту','<div class="gsub">Состав архивного товара «'+esc(eq+' / '+mod)+'» перейдёт к выбранному варианту реестра.</div>'
+    +(same.length?'<div class="pick">'+same.map(function(v,i){ return '<label><input type="radio" name="ra" value="'+esc(v.art)+'"'+(i?'':' checked')+'> '+esc(vdesc(v))+' <span class="gsub">'+esc(v.art)+'</span></label>'; }).join('')+'</div>'
+      :'<div class="gsub" style="margin-top:var(--s-2)">В этой модели нет свободного варианта.</div>')
+    +'<label class="fl">…или артикул любого варианта из реестра</label><input id="raArt" placeholder="напр. TW SML AS S WP">',
+    function(root){ var t=el('raArt').value.trim(), p=root.querySelector('input[name=ra]:checked'), art=t||(p&&p.value); if(!art) return false;
+      write({vapi:'reassigncomp',eq:eq,mod:mod,artikul:art}, 'Переношу состав…', function(r){ msg('✓ перенесено строк: '+r.moved+' → '+esc(r.artikul)+' ('+esc(r.eq)+(r.mod?' / '+esc(r.mod):'')+')',1); loadCat(); }); }, 'Привязать');
+}
+
+/* ══════════ ТАБЛИЦА СОСТАВА (бывший конструктор IzdPanel) ══════════ */
+var COMP=[], IZD_ON=0;
+function izdInit(){
+  if(!EQMOD.equipments.length){ loadRefs(izdInit); return; }
+  if(IZD_ON) return; IZD_ON=1;
+  var has={}; allVariants().forEach(function(v){ if(v.hasComp) has[v.eq]=1; });
+  el('iEq').innerHTML=EQMOD.equipments.map(function(e){ return '<option value="'+esc(e)+'">'+(has[e]?'✓ ':'')+esc(e)+'</option>'; }).join('');
+  el('sArt').innerHTML=allVariants().filter(function(v){ return v.hasComp; }).map(function(v){ return '<option value="'+esc(v.art)+'">'+esc(v.eq+' / '+v.mod+' — '+vdesc(v))+' ['+esc(v.art)+']</option>'; }).join('')||'<option value="">нет собранных</option>';
+  izdFillModels();
+}
+function izdFillModels(){ var e=el('iEq').value; el('iMod').innerHTML=((EQMOD.modelsByEq||{})[e]||[]).map(function(m){ return '<option value="'+esc(m)+'">'+esc(m)+'</option>'; }).join('')||'<option value="">(без модели)</option>'; izdFillVars(); }
+function izdFillVars(){ var e=el('iEq').value, m=el('iMod').value;
+  el('iArt').innerHTML=allVariants().filter(function(v){ return v.eq===e && v.mod===m && !v.orphan; }).map(function(v){ return '<option value="'+esc(v.art)+'">'+(v.hasComp?'✓ ':'')+esc(vdesc(v))+' ['+esc(v.art)+']</option>'; }).join(''); }
+function izdLoad(){
+  var art=el('iArt').value; if(!art){ el('iTop').textContent='выберите вариант'; return; }
+  el('iTop').textContent='Загрузка…';
+  api({vapi:'izdcomp',eq:el('iEq').value,mod:el('iMod').value,artikul:art}).then(function(r){
+    if(!r||!r.ok){ el('iTop').textContent='ошибка: '+((r&&r.error)||''); return; }
+    COMP=(r.rows||[]).map(function(x){ return {detail:x.detail, op:x.op, qty:x.qty, rate:x.rate, level:x.level}; });
+    el('iTop').textContent=''; el('izdEd').style.display=''; el('iMsg').textContent=''; izdRender(); izdFillOps();
+  }).catch(function(e){ el('iTop').textContent='ошибка: '+(e.message||e); });
+}
+function izdRender(){
+  el('iTb').innerHTML=COMP.map(function(x,i){ var no=!(Number(x.rate)>0);
+    return '<tr'+(no?' class="norate"':'')+'><td>'+esc(x.detail)+(x.level==='изделие'?' <span class="pill info">изделие</span>':'')+'</td><td>'+esc(x.op)+'</td>'
+      +'<td class="n"><input type="number" min="0" value="'+esc(x.qty)+'" onchange="COMP['+i+'].qty=num(this.value);izdRender()"></td>'
+      +'<td class="n"><input type="number" min="0" step="0.01" value="'+r2(x.rate)+'" onchange="izdSetRate('+i+',this.value)" title="расценка справочника — меняется везде"></td>'
+      +'<td class="n">'+fmt(r2(x.qty*x.rate))+'</td><td><button class="ic" onclick="COMP.splice('+i+',1);izdRender()" title="убрать строку">✕</button></td></tr>'; }).join('');
+  var n0=COMP.filter(function(x){ return !(Number(x.rate)>0); }).length;
+  el('iTot').innerHTML='Себестоимость: '+fmt(COMP.reduce(function(s,x){ return s+r2(x.qty*x.rate); },0))+' р.'+(n0?' <span class="gsub" style="color:var(--red)">⚠ строк без расценки: '+n0+'</span>':'');
+}
+// расценка — одна на «деталь + операция» во всех изделиях: смена только через справочник, с подтверждением
+function izdSetRate(i,v){
+  var nv=num(v), row=COMP[i];
+  if(!(nv>0) || Math.abs(nv-Number(row.rate))<0.0001){ izdRender(); return; }
+  ask('Поменять расценку везде?','<div><b>'+esc(row.detail)+' / '+esc(row.op)+'</b><br>расценка '+fmt(row.rate)+' → <b>'+fmt(nv)+'</b> р./шт</div>'
+    +'<div class="gsub" style="margin-top:var(--s-2)">Изменится в справочнике «Расценки» и во ВСЕХ изделиях с этой деталью и операцией.</div>',
+    function(){ write({vapi:'saverate',name:row.detail,op:row.op,rate:nv}, 'Меняю расценку везде…', function(){
+      COMP.forEach(function(x){ if(x.detail===row.detail && x.op===row.op) x.rate=nv; });
+      (RD[row.detail]||[]).forEach(function(o){ if(o.op===row.op) o.rate=nv; });
+      izdRender(); el('iMsg').innerHTML='<span style="color:var(--green)">✅ расценка обновлена в справочнике — во всех изделиях она уже новая</span>'; loadCat();
+    }); }, 'Да, везде');
+  izdRender();
+}
+function izdSyncRates(){
+  var ch=[], miss=0;
+  COMP.forEach(function(x){ var o=(RD[x.detail]||[]).filter(function(y){ return y.op===x.op; })[0];
+    if(!o){ miss++; return; } if(Number(o.rate)>0 && Math.abs(Number(o.rate)-Number(x.rate))>0.0001){ ch.push(x.detail+' / '+x.op+': '+fmt(x.rate)+' → '+fmt(o.rate)); x.rate=Number(o.rate); } });
+  izdRender();
+  el('iMsg').innerHTML=ch.length?'<span style="color:var(--green)">⟳ по справочнику: '+ch.length+' строк</span><div class="gsub">'+ch.map(esc).join('<br>')+'</div>'
+    :'<span style="color:var(--green)">Расценки совпадают со справочником'+(miss?' (нет в справочнике: '+miss+')':'')+'</span>';
+}
+function izdFillOps(){
+  var ops=RD[el('aDet').value]||[];
+  el('aOp').innerHTML=ops.map(function(o){ return '<option value="'+esc(o.op)+'">'+esc(o.op)+' — '+fmt(o.rate)+'</option>'; }).join('')+'<option value="__new__">➕ новая операция…</option>';
+  izdNewOpTgl();
+}
+function izdNewOpTgl(){ el('aNew').style.display=el('aOp').value==='__new__'?'':'none'; }
+function izdAddRow(){
+  var det=el('aDet').value.trim(), op=el('aOp').value, qty=num(el('aQty').value);
+  if(!det||!op) return;
+  if(op==='__new__'){
+    var name=el('nName').value.trim(), rate=num(el('nRate').value);
+    if(!name){ el('nMsg').innerHTML='<span style="color:var(--red)">введите название операции</span>'; return; }
+    if(!(rate>0)){ el('nMsg').innerHTML='<span style="color:var(--red)">укажите расценку</span>'; return; }
+    write({vapi:'addoprate',detail:det,op:name,rate:rate}, 'Добавляю в справочник…', function(r){
+      (RD[det]=RD[det]||[]).push({op:r.op, rate:r.rate, code:r.code});
+      COMP.push({detail:det, op:r.op, qty:qty, rate:r.rate, level:'деталь'}); izdRender(); izdFillOps();
+      el('nName').value=''; el('nRate').value='';
+      el('nMsg').innerHTML='<span style="color:var(--green)">✅ «'+esc(r.op)+'» (код '+esc(r.code)+') в справочнике — не забудьте «Сохранить состав»</span>';
+    });
+    return;
+  }
+  var o=(RD[det]||[]).filter(function(x){ return x.op===op; })[0];
+  COMP.push({detail:det, op:op, qty:qty, rate:o?o.rate:0, level:'деталь'}); izdRender();
+}
+function izdCopyFrom(){
+  var a=el('sArt').value; if(!a) return; el('sMsg').textContent='Загружаю…';
+  api({vapi:'izdcomp',eq:'',mod:'',artikul:a}).then(function(r){
+    COMP=((r&&r.rows)||[]).map(function(x){ return {detail:x.detail, op:x.op, qty:x.qty, rate:x.rate, level:x.level}; });
+    izdRender(); el('sMsg').innerHTML='<span style="color:var(--green)">✅ загружено '+COMP.length+' оп. — проверьте и сохраните в текущий вариант</span>';
+  }).catch(function(e){ el('sMsg').textContent=e.message||e; });
+}
+function izdSave(){
+  var art=el('iArt').value; if(!art){ el('iMsg').textContent='выберите вариант'; return; }
+  var rows=COMP.map(function(x){ return {detail:x.detail, op:x.op, qty:x.qty, rate:x.rate, level:x.level}; });
+  write({vapi:'izdsavefull',eq:el('iEq').value,mod:el('iMod').value,artikul:art,rows:JSON.stringify(rows)}, 'Сохраняю состав — заказы пересоберутся…', function(r){
+    if(r.rows){ COMP=r.rows.map(function(x){ return {detail:x.detail, op:x.op, qty:x.qty, rate:x.rate, level:x.level}; }); izdRender(); }   // показать сохранённое сервером
+    el('iMsg').innerHTML='<span style="color:var(--green)">✅ сохранено: позиций '+r.saved+', себестоимость '+fmt(r.total)+' р.</span>'+(r.noRate?' <span style="color:var(--red)">⚠ без расценки: '+r.noRate+'</span>':'');
+    loadCat();
+  }, true);
+}
+if(twQp('tab')==='izd') setTab('izd');
+</script>
+</body>
+</html>

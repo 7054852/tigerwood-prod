@@ -1,0 +1,966 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="tw-theme.js"></script>
+<script src="tw-config.js"></script>
+<title>Тигервуд — Операции и расценки</title>
+<!-- Бывшая GAS-панель hub/ElemPanel.html (?page=ops / ?page=elem) на vapi Прохаба. ?mode=ops — операции и расценки, ?mode=cost — себестоимость. -->
+<style>
+  /* в подписи живёт #pushmsg — загрузка и ошибки: во встраивании вводный текст скрыт,
+     но блок появляется, пока в #pushmsg есть сообщение */
+  html.emb body>#pageSub{ display:none; }
+  html.emb body>#pageSub:has(#pushmsg:not(:empty)){ display:block; }
+  #pane_cost>.toolbar{ align-items:flex-end; }
+  label{ display:block; font:var(--t-small); color:var(--muted); margin:var(--s-2) 0 var(--s-1); }
+  .tbar{ display:flex; gap:var(--s-2); align-items:flex-end; flex-wrap:wrap; margin-bottom:var(--s-3); }
+  .tabs a{ cursor:pointer; }
+  table{ margin-top:var(--s-2); font:var(--t-small); }
+  th,td{ padding:var(--s-2); } td{ vertical-align:top; }
+  .num{ text-align:right; }
+  /* таблица операций детали: фиксированные ширины — иначе у каждого блока свои,
+     и колонки «гуляют» от детали к детали. Номер не переносим на вторую строку. */
+  table.optbl{ table-layout:fixed; }
+  table.optbl th, table.optbl td{ vertical-align:middle; padding:var(--s-1) var(--s-2); }
+  table.optbl td.code{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+                       font:var(--t-small); font-variant-numeric:tabular-nums; color:var(--muted); }
+  table.optbl td.opname{ white-space:normal; word-break:break-word; }
+  table.optbl td.num input{ width:100%; text-align:right; font-variant-numeric:tabular-nums; }
+  /* шапка блока: правые элементы стоят колонками у всех блоков одинаково */
+  .hact{ display:flex; align-items:center; gap:var(--s-2); flex:none; }
+  .hact .badd{ width:100px; flex:none; }
+  .hact .bic{ width:32px; padding:0; flex:none; display:inline-block; }
+  .hact .cnt{ width:122px; text-align:right; flex:none; font-variant-numeric:tabular-nums; }
+  .hact .bx{ width:32px; padding:0; flex:none; display:inline-block; }
+  .card{ margin-bottom:var(--s-4); }
+  .grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:var(--s-2) var(--s-3); }
+  .msg{ margin-left:var(--s-2); }
+  .k{ font:var(--t-display); color:var(--green); font-variant-numeric:tabular-nums; }
+  .krow{ display:flex; gap:var(--s-5); flex-wrap:wrap; margin:var(--s-2) 0; }
+  .krow div>span:first-child{ display:block; font:var(--t-small); color:var(--muted); }
+  .hide{ display:none; } .hint{ font:var(--t-small); color:var(--muted); }
+  /* ─── ТЕЛЕФОН ───
+     На узком экране фиксированные ширины колонок не помещаются, и названию операции
+     остаётся пара пикселей — текст встаёт в столбик по одной букве. Поэтому на телефоне
+     строка операции превращается в карточку: название сверху, поля под ним с подписями. */
+  @media (max-width:640px){
+    table.optbl{ table-layout:auto; }
+    table.optbl colgroup, table.optbl thead{ display:none; }
+    table.optbl, table.optbl tbody{ display:block; width:100%; }
+    table.optbl tr{ display:flex; flex-wrap:wrap; align-items:center; gap:var(--s-2) var(--s-3);
+                    padding:var(--s-2) var(--s-1); border-bottom:1px solid var(--line); }
+    table.optbl tr:hover td{ background:none; }
+    table.optbl td{ display:flex; align-items:center; gap:var(--s-1); border:0; padding:0; width:auto; }
+    table.optbl td.opname{ order:0; flex:1 1 100%; font-weight:600; }
+    table.optbl td.code{ order:1; }
+    table.optbl td.num{ order:2; }
+    table.optbl td.num::before{ content:attr(data-l); font:var(--t-label); color:var(--muted); }
+    table.optbl td.num input{ width:80px; }
+    table.optbl td.chg{ order:3; }
+    table.optbl td.st{ order:4; margin-left:auto; }
+    /* редактор операции и блок мультивыбора — обычный блок во всю ширину:
+       если оставить их флекс-контейнером, внутренние секции встают в строку и сплющиваются */
+    table.optbl td[colspan]{ display:block; flex:1 1 100%; }
+    /* остальные таблицы (реестры, раскрой) не влезают по ширине — прокручиваем их
+       внутри себя, а не всю страницу: иначе шапка и кнопки уезжают за экран */
+    #cutTbl, #detRegTbl, #opRegTbl{ display:block; overflow-x:auto; white-space:nowrap; }
+    .hact{ width:100%; justify-content:flex-end; }  /* кнопки блока переносятся под название */
+    .hact .badd{ width:auto; }
+    .hact .cnt{ width:auto; }
+  }
+</style>
+</head>
+<body>
+<div class="hi" id="pageTitle">🏭 Себестоимость производства</div>
+<div class="tabs">
+  <a id="t_cost" class="on" onclick="tab('cost')">Себестоимость</a>
+  <a id="t_elem" onclick="tab('elem')">Элементы</a>
+  <a id="t_mat" onclick="tab('mat')">Материалы</a>
+  <a id="t_ops" onclick="tab('ops')">Операции (расценки)</a>
+  <a id="t_detreg" onclick="tab('detreg')">Реестр деталей</a>
+  <a id="t_opreg" onclick="tab('opreg')">Реестр операций</a>
+  <a id="t_cut" onclick="tab('cut')">Раскрой ЧПУ</a>
+</div>
+<div class="sub" id="pageSub">Материал + работа собираются в стоимость изделия. Элемент = одна вещь со стадиями (заготовка→деталь→узел). <span id="pushmsg" class="msg"></span></div>
+
+<!-- ═══ СЕБЕСТОИМОСТЬ ═══ -->
+<div id="pane_cost">
+  <div class="toolbar">
+    <div><label>Изделие</label><select id="izdSel" style="min-width:280px"></select></div>
+    <span class="msg" id="costmsg"></span>
+    <div class="end">
+      <button class="sec" onclick="recalcAll()">Пересчитать всё</button>
+
+      <button onclick="showCost()">Показать</button>
+    </div>
+  </div>
+  <div id="costBox" class="hide">
+    <div class="card">
+      <div id="costTitle" style="font:var(--t-heading);margin-bottom:8px"></div>
+      <div class="krow">
+        <div><span>Материал</span><span class="k" id="cMat" style="font:var(--t-title)"></span></div>
+        <div><span>Работа</span><span class="k" id="cLab" style="font:var(--t-title);color:var(--amber)"></span></div>
+        <div><span>Себестоимость</span><span class="k" id="cTot"></span></div>
+        <div><span>Покрытие</span><span id="cCoat" style="font:var(--t-strong)"></span></div>
+      </div>
+    </div>
+    <div class="card">
+      <b>Комплектация / упаковка</b> <span class="hint">— что уезжает клиенту</span>
+      <table id="packTbl"><thead><tr><th>Компонент</th><th>Тип</th><th class="num">Кол-во</th><th>Вид отгрузки</th></tr></thead><tbody></tbody></table>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ ЭЛЕМЕНТЫ ═══ -->
+<div id="pane_elem" class="hide">
+  <div class="toolbar">
+    <input id="elemFilter" type="search" class="search" placeholder="фильтр по названию/оборудованию" oninput="renderElems()">
+    <span class="msg" id="elemmsg"></span>
+    <div class="end">
+      <button onclick="newElem()">+ Новый элемент</button>
+    </div>
+  </div>
+  <div id="elemForm" class="card hide">
+    <div class="grid">
+      <div><label>Код *</label><input id="e_code" style="width:100%"></div>
+      <div style="grid-column:span 2"><label>Наименование *</label><input id="e_name" style="width:100%"></div>
+      <div><label>Стадия</label><select id="e_stage"></select></div>
+      <div><label>Оборудование (для изделия)</label><input id="e_equip" list="eqList" style="width:100%"></div>
+      <div><label>Модель</label><input id="e_model" style="width:100%"></div>
+      <div><label>S м² (для покрытия)</label><input id="e_s" class="num"></div>
+      <div><label>Покрытие</label><select id="e_coat"></select></div>
+      <div><label>Цвет краски</label><input id="e_color" list="colorList" style="width:100%"></div>
+      <div><label>Красится</label><select id="e_paintat"></select></div>
+    </div>
+    <div style="margin-top:12px"><b>Состав (материал → рекурсивно из заготовок; элемент → узел)</b></div>
+    <table id="bomTbl"><thead><tr><th>Компонент</th><th>Тип</th><th class="num">Норма/кол-во</th><th>Вид отгрузки</th><th></th></tr></thead><tbody></tbody></table>
+    <button class="gray" onclick="addBomRow()">+ строка состава</button>
+    <div class="tbar" style="margin-top:12px">
+      <button class="green" onclick="saveElem()">Сохранить элемент</button>
+      <button class="gray" onclick="hideEl('elemForm')">Отмена</button>
+      <button class="danger sec" onclick="delElem()">Удалить</button>
+    </div>
+  </div>
+  <table id="elemTbl"><thead><tr><th>Код</th><th>Наименование</th><th>Стадия</th><th>Оборуд.</th><th>Покрытие</th><th class="num">Ст-ть мат</th></tr></thead><tbody></tbody></table>
+</div>
+
+<!-- ═══ МАТЕРИАЛЫ ═══ -->
+<div id="pane_mat" class="hide">
+  <div class="card">
+    <div class="grid">
+      <div style="grid-column:span 2"><label>Материал *</label><input id="m_name" style="width:100%"></div>
+      <div><label>Ед.изм</label><input id="m_unit"></div>
+      <div><label>Цена</label><input id="m_price" class="num"></div>
+      <div><label>Роль</label><select id="m_role"></select></div>
+      <div><label>Расход кг/м² (покрытие)</label><input id="m_norm" class="num"></div>
+      <div style="grid-column:span 2"><label>Поставщик</label><input id="m_sup" style="width:100%"></div>
+    </div>
+    <div class="tbar" style="margin-top:12px"><button class="green" onclick="saveMat()">Сохранить материал</button><span class="msg" id="matmsg"></span></div>
+    <p class="hint">Роли: перерабатываемый (фанера→заготовки) · покрытие (лак/грунт/краска, расход по S) · крепёж/упаковка/инструкция — «как-есть» в коробку.</p>
+  </div>
+  <table id="matTbl"><thead><tr><th>Материал</th><th>Роль</th><th>Ед.</th><th class="num">Цена</th><th class="num">кг/м²</th><th></th></tr></thead><tbody></tbody></table>
+</div>
+
+<!-- ═══ ОПЕРАЦИИ ═══ -->
+<div id="pane_ops" class="hide">
+  <div class="toolbar">
+    <input id="opsFilter" type="search" class="search" placeholder="🔎 деталь / операция / № / оборудование" oninput="renderOps()">
+    <label style="display:inline-flex;align-items:center;gap:4px;font-size:13px;color:var(--fg);margin:0"><input type="checkbox" id="grpEq" checked onchange="renderOps()" style="width:auto"> по оборудованию</label>
+    <span class="meta">Ставка часа: <b id="hourRate">…</b> р/час (Config)</span>
+    <span class="msg" id="normsmsg"></span>
+    <div class="end">
+      <button class="sec" onclick="fillNorms(false)" title="норма/время где пусто">Заполнить нормы</button>
+      <button onclick="toggleAddDet()">＋ Новая деталь / блок</button>
+    </div>
+  </div>
+  <div id="addDetBox" class="card hide">
+    <b>Новая деталь</b> <span class="hint">выберите оборудование (или впишите новое — создастся новый блок) и название детали</span>
+    <div class="tbar" style="margin-top:8px">
+      <div><label>Оборудование / блок</label><input id="ad_eq" list="eqGroups" placeholder="напр. Новая башня" style="min-width:200px"></div>
+      <div><label>Название детали</label><input id="ad_det" placeholder="напр. Боковина" style="min-width:200px"></div>
+      <button class="green" onclick="createDetail()">Создать деталь</button>
+      <button class="gray" onclick="toggleAddDet()">Отмена</button>
+      <span class="msg" id="admsg"></span>
+    </div>
+    <p class="hint">После создания у детали появится «＋ операция» — добавляйте операции с расценками.</p>
+  </div>
+  <div id="recalcBox" class="card hide" style="background:var(--amber-bg)">
+    <b>↺ Запросы пересчёта (начальнику)</b>
+    <div id="recalcList" style="margin-top:8px;font-size:13px"></div>
+  </div>
+  <div id="opsList"></div>
+</div>
+
+<!-- ═══ РЕЕСТР ДЕТАЛЕЙ ═══ -->
+<div id="pane_detreg" class="hide">
+  <div class="toolbar"><input id="detFilter" type="search" class="search" placeholder="🔎 код / наименование детали" oninput="renderDetReg()"><span class="meta" id="detRegCnt"></span></div>
+  <div class="note"><div>Реестр — источник списка деталей для каталога и формы рабочего. Здесь деталь только заводится; операции с расценками добавляются ей на вкладке «Операции (расценки)». Меняете код — он пересчитывается во всех № операций системы.</div></div>
+  <div class="tbar tray">
+    <input id="newDetCode" placeholder="код" style="width:90px">
+    <input id="newDetName" placeholder="наименование новой детали" style="min-width:260px">
+    <button class="green" onclick="addDetRef()">➕ Добавить в реестр</button>
+    <span id="detRegMsg" class="msg"></span>
+  </div>
+  <table id="detRegTbl"><thead><tr><th style="width:110px">Код</th><th>Наименование детали</th><th style="width:60px"></th></tr></thead><tbody></tbody></table>
+</div>
+
+<!-- ═══ РЕЕСТР ОПЕРАЦИЙ ═══ -->
+<div id="pane_opreg" class="hide">
+  <div class="toolbar"><input id="opregFilter" type="search" class="search" placeholder="🔎 код / операция" oninput="renderOpReg()"><span class="meta" id="opRegCnt"></span></div>
+  <div class="note"><div>Реестр — источник списка для «＋ операция» у детали. Здесь операция только заводится; расценка появится, когда вы добавите её конкретной детали. Меняете код — он пересчитывается во всех № операций системы.</div></div>
+  <div class="tbar tray">
+    <input id="newOpCode" placeholder="код" style="width:90px">
+    <input id="newOpName" placeholder="название новой операции" style="min-width:260px">
+    <button class="green" onclick="addOpRef()">➕ Добавить в реестр</button>
+    <span id="opRegMsg" class="msg"></span>
+  </div>
+  <table id="opRegTbl"><thead><tr><th style="width:110px">Код</th><th>Операция</th><th style="width:60px"></th></tr></thead><tbody></tbody></table>
+</div>
+
+<!-- ═══ РАСКРОЙ ЧПУ: расценка за целый лист ═══ -->
+<div id="pane_cut" class="hide">
+  <div class="toolbar">
+    <span>делитель <input id="cutDiv" style="width:70px" title="расценка = площадь(м²) × толщина(мм) ÷ делитель"></span>
+    <button class="sec" onclick="saveDiv()">Сохранить делитель</button>
+    <span class="msg" id="cutmsg"></span>
+    <div class="end">
+      <button class="sec" onclick="recalcCut(1)">Показать пересчёт</button>
+      <button onclick="recalcCut(0)">Пересчитать все</button>
+    </div>
+  </div>
+  <div class="note"><div>Расценка за лист считается по формуле: <b>площадь(м²) × толщина(мм) ÷ делитель</b>, округление вверх до рубля — то есть пропорционально весу листа. Своя цена (столбец «₽ вручную») формулу перебивает и при пересчёте не меняется. Толщину и размер правьте здесь же — расценка пересчитается сразу.</div></div>
+  <table id="cutTbl"><thead><tr><th>Материал</th><th style="width:90px">Толщина, мм</th><th style="width:130px">Размер листа</th><th style="width:90px">По формуле</th><th style="width:110px">₽ вручную</th><th style="width:90px">Итог ₽/лист</th></tr></thead><tbody></tbody></table>
+
+  <div class="sect">За что платим ЗП при раскрое</div>
+  <div class="note"><div>Расценка детали — это <b>трудоёмкость</b>: по ней живут потребность заказа, % готовности и себестоимость. <b>ЗП</b> — отдельная величина, и здесь вы выбираете, за что именно платим раскройщику:<br>
+  <b>🪚 за лист</b> — ЧПУ: платим за поданный лист, детали с него бесплатны (работа в заказе всё равно зачитывается);<br>
+  <b>🔧 за деталь</b> — платим по расценке детали, лист не оплачиваем;<br>
+  <b>🪚+🔧 за лист и деталь</b> — оплачиваем и то и другое.<br>
+  <b>Пусто</b> — как раньше: сдана с листом → платит лист, сдана без листа → платим за деталь.<br>
+  ⚠ Режим стоит у детали, а лист один на много деталей: лист оплачивается, если хотя бы у одной детали с него режим включает лист.
+  Уже сданные наряды при смене режима <b>не пересчитываются автоматически</b> — для этого кнопка ниже.</div></div>
+  <div class="toolbar"><button class="gray" onclick="payAll('cnc')">🪚 Всем — только ЧПУ</button>
+    <button class="gray" onclick="payAll('')">↩︎ Всем — по умолчанию</button>
+    <span class="hint">удобно выставить общее правило, а потом снять с тех деталей, которые режут вручную</span></div>
+  <div class="toolbar"><span>период <input id="payFrom" style="width:100px" placeholder="01.08.2026"> — <input id="payTo" style="width:100px" placeholder="31.08.2026"></span>
+    <button class="gray" onclick="cutPayReport()">📊 Трудоёмкость против выплат</button>
+    <button class="gray" onclick="payRefresh(1)">👁 Что изменится в ЗП</button>
+    <button onclick="payRefresh(0)">🔄 Пересчитать сданные наряды</button>
+    <span class="msg" id="paymsg"></span></div>
+  <div id="payRep" class="hint"></div>
+  <table id="payTbl"><thead><tr><th>Деталь</th><th style="width:130px">Операция</th><th style="width:110px">Расценка (труд)</th><th style="width:180px">Оплата ЗП</th></tr></thead><tbody></tbody></table>
+</div>
+
+<datalist id="opsCat"></datalist>
+<datalist id="eqGroups"></datalist>
+<datalist id="detNames"></datalist>
+
+<datalist id="eqList"></datalist>
+<datalist id="colorList"></datalist>
+<datalist id="elemNames"></datalist>
+
+<script>
+// ═══ Экран «Операции и расценки» / «Себестоимость» — бывшая GAS-панель hub/ElemPanel.html на vapi Прохаба ═══
+// ?mode=ops — Операции (расценки, реестры, раскрой ЧПУ); ?mode=cost — Себестоимость / Элементы / Материалы.
+var BASE=(window.TW_CFG&&TW_CFG.hub)||'https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';   // адрес задаёт tw-config.js
+var APP='tw7prod';
+function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]*)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
+var TGID=qp('tgid')||(function(){try{return localStorage.getItem('tw_tgid')||'';}catch(e){return '';}})();
+try{ if(!TGID && window.Telegram && Telegram.WebApp && Telegram.WebApp.initDataUnsafe && Telegram.WebApp.initDataUnsafe.user) TGID=String(Telegram.WebApp.initDataUnsafe.user.id); }catch(e){}
+if(TGID){ try{ localStorage.setItem('tw_tgid',TGID); }catch(e){} }
+// ⚠ личность — токеном (выдаётся при входе в сервис), а не ?tgid= в ссылке
+function twQp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
+function twTok(){ try{ return twQp('tok')||localStorage.getItem('tw_tok')||''; }catch(e){ return twQp('tok')||''; } }
+(function(){ var t=twQp('tok'); if(t){ try{ localStorage.setItem('tw_tok',t); }catch(e){} } })();
+function twAuthWall(r){
+  if(r&&r.needAuth){ document.body.innerHTML='<div style="padding:var(--s-6);font:var(--t-body);color:var(--fg)">'
+    +'<div style="font:var(--t-title);margin-bottom:var(--s-3)">🔒 Нужен вход</div>'
+    +'<div>'+String(r.error||'Откройте сервис из бота @TWOtchbot или войдите по личному коду.')+'</div></div>'; }
+  return r;
+}
+function qs(p){ var _t=twTok(); if(_t) p.tok=_t; p.app=APP; if(TGID&&!p.tgid) p.tgid=TGID;
+  return Object.keys(p).map(function(k){ return k+'='+encodeURIComponent(p[k]==null?'':p[k]); }).join('&'); }
+function api(p){ return fetch(BASE+'?'+qs(p)).then(function(r){ return r.json(); }).then(twAuthWall); }
+// длинные данные (состав элемента, список операций) — POST, чтобы не упереться в длину адреса
+function apiPost(p){ return fetch(BASE,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:qs(p)}).then(function(r){ return r.json(); }).then(twAuthWall); }
+
+var DATA = null, curTab = 'cost';
+function el(id){ return document.getElementById(id); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function num(v){ return Number(String(v==null?'':v).replace(',','.'))||0; }
+function opt(v){ return '<option value="'+esc(v)+'">'+esc(v)+'</option>'; }
+function fillSel(id, arr, cur){ el(id).innerHTML = arr.map(function(v){ return '<option'+(v===cur?' selected':'')+'>'+esc(v)+'</option>'; }).join(''); }
+function errOf(e){ return String((e&&e.message)||e||'ошибка'); }
+function setMsg(id, ok, t){ var m=el(id); if(!m) return; m.className='msg '+(ok?'ok':'err'); m.textContent=t||''; }
+
+var HIDDEN={};
+function tab(t){ curTab=t; if(t==='cut'&&!CUTROWS.length){ loadCut(); loadPay(); } ['cost','elem','mat','ops','detreg','opreg','cut'].forEach(function(x){ el('pane_'+x).className = (x===t&&!HIDDEN[x])?'':'hide'; el('t_'+x).className = HIDDEN[x]?'hide':(x===t?'on':''); }); }
+// разделение экранов: mode=ops — Операции, реестры, раскрой; mode=cost — Себестоимость / Элементы / Материалы
+var MODE=(qp('mode')||qp('page')||'cost')==='ops'?'ops':'cost';
+function applyMode(){
+  if(MODE==='ops'){
+    HIDDEN={cost:1,elem:1,mat:1};
+    tab('ops');
+    el('pageTitle').textContent='🧰 Операции и расценки';
+    el('pageSub').innerHTML='Расценки по деталям + реестры деталей и операций (коды). Формула: ставка часа ÷ штук/час × коэф. <span id="pushmsg" class="msg"></span>';
+    document.title='Тигервуд — Операции и расценки';
+  } else {
+    HIDDEN={ops:1,detreg:1,opreg:1,cut:1};
+    tab('cost');
+    document.title='Тигервуд — Себестоимость';
+  }
+}
+applyMode();
+
+function load(){ pmsg('загрузка…'); api({vapi:'elemdata'}).then(function(d){
+  if(!d||!d.ok){ pmsg('ошибка загрузки: '+((d&&d.error)||''),true); return; }
+  DATA=d; pmsg('');
+  HR=d.hourRate||15; el('hourRate').textContent=HR;
+  fillSel('e_stage', d.lists.stages); fillSel('e_coat', d.lists.coats); fillSel('e_paintat', d.lists.paintAt);
+  fillSel('m_role', d.lists.roles);
+  el('eqList').innerHTML = d.equipments.map(opt).join('');
+  var colors = d.materials.filter(function(m){return m.role==='покрытие';}).map(function(m){return m.name;});
+  el('colorList').innerHTML = colors.map(opt).join('');
+  el('elemNames').innerHTML = d.elements.map(function(e){return opt(e.name);}).join('');
+  el('opsCat').innerHTML = (d.opsCatalog||[]).map(function(o){return opt(o.name);}).join('');
+  el('eqGroups').innerHTML = (d.equipGroups||[]).map(opt).join('');
+  el('detNames').innerHTML = (d.detailsCatalog||[]).map(function(x){return opt(x.name);}).join('');
+  var izd = d.elements.filter(function(e){return e.stage==='изделие';});
+  el('izdSel').innerHTML = izd.length ? izd.map(function(e){ return '<option value="'+esc(e.code)+'">'+esc(e.name||e.code)+'</option>'; }).join('') : '<option value="">— нет изделий —</option>';
+  renderElems(); renderMats(); renderOps(); renderDetReg(); renderOpReg();
+  applyOpsFocus();
+}).catch(function(e){ pmsg('сбой: '+errOf(e),true); }); }
+
+// фокус из «Статистики»: ?focus= — подставить оборудование/деталь в фильтр операций и прокрутить
+function applyOpsFocus(){
+  try{
+    var f = window.__OPS_FOCUS__ || qp('focus');
+    if(!f || MODE!=='ops') return;
+    var inp=el('opsFilter'); if(inp){ inp.value=f; renderOps(); setTimeout(function(){ inp.scrollIntoView({behavior:'smooth',block:'center'}); },140); }
+  }catch(e){}
+}
+
+// ── 🪚 РАСКРОЙ ЧПУ: расценки за лист ──
+var CUTROWS=[];
+function cmsg(t,err){ var e=el('cutmsg'); if(e){ e.className='msg '+(err?'err':'ok'); e.textContent=t||''; } }
+function loadCut(){
+  cmsg('загрузка…');
+  api({vapi:'recalcsheetrates',dry:'1'}).then(function(r){
+    if(!r||!r.ok){ cmsg((r&&r.error)||'ошибка', true); return; }
+    CUTROWS=r.rows||[]; el('cutDiv').value=r.div||7; cmsg(''); renderCut();
+  }).catch(function(e){ cmsg(errOf(e), true); });
+}
+function renderCut(){
+  var tb=el('cutTbl').getElementsByTagName('tbody')[0];
+  tb.innerHTML=CUTROWS.map(function(r,i){
+    var warn=r.noSize?' <span class="warn small">укажите размер</span>':'';
+    return '<tr><td>'+esc(r.name)+warn+'</td>'
+      +'<td><input id="ct'+i+'" value="'+(r.thick||'')+'" style="width:70px" onchange="saveCut('+i+')"></td>'
+      +'<td><input id="cs'+i+'" value="'+esc(r.size||'')+'" style="width:120px" placeholder="1525x1525" onchange="saveCut('+i+')"></td>'
+      +'<td class="hint">'+(r.calcNow||r.now||0)+'</td>'
+      +'<td><input id="cm'+i+'" value="'+(r.manual?(r.now||''):'')+'" style="width:90px" placeholder="—" onchange="saveCut('+i+')"></td>'
+      +'<td><b>'+(r.now||0)+'</b>'+(r.manual?' <span class="hint">вручную</span>':'')+'</td></tr>';
+  }).join('');
+}
+function saveCut(i){
+  var r=CUTROWS[i]; if(!r) return;
+  cmsg('сохраняю…');
+  api({vapi:'setsheetrate',material:r.name,thick:el('ct'+i).value,size:el('cs'+i).value,rate:el('cm'+i).value}).then(function(res){
+    if(!res||!res.ok){ cmsg((res&&res.error)||'ошибка', true); return; }
+    cmsg('✓ '+r.name+' — '+res.rate+' р./лист'); loadCut();
+  }).catch(function(e){ cmsg(errOf(e), true); });
+}
+function recalcCut(dry){
+  cmsg(dry?'считаю…':'пересчитываю…');
+  api({vapi:'recalcsheetrates',dry:dry?'1':''}).then(function(r){
+    if(!r||!r.ok){ cmsg((r&&r.error)||'ошибка', true); return; }
+    CUTROWS=r.rows||[]; renderCut();
+    var ch=0; for(var k=0;k<CUTROWS.length;k++) if(CUTROWS[k].was!==CUTROWS[k].now) ch++;
+    var orp=(r.orphans||[]).length;
+    cmsg((dry?'изменится ':'обновлено ')+ch+' расценок'+(orp?(', убрано лишних: '+orp):''));
+  }).catch(function(e){ cmsg(errOf(e), true); });
+}
+/* ── за что платим ЗП при раскрое ── */
+var PAYROWS=[], PAYMODES=['за лист','за деталь','за лист и деталь'], PAYCNC='за лист';   // в панели хаба PAYCNC не был объявлен — кнопка «Всем — только ЧПУ» падала
+function paymsg(t,err){ el('paymsg').className='msg '+(err?'err':'ok'); el('paymsg').textContent=t||''; }
+function loadPay(){
+  api({vapi:'cutpaylist'}).then(function(r){
+    if(!r||!r.ok){ paymsg((r&&r.error)||'ошибка', true); return; }
+    PAYROWS=r.rows||[]; if(r.modes&&r.modes.length){ PAYMODES=r.modes; PAYCNC=r.sheet||PAYMODES[0]; } renderPay();
+  }).catch(function(e){ paymsg(errOf(e), true); });
+}
+function renderPay(){
+  var tb=el('payTbl').getElementsByTagName('tbody')[0];
+  tb.innerHTML=PAYROWS.map(function(r,i){
+    var m=String(r.mode||'');
+    function o(v,lbl){ return '<option value="'+esc(v)+'"'+(m===v?' selected':'')+'>'+esc(lbl)+'</option>'; }
+    return '<tr><td>'+esc(r.detail)+'</td><td>'+esc(r.op)+'</td><td class="hint">'+r.rate+'</td>'
+      +'<td><select id="pm'+i+'" onchange="savePay('+i+')">'
+        +o('','— по умолчанию —')
+        +o(PAYMODES[0],'🪚 ЧПУ — платим за лист')
+        +o(PAYMODES[1],'🔧 платим за деталь')
+        +o(PAYMODES[2],'🪚+🔧 платим за лист и деталь')
+      +'</select></td></tr>';
+  }).join('');
+}
+function savePay(i){
+  var r=PAYROWS[i]; if(!r) return;
+  paymsg('сохраняю…');
+  api({vapi:'setratepay',detail:r.detail,op:r.op,mode:el('pm'+i).value}).then(function(res){
+    if(!res||!res.ok){ paymsg((res&&res.error)||'ошибка', true); return; }
+    r.mode=res.mode; paymsg('✓ '+r.detail+' — '+(res.mode||'по умолчанию'));
+  }).catch(function(e){ paymsg(errOf(e), true); });
+}
+function payAll(kind){
+  var m=(kind==='cnc')?PAYCNC:'';
+  if(!confirm(m?('Проставить «'+m+'» ВСЕМ строкам раскроя?\n\nПотом снимете с тех деталей, которые режут вручную.'):'Сбросить режим оплаты у ВСЕХ строк раскроя на «по умолчанию»?')) return;
+  paymsg('применяю…');
+  api({vapi:'cutpaysetall',mode:m}).then(function(r){
+    if(!r||!r.ok){ paymsg((r&&r.error)||'ошибка', true); return; }
+    paymsg('✓ изменено строк: '+r.changed); loadPay();
+  }).catch(function(e){ paymsg(errOf(e), true); });
+}
+// смена режима не трогает уже сданные наряды — их пересчитывает этот вызов; «Что изменится» — тот же пересчёт с откатом
+function payRefresh(dry){
+  if(!dry && !confirm('Пересчитать ЗП по сданным нарядам за период по текущим правилам?\n\nСуммы в нарядах изменятся — сначала посмотрите «Что изменится в ЗП».')) return;
+  paymsg(dry?'считаю…':'пересчитываю…');
+  api({vapi:'cutpayrefresh',from:el('payFrom').value,to:el('payTo').value,dry:dry?'1':''}).then(function(r){
+    if(!r||!r.ok){ paymsg((r&&r.error)||'ошибка', true); return; }
+    var d=r.byWorker||[];
+    paymsg('');
+    el('payRep').innerHTML='<b>'+(dry?'Изменится':'Пересчитано')+': нарядов '+r.reports+(r.singles?(', одиночных строк '+r.singles):'')+'</b>'
+      +(d.length?('<br>'+d.map(function(x){ return esc(x.worker)+': '+x.was+' → '+x.now+' ('+(x.delta>0?'+':'')+x.delta+' р.)'; }).join('<br>'))
+                : '<br>Суммы не '+(dry?'изменятся.':'изменились.'));
+  }).catch(function(e){ paymsg(errOf(e), true); });
+}
+function cutPayReport(){
+  paymsg('считаю…'); el('payRep').innerHTML='';
+  api({vapi:'cutpayreport',from:el('payFrom').value,to:el('payTo').value}).then(function(r){
+    if(!r||!r.ok){ paymsg((r&&r.error)||'ошибка', true); return; }
+    paymsg('');
+    var t=r.total||{};
+    el('payRep').innerHTML='<b>Трудоёмкость по расценкам: '+(t.work||0)+' р.</b> · выплачено: <b>'+(t.pay||0)+' р.</b>'
+      +' · из них за листы: '+(t.sheetPay||0)+' р. · труд ЧПУ без отдельной оплаты: '+(t.unpaidWork||0)+' р.';
+  }).catch(function(e){ paymsg(errOf(e), true); });
+}
+function saveDiv(){
+  cmsg('сохраняю…');
+  api({vapi:'setcutdiv',div:el('cutDiv').value}).then(function(r){
+    if(!r||!r.ok){ cmsg((r&&r.error)||'ошибка', true); return; }
+    cmsg('✓ делитель сохранён'); recalcCut(1);
+  }).catch(function(e){ cmsg(errOf(e), true); });
+}
+
+function pmsg(t,err){ var m=el('pushmsg'); if(!m) return; m.className='msg '+(err?'err':'ok'); m.textContent=t||''; }
+
+/* ── Себестоимость ── */
+function showCost(){ var code=el('izdSel').value; if(!code){ el('costmsg').textContent='нет изделий'; return; }
+  el('costmsg').className='msg'; el('costmsg').textContent='считаю…';
+  api({vapi:'izdcost',code:code}).then(function(r){
+    if(!r||!r.ok){ el('costmsg').className='msg err'; el('costmsg').textContent=(r&&r.error)||'ошибка'; return; }
+    el('costmsg').textContent=''; el('costBox').className='';
+    el('costTitle').textContent = r.name + (r.equip?(' — '+r.equip+' '+r.model):'');
+    el('cMat').textContent=r.mat.toFixed(2); el('cLab').textContent=r.labor.toFixed(2); el('cTot').textContent=r.total.toFixed(2)+' р';
+    el('cCoat').textContent = r.coat && r.coat!=='без' ? (r.coat + (r.color?(' '+r.color):'')) : '—';
+    el('packTbl').querySelector('tbody').innerHTML = (r.pack||[]).map(function(p){
+      var cls = /сбор|модул/i.test(p.pack)?'info':(/отдельно|как-есть/i.test(p.pack)?'mute':'');
+      return '<tr><td>'+esc(p.comp)+'</td><td>'+esc(p.type)+'</td><td class="num">'+p.qty+'</td><td><span class="pill '+cls+'">'+esc(p.pack||'—')+'</span></td></tr>';
+    }).join('');
+  }).catch(function(e){ el('costmsg').className='msg err'; el('costmsg').textContent=errOf(e); }); }
+
+function recalcAll(){ el('costmsg').className='msg'; el('costmsg').textContent='пересчёт…'; api({vapi:'recalccost'}).then(function(r){
+  el('costmsg').className='msg '+(r&&r.ok?'ok':'err'); el('costmsg').textContent = r&&r.ok ? ('готово: изделий '+r.izd+', элементов '+r.elems) : ('ошибка: '+(r&&r.error)); load();
+}).catch(function(e){ el('costmsg').className='msg err'; el('costmsg').textContent=errOf(e); }); }
+
+/* ── Элементы ── */
+var bomRows=[];
+function renderElems(){ if(!DATA) return; var f=(el('elemFilter').value||'').toLowerCase();
+  var rows = DATA.elements.filter(function(e){ return !f || (e.name+' '+e.equip+' '+e.code).toLowerCase().indexOf(f)>=0; });
+  el('elemTbl').querySelector('tbody').innerHTML = rows.map(function(e){
+    return '<tr style="cursor:pointer" onclick="editElem('+jsq(e.code)+')"><td>'+esc(e.code)+'</td><td>'+esc(e.name)+'</td><td>'+esc(e.stage)+'</td><td>'+esc(e.equip)+'</td><td>'+esc(e.coat||'')+'</td><td class="num">'+(e.matCost?e.matCost.toFixed(2):'')+'</td></tr>';
+  }).join('') || '<tr><td colspan="6" class="hint">нет элементов</td></tr>';
+}
+function newElem(){ el('elemForm').className='card'; ['e_code','e_name','e_equip','e_model','e_s','e_color'].forEach(function(i){el(i).value='';});
+  fillSel('e_stage',DATA.lists.stages,'деталь'); fillSel('e_coat',DATA.lists.coats,'без'); fillSel('e_paintat',DATA.lists.paintAt,'—'); bomRows=[]; renderBom(); el('e_code').focus(); }
+function editElem(code){ var e=DATA.elements.filter(function(x){return x.code===code;})[0]; if(!e) return;
+  el('elemForm').className='card'; el('e_code').value=e.code; el('e_name').value=e.name; el('e_equip').value=e.equip; el('e_model').value=e.model;
+  el('e_s').value=e.S||''; el('e_color').value=e.color||'';
+  fillSel('e_stage',DATA.lists.stages,e.stage); fillSel('e_coat',DATA.lists.coats,e.coat||'без'); fillSel('e_paintat',DATA.lists.paintAt,e.paintAt||'—');
+  bomRows = DATA.bom.filter(function(b){return b.parent===code;}).map(function(b){ return {comp:b.comp,type:b.type,qty:b.qty,pack:b.pack}; });
+  renderBom(); el('elemForm').scrollIntoView({behavior:'smooth'}); }
+function addBomRow(){ bomRows.push({comp:'',type:'материал',qty:1,pack:''}); renderBom(); }
+function renderBom(){
+  var mats = DATA.materials.map(function(m){return m.name;});
+  el('bomTbl').querySelector('tbody').innerHTML = bomRows.map(function(r,i){
+    var list = r.type==='элемент'?'bomElems':'bomMats';
+    return '<tr><td><input list="'+list+'" value="'+esc(r.comp)+'" oninput="bomRows['+i+'].comp=this.value" style="min-width:200px"></td>'
+      +'<td><select onchange="bomRows['+i+'].type=this.value;renderBom()">'
+      +'<option'+(r.type==='материал'?' selected':'')+'>материал</option><option'+(r.type==='элемент'?' selected':'')+'>элемент</option></select></td>'
+      +'<td class="num"><input class="num" value="'+r.qty+'" oninput="bomRows['+i+'].qty=this.value" style="width:80px"></td>'
+      +'<td><select onchange="bomRows['+i+'].pack=this.value">'+DATA.lists.packs.map(function(p){return '<option'+(p===r.pack?' selected':'')+'>'+esc(p)+'</option>';}).join('')+'</select></td>'
+      +'<td><button class="danger sec sm" onclick="bomRows.splice('+i+',1);renderBom()">×</button></td></tr>';
+  }).join('');
+  if(!el('bomMats')){ var dm=document.createElement('datalist'); dm.id='bomMats'; document.body.appendChild(dm); }
+  if(!el('bomElems')){ var de=document.createElement('datalist'); de.id='bomElems'; document.body.appendChild(de); }
+  el('bomMats').innerHTML = mats.map(opt).join('');
+  el('bomElems').innerHTML = DATA.elements.map(function(e){return opt(e.code);}).join('');
+}
+function saveElem(){ var e={ code:el('e_code').value.trim(), name:el('e_name').value.trim(), stage:el('e_stage').value,
+    equip:el('e_equip').value.trim(), model:el('e_model').value.trim(), S:num(el('e_s').value), coat:el('e_coat').value,
+    color:el('e_color').value.trim(), paintAt:el('e_paintat').value };
+  if(!e.code||!e.name){ setMsg('elemmsg',false,'нужны код и название'); return; }
+  var rows = bomRows.map(function(r){ var c=String(r.comp||'').split(' — ')[0].trim(); return {comp:c,type:r.type,qty:num(r.qty),pack:r.pack}; }).filter(function(r){return r.comp;});
+  el('elemmsg').className='msg'; el('elemmsg').textContent='сохраняю…';
+  apiPost({vapi:'saveelement',data:JSON.stringify(e),rows:JSON.stringify(rows)}).then(function(r){ setMsg('elemmsg', r&&r.ok, r&&r.ok?'сохранено':'ошибка: '+((r&&r.error)||'')); if(r&&r.ok) load(); })
+    .catch(function(x){ setMsg('elemmsg',false,errOf(x)); });
+}
+function delElem(){ var c=el('e_code').value.trim(); if(!c||!confirm('Удалить элемент '+c+' и его состав?')) return;
+  api({vapi:'delelement',code:c}).then(function(r){ if(!r||!r.ok){ setMsg('elemmsg',false,'ошибка: '+((r&&r.error)||'')); return; } hideEl('elemForm'); load(); })
+    .catch(function(x){ setMsg('elemmsg',false,errOf(x)); }); }
+function hideEl(id){ el(id).className='card hide'; }
+
+/* ── Материалы ── */
+function renderMats(){ if(!DATA) return;
+  el('matTbl').querySelector('tbody').innerHTML = DATA.materials.map(function(m){
+    return '<tr><td style="cursor:pointer" onclick="editMat('+jsq(m.name)+')">'+esc(m.name)+'</td><td>'+esc(m.role||'')+'</td><td>'+esc(m.unit||'')+'</td><td class="num">'+(m.price||0)+'</td><td class="num">'+(m.norm||'')+'</td><td><button class="danger sec sm" onclick="delMat('+jsq(m.name)+')">×</button></td></tr>';
+  }).join('') || '<tr><td colspan="6" class="hint">нет материалов</td></tr>';
+}
+function editMat(name){ var m=DATA.materials.filter(function(x){return x.name===name;})[0]; if(!m) return;
+  el('m_name').value=m.name; el('m_unit').value=m.unit; el('m_price').value=m.price; el('m_norm').value=m.norm||''; el('m_sup').value=m.sup||''; fillSel('m_role',DATA.lists.roles,m.role); }
+function saveMat(){ var m={ name:el('m_name').value.trim(), unit:el('m_unit').value.trim(), price:num(el('m_price').value), role:el('m_role').value, norm:num(el('m_norm').value), sup:el('m_sup').value.trim() };
+  if(!m.name){ setMsg('matmsg',false,'нужно название'); return; }
+  apiPost({vapi:'savematfull',data:JSON.stringify(m)}).then(function(r){ setMsg('matmsg', r&&r.ok, r&&r.ok?'сохранено':'ошибка: '+((r&&r.error)||'')); if(r&&r.ok) load(); })
+    .catch(function(x){ setMsg('matmsg',false,errOf(x)); }); }
+function delMat(name){ if(!confirm('Удалить материал «'+name+'»?')) return;
+  api({vapi:'delmaterial',name:name}).then(function(r){ if(!r||!r.ok) setMsg('matmsg',false,'ошибка: '+((r&&r.error)||'')); load(); })
+    .catch(function(x){ setMsg('matmsg',false,errOf(x)); }); }
+
+/* ── Операции: дерево Оборудование ▸ Деталь ▸ операции, редактор прямо в строке ── */
+var HR=15, OPENQ={}, EDIT='', NEWDET='';   // EDIT = det + SEP + op  (op===NEW → добавление новой операции); NEWDET = блок, где открыта строка «новая деталь»
+var SEP='~@~', NEW='~NEW~', BLK='~BLK~', __ri=0;
+var JUST=[];   // только что созданные детали «Общих» без операций: сервер их не показывает (нет ни блока, ни расценок) — держим до первой операции
+function jsq(s){ return "'"+String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;')+"'"; }
+function rateOf(ph,k){ ph=Number(ph)||0; k=Number(k)||1; return ph>0? Math.round(HR/ph*k*10000)/10000 : 0; }
+function fmtR(n){ return (Number(n)||0).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+/* ── Реестры деталей / операций: правка кода через карандаш → ✓/✗ ── */
+var EDCODE='';
+function codeCell(kind,name,code){
+  var editing = EDCODE===kind+'|'+name;
+  if(editing) return '<input id="ec_input" value="'+esc(code)+'" style="width:76px" onkeydown="if(event.key===\'Enter\')saveCode();if(event.key===\'Escape\')cancelCode()">'
+    +' <button class="green sm" title="сохранить" onclick="saveCode()">✓</button>'
+    +' <button class="danger sec sm" title="отмена" onclick="cancelCode()">✗</button>';
+  return '<b>'+esc(code||'—')+'</b> <button class="ic" title="изменить код" onclick="editCode('+jsq(kind)+','+jsq(name)+')">✎</button>';
+}
+var EDNAME='';
+function nameCell(kind,name){
+  if(EDNAME===kind+'|'+name) return '<input id="en_input" value="'+esc(name)+'" style="min-width:240px" onkeydown="if(event.key===\'Enter\')saveName();if(event.key===\'Escape\')cancelName()">'
+    +' <button class="green sm" title="переименовать везде" onclick="saveName()">✓</button>'
+    +' <button class="danger sec sm" title="отмена" onclick="cancelName()">✗</button>';
+  return esc(name)+' <button class="ic" title="переименовать (изменится во всей системе)" onclick="editName('+jsq(kind)+','+jsq(name)+')">✎</button>';
+}
+function editName(kind,name){ EDNAME=kind+'|'+name; if(kind==='det')renderDetReg(); else renderOpReg(); setTimeout(function(){ if(el('en_input')){el('en_input').focus();el('en_input').select();} },20); }
+function cancelName(){ var k=EDNAME.split('|')[0]; EDNAME=''; if(k==='det')renderDetReg(); else renderOpReg(); }
+function saveName(){ var i=EDNAME.indexOf('|'), kind=EDNAME.slice(0,i), oldN=EDNAME.slice(i+1), newN=el('en_input')?el('en_input').value.trim():'';
+  if(!newN){ alert('Название не может быть пустым'); return; }
+  if(newN===oldN){ cancelName(); return; }
+  var list=(kind==='det'?DATA.detailsCatalog:DATA.opsCatalog)||[];
+  if(list.some(function(x){ return x.name!==oldN && x.name.toLowerCase()===newN.toLowerCase(); })){ alert('Такое название уже есть — выберите другое'); return; }
+  if(!confirm('Переименовать «'+oldN+'» → «'+newN+'» во ВСЕЙ системе (расценки, составы изделий, выработка)?')) return;
+  EDNAME='';
+  var mid=kind==='det'?'detRegMsg':'opRegMsg';
+  api({vapi:kind==='det'?'renamedetail':'renameop',old:oldN,name:newN}).then(function(r){ if(!r||!r.ok) setMsg(mid,false,(r&&r.error)||'ошибка'); load(); })
+    .catch(function(e){ setMsg(mid,false,errOf(e)); load(); });
+}
+function renderDetReg(){ if(!DATA) return;
+  var f=(el('detFilter')&&el('detFilter').value||'').toLowerCase();
+  var rows=(DATA.detailsCatalog||[]).filter(function(d){ return !f || (d.code+' '+d.name).toLowerCase().indexOf(f)>=0; }).sort(function(a,b){ return a.name.localeCompare(b.name,'ru'); });
+  el('detRegCnt').textContent='деталей: '+rows.length;
+  el('detRegTbl').querySelector('tbody').innerHTML = rows.map(function(d){ return '<tr><td style="white-space:nowrap">'+codeCell('det',d.name,d.code)+'</td><td>'+nameCell('det',d.name)+'</td>'
+    +'<td style="white-space:nowrap"><button class="gray sm" title="добавить детали операцию с расценкой (первую или ещё одну)" onclick="firstOpFor('+jsq(d.name)+')">＋оп</button> '
+    +'<button class="ic" title="убрать из реестра (только если нет расценок и составов)" onclick="delDetRef('+jsq(d.name)+')">🗑</button></td></tr>'; }).join('') || '<tr><td colspan="3" class="hint">нет деталей</td></tr>';
+}
+function renderOpReg(){ if(!DATA) return;
+  var f=(el('opregFilter')&&el('opregFilter').value||'').toLowerCase();
+  var rows=(DATA.opsCatalog||[]).filter(function(o){ return !f || (o.code+' '+o.name).toLowerCase().indexOf(f)>=0; }).sort(function(a,b){ return (Number(a.code)||9999)-(Number(b.code)||9999) || a.name.localeCompare(b.name,'ru'); });
+  el('opRegCnt').textContent='операций: '+rows.length;
+  el('opRegTbl').querySelector('tbody').innerHTML = rows.map(function(o){ return '<tr><td style="white-space:nowrap">'+codeCell('op',o.name,o.code)+'</td><td>'+nameCell('op',o.name)+'</td>'
+    +'<td><button class="ic" title="убрать из реестра (только если по ней нет расценок)" onclick="delOpRef('+jsq(o.name)+')">🗑</button></td></tr>'; }).join('') || '<tr><td colspan="3" class="hint">нет операций</td></tr>';
+}
+// первая операция для только что заведённой детали: без неё деталь не видна ни в расценках, ни в каталоге
+function firstOpFor(det){
+  var ops=(DATA.opsCatalog||[]).map(function(o){return o.name;});
+  var op=prompt('Операция для «'+det+'»'+(ops.length?('\n(из реестра: '+ops.slice(0,12).join(', ')+(ops.length>12?'…':'')+')'):'')+':','');
+  if(!op||!op.trim()) return;
+  var rate=prompt('Расценка, р. за шт:','');
+  if(rate===null) return;
+  var m=el('detRegMsg'); m.className='msg'; m.textContent='добавляю…';
+  api({vapi:'addoprate',detail:det,op:op.trim(),rate:rate}).then(function(r){
+    if(!r||!r.ok){ setMsg('detRegMsg',false,(r&&r.error)||'ошибка'); return; }
+    setMsg('detRegMsg',true,'✓ «'+det+' · '+op.trim()+'» — '+r.rate+' р.'); load();
+  }).catch(function(e){ setMsg('detRegMsg',false,'ошибка: '+errOf(e)); });
+}
+function refCall(p, mid, okText, after){
+  var m=el(mid); m.className='msg'; m.textContent=p.vapi.indexOf('del')===0?'удаляю…':'добавляю…';
+  api(p).then(function(r){
+    if(!r||!r.ok){ setMsg(mid,false,(r&&r.error)||'ошибка'); return; }
+    setMsg(mid,true,okText(r)); if(after) after(); load();
+  }).catch(function(e){ setMsg(mid,false,'ошибка: '+errOf(e)); });
+}
+function addDetRef(){
+  var nm=(el('newDetName').value||'').trim(), cd=(el('newDetCode').value||'').trim();
+  if(!nm){ setMsg('detRegMsg',false,'впишите наименование детали'); return; }
+  refCall({vapi:'adddetref',name:nm,code:cd},'detRegMsg',function(r){ return '✓ «'+nm+'» в реестре, код '+r.code; },function(){ el('newDetName').value=''; el('newDetCode').value=''; });
+}
+function delDetRef(name){ if(!confirm('Убрать «'+name+'» из реестра деталей?')) return;
+  refCall({vapi:'deldetref',name:name},'detRegMsg',function(){ return '✓ убрано'; }); }
+function addOpRef(){
+  var nm=(el('newOpName').value||'').trim(), cd=(el('newOpCode').value||'').trim();
+  if(!nm){ setMsg('opRegMsg',false,'впишите название операции'); return; }
+  refCall({vapi:'addopref',name:nm,code:cd},'opRegMsg',function(r){ return '✓ «'+nm+'» в реестре, код '+r.code; },function(){ el('newOpName').value=''; el('newOpCode').value=''; });
+}
+function delOpRef(name){ if(!confirm('Убрать «'+name+'» из реестра операций?')) return;
+  refCall({vapi:'delopref',name:name},'opRegMsg',function(){ return '✓ убрано'; }); }
+function editCode(kind,name){ EDCODE=kind+'|'+name; if(kind==='det')renderDetReg(); else renderOpReg(); setTimeout(function(){ if(el('ec_input')){el('ec_input').focus();el('ec_input').select();} },20); }
+function cancelCode(){ var k=EDCODE.split('|')[0]; EDCODE=''; if(k==='det')renderDetReg(); else renderOpReg(); }
+function saveCode(){ var i=EDCODE.indexOf('|'), kind=EDCODE.slice(0,i), name=EDCODE.slice(i+1), code=el('ec_input')?el('ec_input').value.trim():'';
+  if(!code){ alert('Код не может быть пустым'); return; }
+  var list=(kind==='det'?DATA.detailsCatalog:DATA.opsCatalog)||[];
+  var dup=list.filter(function(x){ return x.name!==name && String(x.code).trim()===code; });
+  if(dup.length){ alert('Код «'+code+'» уже у: '+dup.map(function(x){return x.name;}).join(', ')+'.\nКод должен быть уникальным — выберите другой.'); return; }
+  EDCODE='';
+  var mid=kind==='det'?'detRegMsg':'opRegMsg';
+  api(kind==='det'?{vapi:'setdetcode',name:name,code:code}:{vapi:'setopcode',op:name,code:code}).then(function(r){ if(!r||!r.ok) setMsg(mid,false,(r&&r.error)||'ошибка'); load(); })
+    .catch(function(e){ setMsg(mid,false,errOf(e)); load(); });
+}
+function opBadge(o){
+  var b='';
+  if(o.status==='начальник') b='<span class="pill ok" title="подтверждена начальником">✓ '+esc(o.checked||'')+' · '+(o.approvedRate||o.rate)+' р.</span>';
+  else if(o.status==='мастер') b='<span class="pill warn" title="подтверждена мастером (замер)">✓ мастер '+esc(o.checked||'')+'</span>';
+  else b='<span class="pill mute">не подтв.</span>';
+  if(o.recalcReq && o.proposedRate>0) b+=' <span class="pill warn" title="мастер предлагает пересчёт по замеру — ждёт начальника">↺ '+esc(o.recalcReq)+': предлагает '+fmtR(o.proposedRate)+' р.</span>';
+  return b;
+}
+// «курс»: прежняя расценка + стрелка + на сколько изменилось (формат 0,00)
+function rateChange(o){
+  if(!(o.prevRate>0)) return '';
+  var cur=Math.round((Number(o.rate)||0)*100)/100, prv=Math.round(o.prevRate*100)/100, d=Math.round((cur-prv)*100)/100;
+  if(Math.abs(d)<0.005) return '';
+  var up=d>0, col=up?'var(--green)':'var(--red)';
+  return '<span title="было '+fmtR(prv)+' → стало '+fmtR(cur)+'" style="font:var(--t-label);color:'+col+';white-space:nowrap">'
+    +'<span class="muted" style="font-weight:400">'+fmtR(prv)+'</span> '+(up?'▲+':'▼−')+fmtR(Math.abs(d))+'</span>';
+}
+function equipOpts(cur){
+  var list=(DATA.equipGroups||[]).slice();
+  if(cur && list.indexOf(cur)<0) list.unshift(cur);
+  return list.map(function(e){ return '<option'+(e===cur?' selected':'')+'>'+esc(e)+'</option>'; }).join('');
+}
+function editorRow(o,isNew,det){
+  var ph=isNew?'':(o.norm||''), k=isNew?1:(o.koef||1), note=isNew?'':(o.note||'');
+  var sh='font:var(--t-small);font-weight:600;color:var(--fg2);margin-bottom:4px';
+  var h='<tr><td colspan="7" style="background:var(--blue-bg);padding:12px 16px">';
+  h+='<div style="'+sh+'">① Расценка — задайте штук в час (расценка = ставка '+HR+' р/ч ÷ штук/час × коэф)</div>';
+  h+='<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">';
+  if(isNew) h+='<div><label>Операция</label><input id="e_op" list="opsCat" placeholder="выбрать или новая" style="min-width:190px"></div>';
+  h+='<div><label>Штук в час</label><input id="e_ph" class="num" value="'+ph+'" style="width:96px" oninput="recalcEdit()"></div>';
+  h+='<div><label>Коэф сложн./опасн.</label><input id="e_k" class="num" value="'+k+'" style="width:96px" oninput="recalcEdit()"></div>';
+  h+='<div><label>= Расценка</label><div style="font:var(--t-heading);color:var(--green)"><span id="e_rate">'+fmtR(rateOf(ph,k))+'</span> р/шт</div></div>';
+  h+='<div style="flex:1;min-width:150px"><label>Примечание</label><input id="e_note" value="'+esc(note)+'" style="width:100%"></div>';
+  h+='<button class="green" onclick="doSaveRate()" title="сохранить как расчётную (не подтверждена)">💾 Сохранить</button>';
+  h+='</div>';
+  if(!isNew){
+    var green=(o.status==='начальник'), pending=(o.recalcReq && o.proposedRate>0);
+    if(pending){
+      h+='<div style="margin-top:12px;padding:12px;border-radius:10px;background:var(--amber-bg);border:1px solid var(--line)">';
+      h+='<div class="small warn" style="font-weight:600;margin-bottom:4px">↺ Запрос пересчёта от '+esc(o.recalcReq)+' (замер мастера)</div>';
+      h+='<div style="display:flex;gap:16px;align-items:baseline;flex-wrap:wrap">';
+      h+='<span>сейчас: <b>'+fmtR(o.rate)+'</b> р.</span><span style="font:var(--t-heading)">→</span>';
+      h+='<span>мастер предлагает: <b class="'+((o.proposedRate>o.rate)?'ok':'err')+'">'+fmtR(o.proposedRate)+'</b> р. ('+o.propPH+' шт/час)</span>';
+      h+='<span style="flex:1"></span>';
+      h+='<button class="green" onclick="doChief()" title="принять предложение мастера — расценка станет предложенной">🟢 Начальник: утвердить '+fmtR(o.proposedRate)+' р.</button>';
+      h+='<button class="gray" onclick="doRejectRecalc()" title="оставить прежнюю расценку">✖ отклонить</button>';
+      h+='</div></div>';
+    }
+    h+='<div style="margin-top:12px;padding-top:12px;border-top:1px dashed var(--line2)"><div style="'+sh+'">② '+(green?'Пересчёт по замеру — расценка НЕ изменится, пока начальник не утвердит':'Проверка замером — пересчитает штук/час и расценку по факту')+'</div>';
+    h+='<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">';
+    h+='<div><label>Сделали, шт</label><input id="e_mn" class="num" value="" style="width:84px"></div>';
+    h+='<div><label>за минут</label><input id="e_mm" class="num" value="" style="width:76px"></div>';
+    if(green){
+      h+='<button class="sec" onclick="doMaster()" title="ваш замер уйдёт начальнику как предложение (расценка пока не меняется)">🟡 Мастер: предложить пересчёт</button>';
+      h+='<button class="green" onclick="doChief()" title="начальник замерил сам и сразу утвердил">🟢 Начальник: замерил и утвердил</button>';
+    } else {
+      h+='<button class="sec" onclick="doMaster()" title="пересчитать по замеру + отметить жёлтым (мастер)">🟡 Мастер подтвердил</button>';
+      h+='<button class="green" onclick="doChief()" title="пересчитать по замеру (если введён) + отметить зелёным (начальник)">🟢 Начальник подтвердил</button>';
+    }
+    h+='<span class="hint" style="align-self:center">'+(green?'мастер — только предложение; начальник — сразу применяет':'без замера кнопка просто фиксирует текущую расценку')+'</span>';
+    h+='</div></div>';
+    h+='<div style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">';
+    h+='<span class="label">Статус:</span> '+opBadge(o);
+    h+='<span style="flex:1"></span><span class="msg" id="e_msg"></span>';
+    h+='<button class="danger sec" onclick="doDelRate()">🗑 удалить</button>';
+    h+='<button class="gray" onclick="EDIT=\'\';renderOps()">✕ закрыть</button></div>';
+  } else {
+    h+='<div style="margin-top:8px"><button class="gray" onclick="EDIT=\'\';renderOps()">✕ отмена</button> <span class="msg" id="e_msg"></span></div>';
+  }
+  h+='</td></tr>';
+  return h;
+}
+function recalcEdit(){ var r=rateOf(el('e_ph')?el('e_ph').value:0, el('e_k')?el('e_k').value:1); if(el('e_rate')) el('e_rate').textContent=fmtR(r); }
+function detailBlock(det, db, showSel){
+  var ops=db.ops.slice().sort(function(a,b){return (a.order||9999)-(b.order||9999);});
+  var no=db.code||'';
+  var body=ops.map(function(o,oi){
+    var key=det+SEP+o.op, opened=EDIT===key;
+    var up='<button '+(oi===0?'disabled':'')+' onclick="event.stopPropagation();moveSeq('+jsq(det)+','+jsq(o.op)+',-1)" class="ic">↑</button>';
+    var dn='<button '+(oi===ops.length-1?'disabled':'')+' onclick="event.stopPropagation();moveSeq('+jsq(det)+','+jsq(o.op)+',1)" class="ic">↓</button>';
+    var ri=__ri++;
+    var inS='text-align:right;font-variant-numeric:tabular-nums';
+    var ca=jsq(det)+','+jsq(o.op);
+    var tr='<tr id="oprow_'+ri+'"'+(opened?' style="background:var(--accent-bg)"':'')+'>'
+      +'<td class="code" title="'+esc(o.fullCode||'')+'">'+esc(o.fullCode||'')+'</td>'
+      +'<td class="opname"><span class="muted" style="font:var(--t-label)">'+(oi+1)+'.</span> '+up+dn+' <span onclick="toggleOp('+ca+')" style="cursor:pointer;border-bottom:1px dotted var(--muted)" title="замер · статус · удалить">'+esc(o.op)+'</span></td>'
+      +'<td class="num" data-l="шт/час"><input class="c_ph" value="'+(o.norm||'')+'" onclick="event.stopPropagation()" onchange="setInline('+ri+','+ca+',\'ph\')" style="'+inS+'"></td>'
+      +'<td class="num" data-l="коэф"><input class="c_k" value="'+(o.koef||1)+'" onclick="event.stopPropagation()" onchange="setInline('+ri+','+ca+',\'k\')" style="'+inS+'"></td>'
+      +'<td class="num" data-l="расц."><input class="c_rate" value="'+(o.rate||0)+'" onclick="event.stopPropagation()" onchange="setInline('+ri+','+ca+',\'rate\')" style="'+inS+';font-weight:600;color:var(--green)"></td>'
+      +'<td class="num chg" style="white-space:nowrap">'+rateChange(o)+'</td>'
+      +'<td class="st" style="white-space:nowrap">'+opBadge(o)+' <button onclick="event.stopPropagation();delOp('+ca+')" title="удалить операцию" class="ic">🗑</button></td></tr>';
+    return tr+(opened?editorRow(o,false,det):'');
+  }).join('');
+  if(EDIT===det+SEP+NEW) body+=editorRow({},true,det);
+  if(EDIT===det+SEP+BLK) body+=blockRow(det,db);
+  // заглушку ставим, только если НИ ОДИН редактор не открыт (иначе «＋ блоком» у пустой детали не открывалось)
+  if(!ops.length && EDIT!==det+SEP+NEW && EDIT!==det+SEP+BLK) body='<tr><td colspan="7" class="hint">операций нет — нажмите «＋ операция»</td></tr>';
+  var sel=showSel? '<span class="hint">оборуд.:</span> <select onchange="moveDetail('+jsq(det)+',this.value)">'+equipOpts(db.equip||'Общие')+'</select>' : '';
+  return '<div style="border:1px solid var(--line);border-radius:10px;margin:8px 0;overflow:hidden;background:var(--card)">'
+    +'<div style="padding:8px 12px;background:var(--bg2);display:flex;gap:8px;align-items:center;flex-wrap:wrap">'
+    +  '<b>'+esc(det)+'</b>'+(no?' <span class="hint">№'+esc(no)+'</span>':'')
+    +  '<span style="flex:1"></span>'+sel
+    +  '<button class="gray sm" onclick="addOp('+jsq(det)+')">＋ операция</button>'
+    +  '<button class="green sm" onclick="addOpsBlock('+jsq(det)+')">＋ блоком</button>'
+    +  '<button class="danger sec sm" onclick="delDetail('+jsq(det)+')" title="убрать деталь из блока">✕</button>'
+    +'</div>'
+    +'<table class="optbl">'
+    +'<colgroup><col style="width:96px"><col><col style="width:84px"><col style="width:62px">'
+    +'<col style="width:88px"><col style="width:104px"><col style="width:168px"></colgroup>'
+    +'<thead><tr><th>№</th><th>Операция</th><th class="num">шт/час</th><th class="num">коэф</th><th class="num">Расц.</th><th class="num">Изм.</th><th>Статус</th></tr></thead><tbody>'
+    +  body+'</tbody></table></div>';
+}
+function renderOps(){ if(!DATA) return; __ri=0;
+  var f=(el('opsFilter')&&el('opsFilter').value||'').toLowerCase();
+  var grp=el('grpEq')&&el('grpEq').checked;
+  var tree={}, eqOrder=[];
+  function ensure(e,d){ if(!tree[e]){tree[e]={dets:{},order:[]};eqOrder.push(e);} if(!tree[e].dets[d]){tree[e].dets[d]={ops:[],code:'',equip:(e==='__all__'?'':e)};tree[e].order.push(d);} return tree[e].dets[d]; }
+  DATA.rates.forEach(function(o){
+    if(f && (o.name+' '+o.op+' '+(o.fullCode||'')+' '+(o.equip||'')).toLowerCase().indexOf(f)<0) return;
+    var db=ensure(grp?(o.equip||'Общие'):'__all__', o.name); db.ops.push(o); if(o.detCode)db.code=o.detCode; if(o.equip)db.equip=o.equip;
+  });
+  var have={}; DATA.rates.forEach(function(o){ have[o.name]=1; });
+  JUST=JUST.filter(function(j){ return !have[j.detail]; });
+  (DATA.detEquip||[]).concat(JUST).forEach(function(de){   // пустые детали/блоки без операций
+    if(f && (de.detail+' '+(de.equip||'')).toLowerCase().indexOf(f)<0) return;
+    var db=ensure(grp?(de.equip||'Общие'):'__all__', de.detail); if(!db.code)db.code=de.code||''; if(de.equip)db.equip=de.equip;
+  });
+  eqOrder.sort(function(a,b){ if(a==='Общие')return 1; if(b==='Общие')return -1; return a.localeCompare(b,'ru'); });
+  var autoOpen=!!f;
+  el('opsList').innerHTML = eqOrder.map(function(e){
+    var t=tree[e];
+    if(!grp) return t.order.map(function(d){return detailBlock(d,t.dets[d],false);}).join('');
+    var opened=autoOpen||OPENQ[e], nop=t.order.reduce(function(s,d){return s+t.dets[d].ops.length;},0);
+    var common = e==='Общие';
+    var grpStyle = 'border:1px solid var(--line);border-radius:14px;margin-bottom:8px;overflow:hidden;background:var(--card)';
+    var headStyle = 'padding:8px 12px;background:'+(common?'var(--grey-bg)':'var(--card2)')+';display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap';
+    return '<div class="grp" style="'+grpStyle+'">'
+      +'<div style="'+headStyle+'">'
+      +  '<b style="cursor:pointer;flex:1" onclick="toggleEq('+jsq(e)+')">'+(opened?'▾':'▸')+' '+esc(e)
+      +    (common?' <span class="hint" style="font-weight:400">— детали для разных изделий</span>':'')+'</b>'
+      +  '<span class="hact">'
+      +    '<button class="green sm badd" title="добавить деталь прямо в этот блок" onclick="addDetIn('+jsq(e)+')">＋ деталь</button>'
+      +    (!common?'<button class="gray sm bic" title="переименовать блок" onclick="renameEquip('+jsq(e)+')">✎</button>':'<span class="bic"></span>')
+      +    '<span class="hint cnt" style="cursor:pointer" onclick="toggleEq('+jsq(e)+')">'+t.order.length+' дет. · '+nop+' оп.</span>'
+      +    (!common?'<button class="danger sec sm bx" title="убрать блок (детали уедут в «Общие»)" onclick="delEquipBlock('+jsq(e)+','+t.order.length+')">✕</button>':'<span class="bx"></span>')
+      +  '</span></div>'
+      +(opened?'<div style="padding:4px 8px 8px 12px;border-left:1px solid var(--line);margin-left:8px">'+t.order.map(function(d){return detailBlock(d,t.dets[d],true);}).join('')+newDetRow(e)+'</div>':'')
+      +'</div>';
+  }).join('') || '<div class="hint">нет операций</div>';
+  var reqs=DATA.rates.filter(function(o){ return o.recalcReq && o.proposedRate>0; });
+  el('recalcBox').className = reqs.length ? 'card' : 'card hide';
+  el('recalcList').innerHTML = reqs.map(function(o){
+    return '<div style="margin:4px 0">↺ <b>'+esc(o.name)+' / '+esc(o.op)+'</b> — '+esc(o.recalcReq)+': сейчас '+fmtR(o.rate)+' р. → мастер предлагает <b>'+fmtR(o.proposedRate)+'</b> р. <a style="color:var(--accent-text);cursor:pointer" onclick="openReq('+jsq(o.name)+','+jsq(o.op)+','+jsq(o.equip||'Общие')+')">рассмотреть</a></div>';
+  }).join('');
+}
+function toggleEq(e){ OPENQ[e]=!OPENQ[e]; renderOps(); }
+function addDetIn(e){ NEWDET=(NEWDET===e?'':e); OPENQ[e]=1; renderOps();
+  setTimeout(function(){ var i=el('nd_name'); if(i){ i.focus(); i.scrollIntoView({block:'nearest'}); } },30); }
+function newDetRow(e){
+  if(NEWDET!==e) return '';
+  return '<div style="border:1px dashed var(--line2);border-radius:10px;margin:8px 0;padding:8px 12px;background:var(--card2)">'
+    +'<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'
+    +  '<span class="hint">новая деталь в блок «'+esc(e)+'»:</span>'
+    +  '<input id="nd_name" list="detNames" placeholder="название детали" style="min-width:220px" onkeydown="if(event.key===\'Enter\')createDetIn('+jsq(e)+')">'
+    +  '<button class="green sm" onclick="createDetIn('+jsq(e)+')">Создать</button>'
+    +  '<button class="gray sm" onclick="cancelNewDet()">отмена</button>'
+    +  '<span class="msg" id="nd_msg"></span></div></div>';
+}
+function cancelNewDet(){ NEWDET=''; renderOps(); }
+function afterNewDetail(det, eq, r){ if(!eq) JUST.push({detail:det, equip:'', code:(r&&r.code)||''}); EDIT=det+SEP+NEW; load(); }   // сразу открыть «новую операцию»
+function createDetIn(e){
+  var i=el('nd_name'), det=i?i.value.trim():'';
+  if(!det){ setMsg('nd_msg',false,'введите название детали'); return; }
+  setMsg('nd_msg',true,'создаю…');
+  var eq = (e==='Общие' ? '' : e);   // «Общие» — не оборудование, а корзина деталей без привязки
+  api({vapi:'adddetail',detail:det,equip:eq}).then(function(r){
+    if(!(r&&r.ok)){ setMsg('nd_msg',false,'ошибка: '+((r&&r.error)||'')); return; }
+    NEWDET=''; OPENQ[e]=1; afterNewDetail(det, eq, r);
+  }).catch(function(er){ setMsg('nd_msg',false,'ошибка: '+errOf(er)); });
+}
+function delEquipBlock(e,n){
+  var msg = n
+    ? 'Убрать блок «'+e+'»?\n\nДеталей в нём: '+n+'. Сами детали и их расценки НЕ удаляются — они переедут в «Общие» (а детали без операций просто исчезнут с этого экрана и останутся в «Реестре деталей»).'
+    : 'Убрать пустой блок «'+e+'»?';
+  if(!confirm(msg)) return;
+  delete OPENQ[e];
+  api({vapi:'delequipblock',equip:e}).then(function(r){ if(!(r&&r.ok)) alert('Не удалось убрать блок: '+((r&&r.error)||'')); load(); })
+    .catch(function(er){ alert('Ошибка: '+errOf(er)); load(); });
+}
+function renameEquip(e){ var nn=prompt('Новое название блока (оборудования):', e); if(!nn||nn.trim()===e) return; nn=nn.trim();
+  api({vapi:'renameequip',old:e,name:nn}).then(function(r){
+    if(!r||!r.ok){ alert('Не удалось переименовать: '+((r&&r.error)||'')); return; }
+    if(OPENQ[e]){ OPENQ[nn]=1; delete OPENQ[e]; } load();
+  }).catch(function(er){ alert('Ошибка: '+errOf(er)); }); }
+function toggleOp(det,op){ var k=det+SEP+op; EDIT=(EDIT===k?'':k); renderOps(); }
+// ── ПОРЯДОК ОПЕРАЦИЙ: экран ведёт локальное состояние, на сервер уходит ПОЛНЫЙ порядок, запросы по детали строго по одному
+var SEQPEND={}, SEQBUSY={};
+function moveSeq(det,op,dir){
+  var list=DATA.rates.filter(function(o){return o.name===det;}).sort(function(a,b){return (a.order||9999)-(b.order||9999);});
+  var i=-1; for(var k=0;k<list.length;k++) if(list[k].op===op){i=k;break;}
+  var j=i+dir; if(i<0||j<0||j>=list.length) return;
+  var t=list[i]; list[i]=list[j]; list[j]=t;
+  list.forEach(function(o,idx){ o.order=idx+1; });
+  renderOps();
+  SEQPEND[det]=list.map(function(o){return o.op;});
+  seqSave(det);
+}
+function seqSave(det){
+  if(SEQBUSY[det]) return;
+  var names=SEQPEND[det]; if(!names) return;
+  delete SEQPEND[det]; SEQBUSY[det]=1;
+  apiPost({vapi:'reorderops',detail:det,ops:JSON.stringify(names)}).then(function(r){
+    SEQBUSY[det]=0;
+    if(!r||!r.ok){ alert('Порядок не сохранился: '+((r&&r.error)||'')+'\nОбновляю список.'); load(); return; }
+    if(SEQPEND[det]) seqSave(det);
+  }).catch(function(e){ SEQBUSY[det]=0; alert('Порядок не сохранился: '+errOf(e)+'\nОбновляю список.'); load(); });
+}
+function addOp(det){ EDIT=det+SEP+NEW; renderOps(); setTimeout(function(){ if(el('e_op'))el('e_op').focus(); },30); }
+function cancelEdit(){ EDIT=''; renderOps(); }
+// правка прямо в таблице: шт/час, коэф или расценка — без раскрытия редактора
+function setInline(ri, det, op, field){
+  var row=el('oprow_'+ri); if(!row) return;
+  var phEl=row.querySelector('.c_ph'), kEl=row.querySelector('.c_k'), rEl=row.querySelector('.c_rate');
+  var p={vapi:'setratefast', detail:det, op:op};
+  if(field==='rate'){ p.rate=num(rEl.value); }
+  else { p.perhour=num(phEl.value); p.koef=num(kEl.value)||1; }
+  row.style.opacity=.55;
+  api(p).then(function(r){
+    row.style.opacity=1; if(!r||!r.ok){ alert('Не сохранилось: '+((r&&r.error)||'')); return; }
+    if(rEl) rEl.value = (Math.round((r.rate||0)*10000)/10000);
+    if(phEl && field!=='ph') phEl.value = r.perHour||'';
+    if(kEl) kEl.value = r.koef||1;
+    DATA.rates.forEach(function(o){ if(o.name===det&&o.op===op){ o.rate=r.rate; o.norm=r.perHour; o.koef=r.koef; } });
+  }).catch(function(){ row.style.opacity=1; });
+}
+// удалить операцию прямо из строки — сразу на экране, на сервере в фоне; отказ (операция в составах изделий) — вернуть
+function delOp(det, op){
+  if(!confirm('Удалить операцию «'+op+'» у детали «'+det+'»?')) return;
+  DATA.rates=(DATA.rates||[]).filter(function(o){ return !(o.name===det && o.op===op); });
+  renderOps();
+  api({vapi:'delrate',name:det,op:op}).then(function(r){ if(!r||!r.ok){ alert('Не удалено: '+((r&&r.error)||'')); load(); } })
+    .catch(function(){ alert('Не удалось удалить — обновляю список'); load(); });
+}
+function addOpsBlock(det){ EDIT=det+SEP+BLK; renderOps(); setTimeout(function(){ var b=el('blkList'); if(b) b.scrollIntoView({block:'nearest'}); },30); }
+function blockRow(det, db){
+  var have={}; (db.ops||[]).forEach(function(o){ have[String(o.op).toLowerCase()]=1; });
+  var cat=(DATA.opsCatalog||[]).filter(function(o){ return !have[String(o.name).toLowerCase()]; })
+    .sort(function(a,b){ return (Number(a.code)||9999)-(Number(b.code)||9999) || a.name.localeCompare(b.name,'ru'); });
+  var items=cat.map(function(o){
+    return '<label class="blkop" data-t="'+esc((o.code+' '+o.name).toLowerCase())+'" style="display:flex;gap:8px;align-items:center;padding:4px 8px;border-bottom:1px solid var(--line);cursor:pointer;font-size:13px">'
+      +'<input type="checkbox" value="'+esc(o.name)+'" style="width:auto">'
+      +'<span class="hint" style="min-width:40px">'+esc(o.code||'')+'</span> '+esc(o.name)+'</label>';
+  }).join('') || '<div class="hint" style="padding:12px">все операции каталога уже добавлены к этой детали</div>';
+  return '<tr><td colspan="7" style="background:var(--blue-bg);padding:0">'
+    +'<div style="padding:12px">'
+    +'<div style="font-weight:600;margin-bottom:8px">Отметьте операции — добавятся к детали «'+esc(det)+'» разом:</div>'
+    +'<input placeholder="🔍 фильтр операций" oninput="filterBlk(this.value)" style="width:100%;margin-bottom:8px">'
+    +'<div id="blkList" style="max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:10px;background:var(--card)">'+items+'</div>'
+    +'<div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap"><span class="hint">шт/час для всех (можно позже):</span>'
+    +'<input id="blk_ph" type="number" step="0.01" style="width:90px" placeholder="напр. 15"><span class="hint">коэф = 1</span></div>'
+    +'<div style="display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap">'
+    +'<button class="green" onclick="saveOpsBlock('+jsq(det)+')">Добавить выбранные</button>'
+    +'<button class="gray" onclick="cancelEdit()">отмена</button><span id="blkMsg" class="msg"></span></div>'
+    +'</div></td></tr>';
+}
+function filterBlk(v){ v=String(v||'').toLowerCase(); var list=el('blkList'); if(!list) return;
+  Array.prototype.forEach.call(list.querySelectorAll('.blkop'), function(l){ l.style.display=(!v||l.getAttribute('data-t').indexOf(v)>=0)?'flex':'none'; }); }
+function saveOpsBlock(det){
+  var list=el('blkList'); if(!list) return;
+  var ops=[]; Array.prototype.forEach.call(list.querySelectorAll('input[type=checkbox]:checked'), function(c){ ops.push(c.value); });
+  if(!ops.length){ setMsg('blkMsg',false,'отметьте хотя бы одну операцию'); return; }
+  var ph=(el('blk_ph')&&el('blk_ph').value)||'';
+  setMsg('blkMsg',true,'добавляю '+ops.length+'…');
+  apiPost({vapi:'addopsblock',detail:det,ops:JSON.stringify(ops),ph:ph}).then(function(r){
+    if(!r||!r.ok){ setMsg('blkMsg',false,(r&&r.error)||'ошибка'); return; }
+    var eq=''; for(var i=0;i<(DATA.rates||[]).length;i++){ if(DATA.rates[i].name===det){ eq=DATA.rates[i].equip||''; break; } }
+    if(!eq)(DATA.detEquip||[]).forEach(function(de){ if(de.detail===det&&!eq)eq=de.equip||''; });
+    (r.rows||[]).forEach(function(nr){ nr.name=det; nr.equip=eq; DATA.rates.push(nr); });
+    EDIT=''; renderOps();   // без тяжёлой перезагрузки
+  }).catch(function(e){ setMsg('blkMsg',false,'ошибка: '+errOf(e)); });
+}
+function openReq(det,op,eq){ if(eq)OPENQ[eq]=1; EDIT=det+SEP+op; renderOps(); }
+function editParts(){ var p=EDIT.split(SEP); return {det:p[0], op:p[1]===NEW? (el('e_op')?el('e_op').value.trim():''):p[1], isNew:p[1]===NEW}; }
+function doSaveRate(){ var e=editParts(); if(!e.det||!e.op){ setMsg('e_msg',false,'нужна операция'); return; }
+  setMsg('e_msg',true,'…');
+  api({vapi:'saverate',name:e.det,op:e.op,perhour:num(el('e_ph').value),koef:num(el('e_k').value)||1,note:el('e_note').value}).then(function(x){
+    if(!x||!x.ok){ setMsg('e_msg',false,'ошибка: '+((x&&x.error)||'')); return; }
+    EDIT=e.det+SEP+e.op; load();
+  }).catch(function(x){ setMsg('e_msg',false,errOf(x)); }); }
+function confirmMsg(r,role){ if(!el('e_msg'))return; el('e_msg').className='msg '+(r&&r.ok?'ok':'err');
+  if(r&&r.ok&&r.requested){ el('e_msg').textContent='↺ предложено '+fmtR(r.proposedRate)+' р. — ждёт начальника'; return; }
+  el('e_msg').textContent = r&&r.ok ? ((role==='начальник'?'🟢 начальник':'🟡 мастер')+' · '+(r.measured?('замер: '+r.perHour+' шт/час → '+fmtR(r.rate)+' р.'):('расценка '+fmtR(r.rate)+' р.'))) : ('ошибка: '+((r&&r.error)||'')); }
+function doConfirm(role){ var e=editParts();
+  api({vapi:'confirmrate',name:e.det,op:e.op,role:role,n:num(el('e_mn').value),min:num(el('e_mm').value)}).then(function(r){
+    if(r&&r.ok) load(); setTimeout(function(){ confirmMsg(r,role); }, r&&r.ok?600:0);
+  }).catch(function(x){ setMsg('e_msg',false,errOf(x)); }); }
+function doMaster(){ doConfirm('мастер'); }
+function doChief(){ doConfirm('начальник'); }
+function doRejectRecalc(){ var e=editParts();
+  api({vapi:'rejectrecalc',name:e.det,op:e.op}).then(function(r){ setMsg('e_msg', r&&r.ok, r&&r.ok?'запрос отклонён — расценка прежняя':('ошибка: '+((r&&r.error)||''))); if(r&&r.ok) load(); })
+    .catch(function(x){ setMsg('e_msg',false,errOf(x)); }); }
+function doDelRate(){ var e=editParts(); if(!confirm('Удалить операцию «'+e.op+'» у детали «'+e.det+'»?')) return;
+  api({vapi:'delrate',name:e.det,op:e.op}).then(function(r){ if(!r||!r.ok){ setMsg('e_msg',false,'не удалено: '+((r&&r.error)||'')); return; } EDIT=''; load(); })
+    .catch(function(x){ setMsg('e_msg',false,errOf(x)); }); }
+function moveDetail(det,equip){ api({vapi:'setdeteq',detail:det,equip:equip==='Общие'?'':equip}).then(function(r){ if(!r||!r.ok) alert('Не перенесено: '+((r&&r.error)||'')); load(); }); }
+function toggleAddDet(){ var b=el('addDetBox'); b.className = b.className.indexOf('hide')>=0 ? 'card' : 'card hide'; if(b.className==='card'){ el('ad_eq').value=''; el('ad_det').value=''; el('admsg').textContent=''; el('ad_eq').focus(); } }
+function createDetail(){ var eq=el('ad_eq').value.trim(), det=el('ad_det').value.trim();
+  if(!det){ setMsg('admsg',false,'введите название детали'); return; }
+  if(eq==='Общие') eq='';
+  setMsg('admsg',true,'создаю…');
+  api({vapi:'adddetail',detail:det,equip:eq}).then(function(r){
+    if(!(r&&r.ok)){ setMsg('admsg',false,'ошибка: '+((r&&r.error)||'')); return; }
+    OPENQ[eq||'Общие']=1; el('addDetBox').className='card hide'; afterNewDetail(det, eq, r);
+  }).catch(function(x){ setMsg('admsg',false,errOf(x)); }); }
+function delDetail(det){ if(!confirm('Убрать деталь «'+det+'» из блока? (операции детали, если есть, переедут в «Общие»)')) return;
+  JUST=JUST.filter(function(j){ return j.detail!==det; });
+  api({vapi:'deldetequip',detail:det}).then(function(){ load(); }); }
+function fillNorms(force){ el('normsmsg').className='msg'; el('normsmsg').textContent='считаю…';
+  api({vapi:'fillnorms',force:force?'1':''}).then(function(r){ setMsg('normsmsg', r&&r.ok, r&&r.ok?('готово: строк '+r.rows+', нормы '+r.filled+' (ставка '+r.hourRate+' р/ч)'):('ошибка: '+((r&&r.error)||''))); load(); })
+    .catch(function(x){ setMsg('normsmsg',false,errOf(x)); }); }
+
+load();
+
+// авто-обновление: оболочка шлёт «refresh» при возврате на раздел — перечитываем данные без перезагрузки страницы
+(function(){
+  try{ window.top.postMessage({tw:'hello',sec:qp('twsec')},'*'); }catch(e){}
+  window.addEventListener('message',function(e){ var d=e&&e.data; if(d&&d.tw==='refresh'){ try{ load(); if(CUTROWS.length){ loadCut(); loadPay(); } }catch(err){} } });
+})();
+</script>
+</body>
+</html>
