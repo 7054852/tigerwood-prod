@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="tw-theme.js"></script>
+<script src="tw-config.js"></script>
+<title>Тигервуд — Ценообразование</title>
+<!-- Ценообразование, этап 1 (prohub/docs/pricing-proposal.md §11): калькулятор «только просмотр» на vapi Прохаба
+     (pricingcalc / pricingsettings / pricingsettingsset / pricingcsv / pricingunmatched2023). Цены в документах и каталоге не меняются.
+     Пересчёт «что если» и предпросмотр ручек — на клиенте той же формулой, что в src/pricing/calc.ts. ES5: Telegram на старых Android. -->
+<style>
+  .sub b{ color:var(--amber); }
+  .toolbar{ flex-wrap:wrap; }
+  .tbwrap{ border:1px solid var(--line); border-radius:var(--r-card); background:var(--card); max-height:70vh; overflow:auto; }
+  table.pr{ font:var(--t-small); min-width:1180px; }
+  table.pr th, table.pr td{ padding:var(--s-1) var(--s-2); white-space:nowrap; vertical-align:middle; }
+  table.pr th{ position:sticky; top:0; background:var(--card2); z-index:2; }
+  table.pr th:first-child, table.pr td:first-child{ position:sticky; left:0; background:var(--card); z-index:1; max-width:220px; overflow:hidden; text-overflow:ellipsis; }
+  table.pr th:first-child{ z-index:3; background:var(--card2); }
+  table.pr tr.pgrp td{ background:var(--card2); font-weight:600; position:sticky; left:0; }
+  table.pr tr.prow{ cursor:pointer; } table.pr tr.prow:hover td{ background:var(--accent-bg); }
+  table.pr tr.pdim td{ color:var(--muted); }
+  td.n, th.n{ text-align:right; font-variant-numeric:tabular-nums; }
+  th.ch{ border-left:2px solid var(--line); } td.ch{ border-left:2px solid var(--line); }
+  .was{ color:var(--muted); } .arr{ color:var(--muted); padding:0 2px; } .now{ font-weight:600; }
+  .pos{ color:var(--green); } .neg{ color:var(--red); }
+  .src{ font-size:11px; color:var(--muted); }
+  .src.est{ color:var(--amber); }
+  .lt{ display:inline-block; width:10px; height:10px; border-radius:50%; vertical-align:middle; margin-right:3px; }
+  .lt.green{ background:var(--green); } .lt.yellow{ background:var(--amber); } .lt.red{ background:var(--red); } .lt.none{ background:var(--line2); }
+  .stale{ color:var(--amber); font-weight:600; }
+  .kn{ display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:var(--s-3); }
+  .kn label{ display:block; font:var(--t-small); color:var(--muted); margin-bottom:var(--s-1); }
+  .kn .hint{ font-size:11px; color:var(--muted); margin-top:var(--s-1); }
+  .kn input, .kn select{ width:100%; }
+  .chn{ border:1px solid var(--line); border-radius:var(--r-card); padding:var(--s-3); background:var(--card); }
+  .chn h4{ margin:0 0 var(--s-2); }
+  .wi{ display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:var(--s-3); }
+  .wi label{ display:flex; justify-content:space-between; font:var(--t-small); color:var(--muted); }
+  .wi input[type=range]{ width:100%; min-height:0; padding:0; }
+  .sum{ display:flex; gap:var(--s-3); flex-wrap:wrap; font:var(--t-small); margin:var(--s-2) 0; }
+  .sum span{ padding:2px 8px; border-radius:var(--r-pill); background:var(--card2); }
+  .kv{ display:grid; grid-template-columns:1fr auto; gap:2px var(--s-3); font:var(--t-small); }
+  .kv b{ text-align:right; font-variant-numeric:tabular-nums; }
+  .kv .h{ grid-column:1/3; margin-top:var(--s-2); font-weight:600; color:var(--fg); }
+  .formula{ font:var(--t-small); background:var(--card2); border-radius:var(--r-ctl); padding:var(--s-2) var(--s-3); margin:var(--s-2) 0; }
+  #msg{ display:none; margin:0 0 var(--s-3); padding:var(--s-2) var(--s-3); border-radius:var(--r-card); font:var(--t-small); }
+  #msg.ok{ display:block; background:var(--green-bg); color:var(--green); } #msg.err{ display:block; background:var(--red-bg); color:var(--red); }
+  @media (max-width:640px){
+    table.pr{ min-width:980px; } table.pr th:first-child, table.pr td:first-child{ max-width:150px; }
+    .scrim{ padding:var(--s-2); } .scrim>.modal{ padding:var(--s-3); }
+  }
+</style>
+</head>
+<body>
+<div id="twload"><i></i></div>
+<div class="hi">💰 Ценообразование</div>
+<div class="sub">Только просмотр: цены в документах и каталоге не меняются. Цена канала = переменные + часы × «вклад на час» + материалы × «наценка на материал».
+  <b>«оценка 2023»</b> — число из таблицы «Ценообразование 250823», пока состав элементов не заполнен.</div>
+<div class="tabs" id="tabs">
+  <button class="on" data-tab="list" onclick="setTab('list')">Ассортимент</button>
+  <button data-tab="knobs" onclick="setTab('knobs')">Ручки каналов</button>
+  <button data-tab="unm" onclick="setTab('unm')">Не сопоставлено (2023)</button>
+</div>
+<div id="msg"></div>
+
+<div id="tabList">
+  <div class="tray" style="margin-bottom:var(--s-3)">
+    <div class="toolbar" style="margin:0 0 var(--s-2)"><b>Что если</b><span class="meta">— пересчёт сразу, ничего не сохраняется</span><div class="end"><button class="sm sec" onclick="wiReset()">Сброс</button></div></div>
+    <div class="wi">
+      <div><label>Материалы <b id="wiMatV">0 %</b></label><input type="range" id="wiMat" min="-30" max="30" step="1" value="0" oninput="wiChange()"></div>
+      <div><label>Ставка часа цеха <b id="wiRateV"></b></label><input type="range" id="wiRate" min="5" max="40" step="0.5" oninput="wiChange()"></div>
+      <div><label>Курс EUR <b id="wiEurV"></b></label><input type="range" id="wiEur" min="2.5" max="4.5" step="0.05" oninput="wiChange()"></div>
+      <div><label>Взносы с ФОТ <b id="wiTaxV"></b></label><input type="range" id="wiTax" min="0" max="60" step="0.1" oninput="wiChange()"></div>
+      <div><label>Загрузка цеха <b id="wiLoadV">100 %</b></label><input type="range" id="wiLoad" min="40" max="120" step="5" value="100" oninput="wiChange()"></div>
+    </div>
+    <div class="sum" id="wiSum"></div>
+  </div>
+  <div class="toolbar">
+    <input id="q" type="search" class="search" placeholder="🔎 артикул, товар, группа" oninput="render()" style="flex:1;min-width:180px">
+    <select id="grp" onchange="render()" style="width:auto"><option value="">все группы</option></select>
+    <select id="sort" onchange="render()" style="width:auto">
+      <option value="name">по названию</option>
+      <option value="hours">по часам ↓</option>
+      <option value="variable">по переменным ↓</option>
+      <option value="cph">по вкладу на час (было, крупный опт) ↑</option>
+      <option value="stale">труд устарел ↓</option>
+    </select>
+    <label style="font:var(--t-small);display:inline-flex;align-items:center;gap:4px"><input type="checkbox" id="onlyCalc" checked onchange="render()"> только с расчётом</label>
+    <span class="meta" id="cnt"></span>
+    <div class="end"><button class="sm sec" onclick="csv()">⬇ CSV</button></div>
+  </div>
+  <div class="tbwrap"><table class="pr"><thead id="th"></thead><tbody id="tb"><tr><td class="empty">Загрузка…</td></tr></tbody></table></div>
+  <div class="meta" style="margin-top:var(--s-2)">Светофор при цене «как в таблице»: 🟢 вклад на час ≥ цели канала · 🟡 покрыты переменные и накладные цеха · 🔴 не покрыты. «Труд устарел» — труд по составу Прохаба отличается от таблицы 2023 сильнее порога.</div>
+</div>
+
+<div id="tabKnobs" style="display:none">
+  <div class="card">
+    <div class="toolbar" style="margin:0 0 var(--s-3)"><b>Ручки каналов</b><span class="meta">правят директор и администратор; «Предпросмотр» пересчитывает ассортимент без сохранения</span></div>
+    <div class="kn" id="chBox"></div>
+    <h4 style="margin:var(--s-4) 0 var(--s-2)">Общие</h4>
+    <div class="kn" id="glBox"></div>
+    <div class="toolbar" style="margin:var(--s-4) 0 0">
+      <button class="sec" onclick="preview()">👁 Предпросмотр</button>
+      <button class="green" onclick="saveKnobs()">💾 Сохранить</button>
+      <button class="sm sec" onclick="fillKnobs(); preview()">↺ Как сохранено</button>
+      <span class="meta" id="knMsg"></span>
+    </div>
+  </div>
+</div>
+
+<div id="tabUnm" style="display:none">
+  <div class="card">
+    <div class="toolbar" style="margin:0 0 var(--s-2)"><b>Перенос «оценки 2023»</b><span class="meta" id="unmCnt"></span>
+      <div class="end"><button class="sm sec" onclick="reimport()" title="повторить перенос из снимка таблицы и сопоставление; безопасно">↻ Повторить перенос</button></div></div>
+    <div class="meta" style="margin-bottom:var(--s-2)">Строки таблицы, для которых не нашёлся артикул Прохаба: у таких товаров нет материалов «оценка 2023» и цен «как в таблице». Сопоставление вручную — этап 2.</div>
+    <div class="tbwrap" style="max-height:60vh"><table class="pr" style="min-width:640px"><thead><tr><th>Строка таблицы 2023</th><th class="n">Материал</th><th class="n">Работа</th><th>Артикул</th><th>Почему</th></tr></thead><tbody id="unmTb"></tbody></table></div>
+  </div>
+</div>
+
+<!-- общий диалог вместо alert/confirm -->
+<div class="scrim" id="dlg" style="display:none"><div class="modal" style="max-width:720px;width:100%;max-height:88vh;overflow:auto">
+  <h3 id="dlgT"></h3><div id="dlgB"></div>
+  <div class="toolbar" style="margin:var(--s-4) 0 0"><div class="end"><button class="sec" id="dlgNo">Отмена</button><button id="dlgOk">OK</button></div></div>
+</div></div>
+
+<script>
+var BASE=(window.TW_CFG&&TW_CFG.hub)||'https://prohub.tigerwood.by/exec';   // адрес задаёт tw-config.js
+var APP='tw7prod';
+function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]*)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
+var TGID=qp('tgid')||(function(){try{return localStorage.getItem('tw_tgid')||'';}catch(e){return '';}})();
+try{ if(!TGID && window.Telegram && Telegram.WebApp && Telegram.WebApp.initDataUnsafe && Telegram.WebApp.initDataUnsafe.user) TGID=String(Telegram.WebApp.initDataUnsafe.user.id); }catch(e){}
+if(TGID){ try{ localStorage.setItem('tw_tgid',TGID); }catch(e){} }
+function twTok(){ try{ return qp('tok')||localStorage.getItem('tw_tok')||''; }catch(e){ return qp('tok')||''; } }
+(function(){ var t=qp('tok'); if(t){ try{ localStorage.setItem('tw_tok',t); }catch(e){} } })();
+function twAuthWall(r){
+  if(r&&r.needAuth){ document.body.innerHTML='<div style="padding:var(--s-6);font:var(--t-body);color:var(--fg)"><div style="font:var(--t-title);margin-bottom:var(--s-3)">🔒 Нужен вход</div><div>'+esc(r.error||'Откройте сервис из бота @TWOtchbot или войдите по личному коду.')+'</div></div>'; }
+  return r;
+}
+function qs(p){ var _t=twTok(); if(_t) p.tok=_t; p.app=APP; if(TGID&&!p.tgid) p.tgid=TGID;
+  return Object.keys(p).map(function(k){ return k+'='+encodeURIComponent(p[k]==null?'':p[k]); }).join('&'); }
+var LD=0; function loadOn(){ LD++; el('twload').style.display='block'; } function loadOff(){ LD=Math.max(0,LD-1); if(!LD) el('twload').style.display='none'; }
+function api(p){ loadOn(); return fetch(BASE+'?'+qs(p)).then(function(r){ return r.json(); }).then(twAuthWall).then(function(r){ loadOff(); return r; }, function(e){ loadOff(); throw e; }); }
+function apiPost(p){ loadOn(); return fetch(BASE,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:qs(p)}).then(function(r){ return r.json(); }).then(twAuthWall).then(function(r){ loadOff(); return r; }, function(e){ loadOff(); throw e; }); }
+
+function el(id){ return document.getElementById(id); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function num(v){ return Number(String(v==null?'':v).replace(',','.'))||0; }
+function f(x,d){ if(x==null||isNaN(x)) return '—'; return Number(x).toFixed(d==null?1:d).replace('.',','); }
+function r2(x){ return Math.round(x*100+1e-9)/100; } function r1(x){ return Math.round(x*10+1e-9)/10; }
+function setMsg(ok,t){ var m=el('msg'); m.className=ok?'ok':'err'; m.textContent=t||''; if(!t) m.className=''; }
+var DLG=0;
+function dlg(title, html, onOk, okText, noText){
+  var my=++DLG, ok=el('dlgOk'), no=el('dlgNo');
+  el('dlgT').textContent=title; el('dlgB').innerHTML=html; ok.textContent=okText||'OK';
+  no.style.display=onOk?'':'none'; no.textContent=noText||'Отмена'; no.onclick=closeDlg;
+  ok.onclick=function(){ if(onOk && onOk(el('dlgB'))===false) return; if(DLG===my) closeDlg(); };
+  el('dlg').style.display='flex'; try{ ok.focus(); }catch(e){}
+}
+function closeDlg(){ el('dlg').style.display='none'; }
+function nope(t){ dlg('Не получилось', '<div class="note bad" style="display:block">'+esc(t||'Сервер не ответил — повторите.')+'</div>'); }
+function ask(q, onOk, okText){ dlg('Подтвердите', '<div>'+esc(q).replace(/\n/g,'<br>')+'</div>', function(){ onOk(); }, okText||'Да'); }
+
+// ═══ данные и клиентский движок (та же формула, что src/pricing/calc.ts) ═══
+var DATA=null, SET=null, CH=[], KN=null, WI={matPct:0, hourRate:null, eur:null, tax:null, load:100}, curTab='list';
+function setTab(t){ curTab=t; ['list','knobs','unm'].forEach(function(x){ el('tab'+x.charAt(0).toUpperCase()+x.slice(1)).style.display=(x===t)?'':'none'; });
+  var bs=el('tabs').getElementsByTagName('button'); for(var i=0;i<bs.length;i++) bs[i].className=bs[i].getAttribute('data-tab')===t?'on':'';
+  if(t==='unm'&&!UNM) loadUnm(); }
+function pretty(x,rule){ if(rule==='whole') return Math.round(x); if(rule==='nine') return Math.max(9, Math.round((x+1)/10)*10-1); return r2(x); }
+function eurHalf(x){ return Math.round(x*2)/2; }
+/** слои с учётом «что если» и ручек предпросмотра: база слоёв приходит с сервера без сценария */
+function layers(b){
+  var mat=r2(b.material*(1+(WI.matPct||0)/100));
+  var labor=r2(b.laborBase*KN.laborUplift);
+  var tax=WI.tax!=null?WI.tax:KN.payrollTaxPct;
+  var ptax=r2((labor+b.boss)*tax/100);
+  var variable=r2(mat+labor+b.boss+ptax);
+  var rate=(WI.hourRate!=null?WI.hourRate:KN.shopHourRate)*100/((WI.load>0?WI.load:100));
+  var overhead=r2(b.hours*rate);
+  return { material:mat, materialSrc:b.materialSrc, labor:labor, laborBase:b.laborBase, laborSrc:b.laborSrc, hours:b.hours, hoursSrc:b.hoursSrc, boss:b.boss, bossSrc:b.bossSrc,
+    payrollTax:ptax, taxPct:tax, variable:variable, overhead:overhead, fullCost:r2(variable+overhead), shopHourRateEff:r2(rate) };
+}
+function cphAt(net,l){ return l.hours>0?r1((net-l.variable)/l.hours):0; }
+function light(net,l,c){ if(l.hours<=0) return 'none'; if(cphAt(net,l)>=c.contributionPerHour) return 'green'; return net>=l.variable+l.overhead?'yellow':'red'; }
+function tableNet(code,t){ if(!t) return null; return code==='large_wholesale'?t.factory:code==='wholesale'?t.wholesale:code==='retail'?t.retail:null; }
+function calcRow(r){
+  var l=layers(r.layers), eur=WI.eur!=null?WI.eur:KN.eurRate, out={ ok:r.ok, layers:l, channels:[], ladder:[] };
+  if(!r.ok) return out;
+  CH.forEach(function(c){
+    var vat=1+c.vatPct/100, net=r2(l.variable+l.hours*c.contributionPerHour+l.material*c.materialMarkupPct/100), gross=r2(net*vat);
+    var shown=pretty(c.vatPct>0?gross:net,c.rounding), pnet=c.vatPct>0?r2(shown/vat):shown, tn=tableNet(c.code,r.table);
+    out.channels.push({ code:c.code, title:c.title, vatPct:c.vatPct, sellerCode:c.sellerCode,
+      model:{ net:net, gross:gross, pretty:shown, prettyNet:pnet, eur:eur>0?eurHalf(pnet/eur):0, cph:cphAt(pnet,l) },
+      table: tn!=null?{ net:r2(tn), gross:r2(tn*vat), cph:cphAt(tn,l), light:light(tn,l,c), deltaPct:tn>0?Math.round((pnet/tn-1)*100):null }:null,
+      lightModel: light(pnet,l,c) });
+  });
+  var ord=CH.slice().sort(function(a,b){ return a.sortOrder-b.sortOrder; });
+  for(var i=1;i<ord.length;i++){ var lo=out.channels[i-1], hi=out.channels[i];
+    if(hi.model.prettyNet<lo.model.prettyNet) out.ladder.push(hi.title+' ('+f(hi.model.prettyNet,2)+') ниже, чем '+lo.title+' ('+f(lo.model.prettyNet,2)+')');
+    else if(ord[i].minGapPct>0 && hi.model.prettyNet<r2(lo.model.prettyNet*(1+ord[i].minGapPct/100))) out.ladder.push(hi.title+' ниже «'+lo.title+' + '+ord[i].minGapPct+' %»'); }
+  return out;
+}
+
+// ═══ загрузка ═══
+function load(){
+  setMsg(true,'');
+  api({vapi:'pricingcalc'}).then(function(d){
+    if(!d||!d.ok){ setMsg(false,(d&&d.error)||'сервер не ответил'); el('tb').innerHTML='<tr><td class="empty">'+esc((d&&d.error)||'нет данных')+'</td></tr>'; return; }
+    DATA=d; CH=d.channels.map(function(c){ return clone(c); }); KN=clone(d.knobs);
+    // «табличная» база товара для клиентского пересчёта — из ответа сервера (rows[].table нет в ProductCalc: берём из карточки по требованию → храним цены таблицы в channels)
+    d.rows.forEach(function(r){ r.table=null; if(r.ok){ var t={}; r.channels.forEach(function(c){ if(c.table){ t[c.code]=c.table.net; } }); r.table={ factory:t.large_wholesale!=null?t.large_wholesale:null, wholesale:t.wholesale!=null?t.wholesale:null, retail:t.retail!=null?t.retail:null }; if(t.large_wholesale==null&&t.wholesale==null&&t.retail==null) r.table=null; } });
+    var gs={}; d.rows.forEach(function(r){ gs[r.group]=1; });
+    el('grp').innerHTML='<option value="">все группы</option>'+Object.keys(gs).sort(function(a,b){ return a.localeCompare(b,'ru'); }).map(function(g){ return '<option value="'+esc(g)+'">'+esc(g)+'</option>'; }).join('');
+    wiInit(); render();
+    return api({vapi:'pricingsettings'}).then(function(s){ if(s&&s.ok){ SET=s; fillKnobs(); } });
+  }).catch(function(e){ setMsg(false,'ошибка: '+((e&&e.message)||e)); });
+}
+function clone(o){ return JSON.parse(JSON.stringify(o)); }
+
+// ═══ что если ═══
+function wiInit(){ el('wiRate').value=KN.shopHourRate; el('wiEur').value=KN.eurRate; el('wiTax').value=KN.payrollTaxPct; el('wiMat').value=0; el('wiLoad').value=100; wiChange(false); }
+function wiChange(re){
+  WI.matPct=num(el('wiMat').value); WI.hourRate=num(el('wiRate').value); WI.eur=num(el('wiEur').value); WI.tax=num(el('wiTax').value); WI.load=num(el('wiLoad').value);
+  el('wiMatV').textContent=(WI.matPct>0?'+':'')+WI.matPct+' %'; el('wiRateV').textContent=f(WI.hourRate,1)+' BYN/ч'+(WI.load!==100?' → '+f(WI.hourRate*100/WI.load,1)+' при '+WI.load+' %':'');
+  el('wiEurV').textContent=f(WI.eur,2); el('wiTaxV').textContent=f(WI.tax,1)+' %'; el('wiLoadV').textContent=WI.load+' %';
+  if(re!==false) render();
+}
+function wiReset(){ wiInit(); render(); }
+
+// ═══ таблица ═══
+function lt(c){ return '<i class="lt '+c+'"></i>'; }
+function chCell(c){
+  if(!c) return '<td class="ch n">—</td><td class="n">—</td><td></td>';
+  var was=c.table?f(c.table.net,1):'—', now=f(c.model.prettyNet,c.vatPct>0?1:0), d=c.table&&c.table.deltaPct!=null?c.table.deltaPct:null;
+  var vat=c.vatPct>0?'<div class="src">с НДС '+c.vatPct+' %: '+(c.table?f(c.table.gross,1):'—')+' → <b>'+f(c.model.pretty,0)+'</b></div>':'<div class="src">EUR '+f(c.model.eur,1)+'</div>';
+  return '<td class="ch n"><span class="was">'+was+'</span><span class="arr">→</span><span class="now">'+now+'</span>'+(d!=null?' <span class="'+(d>=0?'pos':'neg')+'">'+(d>0?'+':'')+d+'%</span>':'')+vat+'</td>'
+    +'<td class="n"><span class="was">'+(c.table?f(c.table.cph,1):'—')+'</span><span class="arr">→</span><span class="now">'+f(c.model.cph,1)+'</span></td>'
+    +'<td>'+(c.table?lt(c.table.light):lt('none'))+'</td>';
+}
+function render(){
+  if(!DATA) return;
+  var q=el('q').value.trim().toLowerCase(), g=el('grp').value, sort=el('sort').value, only=el('onlyCalc').checked;
+  el('th').innerHTML='<tr><th>Товар</th><th class="n">Часы</th><th class="n">Материалы</th><th class="n">Труд</th><th class="n">Перем.</th><th class="n">+накл.</th>'
+    +CH.map(function(c){ return '<th class="ch n">'+esc(c.title)+': было → стало'+(c.vatPct>0?' (без НДС)':'')+'</th><th class="n">вклад/ч</th><th></th>'; }).join('')+'<th>Труд устарел</th></tr>';
+  var rows=DATA.rows.filter(function(r){ if(only&&!r.ok) return false; if(g&&r.group!==g) return false;
+    if(q&&(r.sku+' '+r.name+' '+r.group+' '+(r.estName||'')).toLowerCase().indexOf(q)<0) return false; return true; });
+  var calc={}; rows.forEach(function(r){ calc[r.sku]=calcRow(r); });
+  var key=function(r){ var c=calc[r.sku]; if(sort==='hours') return -c.layers.hours; if(sort==='variable') return -c.layers.variable;
+    if(sort==='cph'){ var x=c.channels[0]; return x&&x.table?x.table.cph:1e9; } if(sort==='stale') return r.laborStale?-Math.abs(r.laborStale.pct):1; return 0; };
+  rows.sort(function(a,b){ if(a.group!==b.group) return a.group.localeCompare(b.group,'ru'); var d=key(a)-key(b); return d||a.name.localeCompare(b.name,'ru'); });
+  var h='', lastG=null, sums={green:0,yellow:0,red:0,none:0};
+  rows.forEach(function(r){
+    var c=calc[r.sku], l=c.layers;
+    if(r.group!==lastG){ lastG=r.group; h+='<tr class="pgrp"><td colspan="'+(7+CH.length*3)+'">'+esc(r.group)+'</td></tr>'; }
+    if(!r.ok){ h+='<tr class="prow pdim" data-sku="'+esc(r.sku)+'"><td title="'+esc(r.name)+'">'+esc(r.sku)+' · '+esc(r.name)+'</td><td colspan="'+(6+CH.length*3)+'" class="src">нет расчёта: '+esc(r.missing.join('; '))+'</td></tr>'; return; }
+    var st=r.laborStale; if(c.channels[0]&&c.channels[0].table) sums[c.channels[0].table.light]++;
+    h+='<tr class="prow" data-sku="'+esc(r.sku)+'"><td title="'+esc(r.name)+'">'+esc(r.sku)+' · '+esc(r.name)+(c.ladder.length?' <span class="stale" title="'+esc(c.ladder.join('; '))+'">⚠</span>':'')+'</td>'
+      +'<td class="n">'+f(l.hours,2)+(l.hoursSrc!=='состав'?'<div class="src est">'+esc(l.hoursSrc)+'</div>':'')+'</td>'
+      +'<td class="n">'+f(l.material,1)+'<div class="src'+(l.materialSrc==='оценка 2023'?' est':'')+'">'+esc(l.materialSrc)+'</div></td>'
+      +'<td class="n">'+f(l.labor,1)+(l.laborSrc!=='состав'?'<div class="src est">'+esc(l.laborSrc)+'</div>':'')+'</td>'
+      +'<td class="n">'+f(l.variable,1)+'</td><td class="n">'+f(l.fullCost,1)+'</td>'
+      +c.channels.map(chCell).join('')
+      +'<td>'+(st?'<span class="'+(st.stale?'stale':'')+'">'+(st.pct>0?'+':'')+st.pct+' %</span>':'—')+'</td></tr>';
+  });
+  el('tb').innerHTML=h||'<tr><td class="empty">ничего не найдено</td></tr>';
+  el('cnt').textContent=rows.length+' из '+DATA.rows.length+' · с расчётом '+DATA.summary.calculated+(DATA.unmatched2023?' · не сопоставлено строк 2023: '+DATA.unmatched2023:'');
+  el('wiSum').innerHTML='<span>при цене «'+esc(CH[0]?CH[0].title:'')+'» как в таблице: '+lt('green')+sums.green+' '+lt('yellow')+sums.yellow+' '+lt('red')+sums.red+'</span>'
+    +'<span>ставка часа в расчёте: '+f((WI.hourRate!=null?WI.hourRate:KN.shopHourRate)*100/(WI.load||100),1)+' BYN</span><span>надбавки к труду ×'+f(KN.laborUplift,3)+'</span>';
+  var trs=el('tb').getElementsByTagName('tr'); for(var i=0;i<trs.length;i++) if(trs[i].getAttribute('data-sku')) trs[i].onclick=(function(s){ return function(){ card(s); }; })(trs[i].getAttribute('data-sku'));
+}
+
+// ═══ карточка товара: слои и формула словами ═══
+function card(sku){
+  var r=null; DATA.rows.forEach(function(x){ if(x.sku===sku) r=x; }); if(!r) return;
+  var c=calcRow(r), l=c.layers, h='<div class="meta">'+esc(r.group)+' · '+esc(r.model)+(r.estName?' · строка таблицы 2023: «'+esc(r.estName)+'»':' · в таблице 2023 не найден')+'</div>';
+  if(!r.ok){ h+='<div class="note bad" style="display:block;margin-top:var(--s-2)">Нет расчёта: '+esc(r.missing.join('; '))+'</div>'; dlg(sku+' · '+r.name,h); return; }
+  h+='<div class="kv"><div class="h">Слои себестоимости, BYN за штуку</div>'
+    +'<div>Материалы <span class="src'+(l.materialSrc==='оценка 2023'?' est':'')+'">('+esc(l.materialSrc)+(WI.matPct?', сценарий '+(WI.matPct>0?'+':'')+WI.matPct+' %':'')+')</span></div><b>'+f(l.material,2)+'</b>'
+    +'<div>Сдельный труд '+f(l.laborBase,2)+' × надбавки '+f(KN.laborUplift,3)+' <span class="src">('+esc(l.laborSrc)+')</span></div><b>'+f(l.labor,2)+'</b>'
+    +'<div>Начальник, ₽/шт <span class="src">('+esc(l.bossSrc)+')</span></div><b>'+f(l.boss,2)+'</b>'
+    +'<div>Взносы с ФОТ '+f(l.taxPct,1)+' % × (труд + начальник)</div><b>'+f(l.payrollTax,2)+'</b>'
+    +'<div><b>Переменные затраты</b></div><b>'+f(l.variable,2)+'</b>'
+    +'<div>Накладные цеха: '+f(l.hours,2)+' ч × '+f(l.shopHourRateEff,1)+' BYN/ч <span class="src">(часы: '+esc(l.hoursSrc)+')</span></div><b>'+f(l.overhead,2)+'</b>'
+    +'<div><b>Полная себестоимость</b></div><b>'+f(l.fullCost,2)+'</b></div>';
+  if(r.laborStale&&r.est2023) h+='<div class="formula">Труд: в таблице 2023 '+f(r.est2023.labor,2)+' → по составу Прохаба '+f(r.layers.laborBase,2)+', отличие <b>'+(r.laborStale.pct>0?'+':'')+r.laborStale.pct+' %</b>'+(r.laborStale.stale?' — <span class="stale">цена в таблице устарела</span>':'')+'</div>';
+  c.channels.forEach(function(x){ var ch=null; CH.forEach(function(k){ if(k.code===x.code) ch=k; });
+    h+='<div class="kv"><div class="h">'+esc(x.title)+(x.sellerCode?' · продавец '+esc(x.sellerCode)+', НДС '+x.vatPct+' %':' · без НДС')+'</div>'
+      +'<div>Формула: переменные '+f(l.variable,2)+' + '+f(l.hours,2)+' ч × '+f(ch.contributionPerHour,0)+' + материалы '+f(l.material,2)+' × '+f(ch.materialMarkupPct,0)+' %</div><b>'+f(x.model.net,2)+'</b>'
+      +(x.vatPct>0?'<div>С НДС '+x.vatPct+' %'+(ch.rounding==='nine'?', «красивая» на «…9»':ch.rounding==='whole'?', до целого':'')+'</div><b>'+f(x.model.pretty,0)+'</b>':
+        '<div>«Красивая»'+(ch.rounding==='whole'?' до целого':'')+' · EUR по курсу '+f(WI.eur!=null?WI.eur:KN.eurRate,2)+'</div><b>'+f(x.model.pretty,0)+' / '+f(x.model.eur,1)+' €</b>')
+      +'<div>Вклад на час цеха по модели</div><b>'+f(x.model.cph,1)+'</b>'
+      +(x.table?'<div>Как в таблице 2023 (без НДС): '+f(x.table.net,2)+(x.vatPct>0?', с НДС '+f(x.table.gross,2):'')+' → вклад на час</div><b>'+lt(x.table.light)+f(x.table.cph,1)+'</b>'
+        +'<div>Было → стало</div><b>'+(x.table.deltaPct>0?'+':'')+x.table.deltaPct+' %</b>':'<div>Цены в таблице 2023 нет</div><b>—</b>')
+      +'</div>'; });
+  if(c.ladder.length) h+='<div class="note bad" style="display:block;margin-top:var(--s-2)">Лестница: '+esc(c.ladder.join('; '))+'</div>';
+  dlg(sku+' · '+r.name, h);
+}
+
+// ═══ ручки ═══
+var ROUND={none:'без округления', whole:'до целого BYN', nine:'на «…9» (249, 279)'};
+function fillKnobs(){
+  if(!SET) return;
+  var sellers=['']; (SET.sellers||[]).forEach(function(x){ sellers.push(x.code); });
+  el('chBox').innerHTML=SET.channels.map(function(c,i){ return '<div class="chn"><h4>'+esc(c.title)+'</h4>'
+    +'<label>Вклад на час цеха, BYN</label><input id="c'+i+'cph" type="number" step="1" min="0" value="'+c.contributionPerHour+'">'
+    +'<label>Наценка на материал, %</label><input id="c'+i+'mk" type="number" step="1" min="0" value="'+c.materialMarkupPct+'">'
+    +'<label>Округление</label><select id="c'+i+'rd">'+Object.keys(ROUND).map(function(k){ return '<option value="'+k+'"'+(c.rounding===k?' selected':'')+'>'+ROUND[k]+'</option>'; }).join('')+'</select>'
+    +'<label>Продавец (НДС по нему)</label><select id="c'+i+'sl">'+sellers.map(function(s){ return '<option value="'+s+'"'+(String(c.sellerCode||'')===s?' selected':'')+'>'+(s||'без НДС')+'</option>'; }).join('')+'</select><div class="hint">сейчас НДС '+c.vatPct+' % (из «НДС ставки» продавца)</div>'
+    +'<label>Минимальный разрыв от предыдущей ступени, %</label><input id="c'+i+'gap" type="number" step="1" min="0" value="'+c.minGapPct+'">'
+    +'</div>'; }).join('');
+  var g=SET.global, n=SET.notes||{}, fact=SET.upliftFact||{};
+  var G=[['payrollTaxPct','Взносы с ФОТ, %',g.payrollTaxPct,'0.1'],['laborUplift','Надбавки к труду (коэф.)',g.laborUplift==null?'':g.laborUplift,'0.001'],['shopHourRate','Ставка часа цеха, BYN/нормо-час',g.shopHourRate,'0.5'],
+    ['capacityHours','Мощность цеха, нормо-часов в месяц',g.capacityHours,'10'],['eurRate','Курс EUR',g.eurRate,'0.01'],['staleThresholdPct','Порог «труд устарел», %',g.staleThresholdPct,'1']];
+  el('glBox').innerHTML=G.map(function(x){ return '<div><label>'+x[1]+'</label><input id="g_'+x[0]+'" type="number" step="'+x[3]+'" value="'+x[2]+'"'+(x[0]==='laborUplift'?' placeholder="факт '+f(fact.value,3)+'"':'')+'>'
+    +'<div class="hint">'+esc(n[x[0]]||'')+(x[0]==='laborUplift'?' · факт сейчас ×'+f(fact.value,3)+' (выплачено '+fact.paid+' ÷ база '+fact.base+')':'')+'</div></div>'; }).join('');
+}
+function readKnobs(){
+  var chs=SET.channels.map(function(c,i){ return { code:c.code, contributionPerHour:el('c'+i+'cph').value, materialMarkupPct:el('c'+i+'mk').value, rounding:el('c'+i+'rd').value, sellerCode:el('c'+i+'sl').value, minGapPct:el('c'+i+'gap').value }; });
+  var g={}; ['payrollTaxPct','laborUplift','shopHourRate','capacityHours','eurRate','staleThresholdPct'].forEach(function(k){ g[k]=el('g_'+k).value; });
+  return { channels:chs, global:g };
+}
+function preview(){
+  if(!SET) return;
+  var k=readKnobs();
+  CH=SET.channels.map(function(c,i){ var p=k.channels[i]; var vat=0; (SET.sellers||[]).forEach(function(x){ if(x.code===p.sellerCode) vat=x.vatPct; });
+    return { code:c.code, title:c.title, sortOrder:c.sortOrder, contributionPerHour:num(p.contributionPerHour), materialMarkupPct:num(p.materialMarkupPct), rounding:p.rounding, sellerCode:p.sellerCode||null, vatPct:vat, minGapPct:num(p.minGapPct) }; });
+  KN.payrollTaxPct=num(k.global.payrollTaxPct); KN.laborUplift=k.global.laborUplift===''?SET.upliftFact.value:num(k.global.laborUplift); KN.shopHourRate=num(k.global.shopHourRate);
+  KN.eurRate=num(k.global.eurRate); KN.staleThresholdPct=num(k.global.staleThresholdPct);
+  el('wiRate').value=KN.shopHourRate; el('wiEur').value=KN.eurRate; el('wiTax').value=KN.payrollTaxPct; wiChange(false);
+  el('knMsg').textContent='предпросмотр: ассортимент пересчитан, не сохранено'; setTab('list'); render();
+}
+function saveKnobs(){
+  if(!SET) return;
+  var k=readKnobs();
+  ask('Сохранить ручки каналов и общие настройки? Цены в документах не изменятся — это только калькулятор.', function(){
+    apiPost({vapi:'pricingsettingsset', channels:JSON.stringify(k.channels), global:JSON.stringify(k.global)}).then(function(r){
+      if(!r||!r.ok){ nope(r&&r.error); return; }
+      SET=r; fillKnobs(); el('knMsg').textContent='сохранено'; load();
+    }).catch(function(e){ nope(String(e&&e.message||e)); });
+  }, 'Сохранить');
+}
+
+// ═══ не сопоставлено ═══
+var UNM=null;
+function loadUnm(){
+  api({vapi:'pricingunmatched2023'}).then(function(r){
+    if(!r||!r.ok){ el('unmTb').innerHTML='<tr><td colspan="5" class="empty">'+esc((r&&r.error)||'нет данных')+'</td></tr>'; return; }
+    UNM=r; el('unmCnt').textContent='строк в таблице 2023: '+r.total+', сопоставлено '+r.matched+', не сопоставлено '+(r.total-r.matched);
+    var rows=r.rows.slice().sort(function(a,b){ return (a.sku?1:0)-(b.sku?1:0) || a.name.localeCompare(b.name,'ru'); });
+    el('unmTb').innerHTML=rows.map(function(x){ return '<tr'+(x.sku?' class="pdim"':'')+'><td>'+esc(x.name)+'</td><td class="n">'+f(x.material,1)+'</td><td class="n">'+f(x.labor,1)+'</td><td>'+(x.sku?esc(x.sku):'<span class="stale">—</span>')+'</td><td class="src">'+esc(x.note||'')+'</td></tr>'; }).join('');
+  });
+}
+function reimport(){ ask('Повторить перенос «оценки 2023» из снимка таблицы и сопоставление? Ничего не удаляется, цены не меняются.', function(){
+  api({vapi:'pricingimport2023'}).then(function(r){ if(!r||!r.ok){ nope(r&&r.error); return; } UNM=null; loadUnm(); load(); dlg('Перенос выполнен', '<div>Строк: '+r.rows+', сопоставлено '+r.matched+', не сопоставлено '+r.unmatched.length+'.</div>'); }); }, 'Повторить'); }
+
+// ═══ CSV ═══
+function csv(){
+  api({vapi:'pricingcsv', matPct:WI.matPct||'', hourRate:WI.hourRate!=null?WI.hourRate:'', eur:WI.eur!=null?WI.eur:'', tax:WI.tax!=null?WI.tax:'', load:WI.load!==100?WI.load:''}).then(function(r){
+    if(!r||!r.ok){ nope(r&&r.error); return; }
+    try{ var b=new Blob([r.csv],{type:'text/csv;charset=utf-8'}), a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download='pricing-'+new Date().toISOString().slice(0,10)+'.csv'; document.body.appendChild(a); a.click(); document.body.removeChild(a); }
+    catch(e){ dlg('CSV', '<textarea style="width:100%;height:50vh">'+esc(r.csv)+'</textarea>'); }
+  });
+}
+load();
+</script>
+</body>
+</html>

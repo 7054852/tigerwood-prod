@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="tw-theme.js"></script>
+<script src="tw-config.js"></script>
+<title>Тигервуд — Клиенты</title>
+<!-- Замена GAS-панели хаба ClientsPanel (?page=clients): справочник контрагентов (юрлица, ИП, физлица), распознавание реквизитов, правка, удаление. -->
+<style>
+  .hide{ display:none !important; }
+  input,textarea,select{ width:100%; }
+  td{ vertical-align:top; }
+  .sm:not(button){ font:var(--t-small); }
+  .grid{ display:grid; grid-template-columns:1fr 1fr; gap:var(--s-2) var(--s-3); margin-top:var(--s-3); }
+  .grid .full{ grid-column:1 / -1; }
+  label.fl{ display:block; }
+  label.fl span{ display:block; font:var(--t-small); color:var(--muted); margin-bottom:var(--s-1); }
+  .msg{ margin-top:var(--s-2); }
+  #form{ margin-bottom:var(--s-4); }
+  @media (max-width:640px){ .grid{ grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<div id="twload"><i></i></div>
+<div id="twwait"><div class="wb"><div class="sp"></div><div class="wt" id="twwt">Сохраняю…</div><div class="wh">идёт обмен с сервером — не нажимайте</div></div></div>
+<div class="hi">👤 Клиенты</div>
+<div class="sub">Справочник покупателей: реквизиты юрлиц и ИП, данные физлиц для договоров.</div>
+<div id="noacc" class="note warn hide"></div>
+
+<div class="toolbar">
+  <input id="q" type="search" class="search" placeholder="🔎 наименование, ФИО, УНП, телефон" oninput="renderList()">
+  <select id="ft" onchange="renderList()" style="width:auto"><option value="">все</option><option value="ul">юрлица и ИП</option><option value="fl">физлица</option></select>
+  <span class="meta" id="cnt"></span>
+  <div class="end">
+    <button class="sec" onclick="load()">Обновить</button>
+    <button onclick="openAdd()">+ Добавить клиента</button>
+  </div>
+</div>
+
+<!-- форма добавления/правки -->
+<div id="form" class="card hide">
+  <div class="row" style="justify-content:space-between">
+    <b id="formTitle">Новый клиент</b>
+    <button class="gray sm" onclick="closeForm()">✕ закрыть</button>
+  </div>
+  <div class="row" style="margin-top:var(--s-3)">
+    <span class="sm muted">Тип:</span>
+    <span class="seg" id="segType">
+      <button data-v="юрлицо" onclick="setType('юрлицо')">Юрлицо</button>
+      <button data-v="ИП" onclick="setType('ИП')">ИП</button>
+      <button data-v="физлицо" onclick="setType('физлицо')">Физлицо</button>
+    </span>
+  </div>
+  <div id="ulReq" class="hide" style="margin-top:var(--s-3)">
+    <label class="fl"><span>Вставьте реквизиты — распознаю и заполню поля</span>
+      <textarea id="raw" placeholder="ООО «...», УНП…, р/с…, банк, БИК, адрес, тел, e-mail"></textarea></label>
+    <div class="row" style="margin-top:var(--s-2)"><button class="gray sm" onclick="parseReq()">🔍 Распознать</button><span class="msg" id="reqMsg"></span></div>
+  </div>
+  <div class="grid" id="fields"></div>
+  <div class="row" style="margin-top:var(--s-3)"><button class="green" onclick="save()">💾 Сохранить</button><span class="msg" id="saveMsg"></span></div>
+</div>
+
+<div class="card tbwrap">
+  <table class="mob">
+    <thead><tr><th>Клиент</th><th>Тип</th><th>УНП / паспорт</th><th>Телефон</th><th>E-mail</th><th></th></tr></thead>
+    <tbody id="list"><tr><td colspan="6" class="muted">Загрузка…</td></tr></tbody>
+  </table>
+</div>
+
+<div class="scrim" id="askmodal" style="display:none"><div class="modal">
+  <h3 id="askT"></h3><div id="askB"></div>
+  <div class="toolbar" style="margin:var(--s-4) 0 0"><div class="end"><button class="sm sec" onclick="hide('askmodal')">Отмена</button><button class="sm" id="askOk">OK</button></div></div>
+</div></div>
+<div class="scrim" id="oopsmodal" style="display:none;z-index:60"><div class="modal">
+  <h3>Не получилось</h3><div id="oopsB" class="note bad" style="display:block;white-space:pre-line"></div>
+  <div class="toolbar" style="margin:var(--s-4) 0 0"><div class="end"><button class="sm" onclick="hide('oopsmodal')">Понятно</button></div></div>
+</div></div>
+
+<script>
+/* ══════════ связь с сервером (как catalog.html) ══════════ */
+var BASE=(window.TW_CFG&&TW_CFG.hub)||'https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';   // адрес задаёт tw-config.js
+var APP='tw7prod';
+function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
+var TGID=qp('tgid')||(function(){try{return localStorage.getItem('tw_tgid')||'';}catch(e){return '';}})();
+try{ if(!TGID && window.Telegram && Telegram.WebApp && Telegram.WebApp.initDataUnsafe && Telegram.WebApp.initDataUnsafe.user) TGID=String(Telegram.WebApp.initDataUnsafe.user.id); }catch(e){}
+function twTok(){ try{ return qp('tok')||localStorage.getItem('tw_tok')||''; }catch(e){ return qp('tok')||''; } }
+(function(){ var t=qp('tok'); if(t){ try{ localStorage.setItem('tw_tok',t); }catch(e){} } })();
+function twAuthWall(r){
+  if(r&&r.needAuth){ document.body.innerHTML='<div style="padding:var(--s-6);font:var(--t-body);color:var(--fg)"><div style="font:var(--t-title);margin-bottom:var(--s-3)">🔒 Нужен вход</div><div>'
+    +esc(r.error||'Откройте сервис из бота @TWOtchbot или войдите по личному коду.')+'</div></div>';
+    return new Promise(function(){}); }   // экран заменён — дальше ничего не делаем
+  return r;
+}
+function qs(p){ var t=twTok(); if(t) p.tok=t; p.app=APP; if(TGID&&!p.tgid) p.tgid=TGID;
+  return Object.keys(p).map(function(k){ return k+'='+encodeURIComponent(p[k]==null?'':p[k]); }).join('&'); }
+var LD=0; function loadOn(){ LD++; el('twload').style.display='block'; }
+function loadOff(){ LD=Math.max(0,LD-1); if(!LD) el('twload').style.display='none'; }
+function done(pr){ return pr.then(function(r){ loadOff(); return r.json(); }, function(e){ loadOff(); throw e; }).then(twAuthWall); }
+function get(p){ loadOn(); return done(fetch(BASE+'?'+qs(p))); }
+function post(p){ loadOn(); return done(fetch(BASE,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body:qs(p)})); }
+function errText(r){ if(!r) return 'Сервер не ответил — повторите.'; return r.error||r.message||'Не получилось, сервер не объяснил причину. Повторите; если повторится — сообщите администратору.'; }
+function netText(e){ return 'Связь оборвалась: '+((e&&e.message)||e)+'. Проверьте интернет и повторите — если не уверены, сохранилось ли, нажмите «Обновить».'; }
+var BUSY=0;
+function run(p, say, m){
+  if(BUSY) return Promise.resolve(null); BUSY=1;
+  el('twwt').textContent=say||'Сохраняю…'; el('twwait').style.display='flex';
+  return post(p).then(function(r){ BUSY=0; el('twwait').style.display='none';
+    if(!r||!r.ok){ var t=errText(r); setm(m,'err','⚠️ '+esc(t)); oops(t); return null; }
+    return r;
+  }, function(e){ BUSY=0; el('twwait').style.display='none'; var t=netText(e); setm(m,'err','⚠️ '+esc(t)); oops(t); return null; });
+}
+function el(id){ return document.getElementById(id); }
+function setm(m, cls, html){ if(typeof m==='string') m=el(m); if(!m) return; m.className='msg '+(cls||''); m.innerHTML=html; }
+function oops(t){ el('oopsB').textContent=t||'Сервер не ответил — повторите.'; el('oopsmodal').style.display='flex'; }
+function hide(id){ el(id).style.display='none'; }
+function ask(title, body, onOk, okText){
+  el('askT').textContent=title; el('askB').innerHTML=body; el('askOk').textContent=okText||'OK';
+  el('askOk').onclick=function(){ if(onOk(el('askB'))!==false) hide('askmodal'); };
+  el('askmodal').style.display='flex';
+}
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+
+/* раздел «Клиенты» — people/model.ts ROLE_SECTIONS (админ, директор, менеджер); сервер проверяет сам */
+get({vapi:'me'}).then(function(m){
+  if(m&&m.ok&&m.registered&&!m.blocked&&m.sections && !m.sections.some(function(s){ return s.id==='clients'; })){
+    var n=el('noacc'); n.className='note warn'; n.innerHTML='<div>Раздел «Клиенты» вашей роли не открыт. Если он нужен для работы — попросите руководителя открыть его в «Доступах к разделам».</div>'; }
+}).catch(function(){});
+
+/* ══════════ справочник ══════════ */
+var BUYERS=[], CTYPE='юрлицо', EDIT=null;
+function key(b){ return String(b['УНП']||'').trim() || String(b['ID']||'').trim(); }
+function name_(b){ return String(b['Наименование ЮЛ (полное)']||'').trim() || String(b['Полное ФИО']||'').trim() || '—'; }
+function typeOf(b){ var t=String(b['Тип']||''); if(t==='ИП') return 'ИП'; return (t.toLowerCase().indexOf('юр')>=0 || String(b['УНП']||'').trim())?'юрлицо':'физлицо'; }
+var UL_FIELDS=[['Наименование ЮЛ (полное)','full'],['УНП',''],['Юридический адрес','full'],['р/с',''],['р/с в',''],['Код банка (БИК)',''],['В лице',''],['Полное ФИО',''],['И. О. Фамилия',''],['Действует на основании',''],['тел',''],['e-mail',''],['Страна',''],['Валюта','']];
+var FL_FIELDS=[['Полное ФИО','full'],['Паспорт',''],['Кем выдан','full'],['Дата выдачи',''],['Личный номер',''],['Адрес регистрации','full'],['Адрес доставки','full'],['тел',''],['e-mail','']];
+var LABELS={'Наименование ЮЛ (полное)':'Наименование (полное)','р/с':'Расчётный счёт','р/с в':'Банк','Код банка (БИК)':'БИК','тел':'Телефон','И. О. Фамилия':'И.О. Фамилия'};
+
+function load(){
+  get({vapi:'buyers'}).then(function(r){
+    if(!r||!r.ok){ el('list').innerHTML='<tr><td colspan="6" class="err">⚠️ '+esc(errText(r))+'</td></tr>'; return; }
+    BUYERS=r.buyers||[]; renderList();
+  }).catch(function(e){ el('list').innerHTML='<tr><td colspan="6" class="err">'+esc(netText(e))+'</td></tr>'; });
+}
+function renderList(){
+  var q=(el('q').value||'').toLowerCase().trim(), ft=el('ft').value;
+  var rows=BUYERS.filter(function(b){
+    var t=typeOf(b); if(ft==='ul'&&t==='физлицо') return false; if(ft==='fl'&&t!=='физлицо') return false;
+    return !q || (name_(b)+' '+(b['УНП']||'')+' '+(b['ИНН']||'')+' '+(b['тел']||'')+' '+(b['e-mail']||'')+' '+(b['Паспорт']||'')).toLowerCase().indexOf(q)>=0;
+  });
+  el('cnt').textContent='всего: '+BUYERS.length+(rows.length!==BUYERS.length?(' · показано: '+rows.length):'');
+  if(!rows.length){ el('list').innerHTML='<tr><td colspan="6" class="muted">Нет клиентов'+((q||ft)?' по запросу':'')+'</td></tr>'; return; }
+  el('list').innerHTML=rows.map(function(b){
+    var t=typeOf(b), ul=(t!=='физлицо');
+    var iddoc=ul?('УНП '+esc(b['УНП']||b['ИНН']||'—')):(b['Паспорт']?('пасп. '+esc(b['Паспорт'])):'—');
+    var k=esc(JSON.stringify(key(b))), adr=b['Юридический адрес']||b['Адрес регистрации'];
+    return '<tr>'
+      +'<td data-l="Клиент"><b>'+esc(name_(b))+'</b>'+(adr?('<div class="sm muted">'+esc(adr)+'</div>'):'')+'</td>'
+      +'<td data-l="Тип">'+(ul?'<span class="pill info">'+esc(t)+'</span>':'<span class="pill">физлицо</span>')+'</td>'
+      +'<td data-l="УНП / паспорт" class="sm">'+iddoc+'</td>'
+      +'<td data-l="Телефон" class="sm">'+esc(b['тел']||'')+'</td>'
+      +'<td data-l="E-mail" class="sm">'+esc(b['e-mail']||'')+'</td>'
+      +'<td><div class="row"><button class="gray sm" onclick="edit('+k+')">править</button><button class="danger sec sm" onclick="del('+k+')">удалить</button></div></td>'
+      +'</tr>';
+  }).join('');
+}
+function setType(t){ CTYPE=t; var bs=document.querySelectorAll('#segType button'); for(var i=0;i<bs.length;i++) bs[i].className=bs[i].getAttribute('data-v')===t?'on':''; el('ulReq').className=(t!=='физлицо')?'':'hide'; renderFields(collectRaw()); }
+function renderFields(cur){
+  cur=cur||{};
+  var fs=(CTYPE==='физлицо')?FL_FIELDS:UL_FIELDS;
+  el('fields').innerHTML=fs.map(function(f){
+    return '<label class="fl '+(f[1]==='full'?'full':'')+'"><span>'+esc(LABELS[f[0]]||f[0])+'</span><input data-f="'+esc(f[0])+'" value="'+esc(cur[f[0]]||'')+'"></label>';
+  }).join('');
+}
+function collectRaw(){ var o={}, ins=el('fields').querySelectorAll('input'); for(var i=0;i<ins.length;i++) o[ins[i].getAttribute('data-f')]=ins[i].value.trim(); return o; }
+function collect(){
+  var o=collectRaw(); o['Тип']=CTYPE;
+  if(EDIT){ if(EDIT['УНП']) o['УНП']=o['УНП']||EDIT['УНП']; if(EDIT['ID']) o['ID']=EDIT['ID']; }
+  if(!o['Валюта']) o['Валюта']=(o['Страна']==='Россия')?'RUB':'BYN';
+  return o;
+}
+function openAdd(){ EDIT=null; el('formTitle').textContent='Новый клиент'; el('form').className='card'; el('raw').value=''; setm('reqMsg','',''); setm('saveMsg','','');
+  el('fields').innerHTML=''; setType('юрлицо'); }
+function edit(k){
+  var b=BUYERS.filter(function(x){ return key(x)===k; })[0]; if(!b) return;
+  EDIT=b; el('formTitle').textContent='Правка: '+name_(b); el('form').className='card'; setm('saveMsg','',''); setm('reqMsg','','');
+  el('fields').innerHTML=''; setType(typeOf(b)); renderFields(b); window.scrollTo(0,0);
+}
+function closeForm(){ el('form').className='card hide'; EDIT=null; }
+function parseReq(){
+  var t=el('raw').value; if(t.trim().length<5){ setm('reqMsg','err','Вставьте текст'); return; }
+  setm('reqMsg','','Распознаю…');
+  post({vapi:'parsereq', text:t}).then(function(r){
+    if(!r||!r.ok||!(r.count>0)){ setm('reqMsg','err','⚠️ '+esc((r&&r.error)||'Не удалось распознать — впишите поля вручную.')); return; }
+    setm('reqMsg','ok','✓ Распознано полей: '+r.count);
+    var f=r.fields||{}; if(f['Тип']==='ИП'||f['Тип']==='юрлицо'){ CTYPE=f['Тип']; var bs=document.querySelectorAll('#segType button'); for(var i=0;i<bs.length;i++) bs[i].className=bs[i].getAttribute('data-v')===CTYPE?'on':''; }
+    var cur=collectRaw(); for(var k in f){ if(f[k]!=null&&f[k]!=='') cur[k]=f[k]; } renderFields(cur);
+  }).catch(function(e){ setm('reqMsg','err',esc(netText(e))); });
+}
+function save(){
+  var o=collect(), nm=o['Наименование ЮЛ (полное)']||o['Полное ФИО'];
+  if(!String(nm||'').trim()){ setm('saveMsg','err', CTYPE==='физлицо'?'Укажите ФИО':'Укажите наименование'); return; }
+  run({vapi:'savebuyer', data:JSON.stringify(o)}, 'Сохраняю клиента…', 'saveMsg').then(function(r){ if(!r) return;
+    setm('saveMsg','ok','✅ Сохранено'); setTimeout(function(){ closeForm(); load(); }, 500); });
+}
+// в Прохабе удаление мягкое: клиента со сделками, договорами или счетами сервер не удалит и объяснит почему
+function del(k){
+  var b=BUYERS.filter(function(x){ return key(x)===k; })[0];
+  ask('Удалить клиента?', '<div><b>'+esc(b?name_(b):k)+'</b></div><div class="note" style="margin-top:var(--s-3)"><div>Клиента, привязанного к сделкам, договорам или счетам, удалить нельзя — сначала смените клиента в этих сделках.</div></div>',
+    function(){ run({vapi:'delbuyer', unp:k}, 'Удаляю клиента…').then(function(r){ if(r) load(); }); }, 'Удалить');
+}
+
+load();
+
+// авто-обновление: оболочка шлёт «refresh» при возврате на раздел
+(function(){
+  try{ window.top.postMessage({tw:'hello',sec:qp('twsec')},'*'); }catch(e){}
+  window.addEventListener('message',function(e){ var d=e&&e.data; if(d&&d.tw==='refresh'){ try{ load(); }catch(err){} } });
+})();
+</script>
+</body>
+</html>
