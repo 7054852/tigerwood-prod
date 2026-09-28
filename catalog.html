@@ -37,11 +37,10 @@
   .dhead{ font-weight:600; } .dcost{ color:var(--green); font-weight:600; float:right; font-variant-numeric:tabular-nums; }
   .cmpbar{ position:fixed; bottom:0; left:0; right:0; background:var(--card); border-top:1px solid var(--line); box-shadow:var(--shadow-pop); padding:var(--s-3) var(--s-4); display:flex; gap:var(--s-3); align-items:center; justify-content:center; z-index:40; }
   .scrim{ align-items:flex-start; overflow:auto; }
-  .scrim>.modal{ max-width:900px; width:100%; max-height:none; overflow:visible; }
-  .scrim>.modal.sm{ max-width:480px; }
+  .scrim>.modal{ max-height:none; overflow:visible; }
   .opline{ display:flex; align-items:center; gap:var(--s-2); margin:var(--s-1) 0; }
   .opline.off{ opacity:.5; }
-  .opline label{ display:inline-flex; align-items:center; gap:var(--s-1); font-size:13px; cursor:pointer; }
+  .opline label{ display:inline-flex; align-items:center; gap:var(--s-1); font:var(--t-small); cursor:pointer; }
   input[type=checkbox]{ width:auto; }
   #msg{ display:none; margin:0 0 var(--s-4); padding:var(--s-3) var(--s-4); border-radius:var(--r-card); font:var(--t-small); }
   #msg.ok{ display:block; background:var(--green-bg); color:var(--green); }
@@ -60,8 +59,7 @@
     .stage .nm{ width:104px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .dblk{ padding:var(--s-2); overflow-x:auto; } .dblk table{ min-width:420px; }
     .cmpbar{ flex-wrap:wrap; padding:var(--s-3); gap:var(--s-2); }
-    .scrim{ padding:var(--s-2); } .scrim>.modal{ padding:var(--s-3); }
-    .tbwrap{ overflow-x:auto; } table.izd{ min-width:560px; }
+    table.izd{ min-width:560px; }
   }
 </style>
 </head>
@@ -104,8 +102,8 @@
   </div>
   <div id="izdEd" style="display:none;margin-top:var(--s-3)">
     <div class="card">
-      <div class="tbwrap"><table class="izd"><thead><tr><th>Деталь</th><th>Операция</th><th class="n">Кол-во</th><th class="n">Расценка</th><th class="n">Стоимость</th><th></th></tr></thead><tbody id="iTb"></tbody></table></div>
-      <div id="iTot" class="cost" style="margin-top:var(--s-3);font-size:16px"></div>
+      <div class="tbwrap"><table class="tbl izd"><thead><tr><th>Деталь</th><th>Операция</th><th class="n">Кол-во</th><th class="n">Расценка</th><th class="n">Стоимость</th><th></th></tr></thead><tbody id="iTb"></tbody></table></div>
+      <div id="iTot" class="cost" style="margin-top:var(--s-3);font:var(--t-heading)"></div>
       <div class="tray" style="margin-top:var(--s-3)">
         <div class="toolbar" style="margin:0">
           <div style="flex:1;min-width:220px"><label class="fl">Деталь</label><input id="aDet" list="detList" placeholder="начните вводить…" onchange="izdFillOps()"></div>
@@ -141,13 +139,13 @@
   <button class="sm" onclick="showCompare()">Сравнить рядом</button>
   <button class="sm sec" onclick="clearCmp()">Сбросить</button>
 </div>
-<div class="scrim" id="cmpmodal" style="display:none"><div class="modal">
+<div class="scrim" id="cmpmodal" style="display:none"><div class="modal dlg lg">
   <div class="toolbar" style="margin:0"><h3 style="margin:0">Сравнение моделей</h3><div class="end"><button class="sm sec" onclick="hide('cmpmodal')">Закрыть</button></div></div>
   <div id="cmpbody" style="margin-top:var(--s-3);overflow:auto"></div>
 </div></div>
 
 <!-- редактор состава «от детали» -->
-<div class="scrim" id="edmodal" style="display:none"><div class="modal">
+<div class="scrim" id="edmodal" style="display:none"><div class="modal dlg lg">
   <div class="toolbar" style="margin:0">
     <h3 style="margin:0" id="edtitle">Состав модели</h3>
     <div class="end"><b class="cost" id="edtot"></b><button class="sm sec" onclick="closeEdit()">Закрыть</button></div>
@@ -170,12 +168,12 @@
 </div></div>
 
 <!-- общий диалог вместо prompt/confirm (в Telegram на части телефонов они не показываются) -->
-<div class="scrim" id="askmodal" style="display:none"><div class="modal sm">
+<div class="scrim" id="askmodal" style="display:none"><div class="modal dlg sm">
   <h3 id="askT"></h3><div id="askB"></div>
   <div class="toolbar" style="margin:var(--s-4) 0 0"><div class="end"><button class="sm sec" onclick="hide('askmodal')">Отмена</button><button class="sm" id="askOk">OK</button></div></div>
 </div></div>
 <!-- отказ сервера — поверх любых окон: «что нельзя, почему, что сделать» (строка #msg вверху страницы под окном не видна) -->
-<div class="scrim" id="oopsmodal" style="display:none;z-index:60"><div class="modal sm">
+<div class="scrim" id="oopsmodal" style="display:none;z-index:60"><div class="modal dlg sm">
   <h3>Не получилось</h3><div id="oopsB" class="note bad" style="display:block"></div>
   <div class="toolbar" style="margin:var(--s-4) 0 0"><div class="end"><button class="sm" onclick="hide('oopsmodal')">Понятно</button></div></div>
 </div></div>
@@ -334,7 +332,7 @@ function variantRow(m,v,gi,mi,vi){
 function tg(id){ var e=el(id); if(!e) return; var opening=!e.classList.contains('open'); e.classList.toggle('open'); if(opening) loadComp(e); }
 function compDetailsHtml(details){
   return (details||[]).map(function(d){
-    return '<div class="dblk"><div class="dhead">'+esc(d.name)+' <span class="dcost">'+fmt(d.cost)+' р.</span></div><table><tr><th>Операция</th><th class="n">Кол-во</th><th class="n">Расц.</th><th class="n">Стоим.</th></tr>'
+    return '<div class="dblk"><div class="dhead">'+esc(d.name)+' <span class="dcost">'+fmt(d.cost)+' р.</span></div><table class="tbl"><tr><th>Операция</th><th class="n">Кол-во</th><th class="n">Расц.</th><th class="n">Стоим.</th></tr>'
       +d.ops.map(function(o){ return '<tr><td>'+esc(o.op)+'</td><td class="n">'+o.qty+'</td><td class="n">'+fmt(o.rate)+'</td><td class="n">'+fmt(o.cost)+'</td></tr>'; }).join('')+'</table></div>';
   }).join('')||'<span class="gsub">состав не задан</span>';
 }
@@ -363,7 +361,7 @@ function showCompare(){
   var items=Object.keys(CMP).map(variantInfo).filter(Boolean); if(items.length<2){ msg('⚠ отметьте хотя бы два варианта'); return; }
   var all={}; items.forEach(function(it){ it.stages.forEach(function(s){ all[s.op]=1; }); });
   function row(label,fn){ return '<tr><td class="gsub">'+label+'</td>'+items.map(function(it){ return '<td class="n">'+fn(it)+'</td>'; }).join('')+'</tr>'; }
-  el('cmpbody').innerHTML='<table class="cmp"><tr><th>Показатель</th>'+items.map(function(it){ return '<th>'+esc(it.eq)+'<br><span class="gsub">'+esc(it.mod)+' · '+esc(vdesc(it))+'</span></th>'; }).join('')+'</tr>'
+  el('cmpbody').innerHTML='<table class="tbl cmp"><tr><th>Показатель</th>'+items.map(function(it){ return '<th>'+esc(it.eq)+'<br><span class="gsub">'+esc(it.mod)+' · '+esc(vdesc(it))+'</span></th>'; }).join('')+'</tr>'
     +row('Себестоимость труда',function(it){ return fmt(it.cost)+' р.'; })+row('Нормо-часы',function(it){ return hrs(it.hours*60); })
     +row('Цена продажи',function(it){ return it.price?fmt(it.price)+' р.':'—'; })+row('Труд в цене',function(it){ return it.laborShare!=null?it.laborShare+'%':'—'; })
     +row('Деталей',function(it){ return it.detailsCount; })+row('Операций',function(it){ return it.opsCount; })
@@ -439,7 +437,7 @@ function packBlockHtml(){
   var pi=-1; EM.forEach(function(d,i){ if(d.level==='изделие') pi=i; });
   var inner;
   if(pi>=0){ var d=EM[pi];
-    inner=d.ops.map(function(o,oi){ return '<label style="display:inline-flex;align-items:center;gap:var(--s-2);font-size:13px;cursor:pointer;margin-right:var(--s-4)">'
+    inner=d.ops.map(function(o,oi){ return '<label style="display:inline-flex;align-items:center;gap:var(--s-2);font:var(--t-small);cursor:pointer;margin-right:var(--s-4)">'
       +'<input type="checkbox" '+(o.on?'checked':'')+' onchange="EM['+pi+'].ops['+oi+'].on=this.checked;renderEditor()">'+esc(o.op)+' <span class="gsub">'+fmt(o.rate)+' р.'+(o.rate<=0?' ⚠':'')+'</span></label>'; }).join('')
       +'<div class="gsub" style="margin-top:var(--s-1)">строка изделия: <b>'+esc(d.detail)+'</b> · 1 шт на товар</div>';
   } else inner='<div class="note warn" style="margin:0">У модели нет операции упаковки изделия. Без неё не работают отгрузка партии, склад деталей и переучёт по упакованным товарам.</div>';

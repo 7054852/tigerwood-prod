@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="ru" class="page-narrow">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8,17 +8,13 @@
 <title>Выработка — Тигервуд</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
-  /* окно поверх экрана (правила оплаты раскроя) — тот же рисунок, что в производстве */
-  .mvov{ position:fixed; inset:0; background:var(--scrim); display:flex; align-items:center; justify-content:center; z-index:60; padding:var(--s-4); }
-  .mvbox{ background:var(--card); border:1px solid var(--line); border-radius:var(--r-card); max-width:560px; width:100%;
-          max-height:86vh; overflow:auto; padding:var(--s-5); box-shadow:var(--shadow-pop); }
-  .mvbox h3{ margin:0 0 var(--s-1); font:var(--t-heading); }
-  .mvclose{ float:right; color:var(--muted); cursor:pointer; font:var(--t-heading); line-height:1; }
+  /* окно поверх экрана (правила оплаты раскроя) — .dlg-bg/.dlg темы; выше панели отправки (z 60) */
+  .mvov{ z-index:61; }
+  .mvbox h3{ margin:0 0 var(--s-1); }
   .mvn{ display:flex; align-items:center; gap:var(--s-2); flex-wrap:wrap; border-top:1px solid var(--line); padding:var(--s-2) 0; font:var(--t-small); }
   .mvn select{ max-width:100%; }
-  /* ⚠ showTab/setBar пишут document.body.className='hasbar'|'' и стирают класс w-narrow —
-     поэтому ширину узкой колонки держим прямо на body, а не только классом */
-  body{ --page-w:880px; }
+  /* ⚠ showTab/setBar пишут document.body.className='hasbar'|'' и стирают классы body —
+     поэтому узкая сетка (.page-narrow темы) стоит на <html>, а не на body */
   label{ display:block; font:var(--t-small); color:var(--muted); margin:var(--s-3) 0 var(--s-1); }
   select, input{ width:100%; }
   select.vsel{ width:auto; flex:1; min-width:120px; }
@@ -35,7 +31,6 @@
   .card.subcard{ border-left:3px solid var(--amber); background:var(--amber-bg); }
   .subttl{ display:flex; align-items:center; gap:var(--s-1); flex-wrap:wrap; }
   .row{ justify-content:space-between; }
-  .muted{ font-size:13px; }
   /* вкладки переносим, а не выталкиваем за экран: на телефоне у контролёра их четыре,
      и последняя уезжала вправо вместе со всей страницей */
   .tabs{ flex-wrap:wrap; }
@@ -62,7 +57,7 @@
   #askbox .abt{ font:var(--t-heading); margin-bottom:var(--s-2); white-space:pre-line; }
 </style>
 </head>
-<body class="w-narrow">
+<body>
 <div id="twload"><i></i></div>
 <div id="twwait"><div class="wb"><div class="sp"></div><div class="wt" id="twwt">Отправляю…</div><div class="wh">идёт обмен с сервером — не нажимайте</div></div></div>
 <script>
@@ -91,10 +86,10 @@ if(!window.fetch){window.fetch=function(url){return new window.Promise(function(
 <script>
 function CARD(e){ return '<div style="padding:var(--s-4);line-height:1.5">'
       +'<div style="font:var(--t-heading);margin-bottom:var(--s-2)">Не удалось открыть приложение</div>'
-      +'<div style="color:var(--muted);font-size:13px">Покажите это сообщение руководителю:</div>'
-      +'<div style="background:var(--red-bg);color:var(--red);border-radius:var(--r-ctl);padding:var(--s-2);margin-top:var(--s-2);font-size:13px;word-break:break-word">'
+      +'<div style="color:var(--muted);font:var(--t-small)">Покажите это сообщение руководителю:</div>'
+      +'<div style="background:var(--red-bg);color:var(--red);border-radius:var(--r-ctl);padding:var(--s-2);margin-top:var(--s-2);font:var(--t-small);word-break:break-word">'
       +String(e.msg)+(e.file?(' — '+e.file+':'+e.line):'')+'</div>'
-      +'<div style="margin-top:var(--s-3);font-size:13px;color:var(--muted)">Часто помогает: закрыть приложение и открыть заново из бота.</div>'
+      +'<div style="margin-top:var(--s-3);font:var(--t-small);color:var(--muted)">Часто помогает: закрыть приложение и открыть заново из бота.</div>'
       +'<button class="sec" style="margin-top:var(--s-3)" onclick="location.reload()">↻ Попробовать ещё раз</button>'
       +'</div>'; }
   // Страховка от «белого экрана»: показываем причину, а не пустоту.
@@ -368,7 +363,7 @@ function subForm(){
   var names=(SUBREFS.suppliers||[]).map(function(x){ return '<option value="'+attr(x.name)+'">'; }).join('');
   var ED=SUBEDIT;
   b.innerHTML='<div class="card"><b>'+(ED?'Поправить работу подрядчика':'Внести работу подрядчика')+'</b>'
-    +'<div class="muted" style="font-size:13px;margin:var(--s-1) 0">'
+    +'<div class="muted" style="font:var(--t-small);margin:var(--s-1) 0">'
     +(ED?'Правка пересчитает заказ и долг подрядчика.'
         :'Заказ продвинется по нашей расценке. Сумма, которую платим подрядчику, станет долгом в Фин.гении — погасите его там, когда рассчитаетесь.')+'</div>'
     +'<label>Заказ<select id="sb_b">'+bopts+'</select></label>'
@@ -466,19 +461,19 @@ function renderSub(r){
   var it=r.items||[], T=r.totals||{};
   if(!it.length){ el.innerHTML='<div class="card muted">Подрядных работ пока нет.</div>'; return; }
   var head='<div class="card"><b>Итого: наша расценка '+(T.labor||0)+' р. · платим '+(T.sub||0)+' р.</b>'
-    +'<div class="muted" style="font-size:13px;margin-top:var(--s-1)">долг перед подрядчиками <b class="err">'+(T.debt||0)+' р.</b>'
+    +'<div class="muted" style="font:var(--t-small);margin-top:var(--s-1)">долг перед подрядчиками <b class="err">'+(T.debt||0)+' р.</b>'
     +(T.paid?(' · оплачено им '+T.paid+' р.'):'')+' · разница с нашей расценкой '+(T.margin||0)+' р. · подробно — раздел «Подрядчики»</div>'
-    +(r.finErr?('<div class="err" style="font-size:13px">Фин.гений: '+esc(r.finErr)+'</div>'):'')+'</div>';
+    +(r.finErr?('<div class="err" style="font:var(--t-small)">Фин.гений: '+esc(r.finErr)+'</div>'):'')+'</div>';
   var byc=(r.byContractor||[]).map(function(g){
     return '<div class="card"><b>'+esc(g.name)+'</b> <span class="muted">· '+g.rows+' зап. · '+g.qty+' шт</span>'
-      +'<div style="font-size:13px;margin-top:var(--s-1)">наша расценка '+g.labor+' р. · платим '+g.sub+' р. · '
+      +'<div style="font:var(--t-small);margin-top:var(--s-1)">наша расценка '+g.labor+' р. · платим '+g.sub+' р. · '
       +(g.debt?('<b class="err">долг '+g.debt+' р.</b>'):'<span class="ok">долга нет</span>')+'</div></div>';
   }).join('');
   var rows=it.map(function(x){
     return '<div class="card"><div class="row"><span><b>'+esc(x.detail)+'</b> · '+esc(x.op)+' · '+x.qty+' шт'
       +(x.waitQC?' <span class="pill warn">ждёт ОТК</span>':'')+'</span>'
       +'<span class="muted">'+esc(x.date)+' · '+esc(x.batch)+'</span></div>'
-      +'<div class="row" style="font-size:13px"><span>'+esc(x.contractor)+' · наша расценка '+x.labor+' р. · платим <b>'+x.sub+' р.</b>'
+      +'<div class="row" style="font:var(--t-small)"><span>'+esc(x.contractor)+' · наша расценка '+x.labor+' р. · платим <b>'+x.sub+' р.</b>'
       +(x.wallet?(' <span class="muted">('+esc(x.wallet)+')</span>'):'')+'</span>'
       +'<span>'+(x.sub>0?'':'<span class="muted">без оплаты</span>')
       +' <button class="sm sec" onclick="subEdit(\''+attr(x.id)+'\')" title="поправить запись: кол-во, операцию, подрядчика, сумму">✎</button>'
@@ -522,9 +517,9 @@ function payByDetail(detail,op,rid){
 // полный список правил — на случай «поправить заранее, а не в наряде»
 var PAYRULES=null;
 function payRulesOpen(){
-  var ov=document.createElement('div'); ov.className='mvov'; ov.id='prov';
+  var ov=document.createElement('div'); ov.className='mvov dlg-bg'; ov.id='prov';
   ov.onclick=function(e){ if(e.target===ov) payRulesClose(); };
-  ov.innerHTML='<div class="mvbox"><span class="mvclose" onclick="payRulesClose()">✕</span>'
+  ov.innerHTML='<div class="mvbox dlg"><span class="mvclose" onclick="payRulesClose()">✕</span>'
     +'<h3>За что платим при раскрое</h3>'
     +'<div class="muted small">ЧПУ режет лист — платим за лист. Вручную распускают деталь — платим за деталь. Расценку детали правило не меняет: она остаётся трудоёмкостью для заказа.</div>'
     +'<div id="prbody" style="margin-top:var(--s-3)" class="muted">загрузка…</div></div>';
@@ -774,7 +769,7 @@ function renderCart(){
   if(!CART.length){ c.innerHTML=''; renderTotals(); return; }
   c.innerHTML='<div class="card"><div class="row"><b>Операции: '+CART.length+'</b><span class="muted">'+esc(SHIFT==='ночь'?'🌙 ночь':'☀️ день')+'</span></div>'
     +CART.map(function(x,i){ return '<div class="row" style="border-top:1px solid var(--line);padding-top:var(--s-1)"><span>'+esc(x.label||x.detail)+' · '+esc(x.op)+' · '+x.qty+' шт → '+(x.paid===false?'<span class="muted">0 р. · оплата за лист — подайте во вкладке «🪚 Раскрой» вместе с листом</span>':(x.sum+' р.'))
-      +' <span class="muted" style="font-size:11px">'+esc(x.batchName||'')+'</span></span><button class="sm sec" onclick="rmCart('+i+')">✕</button></div>'; }).join('')
+      +' <span class="muted" style="font:var(--t-tiny)">'+esc(x.batchName||'')+'</span></span><button class="sm sec" onclick="rmCart('+i+')">✕</button></div>'; }).join('')
     +'</div>';
   renderTotals();
 }
@@ -1038,8 +1033,8 @@ function loadOtkMine(){
       }).join('');
       return '<div class="card" style="background:var(--blue-bg)">'
         +'<div class="row"><b>🔎 Внёс контролёр '+esc(g.by)+'</b><b class="ok">'+g.sum+' руб.</b></div>'
-        +'<div style="font-size:13px">📅 <b>'+esc(g.date)+'</b> <span class="muted">· '+esc(g.shift)+' · вы сложили детали в зону сдачи, контролёр принял их по качеству</span></div>'
-        +'<div class="muted" style="font-size:13px;margin-top:var(--s-1)">⏳ Работа будет засчитана и оплачена <b>после вашего подтверждения</b> — проверьте детали, операции и количество.</div>'
+        +'<div style="font:var(--t-small)">📅 <b>'+esc(g.date)+'</b> <span class="muted">· '+esc(g.shift)+' · вы сложили детали в зону сдачи, контролёр принял их по качеству</span></div>'
+        +'<div class="muted" style="font:var(--t-small);margin-top:var(--s-1)">⏳ Работа будет засчитана и оплачена <b>после вашего подтверждения</b> — проверьте детали, операции и количество.</div>'
         +lines
         // ⚠ кнопка «не согласен» убрана намеренно: спорные вопросы решаются с мастером
         // в цеху, а не кнопкой. У рабочего остаётся только подтверждение.
@@ -1171,7 +1166,7 @@ function renderPending(r){
     el.innerHTML=reps.map(function(rp){
       var rid=rp.report;
       var lines=rp.lines.map(function(l){
-        var koef=kOf(l.koef), kbadge=(koef!==1)?' <span class="muted" style="font-size:13px">×'+koef+'</span>':'';
+        var koef=kOf(l.koef), kbadge=(koef!==1)?' <span class="muted" style="font:var(--t-small)">×'+koef+'</span>':'';
         // ⚠ дубль виден сразу: сверять наряды глазами мастер не должен
         var dupb=l.dup?(' <span class="pill bad" title="'+esc(l.dup)+'">⚠ дубль</span>'):'';
         var acts='';
@@ -1187,7 +1182,7 @@ function renderPending(r){
         if(master && l.targets && l.targets.length>1){   // деталь есть в нескольких изделиях/цветах — мастер может закрепить вручную
           var cur=l.curTarget||'';
           var opts='<option value="">↔ распределить по заказу (авто)</option>'+l.targets.map(function(t){ var lbl=t.eq+(t.model?' · '+t.model:''); return '<option value="'+esc(t.id)+'"'+(t.id===cur?' selected':'')+'>'+esc(lbl)+'</option>'; }).join('');
-          vsel='<div class="row" style="margin-top:var(--s-1)"><span class="muted" style="font-size:13px">изделие:</span>'
+          vsel='<div class="row" style="margin-top:var(--s-1)"><span class="muted" style="font:var(--t-small)">изделие:</span>'
             +'<select class="vsel" onchange="setOutTarget(\''+esc(l.id)+'\',this.value,this)">'+opts+'</select></div>';
         }
         if(l.kind==='премия'){
@@ -1209,7 +1204,7 @@ function renderPending(r){
           +(rp.single?'':'<div class="seg"><button class="'+(night?'':'on')+'" onclick="setRepShift(\''+esc(rid)+'\',\'день\')">☀️ День</button><button class="'+(night?'on':'')+'" onclick="setRepShift(\''+esc(rid)+'\',\'ночь\')">🌙 Ночь</button></div>')
           +'<button class="sm sec" onclick="setRepKoef(\''+esc(rid)+'\','+(uniK!=null?uniK:1)+')">'+koefLbl+'</button>'
           +'<button class="sm sec" onclick="setRepDate(\''+esc(rid)+'\',\''+esc(rp.date)+'\',loadPending)" title="за какой день работа">📅 дата</button></div>'
-        : (night?'<div class="muted" style="font-size:13px">🌙 ночная смена</div>':'');
+        : (night?'<div class="muted" style="font:var(--t-small)">🌙 ночная смена</div>':'');
       var footer = master
         ? '<div id="bonbox-m-'+bonKey(rid)+'"></div>'
           +'<div class="row" style="margin-top:var(--s-3)" id="acts-m-'+bonKey(rid)+'"><button class="sm sec" onclick="addBonus(\''+esc(rid)+'\',\''+esc(rp.worker)+'\',\'m\')" title="премия рабочему за этот наряд">🎁 + премия</button>'
@@ -1218,7 +1213,7 @@ function renderPending(r){
           +'<span id="rm-'+esc(rid)+'" class="msg"></span></div>'
         : '<div class="row" style="margin-top:var(--s-2)">'
           +(rp.single?'':'<button class="sm" onclick="startAdd(\''+esc(rid)+'\',\''+esc(rp.date+' · '+rp.batch)+'\')">➕ Дополнить наряд</button>')
-          +'<span class="muted" style="font-size:13px">⏳ ждёт подтверждения мастера</span></div>';
+          +'<span class="muted" style="font:var(--t-small)">⏳ ждёт подтверждения мастера</span></div>';
       var hasCut=(rp.lines||[]).some(isCutLine);
       var bTag=hasCut?batchTag({kind:'лист'})
         :(rp.mixed?'<span class="pill info" title="в наряде строки разных заказов">🧩 сборный</span>':batchTag(rp));
@@ -1226,7 +1221,7 @@ function renderPending(r){
       // наряд и сколько он уже лежит: вчерашний подтверждают не глядя, недельный — разбирают.
       var ageH=ruAgeH(rp.date), oldN=(ageH>48);
       return '<div class="card"><div class="row"><b>'+esc(rp.worker)+'</b>'
-        +'<span class="'+(oldN?'err':'muted')+'" style="font-size:13px">📅 <b>'+esc(rp.date)+'</b></span>'+bTag+'</div>'
+        +'<span class="'+(oldN?'err':'muted')+'" style="font:var(--t-small)">📅 <b>'+esc(rp.date)+'</b></span>'+bTag+'</div>'
         +'<div class="muted">'+timeLine(rp.worker,rp.date,rp.time,!!DATA.canCheck)
         +(rp.single?'одиночная запись':'наряд')+': '+rp.lines.length+' оп.'
         +(ageH>=24?(' · <span class="'+(oldN?'err':'muted')+'">лежит '+otkAge(ageH)+'</span>'):'')
@@ -1497,7 +1492,7 @@ function renderJournal(){
     lst.innerHTML=groups.map(function(g){
       var rep=g.lines[0]&&g.lines[0].report||'', night=(g.lines[0]&&g.lines[0].shift==='ночь');
       var lines=g.lines.map(function(it){
-        var koef=kOf(it.koef), kbadge=(koef!==1)?' <span class="muted" style="font-size:13px">×'+koef+'</span>':'';
+        var koef=kOf(it.koef), kbadge=(koef!==1)?' <span class="muted" style="font:var(--t-small)">×'+koef+'</span>':'';
         var acts = '';
         if(master){
           var del='<button class="sm sec" onclick="delJournal(\''+esc(it.id)+'\')">🗑</button><span id="jm-'+esc(it.id)+'" class="msg"></span>';
@@ -1518,7 +1513,7 @@ function renderJournal(){
           : '<span class="'+(it.paid===false?'muted':'ok')+'">'+(it.paid===false?'0 р · '+payNote(it):(it.sum+' р'))+'</span>';
         // след приёмки: кто принял и сколько вернул — видно и рабочему, и мастеру
         var qc = it.qcBy
-          ? '<div class="muted" style="font-size:13px">🔎 принял '+esc(it.qcBy)+(it.qcAt?(' · '+esc(it.qcAt)):'')
+          ? '<div class="muted" style="font:var(--t-small)">🔎 принял '+esc(it.qcBy)+(it.qcAt?(' · '+esc(it.qcAt)):'')
             +(it.qcBad>0?(' · <span class="err">на переделку '+it.qcBad+' шт</span>'):'')+'</div>'
           : '';
         return '<div id="j-'+esc(it.id)+'" style="border-top:1px solid var(--line);padding-top:var(--s-1)">'
@@ -1532,8 +1527,8 @@ function renderJournal(){
       var dateBtn = (master && !isSub) ? '<button class="sm sec" onclick="setRepDate(\''+esc(g.key)+'\',\''+esc(g.date)+'\',loadJournal)" title="за какой день работа">📅 дата</button>' : '';
       var shiftCtl = isSub ? '' : (master && !g.single && rep)
         ? '<div class="row" style="margin:var(--s-2) 0 0;justify-content:flex-start"><div class="seg"><button class="'+(night?'':'on')+'" onclick="setRepShiftJ(\''+esc(rep)+'\',\'день\')">☀️ День</button><button class="'+(night?'on':'')+'" onclick="setRepShiftJ(\''+esc(rep)+'\',\'ночь\')">🌙 Ночь</button></div>'+dateBtn+'</div>'
-        : (master?('<div class="row" style="margin:var(--s-2) 0 0;justify-content:flex-start">'+(night?'<span class="muted" style="font-size:13px;margin-right:var(--s-2)">🌙 ночная</span>':'')+dateBtn+'</div>')
-                 : (night?'<div class="muted" style="font-size:13px">🌙 ночная</div>':''));
+        : (master?('<div class="row" style="margin:var(--s-2) 0 0;justify-content:flex-start">'+(night?'<span class="muted" style="font:var(--t-small);margin-right:var(--s-2)">🌙 ночная</span>':'')+dateBtn+'</div>')
+                 : (night?'<div class="muted" style="font:var(--t-small)">🌙 ночная</div>':''));
       var effBase=0, gbon=0;
       for(var q=0;q<g.lines.length;q++){ var L=g.lines[q];
         if(L.status==='ждёт ОТК') continue;   // ещё не засчитано — в разбивку наряда не берём
@@ -1544,17 +1539,17 @@ function renderJournal(){
       // разбивка была бы враньём (порог 100 ₽ на куске не наберётся) — вместо неё говорим прямо.
       var nQC=0; for(var qq=0;qq<g.lines.length;qq++) if(g.lines[qq].status==='ждёт ОТК') nQC++;
       var cut=(full[g.key]||g.lines.length)>g.lines.length;
-      var qcNote = nQC ? '<div class="muted" style="font-size:13px;border-top:1px solid var(--line);padding-top:var(--s-1)">🔎 '+nQC+' из '+g.lines.length+' поз. ждут приёмку ОТК — их сумма в итог пока не входит</div>' : '';
+      var qcNote = nQC ? '<div class="muted" style="font:var(--t-small);border-top:1px solid var(--line);padding-top:var(--s-1)">🔎 '+nQC+' из '+g.lines.length+' поз. ждут приёмку ОТК — их сумма в итог пока не входит</div>' : '';
       var bdHtml = isSub
-        ? '<div class="muted" style="font-size:13px;border-top:1px solid var(--line);padding-top:var(--s-1)">🤝 работа подрядчика: в зарплату не идёт, сумма к оплате и долг — во вкладке «Подряд»</div>'
+        ? '<div class="muted" style="font:var(--t-small);border-top:1px solid var(--line);padding-top:var(--s-1)">🤝 работа подрядчика: в зарплату не идёт, сумма к оплате и долг — во вкладке «Подряд»</div>'
         : (cut
-        ? '<div class="muted" style="font-size:13px;border-top:1px solid var(--line);padding-top:var(--s-1)">показана часть наряда ('+g.lines.length+' из '+full[g.key]+' оп.) — надбавки считаются по всему наряду, снимите фильтр</div>'
+        ? '<div class="muted" style="font:var(--t-small);border-top:1px solid var(--line);padding-top:var(--s-1)">показана часть наряда ('+g.lines.length+' из '+full[g.key]+' оп.) — надбавки считаются по всему наряду, снимите фильтр</div>'
         : bonusBlockHtml(gbd));
       // дата смены — заметной, как в приёмке и у мастера. Тут ничего не «горит», поэтому без
       // красного: журнал листают, чтобы найти нужный день, а не чтобы поймать просрочку.
       return '<div class="card"><div class="row"><b>'+esc(g.worker)+'</b>'
-        +'<span style="font-size:13px">📅 <b>'+esc(g.date)+'</b> <span class="muted">'+(night?'🌙 ночь':'☀️ день')+'</span></span>'+bonBtn+'</div>'
-        +'<div class="muted" style="font-size:13px">'+dayLine(g.worker,g.date)
+        +'<span style="font:var(--t-small)">📅 <b>'+esc(g.date)+'</b> <span class="muted">'+(night?'🌙 ночь':'☀️ день')+'</span></span>'+bonBtn+'</div>'
+        +'<div class="muted" style="font:var(--t-small)">'+dayLine(g.worker,g.date)
         +(g.submitted?'подан '+esc(g.submitted)+' · ':'')
           +((g.lines||[]).some(isCutLine)?batchTag({kind:'лист'}):((g.lines[0]&&g.lines[0].free)?batchTag(g.lines[0]):esc(g.batch)))
           +(g.single?'':' · наряд')+' · '+g.lines.length+' оп.</div>'
@@ -1607,7 +1602,7 @@ function renderOtk(){
         ? '<div class="card" style="margin:var(--s-2) 0 0;background:var(--bg2)">'
           +'<div class="row"><label style="flex:1">Принято<input id="ok-'+esc(l.id)+'" type="number" min="0" value="'+l.qty+'"></label>'
           +'<label style="flex:1">Брак<input id="bad-'+esc(l.id)+'" type="number" min="0" value="0"></label></div>'
-          +'<div class="muted" style="font-size:13px;margin:var(--s-1) 0">Брак не оплачивается и возвращается рабочему на переделку. Оплата — за принятое.</div>'
+          +'<div class="muted" style="font:var(--t-small);margin:var(--s-1) 0">Брак не оплачивается и возвращается рабочему на переделку. Оплата — за принятое.</div>'
           +'<div class="row"><button class="sm" onclick="otkBadGo(\''+esc(l.id)+'\')">Провести приёмку</button>'
           +'<button class="sm sec" onclick="otkBadClose(\''+esc(l.id)+'\')">отмена</button>'
           +'<span class="msg" id="om-'+esc(l.id)+'"></span></div></div>'
@@ -1620,7 +1615,7 @@ function renderOtk(){
         +'<div class="row"><span>'+(g.sub?'':kindBadge(l))+esc(l.worker)+' · <b>'+l.qty+' шт</b></span>'
         +'<span><button class="sm" onclick="otkOne(\''+esc(l.id)+'\')">✅</button>'
         +'<button class="sm sec" onclick="otkBadOpen(\''+esc(l.id)+'\')">⚠ брак</button></span></div>'
-        +'<div class="muted" style="font-size:13px">📅 сдано <b>'+esc(l.date)+'</b> · '+esc(l.shift||'день')
+        +'<div class="muted" style="font:var(--t-small)">📅 сдано <b>'+esc(l.date)+'</b> · '+esc(l.shift||'день')
         +' · <span class="'+(late?'err':'muted')+'">лежит '+otkAge(l.ageH)+'</span>'
         +'</div></div>'+form;
     }).join('');
@@ -1633,7 +1628,7 @@ function renderOtk(){
         +'<b>'+g.qty+' шт</b></div><div class="row"><b>'+esc(g.detail)+' · '+esc(g.op)+'</b>'
       : '<b>'+esc(g.detail)+' · '+esc(g.op)+'</b><b>'+g.qty+' шт</b>';
     return '<div class="card'+(g.sub?' subcard':'')+'"><div class="row">'+head+'</div>'
-      +'<div class="row" style="font-size:13px"><span class="muted">'+(g.free?'🧰 вне заказа':esc(g.batch))
+      +'<div class="row" style="font:var(--t-small)"><span class="muted">'+(g.free?'🧰 вне заказа':esc(g.batch))
       +(g.sub?' · привезли со стороны':' · '+g.lines.length+' поз.')+'</span>'
       +'<span class="'+(amax>48?'err':'muted')+'">📅 '+esc(dtxt)+' · лежит '+otkAge(amax)+'</span></div>'
       +lines
@@ -1693,7 +1688,7 @@ function renderOtkAdd(){
   var wopts=actWorkers().map(function(w){ return opt(w.name); }).join('')||opt('','нет сотрудников');
   var bopts=(DATA.batches||[]).map(function(x){ return opt(x.id,x.num+' · '+x.name); }).join('')+opt('','🧰 Вне заказа');
   b.innerHTML='<div class="card"><b>Внести работу за рабочего</b>'
-    +'<div class="muted" style="font-size:13px;margin:var(--s-1) 0">Рабочий сложил детали в зону сдачи и не заводил наряд. Запись пойдёт отдельным нарядом с пометкой «внесён ОТК», ему придёт уведомление.</div>'
+    +'<div class="muted" style="font:var(--t-small);margin:var(--s-1) 0">Рабочий сложил детали в зону сдачи и не заводил наряд. Запись пойдёт отдельным нарядом с пометкой «внесён ОТК», ему придёт уведомление.</div>'
     +'<label>Сотрудник<select id="oa_w">'+wopts+'</select></label>'
     // ⚠ ДАТА ПРИЁМКИ. Контролёр часто вносит вчерашнюю смену (сдали под вечер, принял утром);
     // без выбора даты работа падала на сегодня и портила табель и «выработку по дням».
@@ -1705,7 +1700,7 @@ function renderOtkAdd(){
     +'<label>Операция<select id="oa_o" onchange="otkAddCalc()"></select></label>'
     +'<label>Принято, шт<input id="oa_q" type="number" min="0" inputmode="numeric" oninput="otkAddCalc()"></label>'
     +'<label>Не принято (брак), шт<input id="oa_bad" type="number" min="0" inputmode="numeric" value="0"></label>'
-    +'<div class="muted" style="font-size:13px;margin:var(--s-1) 0">Брак не оплачивается — детали возвращаются рабочему на переделку.</div>'
+    +'<div class="muted" style="font:var(--t-small);margin:var(--s-1) 0">Брак не оплачивается — детали возвращаются рабочему на переделку.</div>'
     +'<div class="sum" id="oa_sum">—</div>'
     +'<div class="row"><button id="oa_go" onclick="otkAddGo()">✅ Внести и принять</button><span class="msg" id="oa_msg"></span></div></div>';
   otkAddDet();
@@ -1781,7 +1776,7 @@ function renderOtkLog(){
   var reps=OLOG.reports||[];
   if(!reps.length){ b.innerHTML='<div class="card muted">За 30 дней вы ещё ничего не вносили за рабочих.</div>'; return; }
   b.innerHTML='<div class="card"><b>🧾 Внесено вами за 30 дней: '+reps.length+' нарядов</b>'
-    +'<div class="muted" style="font-size:13px">Правится принятое и брак. Ошиблись рабочим или датой — удалите строку и внесите заново.</div></div>'
+    +'<div class="muted" style="font:var(--t-small)">Правится принятое и брак. Ошиблись рабочим или датой — удалите строку и внесите заново.</div></div>'
     +reps.map(function(g){
     var lines=g.lines.map(function(l){
       var ed=!!OLOGEDIT[l.id];
@@ -1802,7 +1797,7 @@ function renderOtkLog(){
     }).join('');
     return '<div class="card"><div class="row"><b>'+esc(g.worker)+'</b>'
       +'<span><button class="sm sec" onclick="setRepDate(\''+attr(g.report)+'\',\''+attr(g.date)+'\',otkLogAfterDate)" title="за какой день приёмка">📅 дата</button> <b>'+g.sum+' р.</b></span></div>'
-      +'<div class="muted" style="font-size:13px">📅 '+esc(g.date)+' · '+esc(g.shift)
+      +'<div class="muted" style="font:var(--t-small)">📅 '+esc(g.date)+' · '+esc(g.shift)
       +(OLOG.all&&g.by?(' · внёс '+esc(g.by)):'')
       +(g.ack?(' · рабочий: '+esc(g.ack)):' · рабочий ещё не смотрел')+'</div>'+lines+'</div>';
   }).join('');
@@ -2124,7 +2119,7 @@ function loadMyShifts(){
       var p=s.date.split('-'), when=(s.date===today)?'сегодня':('на '+p[2]+'.'+p[1]);
       MYTASK=s;
       var rows=s.tasks.map(function(t,j){
-        var done=(t.factQty>0)?('<span class="ok" style="font-size:13px">сдал '+t.factQty+'</span> '):'';
+        var done=(t.factQty>0)?('<span class="ok" style="font:var(--t-small)">сдал '+t.factQty+'</span> '):'';
         return '<div class="row" style="align-items:center;gap:var(--s-2)"><span style="flex:1;min-width:150px">'
           +esc(t.op)+(t.detail?(' · <b>'+esc(t.detail)+'</b>'):'')+' — '+t.qty+' шт</span>'
           +done+'<button class="sm sec" onclick="takeTask('+j+')">＋ в наряд</button></div>';

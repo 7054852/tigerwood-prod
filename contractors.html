@@ -7,7 +7,6 @@
 <script src="tw-config.js"></script>
 <title>Тигервуд — подрядчики</title>
 <style>
-  .muted{ font-size:13px; }
   .cols{ display:flex; gap:var(--s-3); align-items:flex-start; }
   .left{ flex:0 0 320px; max-width:320px; }
   .right{ flex:1 1 auto; min-width:0; overflow:hidden; }
@@ -16,7 +15,7 @@
   .sums{ display:flex; flex-wrap:wrap; gap:var(--s-2); margin-bottom:var(--s-3); }
   .sum{ border:1px solid var(--line); border-radius:var(--r-ctl); padding:3px 9px; background:var(--card2); }
   .sum .v{ font:var(--t-body-strong); font-variant-numeric:tabular-nums; }
-  .sum .n{ font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+  .sum .n{ font:var(--t-tiny); color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
   .sum.debt .v{ color:var(--red); } .sum.ok .v{ color:var(--green); }
 
   .cl{ border:1px solid var(--line); border-radius:var(--r-ctl); background:var(--card); padding:var(--s-2) var(--s-3);
@@ -24,41 +23,35 @@
   .cl:hover{ border-color:var(--accent); }
   .cl.on{ border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-bg); }
   .cl .nm{ font:var(--t-body-strong); }
-  .cl .ln{ font-size:12px; color:var(--muted); margin-top:2px; }
+  .cl .ln{ font:var(--t-small); color:var(--muted); margin-top:2px; }
   .cl .dg{ color:var(--red); font-weight:600; }
   .cl .none{ color:var(--muted); }
   .cl.new{ border-style:dashed; text-align:center; color:var(--muted); }
 
-  .tw{ overflow:auto; overscroll-behavior:contain; }
-  table.w{ width:100%; min-width:max-content; border-collapse:separate; border-spacing:0; font-size:12px; }
-  table.w th,table.w td{ padding:4px 7px; border-bottom:1px solid var(--line); text-align:left; white-space:nowrap; }
-  table.w th{ font:var(--t-label); color:var(--muted); }
+  table.w{ min-width:max-content; }
+  table.w th,table.w td{ white-space:nowrap; }
   table.w td.n,table.w th.n{ text-align:right; font-variant-numeric:tabular-nums; }
-  table.w tr:nth-child(even) td{ background:var(--card2); }
   .sect{ margin-top:var(--s-3); }
   .fields{ display:flex; flex-wrap:wrap; gap:var(--s-2); }
   .fields label{ display:block; font:var(--t-label); color:var(--muted); flex:1 1 200px; }
   .fields input{ width:100%; }
-  .pill{ font-size:11px; }
-  .hint{ font-size:12px; color:var(--muted); margin:var(--s-1) 0; }
+  .hint{ font:var(--t-small); color:var(--muted); margin:var(--s-1) 0; }
 
-  .mvov{ position:fixed; inset:0; background:var(--scrim); display:flex; align-items:center; justify-content:center; z-index:50; padding:var(--s-4); }
-  .mvbox{ background:var(--card); border:1px solid var(--line); border-radius:var(--r-card); max-width:520px; width:100%; max-height:86vh; overflow:auto; padding:var(--s-5); box-shadow:var(--shadow-pop); }
+  /* окно .mvov/.mvbox — подложка и окно темы (.dlg-bg/.dlg) */
   .mvbox label{ display:block; font:var(--t-label); color:var(--muted); margin-top:var(--s-2); }
   .mvbox input{ width:100%; }
-  .mvn{ display:flex; align-items:center; gap:var(--s-2); flex-wrap:wrap; border-top:1px solid var(--line); padding:var(--s-2) 0; font-size:13px; }
-  .mvbox label.chkrow{ display:grid; grid-template-columns:auto 1fr auto; gap:var(--s-2); align-items:center; border-top:1px solid var(--line); padding:var(--s-2) 0; margin:0; font-size:13px; color:var(--text); cursor:pointer; }
+  .mvn{ display:flex; align-items:center; gap:var(--s-2); flex-wrap:wrap; border-top:1px solid var(--line); padding:var(--s-2) 0; font:var(--t-small); }
+  .mvbox label.chkrow{ display:grid; grid-template-columns:auto 1fr auto; gap:var(--s-2); align-items:center; border-top:1px solid var(--line); padding:var(--s-2) 0; margin:0; font:var(--t-small); color:var(--text); cursor:pointer; }
   .mvbox label.chkrow input{ margin:0; width:16px; height:16px; }
   .mvbox label.chkrow .op{ font:var(--t-body-strong); }
   .mvbox label.chkrow .nums{ color:var(--muted); white-space:nowrap; font-variant-numeric:tabular-nums; }
   .mvbox label.chkrow.cur{ cursor:default; }
-  
-  .mvclose{ float:right; color:var(--muted); cursor:pointer; }
+
 
   @media print{ .noprint{ display:none !important; } .left{ display:none; } }
 </style>
 </head>
-<body class="w-full">
+<body>
 <div id="twload"><i></i></div>
 <div class="hi noprint">🤝 Подрядчики</div>
 <div class="toolbar noprint">
@@ -163,7 +156,7 @@ function cardHtml(c){
 
   var ops=(c.ops||[]).length
     ? '<div class="box"><div class="sect"><b>Что делает и по какой цене</b></div>'
-      +'<div class="tw"><table class="w"><thead><tr><th>Операция</th><th class="n">Сделано</th><th class="n">Наша расценка</th>'
+      +'<div class="tbl-wrap tw"><table class="tbl sm w"><thead><tr><th>Операция</th><th class="n">Сделано</th><th class="n">Наша расценка</th>'
       +'<th class="n">Цена подрядчика</th><th class="n">Заплатим</th><th>Последняя работа</th></tr></thead><tbody>'
       +c.ops.map(function(o){ return '<tr><td>'+esc(o.op)+'</td><td class="n">'+m0(o.qty)+' шт</td>'
         +'<td class="n">'+money(o.ourPrice)+' ₽/шт</td><td class="n"><b>'+money(o.price)+' ₽/шт</b></td>'
@@ -173,7 +166,7 @@ function cardHtml(c){
 
   var det=(c.details||[]).length
     ? '<div class="box"><div class="sect"><b>По деталям</b></div>'
-      +'<div class="tw"><table class="w"><thead><tr><th>Деталь</th><th>Операция</th><th class="n">Шт</th>'
+      +'<div class="tbl-wrap tw"><table class="tbl sm w"><thead><tr><th>Деталь</th><th>Операция</th><th class="n">Шт</th>'
       +'<th class="n">Наша расценка</th><th class="n">Цена подрядчика</th></tr></thead><tbody>'
       +c.details.map(function(x){ return '<tr><td>'+esc(x.detail)+'</td><td>'+esc(x.op)+'</td><td class="n">'+m0(x.qty)+'</td>'
         +'<td class="n">'+money(x.ourPrice)+' ₽/шт</td><td class="n">'+money(x.price)+' ₽/шт</td></tr>'; }).join('')
@@ -190,7 +183,7 @@ function cardHtml(c){
       +sum(ft.diff>=0?'сэкономили':'переплатили', money(Math.abs(ft.diff||0))+' ₽',ft.diff>=0?'ok':'debt')
     +'</div>'
     +(outRows.length
-      ? '<div class="tw"><table class="w"><thead><tr><th>Заказ</th><th>Деталь · операция</th><th class="n">Отдано</th><th class="n">Привёз</th><th class="n">На руках</th><th class="n">Наша расценка</th><th>Отдано</th><th class="noprint"></th></tr></thead><tbody>'
+      ? '<div class="tbl-wrap tw"><table class="tbl sm w"><thead><tr><th>Заказ</th><th>Деталь · операция</th><th class="n">Отдано</th><th class="n">Привёз</th><th class="n">На руках</th><th class="n">Наша расценка</th><th>Отдано</th><th class="noprint"></th></tr></thead><tbody>'
         +outRows.map(function(x,i){ return '<tr><td>'+esc(x.batch)+'</td><td>'+esc(x.detail)+' · '+esc(x.op)+'</td>'
           +'<td class="n">'+m0(x.given)+'</td><td class="n">'+m0(x.ship)+'</td><td class="n"><b>'+m0(x.out)+'</b></td>'
           +'<td class="n">'+money(x.rate)+' ₽/шт · '+money(x.outRub)+' ₽</td><td class="muted">'+esc(x.lastGive)+'</td>'
@@ -201,7 +194,7 @@ function cardHtml(c){
   var jr=(fl.journal||[]);
   var journal=jr.length
     ? '<div class="box"><div class="sect"><b>История: отдали · привезли · оплатили</b></div>'
-      +'<div class="tw"><table class="w"><thead><tr><th>Дата</th><th>Что</th><th>Заказ</th><th>Деталь · операция</th><th class="n">Шт</th><th class="n">Наша расценка</th><th class="n">Подрядчику</th><th>Примечание</th><th class="noprint"></th></tr></thead><tbody>'
+      +'<div class="tbl-wrap tw"><table class="tbl sm w"><thead><tr><th>Дата</th><th>Что</th><th>Заказ</th><th>Деталь · операция</th><th class="n">Шт</th><th class="n">Наша расценка</th><th class="n">Подрядчику</th><th>Примечание</th><th class="noprint"></th></tr></thead><tbody>'
       +jr.map(function(j,i){ var cls=j.kind==='оплата'?'ok':(j.kind==='отдали'?'muted':'');
         return '<tr><td>'+esc(j.date)+'</td><td class="'+cls+'">'+esc(j.kind)+(j.waitQC?' <span class="pill warn">ждёт ОТК</span>':'')+'</td><td>'+esc(j.batch)+'</td>'
           +'<td>'+esc(j.detail)+(j.op?(' · '+esc(j.op)):'')+'</td><td class="n">'+(j.qty?m0(j.qty):'')+'</td>'
@@ -428,9 +421,9 @@ function supAdd(){
 }
 function ovOpen(html){
   ovClose();
-  var ov=document.createElement('div'); ov.className='mvov'; ov.id='ovbox';
+  var ov=document.createElement('div'); ov.className='mvov dlg-bg'; ov.id='ovbox';
   ov.onclick=function(e){ if(e.target===ov) ovClose(); };
-  ov.innerHTML='<div class="mvbox">'+html+'</div>';
+  ov.innerHTML='<div class="mvbox dlg">'+html+'</div>';
   document.body.appendChild(ov);
 }
 function ovClose(){ var e=$('ovbox'); if(e) e.remove(); }

@@ -1,36 +1,30 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
-<script src="tw-config.js"></script>
 <meta charset="utf-8">
+<script>window.__TWTHEME__='day';</script>
+<script src="tw-theme.js"></script>
+<script src="tw-config.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Тигервуд — документы</title>
 <style>
-  :root{ --fg:#1b2333; --muted:#8a93a6; --line:#e6e9f2; --accent:#2b7de9; --green:#137333; --red:#c0392b; --bg:#f4f6fb; }
-  *{box-sizing:border-box;} body{ font-family:-apple-system,Roboto,Segoe UI,Arial,sans-serif; margin:0; padding:12px; color:var(--fg); font-size:14px; background:#fff; }
-  .hd{ font-weight:800; font-size:15px; } .sub{ font-size:12px; color:var(--muted); margin-top:2px; }
-  .sec{ border:1px solid var(--line); border-radius:12px; padding:12px; margin-top:10px; }
-  .lbl{ font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; margin-bottom:6px; }
-  .seg{ display:inline-flex; border:1px solid var(--line); border-radius:10px; overflow:hidden; }
-  .seg button{ background:#fff; color:#556; padding:7px 16px; font-weight:600; border:0; cursor:pointer; }
-  .seg button.on{ background:var(--accent); color:#fff; }
-  button{ padding:9px 13px; border:0; border-radius:9px; font-size:13px; font-weight:600; color:#fff; background:var(--accent); cursor:pointer; }
-  button.gray{ background:#eef1f8; color:#334; } button.green{ background:var(--green); } button.sm{ padding:6px 10px; font-size:12px; }
-  button:disabled{ opacity:.5; cursor:default; }
-  .tiles{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px; }
-  .tile{ display:flex; flex-direction:column; align-items:flex-start; gap:2px; padding:12px; border:1px solid var(--line); border-radius:11px; background:#fbfcfe; color:var(--fg); font-weight:700; text-align:left; }
-  .tile:hover{ border-color:var(--accent); }
-  .tile .t2{ font-size:11px; font-weight:500; color:var(--muted); }
-  .row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:8px; }
-  input,textarea{ width:100%; padding:9px 10px; border:1px solid var(--line); border-radius:9px; font-size:14px; font-family:inherit; }
+  /* виджет живёт в карточке amoCRM (узкий светлый iframe): токены и элементы темы, отступ поменьше */
+  body{ padding:var(--s-3); }
+  .hd{ font:var(--t-heading); }
+  .sub{ margin:var(--s-1) 0 0; }
+  .sec{ background:var(--card); border:1px solid var(--line); border-radius:var(--r-card); padding:var(--s-3); margin-top:var(--s-3); }
+  .lbl{ font:var(--t-label); color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin-bottom:var(--s-2); }
+  .tiles{ margin-top:var(--s-2); }
+  .tile{ display:flex; flex-direction:column; align-items:flex-start; gap:2px; text-align:left; font:var(--t-strong); font-weight:600; color:var(--fg); cursor:pointer; min-height:0; }
+  .tile:hover{ border-color:var(--accent); background:var(--card); }
+  .tile .t2{ font:var(--t-tiny); color:var(--muted); }
+  .row{ margin-top:var(--s-2); }
+  input,textarea{ width:100%; }
   textarea{ min-height:96px; }
-  .msg{ font-size:12.5px; margin-top:8px; } .err{ color:var(--red); } .ok{ color:var(--green); }
-  a{ color:var(--accent); }
-  .badge{ display:inline-block; padding:2px 9px; border-radius:20px; font-size:11px; font-weight:700; background:#eef1f8; color:#334; }
-  .badge.b-ok{ background:#e6f4ea; color:var(--green); }
+  .msg{ margin-top:var(--s-2); }
   .hide{ display:none; }
-  .cli{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-  .out{ margin-top:8px; font-size:13px; }
+  .cli{ display:flex; align-items:center; gap:var(--s-2); flex-wrap:wrap; }
+  .out{ margin-top:var(--s-2); font:var(--t-small); }
 </style>
 </head>
 <body>
@@ -42,7 +36,7 @@
   <!-- передать сделку в SCRM (явный триггер: создать + присвоить №N) -->
   <div class="sec" id="secPush">
     <button class="green" style="width:100%" onclick="pushScrm()">📥 Передать в SCRM</button>
-    <div class="sub" id="pushHint" style="margin-top:6px">Создаст сделку в программе и присвоит сквозной номер.</div>
+    <div class="sub" id="pushHint">Создаст сделку в программе и присвоит сквозной номер.</div>
     <div class="msg" id="pushMsg"></div>
   </div>
 
@@ -54,7 +48,7 @@
         <button data-v="юрлицо" onclick="setType('юрлицо')">Юрлицо</button>
         <button data-v="физлицо" onclick="setType('физлицо')">Физлицо</button>
       </span>
-      <span id="cliBadge" class="badge">не привязан</span>
+      <span id="cliBadge" class="pill">не привязан</span>
     </div>
   </div>
 
@@ -69,13 +63,13 @@
     <div class="lbl">Реквизиты юрлица</div>
     <div id="reqStart">
       <button class="gray" onclick="openReq()">📋 Загрузить реквизиты</button>
-      <div class="sub" style="margin-top:6px">Распознаю текст или файл/фото → создам клиента и разнесу реквизиты в карточку amoCRM.</div>
+      <div class="sub">Распознаю текст или файл/фото → создам клиента и разнесу реквизиты в карточку amoCRM.</div>
     </div>
     <div id="reqPanel" class="hide">
       <textarea id="raw" placeholder="Вставьте реквизиты: ООО «...», УНП…, р/с…, банк, БИК, адрес, тел, e-mail"></textarea>
       <div class="row">
         <button class="gray sm" onclick="parseText()">🔍 Распознать текст</button>
-        <label class="gray sm" style="padding:6px 10px;border-radius:9px;background:#eef1f8;color:#334;cursor:pointer;font-weight:600">📎 Файл/фото<input type="file" id="file" style="display:none" accept="application/pdf,image/*,.doc,.docx,.xls,.xlsx" onchange="parseFile()"></label>
+        <label class="btn sm sec">📎 Файл/фото<input type="file" id="file" style="display:none" accept="application/pdf,image/*,.doc,.docx,.xls,.xlsx" onchange="parseFile()"></label>
         <button class="gray sm" onclick="closeReq()">отмена</button>
       </div>
       <div class="msg" id="reqMsg"></div>
@@ -101,7 +95,7 @@
   <div id="secInv" class="sec hide">
     <div class="lbl">Счёт</div>
     <button class="green" style="width:100%" onclick="genInvoice()">🧾 Сформировать счёт</button>
-    <div class="sub" id="invHint" style="margin-top:6px"></div>
+    <div class="sub" id="invHint"></div>
     <div class="msg" id="invMsg"></div>
     <div class="out" id="invOut"></div>
   </div>
@@ -155,8 +149,8 @@ function render(){
   $('hd').textContent='Документы · Сделка № '+String(d.num||d.id).replace(/^№\s*/,'');
   $('sub').textContent=(d.client||'клиент не указан')+' · '+money(d.sum||0)+' руб';
   CTYPE=d.clientType||'юрлицо'; syncType();
-  if(attached()){ var b=d.buyer||{}; $('cliBadge').className='badge b-ok'; $('cliBadge').textContent=(b['Наименование ЮЛ (полное)']||d.client||'клиент')+' · привязан'; }
-  else { $('cliBadge').className='badge'; $('cliBadge').textContent='не привязан'; }
+  if(attached()){ var b=d.buyer||{}; $('cliBadge').className='pill ok'; $('cliBadge').textContent=(b['Наименование ЮЛ (полное)']||d.client||'клиент')+' · привязан'; }
+  else { $('cliBadge').className='pill'; $('cliBadge').textContent='не привязан'; }
   var hasNum=/№\s*\d/.test(String(d.num||''));
   $('pushHint').textContent = hasNum ? ('✓ В SCRM · '+String(d.num)) : 'Создаст сделку в программе и присвоит сквозной номер.';
   applyType();

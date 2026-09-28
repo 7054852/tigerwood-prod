@@ -7,10 +7,9 @@
 <script src="tw-config.js"></script>
 <title>Тигервуд — ведомость передачи</title>
 <style>
-  .muted{ font-size:13px; }
   /* ⚠ имя .bar занято темой (полоса прогресса, height:6px) — панель действий зовётся .toolbar */
   .ops{ display:flex; flex-wrap:wrap; gap:var(--s-1); margin-bottom:var(--s-3); max-height:96px; overflow:auto; }
-  .opc{ border:1px solid var(--line); border-radius:999px; padding:3px 9px; font-size:12px; cursor:pointer; background:var(--card);
+  .opc{ border:1px solid var(--line); border-radius:999px; padding:3px 9px; font:var(--t-small); cursor:pointer; background:var(--card);
         white-space:nowrap; transition:border-color .12s var(--ease), background .12s var(--ease); }
   .opc:hover{ border-color:var(--accent); }
   .opc.on{ background:var(--accent); border-color:var(--accent); color:#fff; }
@@ -20,34 +19,34 @@
   .sheet{ border:1px solid var(--line); border-radius:var(--r-card); background:var(--card); padding:var(--s-3) var(--s-4); }
   .shead{ display:flex; flex-wrap:wrap; gap:var(--s-3); align-items:flex-end; margin-bottom:var(--s-2); }
   .stitle{ font:var(--t-heading); }
-  .sline{ font-size:12px; color:var(--muted); }
+  .sline{ font:var(--t-small); color:var(--muted); }
   .fill{ display:inline-block; min-width:130px; border-bottom:1px solid var(--muted); }
 
   /* итоги — одной компактной полосой: пять чисел, у каждого своя подпись */
   .sums{ display:flex; flex-wrap:wrap; gap:var(--s-2); margin:var(--s-2) 0; }
   .sum{ border:1px solid var(--line); border-radius:var(--r-ctl); padding:3px 9px; background:var(--card2); }
   .sum .v{ font:var(--t-body-strong); font-variant-numeric:tabular-nums; }
-  .sum .n{ font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
-  .sum .x{ font-size:11px; color:var(--muted); }
+  .sum .n{ font:var(--t-tiny); color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+  .sum .x{ font:var(--t-tiny); color:var(--muted); }
   .sum.our .v{ color:var(--green); } .sum.sub .v{ color:var(--amber); } .sum.can .v{ color:var(--accent-text); }
 
   /* ⚠ прокрутка ВНУТРИ обёртки — иначе sticky цепляется за страницу и шапка уезжает */
-  .twrap{ overflow:auto; max-height:74vh; overscroll-behavior:contain; }
+  .twrap{ max-height:74vh; }
   /* width:auto — колонки жмутся к детали, а не растягиваются на весь экран */
-  table.trf{ width:auto; margin-right:auto; border-collapse:separate; border-spacing:0; font-size:12px; line-height:16px; }
+  table.trf{ width:auto; margin-right:auto; border-collapse:separate; border-spacing:0; font:var(--t-small); line-height:16px; }
   table.trf th,table.trf td{ padding:3px 7px; border-bottom:1px solid var(--line); white-space:nowrap; vertical-align:middle; }
   table.trf thead th{ position:sticky; top:0; z-index:5; background:var(--card2); font:var(--t-label); padding:4px 7px; }
   table.trf .dn{ position:sticky; left:0; z-index:2; background:var(--card); max-width:320px; overflow:hidden; text-overflow:ellipsis; }
   table.trf thead .dn{ z-index:6; background:var(--card2); }
   th.n,td.n{ text-align:right; font-variant-numeric:tabular-nums; }
-  .s2{ display:block; font-size:10px; line-height:13px; color:var(--muted); font-variant-numeric:tabular-nums; }
+  .s2{ display:block; font:var(--t-tiny); line-height:13px; color:var(--muted); font-variant-numeric:tabular-nums; }
   .can .s2{ white-space:nowrap; line-height:11px; margin-top:-1px; }
   .can .s2.ok{ color:var(--green); }
   /* зебра: на 44 строках глаз без неё съезжает со строки */
   tbody.blk tr.drow:nth-of-type(even) td,tbody.blk tr.drow:nth-of-type(even) td.dn{ background:var(--card2); }
   tbody.blk tr.drow:hover td,tbody.blk tr.drow:hover td.dn{ background:var(--accent-bg); }
   tr.drow.norate td.dn{ color:var(--muted); }
-  .sh{ font-size:10px; color:var(--muted); }
+  .sh{ font:var(--t-tiny); color:var(--muted); }
 
   /* блок — видимая перегородка: полоса сверху, цветная шапка, воздух перед ней */
   tr.gap td{ height:9px; padding:0; border:0; background:transparent; }
@@ -58,7 +57,7 @@
   tr.bh .car{ display:inline-block; width:12px; }
   tbody.blk.closed tr.bh .car{ transform:rotate(-90deg); }
   tbody.blk.closed tr.drow{ display:none; }
-  tr.bh .bs{ font-weight:400; font-size:11px; opacity:.85; margin-left:var(--s-2); }
+  tr.bh .bs{ font:var(--t-tiny); font-weight:400; opacity:.85; margin-left:var(--s-2); }
   tr.bh .bx{ cursor:pointer; margin-left:var(--s-2); font-weight:400; }
 
   /* маркер готовности: точка перед числом — два состояния и ничего больше */
@@ -66,39 +65,37 @@
   .dot.ok{ background:var(--green); } .dot.wait{ background:var(--amber); } .dot.no{ background:var(--line2); }
 
   .plus{ border:1px solid var(--line); border-radius:var(--r-xs); background:var(--card); color:var(--fg);
-         cursor:pointer; font-size:12px; line-height:1; padding:3px 6px; min-height:0; }
+         cursor:pointer; font:var(--t-small); line-height:1; padding:3px 6px; min-height:0; }
   .plus:hover{ border-color:var(--accent); color:var(--accent-text); }
-  .mv{ border:0; background:transparent; color:var(--muted); cursor:pointer; padding:0 4px 0 0; font-size:12px; min-height:0; }
+  .mv{ border:0; background:transparent; color:var(--muted); cursor:pointer; padding:0 4px 0 0; font:var(--t-small); min-height:0; }
   .mv:hover{ color:var(--accent-text); }
   input.pl{ width:52px; text-align:right; font:inherit; color:inherit; background:transparent;
             border:1px solid var(--line); border-radius:var(--r-xs); padding:1px 3px; min-height:0; }
   input.pl:focus{ outline:2px solid var(--accent); }
-  select.who{ font-size:12px; padding:1px 4px; min-height:0; max-width:150px; }
-  .giv .o{ font-size:10px; color:var(--muted); margin-left:4px; }
+  select.who{ font:var(--t-small); padding:1px 4px; min-height:0; max-width:150px; }
+  .giv .o{ font:var(--t-tiny); color:var(--muted); margin-left:4px; }
   .giv .over{ color:var(--amber); }
   .wqc{ color:var(--accent-text); }
   .pr{ display:none; }
   .dcol{ display:none; }
   body.showd .dcol{ display:table-cell; }
 
-  .mvov{ position:fixed; inset:0; background:var(--scrim); display:flex; align-items:center; justify-content:center; z-index:50; padding:var(--s-4); }
-  .mvbox{ background:var(--card); border:1px solid var(--line); border-radius:var(--r-card); max-width:520px; width:100%; max-height:86vh; overflow:auto; padding:var(--s-5); box-shadow:var(--shadow-pop); }
+  /* окно .mvov/.mvbox — подложка и окно темы (.dlg-bg/.dlg) */
   .mvbox label{ display:block; font:var(--t-label); color:var(--muted); margin-top:var(--s-2); }
   .mvbox input,.mvbox select{ width:100%; max-width:100%; }
-  .mvn{ display:flex; align-items:center; gap:var(--s-2); flex-wrap:wrap; border-top:1px solid var(--line); padding:var(--s-2) 0; font-size:13px; }
-  .mvbox label.chkrow{ display:grid; grid-template-columns:auto 1fr auto; gap:var(--s-2); align-items:center; border-top:1px solid var(--line); padding:var(--s-2) 0; margin:0; font-size:13px; color:var(--text); cursor:pointer; }
+  .mvn{ display:flex; align-items:center; gap:var(--s-2); flex-wrap:wrap; border-top:1px solid var(--line); padding:var(--s-2) 0; font:var(--t-small); }
+  .mvbox label.chkrow{ display:grid; grid-template-columns:auto 1fr auto; gap:var(--s-2); align-items:center; border-top:1px solid var(--line); padding:var(--s-2) 0; margin:0; font:var(--t-small); color:var(--text); cursor:pointer; }
   .mvbox label.chkrow input{ margin:0; width:16px; height:16px; }
   .mvbox label.chkrow .op{ font:var(--t-body-strong); }
   .mvbox label.chkrow .nums{ color:var(--muted); white-space:nowrap; font-variant-numeric:tabular-nums; }
   .mvbox label.chkrow.cur{ cursor:default; }
-  
-  .mvclose{ float:right; color:var(--muted); cursor:pointer; }
+
   .blist button{ width:100%; text-align:left; margin-bottom:var(--s-1); }
-  .hint{ font-size:12px; color:var(--muted); margin:var(--s-1) 0; }
+  .hint{ font:var(--t-small); color:var(--muted); margin:var(--s-1) 0; }
   .warn{ color:var(--amber); }
 
   @media (max-width:760px){
-    table.trf{ font-size:13px; }
+    table.trf{ font:var(--t-small); }
     table.trf th,table.trf td{ padding:5px 7px; }
     th.who,td.who,th.rub,td.rub{ display:none; }        /* исполнитель и деньги — в оверлее строки */
     .plus,.mv{ min-width:32px; min-height:30px; }        /* палец, а не курсор */
@@ -113,7 +110,7 @@
     .noprint{ display:none !important; }
     .sheet{ border:0; border-radius:0; padding:0; }
     .twrap{ overflow:visible; max-height:none; }
-    table.trf{ width:100%; font-size:10px; }
+    table.trf{ width:100%; font:var(--t-tiny); }
     table.trf th,table.trf td{ padding:2px 4px; white-space:normal; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
     table.trf thead{ display:table-header-group; }
     table.trf tr{ page-break-inside:avoid; }
@@ -128,7 +125,7 @@
 </style>
 <style id="pagecss">@page{ size:A4 landscape; margin:10mm; }</style>
 </head>
-<body class="w-full">
+<body>
 <div id="twload"><i></i></div>
 <div id="twwait"><div class="wb"><div class="sp"></div><div class="wt" id="twwt">Сохраняю…</div><div class="wh">идёт обмен с сервером — не нажимайте</div></div></div>
 <div class="hi noprint">📋 Ведомость передачи работы</div>
@@ -244,7 +241,7 @@ function render(){
   var byKey={}; (V.rows||[]).forEach(function(r){ byKey[r.key]=r; });
   var body=(V.blocks||[]).map(function(b,bi){ return blockHtml(b,bi,byKey,dates); }).join('');
   $('pane').innerHTML='<div class="sheet">'+head+qcNote+sums
-    +'<div class="twrap"><table class="trf">'+thead+body+'</table></div>'
+    +'<div class="tbl-wrap twrap"><table class="tbl trf">'+thead+body+'</table></div>'
     +'<div class="hint noprint">📤 — отдали подрядчику · 📥 — привезли обратно · ☰ — переложить деталь в другой блок · клик по заголовку блока сворачивает его.</div>'
     +'<div class="foot sline" style="margin-top:var(--s-3)">Передал: ______________________ / ______________ &nbsp;&nbsp; Принял: ______________________ / ______________</div>'
     +'</div>';
@@ -671,9 +668,9 @@ function refs(cb){
 }
 function ovOpen(html){
   ovClose();
-  var ov=document.createElement('div'); ov.className='mvov'; ov.id='ovbox';
+  var ov=document.createElement('div'); ov.className='mvov dlg-bg'; ov.id='ovbox';
   ov.onclick=function(e){ if(e.target===ov) ovClose(); };
-  ov.innerHTML='<div class="mvbox">'+html+'</div>';
+  ov.innerHTML='<div class="mvbox dlg">'+html+'</div>';
   document.body.appendChild(ov);
 }
 function ovClose(){ var e=$('ovbox'); if(e) e.remove(); }

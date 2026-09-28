@@ -14,10 +14,9 @@
   html.emb body>#pageSub:has(#pushmsg:not(:empty)){ display:block; }
   #pane_cost>.toolbar{ align-items:flex-end; }
   label{ display:block; font:var(--t-small); color:var(--muted); margin:var(--s-2) 0 var(--s-1); }
-  .tbar{ display:flex; gap:var(--s-2); align-items:flex-end; flex-wrap:wrap; margin-bottom:var(--s-3); }
   .tabs a{ cursor:pointer; }
-  table{ margin-top:var(--s-2); font:var(--t-small); }
-  th,td{ padding:var(--s-2); } td{ vertical-align:top; }
+  table{ margin-top:var(--s-2); }
+  td{ vertical-align:top; }
   .num{ text-align:right; }
   /* таблица операций детали: фиксированные ширины — иначе у каждого блока свои,
      и колонки «гуляют» от детали к детали. Номер не переносим на вторую строку. */
@@ -64,7 +63,7 @@
     table.optbl td[colspan]{ display:block; flex:1 1 100%; }
     /* остальные таблицы (реестры, раскрой) не влезают по ширине — прокручиваем их
        внутри себя, а не всю страницу: иначе шапка и кнопки уезжают за экран */
-    #cutTbl, #detRegTbl, #opRegTbl{ display:block; overflow-x:auto; white-space:nowrap; }
+    #cutTbl, #detRegTbl, #opRegTbl{ white-space:nowrap; }
     .hact{ width:100%; justify-content:flex-end; }  /* кнопки блока переносятся под название */
     .hact .badd{ width:auto; }
     .hact .cnt{ width:auto; }
@@ -108,7 +107,7 @@
     </div>
     <div class="card">
       <b>Комплектация / упаковка</b> <span class="hint">— что уезжает клиенту</span>
-      <table id="packTbl"><thead><tr><th>Компонент</th><th>Тип</th><th class="num">Кол-во</th><th>Вид отгрузки</th></tr></thead><tbody></tbody></table>
+      <div class="tbl-wrap"><table class="tbl sm" id="packTbl"><thead><tr><th>Компонент</th><th>Тип</th><th class="num">Кол-во</th><th>Вид отгрузки</th></tr></thead><tbody></tbody></table></div>
     </div>
   </div>
 </div>
@@ -135,15 +134,15 @@
       <div><label>Красится</label><select id="e_paintat"></select></div>
     </div>
     <div style="margin-top:12px"><b>Состав (материал → рекурсивно из заготовок; элемент → узел)</b></div>
-    <table id="bomTbl"><thead><tr><th>Компонент</th><th>Тип</th><th class="num">Норма/кол-во</th><th>Вид отгрузки</th><th></th></tr></thead><tbody></tbody></table>
+    <div class="tbl-wrap"><table class="tbl sm" id="bomTbl"><thead><tr><th>Компонент</th><th>Тип</th><th class="num">Норма/кол-во</th><th>Вид отгрузки</th><th></th></tr></thead><tbody></tbody></table></div>
     <button class="gray" onclick="addBomRow()">+ строка состава</button>
-    <div class="tbar" style="margin-top:12px">
+    <div class="toolbar" style="margin-top:12px">
       <button class="green" onclick="saveElem()">Сохранить элемент</button>
       <button class="gray" onclick="hideEl('elemForm')">Отмена</button>
       <button class="danger sec" onclick="delElem()">Удалить</button>
     </div>
   </div>
-  <table id="elemTbl"><thead><tr><th>Код</th><th>Наименование</th><th>Стадия</th><th>Оборуд.</th><th>Покрытие</th><th class="num">Ст-ть мат</th></tr></thead><tbody></tbody></table>
+  <div class="tbl-wrap"><table class="tbl sm" id="elemTbl"><thead><tr><th>Код</th><th>Наименование</th><th>Стадия</th><th>Оборуд.</th><th>Покрытие</th><th class="num">Ст-ть мат</th></tr></thead><tbody></tbody></table></div>
 </div>
 
 <!-- ═══ МАТЕРИАЛЫ ═══ -->
@@ -157,17 +156,17 @@
       <div><label>Расход кг/м² (покрытие)</label><input id="m_norm" class="num"></div>
       <div style="grid-column:span 2"><label>Поставщик</label><input id="m_sup" style="width:100%"></div>
     </div>
-    <div class="tbar" style="margin-top:12px"><button class="green" onclick="saveMat()">Сохранить материал</button><span class="msg" id="matmsg"></span></div>
+    <div class="toolbar" style="margin-top:12px"><button class="green" onclick="saveMat()">Сохранить материал</button><span class="msg" id="matmsg"></span></div>
     <p class="hint">Роли: перерабатываемый (фанера→заготовки) · покрытие (лак/грунт/краска, расход по S) · крепёж/упаковка/инструкция — «как-есть» в коробку.</p>
   </div>
-  <table id="matTbl"><thead><tr><th>Материал</th><th>Роль</th><th>Ед.</th><th class="num">Цена</th><th class="num">кг/м²</th><th></th></tr></thead><tbody></tbody></table>
+  <div class="tbl-wrap"><table class="tbl sm" id="matTbl"><thead><tr><th>Материал</th><th>Роль</th><th>Ед.</th><th class="num">Цена</th><th class="num">кг/м²</th><th></th></tr></thead><tbody></tbody></table></div>
 </div>
 
 <!-- ═══ ОПЕРАЦИИ ═══ -->
 <div id="pane_ops" class="hide">
   <div class="toolbar">
     <input id="opsFilter" type="search" class="search" placeholder="🔎 деталь / операция / № / оборудование" oninput="renderOps()">
-    <label style="display:inline-flex;align-items:center;gap:4px;font-size:13px;color:var(--fg);margin:0"><input type="checkbox" id="grpEq" checked onchange="renderOps()" style="width:auto"> по оборудованию</label>
+    <label style="display:inline-flex;align-items:center;gap:4px;font:var(--t-small);color:var(--fg);margin:0"><input type="checkbox" id="grpEq" checked onchange="renderOps()" style="width:auto"> по оборудованию</label>
     <span class="meta">Ставка часа: <b id="hourRate">…</b> р/час (Config)</span>
     <span class="msg" id="normsmsg"></span>
     <div class="end">
@@ -177,7 +176,7 @@
   </div>
   <div id="addDetBox" class="card hide">
     <b>Новая деталь</b> <span class="hint">выберите оборудование (или впишите новое — создастся новый блок) и название детали</span>
-    <div class="tbar" style="margin-top:8px">
+    <div class="toolbar" style="margin-top:8px">
       <div><label>Оборудование / блок</label><input id="ad_eq" list="eqGroups" placeholder="напр. Новая башня" style="min-width:200px"></div>
       <div><label>Название детали</label><input id="ad_det" placeholder="напр. Боковина" style="min-width:200px"></div>
       <button class="green" onclick="createDetail()">Создать деталь</button>
@@ -188,7 +187,7 @@
   </div>
   <div id="recalcBox" class="card hide" style="background:var(--amber-bg)">
     <b>↺ Запросы пересчёта (начальнику)</b>
-    <div id="recalcList" style="margin-top:8px;font-size:13px"></div>
+    <div id="recalcList" style="margin-top:8px;font:var(--t-small)"></div>
   </div>
   <div id="opsList"></div>
 </div>
@@ -197,26 +196,26 @@
 <div id="pane_detreg" class="hide">
   <div class="toolbar"><input id="detFilter" type="search" class="search" placeholder="🔎 код / наименование детали" oninput="renderDetReg()"><span class="meta" id="detRegCnt"></span></div>
   <div class="note"><div>Реестр — источник списка деталей для каталога и формы рабочего. Здесь деталь только заводится; операции с расценками добавляются ей на вкладке «Операции (расценки)». Меняете код — он пересчитывается во всех № операций системы.</div></div>
-  <div class="tbar tray">
+  <div class="toolbar tray">
     <input id="newDetCode" placeholder="код" style="width:90px">
     <input id="newDetName" placeholder="наименование новой детали" style="min-width:260px">
     <button class="green" onclick="addDetRef()">➕ Добавить в реестр</button>
     <span id="detRegMsg" class="msg"></span>
   </div>
-  <table id="detRegTbl"><thead><tr><th style="width:110px">Код</th><th>Наименование детали</th><th style="width:60px"></th></tr></thead><tbody></tbody></table>
+  <div class="tbl-wrap"><table class="tbl sm" id="detRegTbl"><thead><tr><th style="width:110px">Код</th><th>Наименование детали</th><th style="width:60px"></th></tr></thead><tbody></tbody></table></div>
 </div>
 
 <!-- ═══ РЕЕСТР ОПЕРАЦИЙ ═══ -->
 <div id="pane_opreg" class="hide">
   <div class="toolbar"><input id="opregFilter" type="search" class="search" placeholder="🔎 код / операция" oninput="renderOpReg()"><span class="meta" id="opRegCnt"></span></div>
   <div class="note"><div>Реестр — источник списка для «＋ операция» у детали. Здесь операция только заводится; расценка появится, когда вы добавите её конкретной детали. Меняете код — он пересчитывается во всех № операций системы.</div></div>
-  <div class="tbar tray">
+  <div class="toolbar tray">
     <input id="newOpCode" placeholder="код" style="width:90px">
     <input id="newOpName" placeholder="название новой операции" style="min-width:260px">
     <button class="green" onclick="addOpRef()">➕ Добавить в реестр</button>
     <span id="opRegMsg" class="msg"></span>
   </div>
-  <table id="opRegTbl"><thead><tr><th style="width:110px">Код</th><th>Операция</th><th style="width:60px"></th></tr></thead><tbody></tbody></table>
+  <div class="tbl-wrap"><table class="tbl sm" id="opRegTbl"><thead><tr><th style="width:110px">Код</th><th>Операция</th><th style="width:60px"></th></tr></thead><tbody></tbody></table></div>
 </div>
 
 <!-- ═══ РАСКРОЙ ЧПУ: расценка за целый лист ═══ -->
@@ -231,7 +230,7 @@
     </div>
   </div>
   <div class="note"><div>Расценка за лист считается по формуле: <b>площадь(м²) × толщина(мм) ÷ делитель</b>, округление вверх до рубля — то есть пропорционально весу листа. Своя цена (столбец «₽ вручную») формулу перебивает и при пересчёте не меняется. Толщину и размер правьте здесь же — расценка пересчитается сразу.</div></div>
-  <table id="cutTbl"><thead><tr><th>Материал</th><th style="width:90px">Толщина, мм</th><th style="width:130px">Размер листа</th><th style="width:90px">По формуле</th><th style="width:110px">₽ вручную</th><th style="width:90px">Итог ₽/лист</th></tr></thead><tbody></tbody></table>
+  <div class="tbl-wrap"><table class="tbl sm" id="cutTbl"><thead><tr><th>Материал</th><th style="width:90px">Толщина, мм</th><th style="width:130px">Размер листа</th><th style="width:90px">По формуле</th><th style="width:110px">₽ вручную</th><th style="width:90px">Итог ₽/лист</th></tr></thead><tbody></tbody></table></div>
 
   <div class="sect">За что платим ЗП при раскрое</div>
   <div class="note"><div>Расценка детали — это <b>трудоёмкость</b>: по ней живут потребность заказа, % готовности и себестоимость. <b>ЗП</b> — отдельная величина, и здесь вы выбираете, за что именно платим раскройщику:<br>
@@ -250,7 +249,7 @@
     <button onclick="payRefresh(0)">🔄 Пересчитать сданные наряды</button>
     <span class="msg" id="paymsg"></span></div>
   <div id="payRep" class="hint"></div>
-  <table id="payTbl"><thead><tr><th>Деталь</th><th style="width:130px">Операция</th><th style="width:110px">Расценка (труд)</th><th style="width:180px">Оплата ЗП</th></tr></thead><tbody></tbody></table>
+  <div class="tbl-wrap"><table class="tbl sm" id="payTbl"><thead><tr><th>Деталь</th><th style="width:130px">Операция</th><th style="width:110px">Расценка (труд)</th><th style="width:180px">Оплата ЗП</th></tr></thead><tbody></tbody></table></div>
 </div>
 
 <!-- ═══ ДУБЛИ СПРАВОЧНИКОВ (только через Прохаб: у хаба этих маршрутов нет) ═══ -->
@@ -262,7 +261,7 @@
 </div>
 
 <!-- общий диалог вместо alert/confirm (в Telegram на части телефонов они не показываются) -->
-<div class="scrim" id="dlg" style="display:none"><div class="modal" style="max-width:640px;width:100%;max-height:88vh;overflow:auto">
+<div class="scrim" id="dlg" style="display:none"><div class="modal dlg md">
   <h3 id="dlgT"></h3><div id="dlgB"></div>
   <div class="toolbar" style="margin:var(--s-4) 0 0"><div class="end"><button class="sec" id="dlgNo">Отмена</button><button id="dlgOk">OK</button></div></div>
 </div></div>
@@ -777,7 +776,7 @@ function detailBlock(det, db, showSel){
     +  '<button class="green sm" onclick="addOpsBlock('+jsq(det)+')">＋ блоком</button>'
     +  '<button class="danger sec sm" onclick="delDetail('+jsq(det)+')" title="убрать деталь из блока">✕</button>'
     +'</div>'
-    +'<table class="optbl">'
+    +'<table class="tbl sm optbl">'
     +'<colgroup><col style="width:96px"><col><col style="width:84px"><col style="width:62px">'
     +'<col style="width:88px"><col style="width:104px"><col style="width:168px"></colgroup>'
     +'<thead><tr><th>№</th><th>Операция</th><th class="num">шт/час</th><th class="num">коэф</th><th class="num">Расц.</th><th class="num">Изм.</th><th>Статус</th></tr></thead><tbody>'
@@ -921,7 +920,7 @@ function blockRow(det, db){
   var cat=(DATA.opsCatalog||[]).filter(function(o){ return !have[String(o.name).toLowerCase()]; })
     .sort(function(a,b){ return (Number(a.code)||9999)-(Number(b.code)||9999) || a.name.localeCompare(b.name,'ru'); });
   var items=cat.map(function(o){
-    return '<label class="blkop" data-t="'+esc((o.code+' '+o.name).toLowerCase())+'" style="display:flex;gap:8px;align-items:center;padding:4px 8px;border-bottom:1px solid var(--line);cursor:pointer;font-size:13px">'
+    return '<label class="blkop" data-t="'+esc((o.code+' '+o.name).toLowerCase())+'" style="display:flex;gap:8px;align-items:center;padding:4px 8px;border-bottom:1px solid var(--line);cursor:pointer;font:var(--t-small)">'
       +'<input type="checkbox" value="'+esc(o.name)+'" style="width:auto">'
       +'<span class="hint" style="min-width:40px">'+esc(o.code||'')+'</span> '+esc(o.name)+'</label>';
   }).join('') || '<div class="hint" style="padding:12px">все операции каталога уже добавлены к этой детали</div>';
@@ -1017,7 +1016,7 @@ function renderDups(){
       +(k.note?'<div class="note info"><div>'+esc(k.note)+'</div></div>':'');
     if(!k.groups.length) return head+'<div class="empty">вероятных дублей не найдено</div>';
     return head+k.groups.map(function(g,gi){
-      return '<div class="card"><div class="hint" style="margin-bottom:var(--s-1)">'+esc(g.reason)+'</div><table style="width:100%"><tbody>'
+      return '<div class="card"><div class="hint" style="margin-bottom:var(--s-1)">'+esc(g.reason)+'</div><table class="tbl sm" style="width:100%"><tbody>'
         +g.items.map(function(it,ii){
           var btn=(DUPS.canMerge&&k.mergeable)?'<button class="sm" onclick="dupStart('+ki+','+gi+','+ii+')">Объединить в эту</button>':'';
           return '<tr><td><b>'+esc(it.name)+'</b>'+(it.code?' <span class="hint">код '+esc(it.code)+'</span>':'')+'</td>'

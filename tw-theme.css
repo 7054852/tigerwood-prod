@@ -4,6 +4,19 @@
    Здесь ТОЛЬКО токены и общие компоненты. Разметка, уникальная для экрана,
    живёт в самом экране — но цвета, шрифты, отступы и размеры берёт отсюда.
    Описание системы: DESIGN.md.
+
+   СЕТКА И КАРКАС (одни на все экраны; страница свои размеры НЕ задаёт, проверяет prohub/test/front-style.test.ts):
+   body            — обёртка страницы: ширина --page-w (1100px), по центру, отступ --s-5; телефон — 100% с --s-4;
+                     во встраивании в оболочку (html.emb) — вся ширина области iframe.
+   .page           — та же обёртка для блока внутри страницы (оболочка app.html).
+   .page-narrow    — ЕДИНСТВЕННОЕ узкое исключение: формы и карточки, 720px (класс на <html> или <body>).
+   .toolbar        — панель поиска/фильтров/кнопок: одна высота, зазор --s-2, перенос строк; .grow / .end.
+   .tbl-wrap       — рамка таблицы: прокрутка ВНУТРИ (и вбок, и вниз до 80vh), не страницы.
+   .tbl            — таблица: липкая шапка, зебра, числа справа (td.num), одинаковые ячейки; .tbl.sm — компактная.
+   .pill           — статус/стадия: ok / warn / bad / info / muted / acc.
+   .kv             — пары «подпись — значение»: <div class="kv"><span class="k">…</span><span class="v">…</span></div>.
+   .dlg-bg + .dlg  — свой диалог: подложка и окно; .dlg.sm / .md / .lg (420/720/900); .dlg-btns — ряд кнопок.
+   Шрифты — только токены --t-* (font:var(--t-small)); font-size в px и font-family на страницах запрещены.
    ═══════════════════════════════════════════════════════════════════════════ */
 
 :root{
@@ -58,6 +71,8 @@
   --t-strong:500 14px/20px var(--font);
   --t-small:400 13px/18px var(--font);
   --t-label:600 11px/16px var(--font);
+  --t-tiny:400 11px/16px var(--font);      /* мелкая подпись под цифрой, без прописных */
+  --t-mono:400 13px/18px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
 
   /* ── отступы: шаг 4 ── */
   --s-1:4px; --s-2:8px; --s-3:12px; --s-4:16px; --s-5:24px; --s-6:32px; --s-7:48px;
@@ -65,7 +80,7 @@
   --r-xs:6px; --r-ctl:10px; --r-card:14px; --r-pill:999px;
   /* ── размеры ── */
   --h-ctl:40px; --h-sm:32px; --h-big:48px;
-  --page-w:1200px;
+  --page-w:1100px;
   --ease:cubic-bezier(.2,.8,.2,1);
   color-scheme:light;
 }
@@ -106,9 +121,11 @@ body{
   -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
   font-feature-settings:"cv11","ss01";
 }
-body.w-narrow{ --page-w:880px; }
-body.w-full{ --page-w:none; }
-html.emb body{ padding-top:var(--s-4); }
+/* одна ширина на все экраны; .page — тот же контур для блока внутри страницы */
+.page{ max-width:var(--page-w); margin:0 auto; }
+.page-narrow{ --page-w:720px; }
+/* в оболочке app.html страница живёт в iframe и занимает всю область раздела */
+html.emb body{ max-width:none; padding-top:var(--s-4); }
 @media (max-width:640px){ body{ padding:var(--s-4); } }
 ::selection{ background:var(--accent-bg); color:var(--fg); }
 a{ color:var(--accent-text); text-underline-offset:2px; }
@@ -204,8 +221,8 @@ input:disabled, select:disabled, textarea:disabled{ background:var(--grey-bg); c
 input[type=checkbox], input[type=radio]{ min-height:0; width:18px; height:18px; padding:0; accent-color:var(--accent); vertical-align:middle; }
 input[type=color]{ padding:2px; width:44px; }
 td input, td select{ min-height:var(--h-sm); padding:0 var(--s-2); border-radius:var(--r-xs); }
-/* iOS увеличивает страницу при фокусе на поле мельче 16px */
-@media (max-width:640px){ input, select, textarea{ font-size:16px; } }
+/* iOS увеличивает страницу при фокусе на поле мельче 16px — !important, чтобы мелкие поля экранов (td input, .sm) не обошли правило */
+@media (max-width:640px){ input, select, textarea{ font-size:16px !important; } }
 
 /* ── вкладки: подчёркивание ── */
 .tabs{ display:flex; gap:var(--s-1); border-bottom:1px solid var(--line); margin:0 0 var(--s-5); overflow-x:auto; scrollbar-width:none; }
@@ -217,13 +234,26 @@ td input, td select{ min-height:var(--h-sm); padding:0 var(--s-2); border-radius
 .tabs button:hover, .tabs a:hover{ background:transparent; color:var(--fg); }
 .tabs button.on, .tabs button.active, .tabs a.on{ color:var(--fg); border-bottom-color:var(--accent); font-weight:600; }
 
-/* ── таблицы ── */
-.tbwrap{ overflow-x:auto; -webkit-overflow-scrolling:touch; }
+/* ── таблицы ──
+   <div class="tbl-wrap"><table class="tbl">…</table></div>
+   Прокрутка живёт внутри .tbl-wrap (иначе липкой шапке не к чему прилипнуть, а широкая
+   таблица растягивает страницу). Зебра и наведение красят строку (tr), а не ячейку —
+   свои цвета клеток (табель, участок, ведомость) остаются поверх. */
+.tbl-wrap, .tbwrap{ overflow:auto; max-height:80vh; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; }
 table{ width:100%; border-collapse:collapse; font:var(--t-body); }
 th, td{ text-align:left; padding:10px var(--s-3); border-bottom:1px solid var(--line); vertical-align:middle; }
 th{ font:var(--t-label); text-transform:uppercase; letter-spacing:.06em; color:var(--muted); height:36px; padding-top:var(--s-2); padding-bottom:var(--s-2); white-space:nowrap; }
-tbody tr:hover td{ background:var(--card2); }
+tbody tr:hover{ background:var(--card2); }
 tbody tr:last-child td{ border-bottom:0; }
+.tbl{ border-collapse:separate; border-spacing:0; }
+.tbl thead th{ position:sticky; top:0; z-index:2; background:var(--card); }
+.tbl tbody tr:nth-child(even){ background:var(--card2); }
+.tbl tbody tr:hover{ background:var(--accent-bg); }
+.tbl.sm{ font:var(--t-small); }
+.tbl.sm th, .tbl.sm td{ padding:var(--s-1) var(--s-2); }
+.tbl.sm th{ height:auto; }
+/* таблица, которой не нужна ширина 100% (узкие сводки) */
+.tbl.fit{ width:auto; }
 tfoot td{ font-weight:600; border-top:1px solid var(--line2); border-bottom:0; }
 /* реестр на телефоне → карточки: <table class="mob">, у td data-l="Подпись" */
 @media (max-width:640px){
@@ -244,7 +274,7 @@ tfoot td{ font-weight:600; border-top:1px solid var(--line2); border-bottom:0; }
 .pill.warn{ background:var(--amber-bg); color:var(--amber); }
 .pill.bad{ background:var(--red-bg); color:var(--red); }
 .pill.info{ background:var(--blue-bg); color:var(--blue); }
-.pill.mute{ background:var(--grey-bg); color:var(--muted); }
+.pill.mute, .pill.muted{ background:var(--grey-bg); color:var(--muted); }
 .pill.acc{ background:var(--accent); color:var(--on-accent); }
 .dot{ display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--muted); flex:none; }
 .dot.ok{ background:var(--green); } .dot.warn{ background:var(--amber); } .dot.bad{ background:var(--red); } .dot.info{ background:var(--blue); }
@@ -258,11 +288,21 @@ tfoot td{ font-weight:600; border-top:1px solid var(--line2); border-bottom:0; }
 .bar>i{ display:block; height:100%; background:var(--green); border-radius:var(--r-pill); }
 .bar.acc>i{ background:var(--accent); } .bar.warn>i{ background:var(--amber); } .bar.bad>i{ background:var(--red); }
 
-/* ── всплывающие окна ── */
-.scrim, .modal-bg{ position:fixed; inset:0; background:var(--scrim); display:flex; align-items:center; justify-content:center; padding:var(--s-4); z-index:50; }
-.modal, .dialog{ background:var(--card); border:1px solid var(--line); border-radius:var(--r-card); box-shadow:var(--shadow-pop);
+/* ── подпись — значение ── */
+.kv{ display:grid; grid-template-columns:auto 1fr; gap:var(--s-1) var(--s-3); font:var(--t-small); align-items:baseline; margin:0; }
+.kv .k, .kv dt{ color:var(--muted); }
+.kv .v, .kv dd{ margin:0; color:var(--fg); font-variant-numeric:tabular-nums; min-width:0; overflow-wrap:anywhere; }
+.kv .v b{ font-weight:600; }
+
+/* ── всплывающие окна: .dlg-bg (подложка) + .dlg (окно); .scrim/.modal — старые имена того же ── */
+.scrim, .modal-bg, .dlg-bg{ position:fixed; inset:0; background:var(--scrim); display:flex; align-items:center; justify-content:center; padding:var(--s-4); z-index:50; }
+.modal, .dialog, .dlg{ background:var(--card); border:1px solid var(--line); border-radius:var(--r-card); box-shadow:var(--shadow-pop);
                  width:100%; max-width:560px; max-height:88vh; overflow:auto; padding:var(--s-5); }
-.modal h3, .dialog h3{ font:var(--t-heading); margin:0 0 var(--s-3); }
+.dlg.sm{ max-width:420px; } .dlg.md{ max-width:720px; } .dlg.lg{ max-width:900px; }
+.modal h3, .dialog h3, .dlg h3{ font:var(--t-heading); margin:0 0 var(--s-3); }
+.dlg .x, .dlg .mvclose{ float:right; color:var(--muted); cursor:pointer; font:var(--t-heading); line-height:1; margin-left:var(--s-3); }
+.dlg-btns, .dlg .btns{ display:flex; gap:var(--s-2); justify-content:flex-end; flex-wrap:wrap; margin-top:var(--s-5); }
+@media (max-width:640px){ .scrim, .modal-bg, .dlg-bg{ padding:var(--s-2); } .modal, .dialog, .dlg{ padding:var(--s-4); } }
 
 /* ── служебное: полоска загрузки и заслонка «не нажимайте» ── */
 #twload{ position:fixed; left:0; top:0; height:2px; width:100%; z-index:60; display:none; overflow:hidden; }
@@ -283,6 +323,10 @@ tfoot td{ font-weight:600; border-top:1px solid var(--line2); border-bottom:0; }
 .toolbar .end, .toolbar>.right{ margin-left:auto; display:flex; gap:var(--s-2); align-items:center; flex-wrap:wrap; }
 /* поиск в панели не растягивается на всю строку — иначе кнопки уезжают вниз */
 .toolbar input[type=search], .toolbar .search{ flex:0 1 320px; width:auto; min-width:180px; }
+/* подпись в панели — в строку с полем, без отступов экрана */
+.toolbar label{ display:inline-flex; align-items:center; gap:var(--s-1); margin:0; font:var(--t-small); color:var(--muted); }
+.toolbar input, .toolbar select{ width:auto; }
+.toolbar .seg{ flex:none; }
 .meta{ font:var(--t-small); color:var(--muted); font-variant-numeric:tabular-nums; }
 .note{ display:flex; gap:var(--s-3); align-items:flex-start; background:var(--bg2); border:1px solid var(--line);
        border-radius:var(--r-card); padding:var(--s-3) var(--s-4); margin:0 0 var(--s-4); font:var(--t-small); color:var(--fg2); }

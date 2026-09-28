@@ -7,23 +7,19 @@
 <script src="tw-config.js"></script>
 <title>Тигервуд — материалы</title>
 <style>
-  /* панель инструментов: у темы .bar — полоска прогресса, здесь это строка кнопок */
-  .bar{ display:flex; gap:var(--s-2); align-items:center; flex-wrap:wrap; margin:var(--s-3) 0;
-        height:auto; background:none; border-radius:0; overflow:visible; }
   input.search{ flex:1; min-width:160px; }
   #roles{ margin:0 0 var(--s-4); }
   td input.p{ width:78px; text-align:right; } td input.u{ width:52px; }
   .nm{ cursor:pointer; color:var(--accent-text); font-weight:500; }
   /* цена: рост — плохо, падение — хорошо (наоборот, чем в теме) */
   .up{ color:var(--red); } .down{ color:var(--green); }
-  .box{ overflow-x:auto; }
   /* карточка материала поверх экрана: класс .ov переключает JS (ov / ov on) */
   .ov{ position:fixed; inset:0; background:var(--scrim); display:none; align-items:flex-start; justify-content:center;
        padding:var(--s-5) var(--s-3); overflow:auto; z-index:50; }
   .ov.on{ display:flex; }
-  #modal{ max-width:720px; max-height:none; }
+  #modal{ max-height:none; }
   .modal h3{ margin:0 0 var(--s-1); }
-  .modal .x{ float:right; background:transparent; color:var(--muted); border-color:transparent; }
+  .modal .x{ background:transparent; border-color:transparent; }
   .modal .x:hover{ background:var(--grey-bg); color:var(--fg); }
   .lbl{ font:var(--t-label); text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:var(--s-4) 0 var(--s-2); }
   .frm{ display:flex; gap:var(--s-2); flex-wrap:wrap; align-items:center; }
@@ -59,12 +55,12 @@
   </div>
 </div>
 <div id="newBox" class="box" style="display:none;margin-bottom:var(--s-3)">
-  <div class="bar" style="flex-wrap:wrap">
+  <div class="toolbar">
     <input id="nName" placeholder="Название, напр. Фанера 18мм 1250х2500" style="min-width:260px;flex:1">
     <select id="nUnit" style="width:110px" onchange="nSheetToggle()"><option value="лист">лист</option><option value="шт">шт</option><option value="кг">кг</option><option value="м">м</option><option value="л">л</option><option value="м²">м²</option></select>
     <select id="nRole" style="width:170px"></select>
   </div>
-  <div class="bar" style="flex-wrap:wrap">
+  <div class="toolbar">
     <span id="nSheetFields"><input id="nThick" placeholder="толщина, мм" style="width:130px">
     <input id="nSize" placeholder="размер листа 1525x1525" style="width:200px"></span>
     <button onclick="addMat()">Добавить</button>
@@ -74,16 +70,16 @@
   <div class="muted">Для листовых материалов толщина и размер нужны, чтобы посчиталась расценка за раскрой (площадь × толщина ÷ делитель).</div>
 </div>
 <div class="chips" id="roles"></div>
-<div id="selBar" class="bar" style="display:none;align-items:center">
+<div id="selBar" class="toolbar" style="display:none;align-items:center">
   <b id="selCnt"></b>
   <button class="sec sm" onclick="selAll(false)">снять выбор</button>
   <button class="sm danger" onclick="delSelected()">🗑 Удалить выбранные</button>
   <span class="msg" id="selMsg"></span>
 </div>
-<div class="box"><table><thead><tr><th style="width:26px"><input type="checkbox" id="chkAll" onclick="selAll(this.checked)" title="выбрать всё, что сейчас в списке"></th><th>Материал</th><th>Ед</th><th>Роль</th><th class="num" title="для листовых — считается расценка за раскрой">Толщина</th><th title="напр. 1525x1525">Размер листа</th><th class="num">Последняя цена</th><th class="num">Для расчёта</th><th>Комментарий</th><th></th></tr></thead><tbody id="tb"><tr><td colspan=9 class="center muted">Загрузка…</td></tr></tbody></table></div>
+<div class="box tbl-wrap"><table class="tbl"><thead><tr><th style="width:26px"><input type="checkbox" id="chkAll" onclick="selAll(this.checked)" title="выбрать всё, что сейчас в списке"></th><th>Материал</th><th>Ед</th><th>Роль</th><th class="num" title="для листовых — считается расценка за раскрой">Толщина</th><th title="напр. 1525x1525">Размер листа</th><th class="num">Последняя цена</th><th class="num">Для расчёта</th><th>Комментарий</th><th></th></tr></thead><tbody id="tb"><tr><td colspan=9 class="center muted">Загрузка…</td></tr></tbody></table></div>
 <datalist id="matlist"></datalist>
 
-<div class="ov" id="ov"><div class="modal" id="modal"></div></div>
+<div class="ov" id="ov"><div class="modal dlg md" id="modal"></div></div>
 
 <script>
 var BASE=(window.TW_CFG&&TW_CFG.hub)||'https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';   // адрес задаёт tw-config.js; запасной — живой GAS
@@ -135,8 +131,8 @@ function draw(){
     // ⚠ было Math.round — крепёж по 0,20 ₽ показывался как «0»
     var pfc=Number(m.priceForCost)||0;
     var forCost=pfc>0?('<b>'+(pfc>=1?money(pfc):pfc.toFixed(4).replace('.',','))+'</b>'):'<span class="muted">—</span>';
-    if(m.from&&m.yield>0) forCost+='<br><span class="muted" style="font-size:11px" title="цена «'+esc(m.from)+'» ÷ '+m.yield+'">из большого листа</span>';
-    else if((m.children||[]).length) forCost+='<br><span class="muted" style="font-size:11px">закупочный формат</span>';
+    if(m.from&&m.yield>0) forCost+='<br><span class="muted" style="font:var(--t-tiny)" title="цена «'+esc(m.from)+'» ÷ '+m.yield+'">из большого листа</span>';
+    else if((m.children||[]).length) forCost+='<br><span class="muted" style="font:var(--t-tiny)">закупочный формат</span>';
     return '<tr>'
       +'<td><input type="checkbox" class="mchk" value="'+esc(m.name)+'"'+(SEL[m.name]?' checked':'')+' onclick="selOne(this)"></td>'
       +'<td><span class="nm" onclick="openCard(\''+esc(m.name).replace(/\x27/g,"\\x27")+'\')">'+esc(m.name)+'</span></td>'
@@ -390,7 +386,7 @@ function renderCard(name, r){
     +'<div class="lbl">Как называют поставщики <span class="muted" style="font-weight:normal">— любое из этих названий в накладной система сама переведёт в «'+esc(name)+'»</span></div>'
     +'<div class="box" id="alBox"><div class="muted">Загрузка…</div></div>'
     +'<div class="frm" style="margin-top:var(--s-2)"><input class="s" id="al_new" placeholder="название в накладной" style="min-width:240px"><input class="s" id="al_sup" placeholder="поставщик (необязательно)"><button class="green sm" onclick="addAlias(\''+qn(name)+'\')">＋ запомнить</button><span class="msg" id="al_msg"></span></div>'
-    +'<div class="lbl">Поставщики</div><div class="box"><table><thead><tr><th>Поставщик</th><th>У поставщика</th><th class="num">Коэф</th><th class="num">Цена</th><th>Условия</th><th></th></tr></thead><tbody>'+supRows+'</tbody></table></div>'
+    +'<div class="lbl">Поставщики</div><div class="box tbl-wrap"><table class="tbl"><thead><tr><th>Поставщик</th><th>У поставщика</th><th class="num">Коэф</th><th class="num">Цена</th><th>Условия</th><th></th></tr></thead><tbody>'+supRows+'</tbody></table></div>'
     +'<div class="lbl">Добавить закупку</div>'
     +'<div class="frm">'
       +'<input class="s" id="p_sup" placeholder="поставщик">'
@@ -404,7 +400,7 @@ function renderCard(name, r){
     +'</div><div id="p_prev" class="muted" style="margin-top:var(--s-2)"></div>'
     +'<div class="muted" style="margin-top:var(--s-1)">коэф = сколько рабочих ед в 1 ед. документа (кубы→листы, пачка→листы). Подставляется сам по толщине и размеру листа.</div>'
     +'<div class="msg" id="p_msg"></div>'
-    +'<div class="lbl">Журнал закупок</div><div class="box"><table><thead><tr><th>Дата</th><th>Поставщик</th><th>№</th><th class="num">Кол-во (раб.)</th><th class="num">Цена/ед</th><th class="num">Сумма</th><th></th></tr></thead><tbody>'+buyRows+'</tbody></table></div>';
+    +'<div class="lbl">Журнал закупок</div><div class="box tbl-wrap"><table class="tbl"><thead><tr><th>Дата</th><th>Поставщик</th><th>№</th><th class="num">Кол-во (раб.)</th><th class="num">Цена/ед</th><th class="num">Сумма</th><th></th></tr></thead><tbody>'+buyRows+'</tbody></table></div>';
   loadAliases(name);
   renderLink(name);
 }
@@ -430,7 +426,7 @@ function renderLink(name){
       +'<span class="muted">выход, шт</span><input class="xs" id="lk_yield" value="'+(m.yield||'')+'" placeholder="4">'
       +'<button class="green sm" onclick="saveLink(\''+qn(name)+'\')">Сохранить</button>'
       +'<span class="msg" id="lk_msg"></span></div>'+pr
-      +'<div class="muted" style="margin-top:var(--s-1);font-size:13px">Заполняйте, если поставщик режет покупной лист на несколько наших (например 2800x2070 → 4 шт 1395x1030). Пусто — обычная позиция.</div>';
+      +'<div class="muted" style="margin-top:var(--s-1);font:var(--t-small)">Заполняйте, если поставщик режет покупной лист на несколько наших (например 2800x2070 → 4 шт 1395x1030). Пусто — обычная позиция.</div>';
   }
   box.innerHTML=h;
 }
@@ -450,7 +446,7 @@ function loadAliases(name){
     var qn=function(s){ return esc(String(s)).replace(/\x27/g,"\\x27"); };
     var al=(r&&r.aliases)||[];
     box.innerHTML=al.length
-      ? '<table><thead><tr><th>Название в накладной</th><th>Поставщик</th><th></th></tr></thead><tbody>'+al.map(function(a){
+      ? '<table class="tbl"><thead><tr><th>Название в накладной</th><th>Поставщик</th><th></th></tr></thead><tbody>'+al.map(function(a){
           return '<tr><td>'+esc(a.alias)+'</td><td class="muted">'+esc(a.sup||'')+'</td>'
             +'<td><button class="sec sm" title="забыть это название" onclick="delAlias(\''+qn(name)+'\',\''+qn(a.alias)+'\')">🗑</button></td></tr>';
         }).join('')+'</tbody></table>'

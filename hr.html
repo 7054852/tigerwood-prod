@@ -24,9 +24,7 @@
   input, select, textarea{ width:100%; }
   .dlink{ cursor:pointer; border-bottom:1px dashed var(--line2); }
   .dlink:hover{ border-bottom-color:currentColor; }
-  .back{ cursor:pointer; color:var(--accent-text); font:500 13px/18px var(--font); }
-  .kv{ display:grid; grid-template-columns:auto 1fr; gap:var(--s-1) var(--s-3); font:var(--t-small); }
-  .kv .k{ color:var(--muted); }
+  .back{ cursor:pointer; color:var(--accent-text); font:var(--t-small); font-weight:500; }
   /* обязательные для печати поля: помечены звёздочкой, красные пока пустые */
   .fld.req label.f:after{ content:' *'; color:var(--red); font-weight:600; }
   .fld.req.bad input, .fld.req.bad select{ border-color:var(--red); background:var(--red-bg); }
@@ -43,7 +41,6 @@
   .sw.on i{ background:var(--accent); border-color:var(--accent); } .sw.on i:after{ transform:translateX(14px); background:var(--on-accent); }
   .sw.on{ color:var(--fg); }
   /* карточка записи (dlg) — окно поверх экрана; поля идут сеткой, поэтому шире стандартных 560 */
-  .modal.dlg{ max-width:720px; }
   .modal.dlg h3{ margin-bottom:var(--s-1); }
   /* На телефоне таблица шире экрана: кнопки уезжают вправо и до них не дотянуться.
      Строка превращается в карточку (table.mob темы); подпись колонки берётся из data-l —
@@ -192,7 +189,7 @@ function dlView(){
   var head='<div class="row" style="justify-content:space-between;margin-bottom:var(--s-2)"><b>🔔 Сроки и напоминания</b>'+
     '<button class="btn sm" onclick="toggleDl()">скрыть</button></div>';
   if(!d.length) return '<div class="card">'+head+'<div class="muted">Нет истекающих договоров и просроченных шагов оформления.</div></div>';
-  return '<div class="card tbwrap">'+head+'<table class="mob"><thead><tr><th></th><th>Кто</th><th>Что</th><th>Ответственный</th><th>Комментарий</th></tr></thead><tbody>'+
+  return '<div class="card tbwrap">'+head+'<table class="tbl mob"><thead><tr><th></th><th>Кто</th><th>Что</th><th>Ответственный</th><th>Комментарий</th></tr></thead><tbody>'+
     d.map(function(x){
       return '<tr class="click" onclick="openCard(\''+x.empId+'\')"><td>'+sevPill(x.sev)+'</td><td><b>'+esc(x.fio)+'</b></td>'+
         '<td data-l="Что">'+esc(x.title)+'</td><td class="muted" data-l="Ответственный">'+esc(x.who||'')+'</td>'+
@@ -220,7 +217,7 @@ function empView(){
   var h=tb('<span class="meta">активных: '+(all.length-hid.length)+'</span>'+
         (hid.length?'<span class="sw'+(SHOWHIDDEN?' on':'')+'" onclick="toggleHidden()"><i></i>показать скрытых ('+hid.length+')</span>':''),
         '<button class="btn pri" onclick="newEmp()">+ Сотрудник</button>');
-  h+='<div class="card tbwrap"><table class="emplist"><thead><tr><th></th><th>ФИО</th><th>Тип</th><th>Должность</th><th>Договор</th><th>Окончание</th><th>Оформление</th><th>Статус</th></tr></thead><tbody>';
+  h+='<div class="card tbwrap"><table class="tbl emplist"><thead><tr><th></th><th>ФИО</th><th>Тип</th><th>Должность</th><th>Договор</th><th>Окончание</th><th>Оформление</th><th>Статус</th></tr></thead><tbody>';
   h+=l.map(function(x){
     var e=x.emp,c=x.contract||{},p=x.steps||{};
     return '<tr class="click'+(isHidden(e)?' dim':'')+'" onclick="openCard(\''+e.id+'\')"><td>'+sevPill(x.state.sev)+'</td>'+
@@ -258,7 +255,7 @@ function cardView(){
         if(!cur||!cur.effective) return '';
         var ef=cur.effective, base=cur, chg=Object.keys(ef).filter(function(k){return String(ef[k]||'')!==String(base[k]||'');});
         var row=function(l,v,ch){ return v?('<span style="margin-right:var(--s-3)">'+l+': <b>'+esc(v)+'</b>'+(ch?' <span class="pill warn">изменён</span>':'')+'</span>'):''; };
-        return '<div style="margin-top:var(--s-2);padding-top:var(--s-2);border-top:1px solid var(--line);font-size:13px">'+
+        return '<div style="margin-top:var(--s-2);padding-top:var(--s-2);border-top:1px solid var(--line);font:var(--t-small)">'+
           '<span class="muted">действует сейчас (с учётом доп. соглашений): </span>'+
           row('оклад',ef.salary,chg.indexOf('salary')>=0)+row('тариф',ef.tariff,chg.indexOf('tariff')>=0)+
           row('аванс',ef.advance,chg.indexOf('advance')>=0)+
@@ -270,7 +267,7 @@ function cardView(){
   // заявление, ДС и расторжение больше не живут в этой строке — они документы и лежат ниже.
   h+='<div class="sect">Договоры</div><div class="card tbwrap">';
   if(!CARD.contracts.length) h+='<div class="empty">Нет договоров.</div>';
-  else h+='<table class="mob"><thead><tr><th></th><th>Вид</th><th>№</th><th>Дата</th><th>Окончание</th><th>Статус</th><th>Файл</th><th></th></tr></thead><tbody>'+
+  else h+='<table class="tbl mob"><thead><tr><th></th><th>Вид</th><th>№</th><th>Дата</th><th>Окончание</th><th>Статус</th><th>Файл</th><th></th></tr></thead><tbody>'+
     CARD.contracts.map(function(c){
       var acts=conActs(c);
       return '<tr><td>'+dot(c.missing)+sevPill((c.state||{}).sev)+'</td>'+
@@ -283,7 +280,7 @@ function cardView(){
               c.files.map(function(u,i){return '<a href="'+esc(u)+'" target="_blank">'+(i+1)+'</a>';}).join(' ')
             : '<span class="muted" title="скан не приложен">📎 —</span>')+'</td>'+
         '<td class="acts" style="white-space:nowrap">'+acts+'</td></tr>'+
-        '<tr class="sub"><td></td><td colspan="8" class="muted" style="font-size:13px;border-bottom:1px solid var(--line)">'+
+        '<tr class="sub"><td></td><td colspan="8" class="muted" style="font:var(--t-small);border-bottom:1px solid var(--line)">'+
         // ⚠ Сообщение о сроке — единственное место, где видно, что с договором проблема, а действия
         // («уведомить», «новый контракт», «прекращение») лежат в его карточке. Делаем текст ссылкой,
         // иначе человек читает «нет даты прекращения и Акта» и не понимает, куда идти.
@@ -303,7 +300,7 @@ function cardView(){
      '<button class="btn" onclick="newCon(\'подряд\')">+ договор подряда</button>'+
      '<button class="btn" onclick="newCon(\'нпд\')">+ НПД (самозанятый)</button>'+
      '<button class="btn" onclick="newCon(\'обучение\')">+ производственное обучение</button>'+
-     '<span class="muted" style="font-size:13px">папка сотрудника создаётся автоматически при добавлении договора</span></div></div>';
+     '<span class="muted" style="font:var(--t-small)">папка сотрудника создаётся автоматически при добавлении договора</span></div></div>';
 
   h+=docsBlock();
   return h;
@@ -381,7 +378,7 @@ function docRow(d){
   var con=(CARD.contracts||[]).filter(function(c){return c.id===d.con;})[0];
   var st=String(d.status||'нужен');
   return '<tr><td><b>'+esc(docTitle(d))+'</b>'+
-    (d.note?'<div class="muted" style="font-size:13px">'+esc(d.note)+'</div>':'')+'</td>'+
+    (d.note?'<div class="muted" style="font:var(--t-small)">'+esc(d.note)+'</div>':'')+'</td>'+
     '<td data-l="№">'+esc(d.num||'—')+'</td><td data-l="Дата">'+esc(d.date||'—')+'</td>'+
     '<td class="muted" data-l="К договору">'+(con?esc(con.kind+' № '+con.num):'—')+'</td>'+
     '<td data-l="Статус">'+statusPill(st)+'</td>'+
@@ -411,13 +408,13 @@ function docsBlock(){
   var rows=(CARD.docs||[]);
   var h='<div class="sect">Документы</div><div class="card tbwrap">';
   if(!rows.length) h+='<div class="empty">Документов нет.</div>';
-  else h+='<table class="mob"><thead><tr><th>Документ</th><th>№</th><th>Дата</th><th>К договору</th><th>Статус</th><th>Файл</th><th></th></tr></thead><tbody>'+
+  else h+='<table class="tbl mob"><thead><tr><th>Документ</th><th>№</th><th>Дата</th><th>К договору</th><th>Статус</th><th>Файл</th><th></th></tr></thead><tbody>'+
     rows.map(docRow).join('')+'</tbody></table>';
   h+='<div class="row" style="margin-top:var(--s-2)">'+
      '<button class="btn pri" onclick="addDoc()">+ документ</button>'+
      '<button class="btn" onclick="newDs()">+ доп. соглашение</button>'+
      '<button class="btn" onclick="ordForm({emp:CARD.emp.id})">+ приказ</button>'+
-     '<span class="muted" style="font-size:13px">сюда кладётся всё: паспорт, заявления, справки, больничные, письма органов. '+
+     '<span class="muted" style="font:var(--t-small)">сюда кладётся всё: паспорт, заявления, справки, больничные, письма органов. '+
      'Доп. соглашение и приказ заводятся своими кнопками — они меняют условия договора и получают номер.</span></div></div>';
   return h;
 }
@@ -721,14 +718,14 @@ function val(k){ var el=$('f_'+k); return el?el.value.trim():''; }
 // действия — набор зависит от того, собран электронный документ или нет (п.12.8/12.10/12.11 ТЗ).
 function dlg(title,body,onsave,note,hint,opts){
   opts=opts||{};
-  var h='<div class="scrim"><div class="modal dlg"><h3>'+esc(title)+'</h3>'+
+  var h='<div class="scrim"><div class="modal dlg md"><h3>'+esc(title)+'</h3>'+
     '<div class="muted small">'+(hint||'Заполняются данные записи в системе. Документ (файл) создаётся отдельно.')+'</div>'+
     '<div class="grid" style="margin-top:var(--s-2)">'+body+'</div>'+
     '<div id="reqHint"></div>'+(note||'')+
     '<div class="row" style="margin-top:var(--s-3)"><button class="btn pri" id="dlgSave">'+(opts.saveLabel||'Сохранить данные')+'</button>'+
     (opts.extra||'')+
     '<button class="btn" onclick="backFromForm()">Отмена</button></div>'+
-    (opts.foot?'<div class="muted" style="font-size:13px;margin-top:var(--s-2)">'+opts.foot+'</div>':'')+'</div></div>';
+    (opts.foot?'<div class="muted" style="font:var(--t-small);margin-top:var(--s-2)">'+opts.foot+'</div>':'')+'</div></div>';
   $('app').innerHTML=h; $('dlgSave').onclick=onsave; updHint();
 }
 // Куда возвращаться из формы: в карточку сотрудника или в реестр, откуда пришли.
@@ -761,7 +758,7 @@ function empForm(e){
   dlg(e.id?'Правка сотрудника':'Новый сотрудник',
     (e.id?'':'<div class="fld" style="grid-column:1/-1"><label class="f">🪪 Паспорт</label>'+
       '<div class="row"><button class="btn" onclick="passUpload()">⬆ загрузить фото паспорта</button>'+
-      '<span class="muted" id="passMsg" style="font-size:13px">данные заполнятся сами; фото лягут в папку сотрудника при сохранении</span></div></div>')+
+      '<span class="muted" id="passMsg" style="font:var(--t-small)">данные заполнятся сами; фото лягут в папку сотрудника при сохранении</span></div></div>')+
     fld('fio','ФИО',e.fio)+fld('fioR','ФИО в родительном — заполнится само',e.fioR)+fld('fioT','ФИО в творительном — заполнится само',e.fioT)+
     fld('birth','Дата рождения',e.birth)+fld('idnum','Идент. номер',e.idnum)+
     fld('passport','Паспорт (серия и номер)',e.passport)+fld('passDate','Паспорт выдан',e.passDate)+fld('passOrg','Орган выдачи',e.passOrg)+
@@ -839,14 +836,14 @@ function inviteEmp(){
 }
 function inviteShow(e,r){
   $('app').innerHTML='<div class="card"><b>Приглашение для '+esc(e.fio)+'</b>'+
-    '<div class="muted" style="font-size:13px;margin:var(--s-2) 0 var(--s-3)">Отправьте ссылку сотруднику. Он откроет её в Telegram, '+
+    '<div class="muted" style="font:var(--t-small);margin:var(--s-2) 0 var(--s-3)">Отправьте ссылку сотруднику. Он откроет её в Telegram, '+
     'представится боту — и его аккаунт сам привяжется к этой карточке. Роль: <b>'+esc(r.roleTitle||r.role)+'</b>. '+
     'Ссылка <b>одноразовая</b>.</div>'+
     '<div class="fld"><label class="f">Ссылка</label><input id="f_link" value="'+esc(r.link)+'" readonly onclick="this.select()"></div>'+
     '<div class="row" style="margin-top:var(--s-3)"><button class="btn pri" onclick="inviteCopy()">📋 Скопировать</button>'+
     '<a class="btn" href="'+esc(r.link)+'" target="_blank">открыть в Telegram</a>'+
     '<button class="btn" onclick="openCard(\''+e.id+'\')">Готово</button></div>'+
-    '<div id="invMsg" class="muted" style="font-size:13px;margin-top:var(--s-2)"></div></div>';
+    '<div id="invMsg" class="muted" style="font:var(--t-small);margin-top:var(--s-2)"></div></div>';
 }
 function inviteCopy(){
   var el=$('f_link'); el.select();
@@ -972,7 +969,7 @@ var UPCTX=null;
 function uploadDoc(recId,target){
   UPCTX={rec:recId,target:target||'con'};
   $('app').innerHTML='<div class="card"><b>Откуда взять файл</b>'+
-    '<div class="muted" style="font-size:13px;margin:var(--s-2) 0 var(--s-3)">Файл ляжет в папку сотрудника с понятным именем. '+
+    '<div class="muted" style="font:var(--t-small);margin:var(--s-2) 0 var(--s-3)">Файл ляжет в папку сотрудника с понятным именем. '+
     'При выборе с Диска оригинал остаётся на месте — копируется.</div>'+
     '<div class="row"><button class="btn pri" onclick="uploadFiles(UPCTX.rec,UPCTX.target,\'\')">💻 С компьютера</button>'+
     '<button class="btn" onclick="drivePick(\'recent\',\'\')">📁 Выбрать на Google Диске</button>'+
@@ -986,7 +983,7 @@ function drivePick(folder,q){
     if(!r.ok){ $('app').innerHTML='<div class="card"><b>Google Диск</b><div class="muted" style="margin-top:var(--s-2);color:var(--red)">'+esc(r.error||'ошибка')+'</div>'+
       '<div class="row" style="margin-top:var(--s-2)"><button class="btn" onclick="backFromForm()">Назад</button></div></div>'; return; }
     var h='<div class="card"><div class="row" style="justify-content:space-between"><b>📁 Google Диск</b>'+
-      '<span class="muted" style="font-size:13px">'+esc(r.where)+'</span></div>'+
+      '<span class="muted" style="font:var(--t-small)">'+esc(r.where)+'</span></div>'+
       '<div class="row" style="margin:var(--s-2) 0">'+
         '<button class="btn sm'+(r.folder==='recent'&&!DRVQ?' pri':'')+'" onclick="drivePick(\'recent\',\'\')">🕘 Недавние</button>'+
         '<button class="btn sm" onclick="drivePick(\'root\',\'\')">💾 Мой диск</button>'+
@@ -996,7 +993,7 @@ function drivePick(folder,q){
         '<button class="btn sm" onclick="backFromForm()">Отмена</button></div>';
     if(!r.folders.length&&!r.files.length) h+='<div class="empty">Пусто.</div>';
     else{
-      h+='<div class="tbwrap"><table class="mob"><tbody>';
+      h+='<div class="tbwrap"><table class="tbl mob"><tbody>';
       h+=r.folders.map(function(f){ return '<tr class="click" onclick="drivePick(\''+f.id+'\',\'\')">'+
         '<td>📁 <b>'+esc(f.name)+'</b></td><td class="muted" data-l="изменён">'+esc(f.date)+'</td><td></td></tr>'; }).join('');
       h+=r.files.map(function(f){ return '<tr><td>'+driveIcon(f.mime)+' '+esc(f.name)+'</td>'+
@@ -1115,7 +1112,7 @@ function saveDs(then){
 var CONFILTER='all';
 function conFilter(v){ CONFILTER=v; render(); }
 function numKey(x){ var m=String(x||'').match(/(\d+)/); return m?+m[1]:0; }
-function dot(miss){ return (miss&&miss.length)?'<span title="не заполнено: '+esc(miss.join(', '))+'" style="color:var(--red);font-size:16px;line-height:1">●</span>':''; }
+function dot(miss){ return (miss&&miss.length)?'<span title="не заполнено: '+esc(miss.join(', '))+'" style="color:var(--red);font:var(--t-heading);line-height:1">●</span>':''; }
 function conRegView(){
   var all=(DATA.contracts||[]).slice();
   var l=all.filter(function(c){ return CONFILTER==='all'||c.kind===CONFILTER; });
@@ -1131,7 +1128,7 @@ function conRegView(){
     ['all','контракт','подряд','обучение'].map(function(v){ return '<button class="'+(CONFILTER===v?'on':'')+'" onclick="conFilter(\''+v+'\')">'+
       (v==='all'?'все':(v==='контракт'?'контракты':(v==='подряд'?'подряд':'обучение')))+'</button>'; }).join('')+'</div>'+
     '<span class="meta">всего: '+all.length+'</span>','');
-  h+='<div class="card tbwrap"><table class="mob"><thead><tr><th></th><th>№</th><th>Дата</th><th>Вид</th><th>ФИО</th><th>Должность / работа</th><th>Окончание</th><th>Статус</th><th>Документ</th></tr></thead><tbody>';
+  h+='<div class="card tbwrap"><table class="tbl mob"><thead><tr><th></th><th>№</th><th>Дата</th><th>Вид</th><th>ФИО</th><th>Должность / работа</th><th>Окончание</th><th>Статус</th><th>Документ</th></tr></thead><tbody>';
   h+=l.map(function(c){
     var e=byEmp[c.emp]||{};
     return '<tr class="click" onclick="openCard(\''+c.emp+'\')"><td>'+dot(c.missing)+sevPill((c.state||{}).sev)+'</td>'+
@@ -1218,7 +1215,7 @@ function docView(){
     '<div id="docbody">'+docTable(docFilterList(),docFioMap())+'</div>';
   if((DATA.docs||[]).length) h+=docSheetsBlock();
   h+='<div class="row" style="margin-top:var(--s-2)"><button class="btn" onclick="docForm({})">+ табель / ведомость</button>'+
-     '<span class="muted" style="font-size:13px">документы сотрудника добавляются в его карточке</span></div>';
+     '<span class="muted" style="font:var(--t-small)">документы сотрудника добавляются в его карточке</span></div>';
   return h;
 }
 // реестр актов подряда: сумма, к выплате, срок, оплата — и итог «не оплачено»
@@ -1238,8 +1235,8 @@ function actTable(l,fio){
       '<td data-l="Файл">'+filesCell(d)+'</td><td class="acts" style="white-space:nowrap">'+docActs(d)+'</td></tr>';
   }).join('');
   return '<div class="card"><b>Не оплачено: '+n+' на '+money(unpaid)+'</b>'+(late?' · <b style="color:var(--red)">просрочено: '+late+'</b>':'')+
-    '<div class="muted" style="font-size:13px;margin-top:var(--s-1)">Срок оплаты — 15 дней с даты акта. Сумму и отметку «оплачен» ставят в карточке акта (✎). Акт считается начислением подрядчику в «Долге по месяцам».</div></div>'+
-    (l.length?'<div class="card tbwrap"><table class="mob"><thead><tr><th>Подрядчик</th><th>№</th><th>Дата</th><th class="num">Сумма акта</th>'+
+    '<div class="muted" style="font:var(--t-small);margin-top:var(--s-1)">Срок оплаты — 15 дней с даты акта. Сумму и отметку «оплачен» ставят в карточке акта (✎). Акт считается начислением подрядчику в «Долге по месяцам».</div></div>'+
+    (l.length?'<div class="card tbwrap"><table class="tbl mob"><thead><tr><th>Подрядчик</th><th>№</th><th>Дата</th><th class="num">Сумма акта</th>'+
       '<th class="num">К выплате</th><th>Оплатить до</th><th>Оплата</th><th>Файл</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>'
       :'<div class="card"><div class="empty">Актов нет. Акт добавляется в карточке подрядчика: «＋ документ» → «Акт сдачи-приёмки».</div></div>');
 }
@@ -1261,7 +1258,7 @@ function docExport(){
 function docTable(l,fio){
   if(DOCF==='акт') return actTable(l,fio);
   if(!l.length) return '<div class="card"><div class="empty">Ничего не найдено.</div></div>';
-  return '<div class="card tbwrap"><table class="mob"><thead><tr><th>Сотрудник</th><th>Документ</th><th>№</th><th>Дата</th>'+
+  return '<div class="card tbwrap"><table class="tbl mob"><thead><tr><th>Сотрудник</th><th>Документ</th><th>№</th><th>Дата</th>'+
     '<th>Статус</th><th>Файл</th><th></th></tr></thead><tbody>'+
     l.map(function(d){
       return '<tr><td class="click" onclick="openCard(\''+d.emp+'\')"><b>'+esc(fio[d.emp]||'—')+'</b></td>'+
@@ -1277,7 +1274,7 @@ function docRender(){ var b=$('docbody'); if(b) b.innerHTML=docTable(docFilterLi
 function docFilter(k){ DOCF=k; render(); }
 function docSheetsBlock(){
   var l=DATA.docs||[];
-  return '<div class="sect">Табели и ведомости</div><div class="card tbwrap"><table class="mob">'+
+  return '<div class="sect">Табели и ведомости</div><div class="card tbwrap"><table class="tbl mob">'+
     '<thead><tr><th>Тип</th><th>Номер</th><th>Дата</th><th>Период</th><th>Скан</th><th></th></tr></thead><tbody>'+
     l.map(function(d){ return '<tr><td>'+esc(d.type)+'</td><td>'+esc(d.num||'—')+'</td><td>'+esc(d.date||'—')+'</td>'+
       '<td data-l="Период">'+esc(d.period||'—')+'</td><td data-l="Скан">'+(d.link?'<a href="'+esc(d.link)+'" target="_blank">открыть</a>':'—')+'</td>'+
@@ -1297,7 +1294,7 @@ function fuelView(){
   var l=DATA.fuel||[], t=DATA.fuelTotals||{};
   var h=tb('<span class="meta">акты: '+money(t.acts)+' · выплаты: '+money(t.pays)+'</span>',
         '<button class="btn pri" onclick="fuelForm({})">+ Запись</button>');
-  h+='<div class="card tbwrap"><table class="mob"><thead><tr><th>Вид</th><th>Дата</th><th>№ акта</th><th>ФИО</th><th class="num">Сумма</th><th></th></tr></thead><tbody>';
+  h+='<div class="card tbwrap"><table class="tbl mob"><thead><tr><th>Вид</th><th>Дата</th><th>№ акта</th><th>ФИО</th><th class="num">Сумма</th><th></th></tr></thead><tbody>';
   h+=l.map(function(f){ return '<tr><td><b>'+esc(f.kind)+'</b></td><td data-l="Дата">'+esc(f.date||'—')+'</td>'+
     '<td data-l="№ акта">'+esc(f.num||'—')+'</td><td data-l="ФИО">'+esc(f.fio||'—')+'</td>'+
     '<td class="num" data-l="Сумма">'+money(f.sum)+'</td>'+
@@ -1353,15 +1350,15 @@ function payDocsView(){
     return '<div class="card"><div style="cursor:pointer" onclick="PAYOPEN[\''+d.doc+'\']=!PAYOPEN[\''+d.doc+'\'];render()">'+
       '<b>'+esc(payMonth(d.period))+'</b> · '+esc(d.kind)+' · '+d.rows.length+' чел.'+(d.date?' · от '+esc(d.date):'')+
       ' <span class="muted">'+(PAYOPEN[d.doc]?'▾':'▸')+'</span>'+
-      '<div style="font-size:13px;margin-top:var(--s-1)">начислено '+money(t.accr)+(t.adv?' · аванс '+money(t.adv):'')+' · к выдаче <b>'+money(t.pay)+'</b></div></div>'+
-      '<div class="muted" style="font-size:13px;margin-top:var(--s-1)">ПН '+money(t.pn)+' · ФСЗН '+money(t.fszn)+' · БГС '+money(t.bgs)+
+      '<div style="font:var(--t-small);margin-top:var(--s-1)">начислено '+money(t.accr)+(t.adv?' · аванс '+money(t.adv):'')+' · к выдаче <b>'+money(t.pay)+'</b></div></div>'+
+      '<div class="muted" style="font:var(--t-small);margin-top:var(--s-1)">ПН '+money(t.pn)+' · ФСЗН '+money(t.fszn)+' · БГС '+money(t.bgs)+
       (d.file?' · <a href="'+esc(d.file)+'" target="_blank">📎 файл</a>':'')+
       ' · <a href="#" onclick="payEdit(\''+d.doc+'\');return false">✎ править</a> · <a href="#" onclick="payDel(\''+d.doc+'\');return false">🗑 удалить</a></div>'+
       (PAYOPEN[d.doc]?payTable(d.rows):'')+'</div>';
   }).join('');
 }
 function payTable(rows){
-  return '<div class="tbwrap" style="margin-top:var(--s-2)"><table class="mob"><thead><tr><th>ФИО</th><th>Должность</th><th>Отдел</th>'+
+  return '<div class="tbwrap" style="margin-top:var(--s-2)"><table class="tbl mob"><thead><tr><th>ФИО</th><th>Должность</th><th>Отдел</th>'+
     PAYCOLS.map(function(c){ return '<th class="num">'+c[1]+'</th>'; }).join('')+'</tr></thead><tbody>'+
     rows.map(function(r){ return '<tr><td><b>'+esc(r.fio)+'</b></td><td data-l="Должность">'+esc(r.pos||'—')+'</td><td data-l="Отдел">'+esc(r.dept)+'</td>'+
       PAYCOLS.map(function(c){ return '<td class="num" data-l="'+c[1]+'">'+money(r[c[0]])+'</td>'; }).join('')+'</tr>'; }).join('')+
@@ -1379,9 +1376,9 @@ function payWarnHtml(){
   var ft=d.fileTotal;
   if(ft){ if(Math.abs(s.pay-ft.pay)>0.011) w.push('сумма «к выдаче» по строкам '+money(s.pay)+' ≠ итог в файле '+money(ft.pay));
           if(Math.abs(s.accr-ft.accr)>0.011) w.push('сумма «начислено» по строкам '+money(s.accr)+' ≠ итог в файле '+money(ft.accr)); }
-  return '<div class="muted" style="font-size:13px">итого: начислено '+money(s.accr)+' · к выдаче <b>'+money(s.pay)+'</b></div>'+
-    (w.length?'<div style="color:var(--red);font-size:13px;margin-top:var(--s-1)">⚠ '+w.join('<br>⚠ ')+'</div>'
-             :'<div style="color:var(--green);font-size:13px;margin-top:var(--s-1)">✓ арифметика сходится</div>');
+  return '<div class="muted" style="font:var(--t-small)">итого: начислено '+money(s.accr)+' · к выдаче <b>'+money(s.pay)+'</b></div>'+
+    (w.length?'<div style="color:var(--red);font:var(--t-small);margin-top:var(--s-1)">⚠ '+w.join('<br>⚠ ')+'</div>'
+             :'<div style="color:var(--green);font:var(--t-small);margin-top:var(--s-1)">✓ арифметика сходится</div>');
 }
 function payRecheck(){ var e=$('payWarn'); if(e) e.innerHTML=payWarnHtml(); }
 function payEditView(){
@@ -1389,12 +1386,12 @@ function payEditView(){
   var opt=function(list,v){ return list.map(function(x){ return '<option'+(x===v?' selected':'')+'>'+esc(x)+'</option>'; }).join(''); };
   var inp=function(path,v,w){ return '<input value="'+esc(v==null?'':v)+'" oninput="'+path+'=this.value;payRecheck()" style="width:'+w+'px">'; };
   return '<div class="card"><b>'+(d.doc?'Правка ведомости':'Проверьте ведомость перед сохранением')+'</b>'+
-    (d.src?'<div class="muted" style="font-size:13px;margin-top:var(--s-1)">'+esc(d.src)+'</div>':'')+
+    (d.src?'<div class="muted" style="font:var(--t-small);margin-top:var(--s-1)">'+esc(d.src)+'</div>':'')+
     '<div class="row" style="margin-top:var(--s-2);gap:var(--s-3);flex-wrap:wrap;align-items:center">'+
       '<label>Вид <select onchange="PAYEDIT.kind=this.value">'+opt(PAYKINDS,d.kind)+'</select></label>'+
       '<label>Месяц <input type="month" value="'+esc(d.period||'')+'" onchange="PAYEDIT.period=this.value"></label>'+
       '<label>Дата '+inp('PAYEDIT.date',d.date,100)+'</label></div>'+
-    '<div class="tbwrap" style="margin-top:var(--s-2)"><table><thead><tr><th>ФИО</th><th>Должность</th><th>Отдел</th>'+
+    '<div class="tbwrap" style="margin-top:var(--s-2)"><table class="tbl"><thead><tr><th>ФИО</th><th>Должность</th><th>Отдел</th>'+
       PAYCOLS.map(function(c){ return '<th>'+c[1]+'</th>'; }).join('')+'<th></th></tr></thead><tbody>'+
       d.rows.map(function(r,i){ var p='PAYEDIT.rows['+i+']';
         return '<tr><td>'+inp(p+'.fio',r.fio,150)+'</td><td>'+inp(p+'.pos',r.pos,150)+'</td>'+
@@ -1404,7 +1401,7 @@ function payEditView(){
     '</tbody></table></div>'+
     '<div class="row" style="margin-top:var(--s-2)"><button class="btn sm" onclick="PAYEDIT.rows.push({fio:\'\',pos:\'\',dept:\'рабочие\'});render()">＋ строка</button></div>'+
     '<div id="payWarn" style="margin-top:var(--s-2)">'+payWarnHtml()+'</div>'+
-    '<div class="row" style="margin-top:var(--s-2);gap:var(--s-3);flex-wrap:wrap;align-items:center;font-size:13px">Налоги по ведомости: '+
+    '<div class="row" style="margin-top:var(--s-2);gap:var(--s-3);flex-wrap:wrap;align-items:center;font:var(--t-small)">Налоги по ведомости: '+
       '<label>ПН '+inp('PAYEDIT.taxes.pn',d.taxes.pn,80)+'</label><label>ФСЗН '+inp('PAYEDIT.taxes.fszn',d.taxes.fszn,80)+'</label>'+
       '<label>БГС '+inp('PAYEDIT.taxes.bgs',d.taxes.bgs,70)+'</label></div>'+
     '<div class="row" style="margin-top:var(--s-3)"><button class="btn pri" onclick="paySave()">Сохранить ведомость</button>'+
@@ -1430,7 +1427,7 @@ function quickForm(){
       '<label style="flex:1;min-width:180px">Примечание <input value="'+esc(q.note)+'" oninput="QUICK.note=this.value" style="width:100%"></label></div>'+
     '<div class="row" style="margin-top:var(--s-2)"><button class="btn pri" onclick="quickSave()">Сохранить</button>'+
       '<button class="btn" onclick="QUICK=null;render()">Отмена</button></div>'+
-    '<div class="muted" style="font-size:13px;margin-top:var(--s-1)">Ляжет в «Ведомости» и в долг по месяцам как обычная ведомость из одной строки.</div></div>';
+    '<div class="muted" style="font:var(--t-small);margin-top:var(--s-1)">Ляжет в «Ведомости» и в долг по месяцам как обычная ведомость из одной строки.</div></div>';
 }
 function quickSave(){
   var q=QUICK;
@@ -1484,18 +1481,18 @@ function debtView(){
     if(!DEBTLOADING){ DEBTLOADING=1; api({vapi:'hrdebt'}).then(function(r){ DEBTLOADING=0; DEBT=r; if(TAB==='pay'&&PAYMODE==='debt') render(); }); }
     return '<div class="center">Считаю: наряды, ведомости, выплаты…</div>'; }
   if(!DEBT.ok) return '<div class="center">Ошибка: '+esc(DEBT.error||'')+'</div>';
-  var h='<div class="card"><b style="font-size:16px">Должны сотрудникам: '+money(DEBT.debtNow)+'</b>'+
+  var h='<div class="card"><b style="font:var(--t-heading)">Должны сотрудникам: '+money(DEBT.debtNow)+'</b>'+
     (DEBT.closedYm?' <span class="muted">· на конец месяца «'+esc(payMonth(DEBT.closedYm))+'»: '+money(DEBT.debtClosed)+'</span>':'')+
     (DEBT.aheadNow?' <span class="muted">· заплачено наперёд: '+money(DEBT.aheadNow)+'</span>':'')+
-    '<div class="muted" style="font-size:13px;margin-top:var(--s-1)">Итог = долг с прошлого месяца + заработано по нарядам − начислено по ведомостям (до вычета налогов) − доплачено. Если оклад больше нарядов, разница — заплачено наперёд и уменьшает долг следующих месяцев. Текущий месяц ещё идёт — наряды в нём растут.</div>'+
-    (DEBT.finErr?'<div style="color:var(--red);font-size:13px;margin-top:var(--s-1)">Фин.гений: '+esc(DEBT.finErr)+' — доплаты не учтены</div>':'')+'</div>';
+    '<div class="muted" style="font:var(--t-small);margin-top:var(--s-1)">Итог = долг с прошлого месяца + заработано по нарядам − начислено по ведомостям (до вычета налогов) − доплачено. Если оклад больше нарядов, разница — заплачено наперёд и уменьшает долг следующих месяцев. Текущий месяц ещё идёт — наряды в нём растут.</div>'+
+    (DEBT.finErr?'<div style="color:var(--red);font:var(--t-small);margin-top:var(--s-1)">Фин.гений: '+esc(DEBT.finErr)+' — доплаты не учтены</div>':'')+'</div>';
   return h+DEBT.months.map(function(m,mi){
     var noDoc=!m.rows.some(function(r){ return r.accr>0; });
     return '<div class="card"><b>'+esc(payMonth(m.ym))+'</b>'+(m.open?' <span class="muted">· месяц идёт</span>':'')+
       ' · долг <b'+(m.debt?' style="color:var(--red)"':'')+'>'+money(m.debt)+'</b>'+
       (m.ahead?' <span class="muted">· наперёд '+money(m.ahead)+'</span>':'')+
-      (noDoc&&m.rows.length?'<div class="muted" style="font-size:13px;margin-top:var(--s-1)">⚠ ведомость за этот месяц не загружена — долг показан без неё</div>':'')+
-      (m.rows.length?'<div class="tbwrap" style="margin-top:var(--s-2)"><table class="mob"><thead><tr><th>Сотрудник</th><th class="num">С прошлого</th><th class="num" title="наряды за месяц плюс ручная правка итога">За месяц</th>'+
+      (noDoc&&m.rows.length?'<div class="muted" style="font:var(--t-small);margin-top:var(--s-1)">⚠ ведомость за этот месяц не загружена — долг показан без неё</div>':'')+
+      (m.rows.length?'<div class="tbwrap" style="margin-top:var(--s-2)"><table class="tbl mob"><thead><tr><th>Сотрудник</th><th class="num">С прошлого</th><th class="num" title="наряды за месяц плюс ручная правка итога">За месяц</th>'+
         '<th class="num">По ведомостям</th><th class="num">Доплачено</th><th class="num">Итог</th><th></th></tr></thead><tbody>'+
         m.rows.map(function(r,ri){ return debtRow(m,mi,r,ri); }).join('')+'</tbody></table></div>'
         :'<div class="muted" style="margin-top:var(--s-2)">Нарядов и выплат нет.</div>')+'</div>';
@@ -1506,7 +1503,7 @@ function debtRow(m,mi,r,ri){
   var h='<tr><td><a href="#" onclick="debtToggle('+mi+','+ri+');return false"><b>'+esc(r.name)+'</b> '+(DEBTOPEN[k]?'▾':'▸')+'</a></td>'+
     '<td class="num" data-l="С прошлого">'+(r.carry?money(r.carry):'—')+'</td>'+
     '<td class="num" data-l="За месяц">'+money(r.month==null?r.earned:r.month)+
-      (r.adj?'<div class="muted" style="font-size:11px">наряды '+money(r.earned)+' · правка '+(r.adj>0?'+':'')+money(r.adj)+'</div>':'')+
+      (r.adj?'<div class="muted" style="font:var(--t-tiny)">наряды '+money(r.earned)+' · правка '+(r.adj>0?'+':'')+money(r.adj)+'</div>':'')+
       '</td><td class="num" data-l="По ведомостям">'+money(r.accr)+'</td>'+
     '<td class="num" data-l="Доплачено">'+money(r.paid)+'</td>'+
     '<td class="num" data-l="Итог">'+(r.debt?'<b style="color:var(--red)">долг '+money(r.debt)+'</b>'
@@ -1514,7 +1511,7 @@ function debtRow(m,mi,r,ri){
     // платить — только из последнего месяца: итог нарастающий, старые месяцы уже в нём
     '<td class="acts">'+(mi===0&&r.debt&&!paying?'<button class="btn sm" onclick="debtPayOpen('+mi+','+ri+')">💵 Доплатить</button>':'')+
       (adjusting?'':'<button class="btn sm" onclick="debtAdjOpen('+mi+','+ri+')" title="поправить итог за месяц — округлить, добавить, снять">✎ итог</button>')+'</td></tr>';
-  if(DEBTOPEN[k]) h+='<tr class="sub"><td colspan="7" style="font-size:13px">за месяц: '+money(r.bal)+'<br>'+
+  if(DEBTOPEN[k]) h+='<tr class="sub"><td colspan="7" style="font:var(--t-small)">за месяц: '+money(r.bal)+'<br>'+
     (r.docs.length?r.docs.map(function(d){
         return d.kind==='корректировка'
           ? ('✎ правка итога: '+(d.accr>0?'+':'')+money(d.accr)+(d.note?' <span class="muted">— '+esc(d.note)+'</span>':''))
@@ -1522,26 +1519,26 @@ function debtRow(m,mi,r,ri){
     (r.pays.length?r.pays.map(function(p){ return '💵 '+esc(p.date)+' · '+esc(p.wallet)+' · '+money(p.sum)+(p.note?' <span class="muted">'+esc(p.note)+'</span>':''); }).join('<br>'):'💵 доплат нет')+'</td></tr>';
   if(paying){
     var cash=DEBT.wallets.cash||[], ws=cash.concat((DEBT.wallets.all||[]).filter(function(w){ return cash.indexOf(w)<0; }));
-    h+='<tr class="sub"><td colspan="7"><div class="row" style="gap:var(--s-2);flex-wrap:wrap;align-items:center;font-size:13px">'+
+    h+='<tr class="sub"><td colspan="7"><div class="row" style="gap:var(--s-2);flex-wrap:wrap;align-items:center;font:var(--t-small)">'+
       '<label>Сумма <input id="dp_sum" value="'+r.debt+'" style="width:90px"></label>'+
       '<label>Кошелёк <select id="dp_wallet">'+ws.map(function(w){ return '<option>'+esc(w)+'</option>'; }).join('')+'</select></label>'+
       '<label>Дата <input id="dp_date" value="'+debtToday()+'" style="width:100px"></label>'+
       '<button class="btn pri sm" onclick="debtPaySave('+mi+','+ri+')">Записать выплату</button>'+
       '<button class="btn sm" onclick="DEBTPAY=null;render()">Отмена</button></div>'+
-      '<div class="muted" style="font-size:13px;margin-top:var(--s-1)">Запишется в Фин.гений оплаченным расходом (зарплата, отдел: '+esc(r.dept)+') за '+esc(payMonth(m.ym))+'.</div></td></tr>';
+      '<div class="muted" style="font:var(--t-small);margin-top:var(--s-1)">Запишется в Фин.гений оплаченным расходом (зарплата, отдел: '+esc(r.dept)+') за '+esc(payMonth(m.ym))+'.</div></td></tr>';
   }
   // ПРАВКА ИТОГА МЕСЯЦА: наряды дали 517,43, а платим 520. Наряды не переписываем —
   // разница уходит отдельной строкой «корректировка» с причиной, её видно в долге и в реестре.
   if(adjusting){
     var cur=(r.month==null?r.earned:r.month);
-    h+='<tr class="sub"><td colspan="7"><div class="row" style="gap:var(--s-2);flex-wrap:wrap;align-items:center;font-size:13px">'+
+    h+='<tr class="sub"><td colspan="7"><div class="row" style="gap:var(--s-2);flex-wrap:wrap;align-items:center;font:var(--t-small)">'+
       '<label>Итог за месяц <input id="da_sum" value="'+cur+'" style="width:100px"></label>'+
       '<button class="btn sm" onclick="debtAdjRound(1)" title="округлить до рубля">⌀ до 1 ₽</button>'+
       '<button class="btn sm" onclick="debtAdjRound(10)" title="округлить до десяти рублей">⌀ до 10 ₽</button>'+
       '<label style="flex:1;min-width:180px">Почему <input id="da_note" placeholder="округлили, добавили за помощь…" style="width:100%"></label>'+
       '<button class="btn pri sm" onclick="debtAdjSave('+mi+','+ri+')">Сохранить</button>'+
       '<button class="btn sm" onclick="DEBTADJ=null;render()">Отмена</button></div>'+
-      '<div class="muted" style="font-size:13px;margin-top:var(--s-1)">Наряды рабочего не переписываются: разница ляжет отдельной строкой «корректировка» с этой причиной. Сейчас по нарядам '+money(r.earned)+(r.adj?(', правок '+(r.adj>0?'+':'')+money(r.adj)):'')+'.</div></td></tr>';
+      '<div class="muted" style="font:var(--t-small);margin-top:var(--s-1)">Наряды рабочего не переписываются: разница ляжет отдельной строкой «корректировка» с этой причиной. Сейчас по нарядам '+money(r.earned)+(r.adj?(', правок '+(r.adj>0?'+':'')+money(r.adj)):'')+'.</div></td></tr>';
   }
   return h;
 }
@@ -1583,20 +1580,20 @@ function regView(){
   var t=REG.totals||{}, col={paid:'var(--green)',bank:'var(--green)',ok:'var(--green)',diff:'var(--amber)',late:'var(--red)',none:'var(--red)'};
   var pill=function(map,s){ return '<span style="color:'+(col[s]||'var(--muted)')+';font-weight:'+(col[s]&&s!=='paid'&&s!=='ok'&&s!=='bank'?600:400)+'">'+esc(map[s]||s)+'</span>'; };
   // листалка месяца и выгрузка — в панели действий (payView)
-  var h='<div class="card"><div style="font-size:13px">к оплате <b>'+money(t.toPay)+'</b> · выплачено '+money(t.paid)+
+  var h='<div class="card"><div style="font:var(--t-small)">к оплате <b>'+money(t.toPay)+'</b> · выплачено '+money(t.paid)+
     (t.late?' · <b style="color:var(--red)">просрочено '+money(t.late)+'</b>':'')+'</div>'+
-    (REG.finErr?'<div style="color:var(--red);font-size:13px;margin-top:var(--s-1)">Фин.гений: '+esc(REG.finErr)+' — факт оплаты не проверен</div>':'')+'</div>';
+    (REG.finErr?'<div style="color:var(--red);font:var(--t-small);margin-top:var(--s-1)">Фин.гений: '+esc(REG.finErr)+' — факт оплаты не проверен</div>':'')+'</div>';
   h+='<div class="card"><b>🏦 Сверка с выпиской</b>'+(REG.recon.length?
-    '<div class="tbwrap" style="margin-top:var(--s-2)"><table class="mob"><thead><tr><th>Что</th><th>Срок</th><th class="num">По документам</th><th>В выписке</th><th></th></tr></thead><tbody>'+
+    '<div class="tbwrap" style="margin-top:var(--s-2)"><table class="tbl mob"><thead><tr><th>Что</th><th>Срок</th><th class="num">По документам</th><th>В выписке</th><th></th></tr></thead><tbody>'+
     REG.recon.map(function(x){ return '<tr><td><b>'+esc(x.what)+'</b></td><td data-l="Срок">'+esc(x.due)+'</td>'+
       '<td class="num" data-l="По документам">'+money(x.expected)+'</td>'+
       '<td data-l="В выписке">'+(x.fact?esc(x.fact.date)+' · '+money(x.fact.sum)+(x.status==='diff'?' <span class="muted">(разница '+money(x.fact.sum-x.expected)+')</span>':''):'—')+'</td>'+
       '<td>'+pill(RECST,x.status)+'</td></tr>'; }).join('')+'</tbody></table></div>'
     :'<div class="muted" style="margin-top:var(--s-1)">В этом месяце выплат по ведомостям нет — или ведомости не загружены.</div>')+
-    '<div class="muted" style="font-size:13px;margin-top:var(--s-1)">Выплата реестром ищется в «Расходах» Фин.гения по сумме и дате: аванс — около 30-го, остаток — в течение месяца, налоги — по суммам из ведомости.</div></div>';
-  h+='<div class="card tbwrap"><table class="mob"><thead><tr><th>Срок</th><th>Кому</th><th>На каких условиях</th><th class="num">Сумма</th><th>Статус</th></tr></thead><tbody>'+
+    '<div class="muted" style="font:var(--t-small);margin-top:var(--s-1)">Выплата реестром ищется в «Расходах» Фин.гения по сумме и дате: аванс — около 30-го, остаток — в течение месяца, налоги — по суммам из ведомости.</div></div>';
+  h+='<div class="card tbwrap"><table class="tbl mob"><thead><tr><th>Срок</th><th>Кому</th><th>На каких условиях</th><th class="num">Сумма</th><th>Статус</th></tr></thead><tbody>'+
     (REG.lines.length?REG.lines.map(function(l){ return '<tr><td><b>'+esc(l.due)+'</b></td><td data-l="Кому">'+esc(l.who)+'</td>'+
-      '<td data-l="Условия" style="font-size:13px">'+esc(l.terms)+'</td><td class="num" data-l="Сумма">'+money(l.sum)+'</td>'+
+      '<td data-l="Условия" style="font:var(--t-small)">'+esc(l.terms)+'</td><td class="num" data-l="Сумма">'+money(l.sum)+'</td>'+
       '<td data-l="Статус">'+pill(REGST,l.status)+(l.fact?' <span class="muted">'+esc(l.fact)+'</span>':'')+(l.plan?' <span class="muted">· будет '+esc(l.plan)+'</span>':'')+'</td></tr>'; }).join('')
     :'<tr><td colspan="5" class="muted">Выплат на этот месяц нет.</td></tr>')+'</tbody></table></div>';
   return h;
@@ -1645,21 +1642,21 @@ function foldView(){
   return h+FOLD.emps.map(function(e,ei){
     if(!e.files.length) return '';
     var tg=foldTargets(e.emp);
-    return '<div class="card"><b>'+esc(e.fio)+'</b> <span class="muted">· '+e.files.length+'</span><div class="tbwrap"><table class="mob"><tbody>'+
+    return '<div class="card"><b>'+esc(e.fio)+'</b> <span class="muted">· '+e.files.length+'</span><div class="tbwrap"><table class="tbl mob"><tbody>'+
       e.files.map(function(f,fi){
         var g=f.g, p='FOLD.emps['+ei+'].files['+fi+']', opts=tg.slice();
         if(!opts.some(function(t){ return t[0]===g.to; })) opts.unshift([g.to,g.to]);
         return '<tr><td style="width:26px"><input type="checkbox"'+(f.on?' checked':'')+' onchange="'+p+'.on=this.checked;render()"></td>'+
-          '<td><a href="'+esc(f.url)+'" target="_blank">'+esc(f.name)+'</a> <span class="muted" style="font-size:13px">'+esc(f.created)+'</span>'+
-            (g.note?'<div class="muted" style="font-size:13px">'+esc(g.note)+'</div>':'')+'</td>'+
+          '<td><a href="'+esc(f.url)+'" target="_blank">'+esc(f.name)+'</a> <span class="muted" style="font:var(--t-small)">'+esc(f.created)+'</span>'+
+            (g.note?'<div class="muted" style="font:var(--t-small)">'+esc(g.note)+'</div>':'')+'</td>'+
           '<td data-l="Куда"><select style="max-width:280px" onchange="'+p+'.g.to=this.value;render()">'+
             opts.map(function(t){ return '<option value="'+esc(t[0])+'"'+(t[0]===g.to?' selected':'')+'>'+esc(t[1])+'</option>'; }).join('')+'</select></td>'+
           '<td data-l="№ / дата" style="white-space:nowrap">'+(String(g.to).indexOf('new:')===0?
             '<input value="'+esc(g.num||'')+'" placeholder="№" oninput="'+p+'.g.num=this.value" style="width:70px"> '+
             '<input value="'+esc(g.date||'')+'" placeholder="дд.мм.гггг" oninput="'+p+'.g.date=this.value" style="width:96px">':'')+
             (g.to==='new:акт'?' <input value="'+esc(g.sum||'')+'" placeholder="сумма" oninput="'+p+'.g.sum=this.value" style="width:70px">'+
-              ' <label style="font-size:13px"><input type="checkbox"'+(g.paid?' checked':'')+' onchange="'+p+'.g.paid=this.checked"> оплачен</label>':'')+'</td>'+
-          '<td data-l="Как определено" style="font-size:13px">'+(g.busy?'распознаю…':(g.done?'<span style="color:var(--green)">✓ распознано</span>':
+              ' <label style="font:var(--t-small)"><input type="checkbox"'+(g.paid?' checked':'')+' onchange="'+p+'.g.paid=this.checked"> оплачен</label>':'')+'</td>'+
+          '<td data-l="Как определено" style="font:var(--t-small)">'+(g.busy?'распознаю…':(g.done?'<span style="color:var(--green)">✓ распознано</span>':
             (g.recog?'<span class="muted">не уверен</span>':'<span style="color:var(--green)">по названию</span>')))+'</td></tr>';
       }).join('')+'</tbody></table></div></div>';
   }).join('');
@@ -1705,7 +1702,7 @@ function tplView(){
   (TPLDATA.sections||[]).forEach(function(sec,si){
     h+='<div class="sect" style="display:flex;justify-content:space-between;align-items:baseline'+(si?'':';margin-top:0')+'">'+esc(sec.title)+
        '<a class="back" href="'+esc(sec.folderUrl)+'" target="_blank" style="text-transform:none;font-weight:400">открыть папку ↗</a></div>';
-    h+='<div class="muted" style="font-size:13px;margin:0 var(--s-1) var(--s-2)">'+esc(hint[sec.key]||'')+'</div>';
+    h+='<div class="muted" style="font:var(--t-small);margin:0 var(--s-1) var(--s-2)">'+esc(hint[sec.key]||'')+'</div>';
     if(!sec.groups.length){ h+='<div class="card"><div class="empty">Пусто.</div></div>'; return; }
     sec.groups.forEach(function(g){
       h+='<div class="card">'+(g.sub?'<div style="font-weight:600;margin-bottom:var(--s-2)">'+esc(g.sub)+'</div>':'')+

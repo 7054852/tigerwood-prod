@@ -35,12 +35,11 @@
   button.opt{ display:flex; flex-direction:column; align-items:flex-start; gap:2px; width:100%; min-height:0; padding:var(--s-3) var(--s-4);
               margin-bottom:var(--s-2); text-align:left; white-space:normal; }
   button.opt span{ font:var(--t-small); color:var(--fg2); font-weight:400; }
-  .dlgbtns{ justify-content:flex-end; margin-top:var(--s-4); }
   .modal .note{ margin-top:var(--s-3); }
   .modal table td{ white-space:normal; }
 </style>
 </head>
-<body class="w-narrow">
+<body>
 <div id="twload"><i></i></div>
 <div id="twwait"><div class="wb"><div class="sp"></div><div class="wt" id="twwt">Отправляю…</div><div class="wh">идёт обмен с сервером — не нажимайте</div></div></div>
 <div class="hi">🏭 Начальник производства</div>
@@ -149,7 +148,7 @@ function orderCard(o,i){
         +'<span class="pill '+(k.bonusSrok==='ок'?'ok':(k.bonusSrok==='риск'?'bad':'mute'))+'">'+(k.bonusSrok==='ок'?'✓ ':(k.bonusSrok==='риск'?'✕ ':''))+'срок: '+esc(k.bonusSrok)+'</span>'
         +'<span class="pill '+(k.bonusEcon==='ок'?'ok':'bad')+'">'+(k.bonusEcon==='ок'?'✓ ':'✕ ')+'экономия: '+esc(k.bonusEcon)+'</span>'
       +'</div>'
-      +'<div class="tbwrap"><table><thead><tr><th>Изделие</th><th class="num">Ставка ₽/шт</th><th class="num">Упаковано</th><th class="num">'+(DIR?'Начислено':'Заработано')+'</th><th class="num">Потенциал</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+      +'<div class="tbwrap"><table class="tbl"><thead><tr><th>Изделие</th><th class="num">Ставка ₽/шт</th><th class="num">Упаковано</th><th class="num">'+(DIR?'Начислено':'Заработано')+'</th><th class="num">Потенциал</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
     +'</div></div>';
 }
 function tog(id){ var c=$('oc_'+id); if(c){ var open=c.classList.toggle('open'); OPEN[id]=open; } }
@@ -159,13 +158,13 @@ function closeDlg(){ $('ov').classList.remove('on'); }
 function rrSay(h){ RRMSG=h; var m=$('rrMsg'); if(m) m.innerHTML=h; }   // переживает перерисовку после load()
 document.addEventListener('keydown',function(e){ if(e.key==='Escape') closeDlg(); });
 function dlgErr(r){ openDlg('<h3>Не получилось</h3><div class="note warn"><div>'+esc((r&&r.error)||'сервер не ответил — проверьте связь и попробуйте ещё раз')+'</div></div>'
-  +'<div class="row dlgbtns"><button class="sec" onclick="closeDlg()">Закрыть</button></div>'); }
+  +'<div class="dlg-btns"><button class="sec" onclick="closeDlg()">Закрыть</button></div>'); }
 function recalcRates(){
   if(!PX){   // хаб: один режим — всё от труда, ручные затираются
     openDlg('<h3>Пересчитать ставки от труда?</h3>'
       +'<div class="note warn"><div>Все базовые ставки ₽/шт будут пересчитаны от текущего труда изделий. <b>Ставки, выставленные вручную, будут затёрты</b> — хаб не отличает ручные от расчётных.</div></div>'
       +'<div class="muted" style="margin-top:var(--s-3)">Ставки, заданные в конкретном заказе, не меняются.</div>'
-      +'<div class="row dlgbtns"><button class="sec" onclick="closeDlg()">Отмена</button><button onclick="runHubRecalc()">Пересчитать</button></div>');
+      +'<div class="dlg-btns"><button class="sec" onclick="closeDlg()">Отмена</button><button onclick="runHubRecalc()">Пересчитать</button></div>');
     return;
   }
   var n=MANN, keep, all;
@@ -176,7 +175,7 @@ function recalcRates(){
     +'<div class="muted">Базовая ставка ₽/шт — доля труда изделия. Сначала покажу, что изменится; применится только после «Применить». Ставки, заданные в конкретном заказе, не меняются.</div>'
     +'<button class="sec opt" onclick="rrPreview(\'keep\')"><b>Обновить, сохранив ручные</b><span>'+keep+'</span></button>'
     +'<button class="sec opt" onclick="rrPreview(\'all\')"><b>Обновить все</b><span>'+all+'</span></button>'
-    +'<div class="row dlgbtns"><button class="sec" onclick="closeDlg()">Отмена</button></div>');
+    +'<div class="dlg-btns"><button class="sec" onclick="closeDlg()">Отмена</button></div>');
 }
 function rrRow(name,sku,was,now,tag){ return '<tr><td>'+esc(name)+' <span class="muted">'+esc(sku)+'</span>'+(tag||'')+'</td><td class="num">'+was+'</td><td class="num">'+now+'</td></tr>'; }
 function rrPreview(mode){
@@ -191,11 +190,11 @@ function rrPreview(mode){
       : '<div class="note"><div><b>Останутся как есть — ручные ('+man.length+' шт.):</b> '+manList+'</div></div>';
     var title=mode==='all'?'Обновить все':'Обновить, сохранив ручные';
     if(!rows.length){ openDlg('<h3>'+title+'</h3><div class="note ok"><div>Изменений нет — '+(mode==='all'?'все ставки уже совпадают с расчётными':'расчётные ставки уже актуальны')+'.</div></div>'+note
-      +'<div class="row dlgbtns"><button class="sec" onclick="recalcRates()">Назад</button><button class="sec" onclick="closeDlg()">Закрыть</button></div>'); return; }
+      +'<div class="dlg-btns"><button class="sec" onclick="recalcRates()">Назад</button><button class="sec" onclick="closeDlg()">Закрыть</button></div>'); return; }
     openDlg('<h3>'+title+': что изменится</h3>'
-      +'<div class="tbwrap"><table><thead><tr><th>Изделие</th><th class="num">Было ₽/шт</th><th class="num">Станет</th></tr></thead><tbody>'+rows.join('')+'</tbody></table></div>'
+      +'<div class="tbwrap"><table class="tbl"><thead><tr><th>Изделие</th><th class="num">Было ₽/шт</th><th class="num">Станет</th></tr></thead><tbody>'+rows.join('')+'</tbody></table></div>'
       +note
-      +'<div class="row dlgbtns"><button class="sec" onclick="recalcRates()">Назад</button><button class="sec" onclick="closeDlg()">Отмена</button>'
+      +'<div class="dlg-btns"><button class="sec" onclick="recalcRates()">Назад</button><button class="sec" onclick="closeDlg()">Отмена</button>'
       +'<button onclick="rrApply(\''+mode+'\')">Применить ('+rows.length+')</button></div>');
   }).catch(function(){ dlgErr(null); });
 }
