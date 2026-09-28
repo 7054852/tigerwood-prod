@@ -97,8 +97,17 @@
           <option>100% предоплатой (без остатка)</option>
           <option>по графику (рассрочка / отсрочка)</option>
         </select></label>
+      <label class="fl" id="w_bdays"><span class="sm">Срок доплаты, дней от отгрузки</span><input id="f_bdays" type="number" inputmode="numeric" min="0" placeholder="пусто — условие из списка" oninput="onBalanceDays()"><span class="sm" id="bdaysHint"></span></label>
       <label class="fl" id="w_prod"><span class="sm">Срок производства, раб. дней</span><input id="f_prod" type="number" inputmode="numeric" min="1" value="14"></label>
       <label class="fl" id="w_freight"><span class="sm">Заказчик перевозки (для ТН/ТТН)</span><select id="f_freight"><option value="Мы">Мы (Тигервуд)</option><option value="Клиент">Клиент</option></select></label>
+    </div>
+    <!-- валютный договор (рынки Россия / Европа): регистрация в банке при сумме от 4000 БВ -->
+    <div id="w_creg" class="hide" style="margin-top:var(--s-3)">
+      <div class="grid2">
+        <label class="fl"><span class="sm">Рег. номер валютного договора</span><input id="f_regNo" placeholder="из банка"></label>
+        <label class="fl"><span class="sm">Дата регистрации</span><input id="f_regDate" type="date"></label>
+      </div>
+      <div class="sm" id="cregHint"></div>
     </div>
   </div>
 
@@ -311,6 +320,9 @@ function fillForm(){
   if(c.balanceCondition) setSel('f_balance', c.balanceCondition);
   if(c.freightPayer) el('f_freight').value=/клиент/i.test(String(c.freightPayer))?'Клиент':'Мы';
   var t=c.terms||{}; if(t.prodDays) el('f_prod').value=t.prodDays;
+  el('f_bdays').value=(c.balanceDays==null)?'':c.balanceDays; el('f_regNo').value=c.currencyRegNo||''; el('f_regDate').value=isoDate(c.currencyRegDate);
+  if(c.baseValue>0) BASE_VALUE=Number(c.baseValue);
+  onBalanceDays();
   ITEMS=(c.items||[]).map(function(it){ return { name:it.name||'', sku:it.sku||'', qty:it.qty, price:it.price }; });
   el('f_amtItems').checked=!!ITEMS.length && !noAmt;
   LEGS=(c.legs||[]).map(function(l,i){ return { legNo:l.legNo||(i+1), amount:l.amount, dueDate:isoDate(l.dueDate), beforeShip:!!l.beforeShip }; });
@@ -387,8 +399,24 @@ function fillKinds(){
   if(!ok && C && C.kind && list.length){ var o=document.createElement('option'); o.value=C.kind; o.text=C.kindRu||C.kind; sel.add(o); sel.value=C.kind; }
   onKind(true);
 }
+var BASE_VALUE=42;   // базовая величина РБ, BYN — с сервера (contractget.baseValue, настройка finance.baseValue)
+/** срок доплаты в днях задан → условие остатка строится сервером само («в течение N дней с даты отгрузки»), список гасится */
+function onBalanceDays(){
+  var n=Number(val('f_bdays'))||0; el('f_balance').disabled=n>0;
+  el('bdaysHint').textContent=n>0?('условие: «в течение '+n+' дн. с даты отгрузки»'):'';
+}
+/** валютный договор (ru/eu): поля регистрации + подсказка о пороге 4000 БВ */
+function onMarketFields(){
+  var k=curKind(), m=(k&&k.market)||(C&&C.market)||marketOf(BUYER)||'by', fx=(m==='ru'||m==='eu'||m==='other');
+  el('w_creg').className=fx?'':'hide'; if(!fx) return;
+  var thr=4000*BASE_VALUE, a=amountVal();
+  el('cregHint').innerHTML='Валютный договор на сумму от <b>4000 БВ</b> ('+money(thr)+' BYN при БВ '+BASE_VALUE+' — уточнить) регистрируется в банке до первого платежа/отгрузки; срок доплаты — по Указу № 178.'
+    +((a!=null&&a>0)?(' Сумма договора '+money(a)+' '+esc(curOf())+' — сравните с порогом по курсу на дату.'):'');
+}
 function onKind(silent){
   var k=curKind(), lbl=k?(k.label||''):'', svc=/услуг/i.test(lbl), coop=/сотрудничеств/i.test(lbl), inst=/рассрочк/i.test(lbl);
+  el('w_bdays').className=(coop||isFw())?'fl hide':'fl';
+  onMarketFields();
   el('w_freight').className=svc?'fl hide':'fl';
   el('w_prod').className=(svc||coop)?'fl hide':'fl';
   el('w_prepay').className=(coop||isFw())?'fl hide':'fl'; el('w_balance').className=(coop||isFw())?'fl hide':'fl';
@@ -426,7 +454,7 @@ function fillDeals(){
 function onDeal(){ var v=val('f_deal'); el('dealHint').className=v?'sm':'sm'; if(!v && !isFw()) el('dealHint').innerHTML='без сделки: при сохранении сервер создаст <b>заявку З-…</b> и привяжет договор к ней'; }
 /* ── сумма ── */
 function onNoAmount(){ var no=el('f_noamount').checked; el('f_amount').disabled=no||!EDIT; if(no){ el('f_amount').value=''; el('f_amtItems').checked=false; } checkLegs(); }
-function onAmount(){ el('f_amtItems').checked=false; checkLegs(); }
+function onAmount(){ el('f_amtItems').checked=false; checkLegs(); onMarketFields(); }
 function amountVal(){ return el('f_noamount').checked?null:(Number(val('f_amount'))||0); }
 
 /* ── позиции ── */
@@ -522,7 +550,8 @@ function collect(){
   var k=curKind();
   return { kind:val('f_kind'), kindLabel:k?k.label:'', isFramework:isFw(), client:BUYER?buyerKey(BUYER):'', clientName:val('f_client').trim(), deal:isFw()?'':val('f_deal'),
     contractDate:ruDate(val('f_date')), validUntil:ruDate(val('f_valid')), amount:amountVal(), currency:curOf(),
-    prepayPercent:Number(val('f_prepay'))||0, balanceCondition:val('f_balance'), freightPayer:val('f_freight'), terms:{ prodDays:Number(val('f_prod'))||0 },
+    prepayPercent:Number(val('f_prepay'))||0, balanceCondition:val('f_balance'), balanceDays:val('f_bdays'), freightPayer:val('f_freight'), terms:{ prodDays:Number(val('f_prod'))||0 },
+    currencyRegNo:val('f_regNo').trim(), currencyRegDate:ruDate(val('f_regDate')),
     items:isFw()?[]:cleanItems(), legs:(isFw()||!el('f_schedOn').checked)?[]:cleanLegs() };
 }
 function validate(d){

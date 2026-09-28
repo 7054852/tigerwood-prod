@@ -201,6 +201,12 @@
         <label class="fl"><span class="sm">Способ оплаты</span><input id="d_pay"></label>
         <label class="fl"><span class="sm">Дата забора со склада</span><input id="d_ship" type="date"></label>
         <label class="fl"><span class="sm">Дата доставки клиенту</span><input id="d_deliv" type="date"></label>
+        <label class="fl"><span class="sm">Срок передачи, раб. дней от оплаты</span><input id="d_transfer" type="number" inputmode="numeric" min="0" placeholder="вместо даты"></label>
+        <label class="fl"><span class="sm">Гарантия, мес.</span><input id="d_warranty" type="number" inputmode="numeric" min="0" placeholder="как у продавца (12)"></label>
+        <label class="fl"><span class="sm">Доставка в договоре</span><select id="d_delivInc" onchange="onIncluded()"><option value="">не указано</option><option value="1">включена в стоимость</option><option value="0">оплачивается отдельно</option></select></label>
+        <label class="fl"><span class="sm">Стоимость доставки</span><input id="d_delivCost" type="number" inputmode="decimal" min="0" step="0.01"></label>
+        <label class="fl"><span class="sm">Сборка в договоре</span><select id="d_asmInc" onchange="onIncluded()"><option value="">не указано</option><option value="1">включена в стоимость</option><option value="0">оплачивается отдельно</option></select></label>
+        <label class="fl"><span class="sm">Стоимость сборки</span><input id="d_asmCost" type="number" inputmode="decimal" min="0" step="0.01"></label>
       </div>
       <div id="delivUl" class="hide" style="margin-top:var(--s-3)">
         <div class="sm" style="font-weight:600;margin-bottom:var(--s-1)">Данные накладной (юрлицо)</div>
@@ -594,10 +600,17 @@ function fillDeliv(){
   el('d_city').value=EX('Город')||(DEAL.city||''); el('d_addr').value=EX('Адрес доставки');
   el('d_way').value=EX('Способ доставки'); el('d_pay').value=EX('Оплата');
   el('d_ship').value=isoDate(EX('Дата забора со склада')); el('d_deliv').value=isoDate(EX('Дата доставки клиенту'));
+  // поля договоров (30.09.2026): null — не указано
+  var nz=function(v){ return (v==null)?'':String(v); }, tri=function(v){ return v===true?'1':(v===false?'0':''); };
+  el('d_transfer').value=nz(DEAL.transferDays); el('d_warranty').value=nz(DEAL.warrantyMonths);
+  el('d_delivInc').value=tri(DEAL.deliveryIncluded); el('d_delivCost').value=nz(DEAL.deliveryCost);
+  el('d_asmInc').value=tri(DEAL.assemblyIncluded); el('d_asmCost').value=nz(DEAL.assemblyCost); onIncluded();
   el('delivUl').className=(CTYPE!=='физлицо')?'':'hide';
   el('d_addrUl').value=EX('Адрес доставки ЮЛ'); if(EX('Заказчик перевозки')) el('d_freight').value=EX('Заказчик перевозки');
   el('d_driver').value=EX('Водитель'); el('d_car').value=EX('Автомобиль'); el('d_trailer').value=EX('Прицеп'); el('d_waybilldoc').value=EX('Путевой лист');
 }
+// «включена в стоимость» — стоимость не нужна (поле гасится, значение стирается при сохранении)
+function onIncluded(){ el('d_delivCost').disabled=(val('d_delivInc')==='1'); el('d_asmCost').disabled=(val('d_asmInc')==='1'); }
 function fillNote(){
   el('o_rope').value=EX('Цвет каната')||'';
   el('o_grips').value=EX('Зацепы'); el('o_tent').value=EX('Ткань'); el('o_mattress').value=EX('Ткань матраса'); el('o_note').value=DEAL.note||EX('Примечание')||'';
@@ -614,7 +627,9 @@ function saveDeliv(){
     patch['Водитель']=val('d_driver'); patch['Автомобиль']=val('d_car'); patch['Прицеп']=val('d_trailer'); patch['Путевой лист']=val('d_waybilldoc'); }
   saveExtra(patch,'delivMsg').then(function(r){ if(!r) return;
     var deliv=[val('d_way'), val('d_addr')].filter(function(x){ return String(x||'').trim(); }).join(': ');
-    return run({vapi:'dealupdate', deal:KEY, data:JSON.stringify({ city:val('d_city'), deliv:deliv })}, 'Сохраняю город и доставку…', 'delivMsg').then(function(r2){ if(!r2) return;
+    var upd={ city:val('d_city'), deliv:deliv, transferDays:val('d_transfer'), warrantyMonths:val('d_warranty'),
+      deliveryIncluded:val('d_delivInc'), deliveryCost:val('d_delivInc')==='1'?'':val('d_delivCost'), assemblyIncluded:val('d_asmInc'), assemblyCost:val('d_asmInc')==='1'?'':val('d_asmCost') };
+    return run({vapi:'dealupdate', deal:KEY, data:JSON.stringify(upd)}, 'Сохраняю город и доставку…', 'delivMsg').then(function(r2){ if(!r2) return;
       setm('delivMsg','ok','✅ Сохранено');
       if(!isAmo()) return;
       // адрес/город/область/район — обратно в amoCRM (без «Страны» и «Оплаты» — их правит только amoCRM)
