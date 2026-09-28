@@ -6,9 +6,12 @@
 <script src="tw-theme.js"></script>
 <script src="tw-config.js"></script>
 <title>Тигервуд — Клиенты</title>
-<!-- Замена GAS-панели хаба ClientsPanel (?page=clients): справочник контрагентов (юрлица, ИП, физлица), распознавание реквизитов, правка, удаление. -->
+<!-- Замена GAS-панели хаба ClientsPanel (?page=clients): справочник контрагентов (юрлица, ИП, физлица), распознавание реквизитов, правка, удаление.
+     С 28.09.2026: ?client=<УНП|ИНН|ID> — карточка клиента (clientcard): реквизиты, рынок (by/ru/eu/other — savebuyer market),
+     сделки по стадиям (→ sales.html?deal=), договоры (рамочный, срок, «Подписан» — contractsign), счета, итоги; «Рамочный договор» — contractframework. -->
 <style>
   .hide{ display:none !important; }
+  td.num, td[data-l="№"]{ white-space:nowrap; }   /* сумма и номер не рвём на две строки */
   input,textarea,select{ width:100%; }
   td{ vertical-align:top; }
   .sm:not(button){ font:var(--t-small); }
@@ -18,19 +21,26 @@
   label.fl span{ display:block; font:var(--t-small); color:var(--muted); margin-bottom:var(--s-1); }
   .msg{ margin-top:var(--s-2); }
   #form{ margin-bottom:var(--s-4); }
+  #list tr, #ccDeals tr[data-id]{ cursor:pointer; }
+  .cname{ font:var(--t-title); }
+  .card .kv{ margin-top:var(--s-3); }
+  .tiles{ margin-top:var(--s-4); }
   @media (max-width:640px){ .grid{ grid-template-columns:1fr; } }
 </style>
 </head>
 <body>
 <div id="twload"><i></i></div>
 <div id="twwait"><div class="wb"><div class="sp"></div><div class="wt" id="twwt">Сохраняю…</div><div class="wh">идёт обмен с сервером — не нажимайте</div></div></div>
-<div class="hi">👤 Клиенты</div>
-<div class="sub">Справочник покупателей: реквизиты юрлиц и ИП, данные физлиц для договоров.</div>
+<div class="hi" id="ttl">👤 Клиенты</div>
+<div class="sub">Справочник покупателей: реквизиты юрлиц и ИП, данные физлиц для договоров. Нажмите на клиента — откроется его карточка.</div>
 <div id="noacc" class="note warn hide"></div>
 
+<!-- ═══ СПРАВОЧНИК ═══ -->
+<div id="vList">
 <div class="toolbar">
   <input id="q" type="search" class="search" placeholder="🔎 наименование, ФИО, УНП, телефон" oninput="renderList()">
-  <select id="ft" onchange="renderList()" style="width:auto"><option value="">все</option><option value="ul">юрлица и ИП</option><option value="fl">физлица</option></select>
+  <select id="ft" onchange="renderList()"><option value="">все</option><option value="ul">юрлица и ИП</option><option value="fl">физлица</option></select>
+  <select id="fm" onchange="renderList()" title="Рынок"><option value="">все рынки</option><option value="by">Беларусь</option><option value="ru">Россия</option><option value="eu">Европа</option><option value="other">другое</option></select>
   <span class="meta" id="cnt"></span>
   <div class="end">
     <button class="sec" onclick="load()">Обновить</button>
@@ -61,20 +71,34 @@
   <div class="row" style="margin-top:var(--s-3)"><button class="green" onclick="save()">💾 Сохранить</button><span class="msg" id="saveMsg"></span></div>
 </div>
 
-<div class="card tbwrap">
+<div class="card"><div class="tbl-wrap">
   <table class="tbl mob">
-    <thead><tr><th>Клиент</th><th>Тип</th><th>УНП / паспорт</th><th>Телефон</th><th>E-mail</th><th></th></tr></thead>
-    <tbody id="list"><tr><td colspan="6" class="muted">Загрузка…</td></tr></tbody>
+    <thead><tr><th>Клиент</th><th>Тип</th><th>Рынок</th><th>УНП / паспорт</th><th>Телефон</th><th>E-mail</th><th></th></tr></thead>
+    <tbody id="list"><tr><td colspan="7" class="muted">Загрузка…</td></tr></tbody>
   </table>
+</div></div>
 </div>
 
-<div class="scrim" id="askmodal" style="display:none"><div class="modal">
+<!-- ═══ КАРТОЧКА КЛИЕНТА ═══ -->
+<div id="vCard" class="hide">
+  <div class="toolbar">
+    <button class="sec sm" onclick="goClient('')">← Все клиенты</button>
+    <div class="end">
+      <button class="sec sm" id="ccEdit" onclick="editFromCard()">Править реквизиты</button>
+      <button class="sm" id="ccFw" onclick="frameworkDlg()">Рамочный договор</button>
+    </div>
+  </div>
+  <div id="ccErr" class="note bad hide"></div>
+  <div id="ccBody"></div>
+</div>
+
+<div class="dlg-bg" id="askmodal" style="display:none"><div class="dlg">
   <h3 id="askT"></h3><div id="askB"></div>
-  <div class="toolbar" style="margin:var(--s-4) 0 0"><div class="end"><button class="sm sec" onclick="hide('askmodal')">Отмена</button><button class="sm" id="askOk">OK</button></div></div>
+  <div class="dlg-btns"><button class="sec" id="askNo" onclick="hide('askmodal')">Отмена</button><button id="askOk">OK</button></div>
 </div></div>
-<div class="scrim" id="oopsmodal" style="display:none;z-index:60"><div class="modal">
+<div class="dlg-bg" id="oopsmodal" style="display:none;z-index:60"><div class="dlg sm">
   <h3>Не получилось</h3><div id="oopsB" class="note bad" style="display:block;white-space:pre-line"></div>
-  <div class="toolbar" style="margin:var(--s-4) 0 0"><div class="end"><button class="sm" onclick="hide('oopsmodal')">Понятно</button></div></div>
+  <div class="dlg-btns"><button onclick="hide('oopsmodal')">Понятно</button></div>
 </div></div>
 
 <script>
@@ -114,12 +138,20 @@ function el(id){ return document.getElementById(id); }
 function setm(m, cls, html){ if(typeof m==='string') m=el(m); if(!m) return; m.className='msg '+(cls||''); m.innerHTML=html; }
 function oops(t){ el('oopsB').textContent=t||'Сервер не ответил — повторите.'; el('oopsmodal').style.display='flex'; }
 function hide(id){ el(id).style.display='none'; }
-function ask(title, body, onOk, okText){
-  el('askT').textContent=title; el('askB').innerHTML=body; el('askOk').textContent=okText||'OK';
+function ask(title, body, onOk, okText, noCancel){
+  el('askT').textContent=title; el('askB').innerHTML=body; el('askOk').textContent=okText||'OK'; el('askNo').style.display=noCancel?'none':'';
   el('askOk').onclick=function(){ if(onOk(el('askB'))!==false) hide('askmodal'); };
   el('askmodal').style.display='flex';
 }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+function info(title, html){ ask(title, html, function(){}, 'Понятно', true); }
+function val(id){ return (el(id)||{}).value||''; }
+function jq(s){ return esc(JSON.stringify(String(s==null?'':s))); }   // строка в onclick="f(…)"
+function money(n){ n=Number(n)||0; return n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,' '); }
+function ruDate(s){ if(!s) return ''; var p=String(s).split('-'); return p.length===3 ? (p[2]+'.'+p[1]+'.'+p[0]) : s; }
+function todayIso(){ var d=new Date(); return new Date(d.getTime()-d.getTimezoneOffset()*6e4).toISOString().slice(0,10); }
+/** Ссылка на соседний экран с теми же параметрами (embed=1, twsec — оболочка app.html). */
+function pageUrl(page, k, v){ var sp=new URLSearchParams(location.search); ['deal','lead','client'].forEach(function(x){ sp.delete(x); }); sp.set(k, v); return page+'?'+sp.toString(); }
 
 /* раздел «Клиенты» — people/model.ts ROLE_SECTIONS (админ, директор, менеджер); сервер проверяет сам */
 get({vapi:'me'}).then(function(m){
@@ -127,40 +159,69 @@ get({vapi:'me'}).then(function(m){
     var n=el('noacc'); n.className='note warn'; n.innerHTML='<div>Раздел «Клиенты» вашей роли не открыт. Если он нужен для работы — попросите руководителя открыть его в «Доступах к разделам».</div>'; }
 }).catch(function(){});
 
+/* ══════════ стадии, рынки, договоры (как в sales.html) ══════════ */
+var STAGES=['inquiry','order','in_production','shipped','lost','cancelled'];
+var STAGE_RU={inquiry:'заявка',order:'заказ',in_production:'в производстве',shipped:'отгружено',lost:'не состоялась',cancelled:'аннулирована'};
+var STAGE_CLS={inquiry:'warn',order:'info',in_production:'info',shipped:'ok',lost:'muted',cancelled:'bad'};
+var MARKET_RU={by:'Беларусь',ru:'Россия',eu:'Европа',other:'другое'}, CUR={by:'BYN',ru:'RUB',eu:'EUR',other:'EUR'};
+var CST_CLS={'сформирован':'','подписан':'ok','номер выдан':'warn','аннулирован':'muted'};
+function stagePill(x){ var s=x&&x.stage; if(!s) return '<span class="pill muted">'+esc((x&&x.status)||'—')+'</span>';
+  return '<span class="pill '+(STAGE_CLS[s]||'')+'">'+esc(x.stageRu||STAGE_RU[s]||s)+'</span>'; }
+function conPills(c){
+  var h='<span class="pill '+(CST_CLS[c.status]||'')+'">'+esc(c.status||'—')+(c.status==='подписан'&&c.signedAt?(' '+esc(c.signedAt)):'')+'</span>';
+  if(c.isFramework) h+=' <span class="pill info">рамочный</span>';
+  if(c.expired) h+=' <span class="pill bad">истёк '+esc(c.validUntil)+'</span>'; else if(c.validUntil && c.status!=='аннулирован') h+=' <span class="pill muted">до '+esc(c.validUntil)+'</span>';
+  return h; }
+function canSign(c){ return c.status==='сформирован' && !c.expired; }
+function signContract(number, after){
+  ask('Договор № '+number+' подписан', '<div>Укажите дату подписи. Если договор относится к заявке — она станет заказом и получит сквозной номер.</div>'
+    +'<label class="fl"><span>Дата подписи</span><input type="date" id="signDate" value="'+todayIso()+'"></label><div class="msg" id="signMsg"></div>',
+    function(){ var d=val('signDate'); if(!d){ setm('signMsg','err','Укажите дату'); return false; }
+      run({vapi:'contractsign', number:number, date:ruDate(d)}, 'Отмечаю подпись…').then(function(r){ if(!r) return;
+        var dl=r.deal||{};
+        info('Готово', '<div>✅ Договор № '+esc(number)+' подписан '+esc(r.signedAt||ruDate(d))+'.'
+          +(dl.num?(dl.issued?(' Заявка стала заказом <b>'+esc(dl.num)+'</b>.'):(' Заказ '+esc(dl.num)+'.')):'')+'</div>');
+        if(after) after(); }); }, 'Подписан');
+}
+
 /* ══════════ справочник ══════════ */
 var BUYERS=[], CTYPE='юрлицо', EDIT=null;
 function key(b){ return String(b['УНП']||'').trim() || String(b['ID']||'').trim(); }
+function cardKey(b){ return String(b['УНП']||'').trim() || String(b['ИНН']||'').trim() || String(b['ID']||'').trim(); }
 function name_(b){ return String(b['Наименование ЮЛ (полное)']||'').trim() || String(b['Полное ФИО']||'').trim() || '—'; }
-function typeOf(b){ var t=String(b['Тип']||''); if(t==='ИП') return 'ИП'; return (t.toLowerCase().indexOf('юр')>=0 || String(b['УНП']||'').trim())?'юрлицо':'физлицо'; }
+function typeOf(b){ var t=String(b['Тип']||''); if(t==='ИП') return 'ИП'; return (t.toLowerCase().indexOf('юр')>=0 || String(b['УНП']||'').trim() || String(b['ИНН']||'').trim())?'юрлицо':'физлицо'; }
+function marketPill(m){ return m?('<span class="pill'+(m==='by'?'':' info')+'">'+esc(MARKET_RU[m]||m)+'</span>'):'<span class="muted">—</span>'; }
 var UL_FIELDS=[['Наименование ЮЛ (полное)','full'],['УНП',''],['Юридический адрес','full'],['р/с',''],['р/с в',''],['Код банка (БИК)',''],['В лице',''],['Полное ФИО',''],['И. О. Фамилия',''],['Действует на основании',''],['тел',''],['e-mail',''],['Страна',''],['Валюта','']];
 var FL_FIELDS=[['Полное ФИО','full'],['Паспорт',''],['Кем выдан','full'],['Дата выдачи',''],['Личный номер',''],['Адрес регистрации','full'],['Адрес доставки','full'],['тел',''],['e-mail','']];
 var LABELS={'Наименование ЮЛ (полное)':'Наименование (полное)','р/с':'Расчётный счёт','р/с в':'Банк','Код банка (БИК)':'БИК','тел':'Телефон','И. О. Фамилия':'И.О. Фамилия'};
 
 function load(){
   get({vapi:'buyers'}).then(function(r){
-    if(!r||!r.ok){ el('list').innerHTML='<tr><td colspan="6" class="err">⚠️ '+esc(errText(r))+'</td></tr>'; return; }
+    if(!r||!r.ok){ el('list').innerHTML='<tr><td colspan="7" class="err">⚠️ '+esc(errText(r))+'</td></tr>'; return; }
     BUYERS=r.buyers||[]; renderList();
-  }).catch(function(e){ el('list').innerHTML='<tr><td colspan="6" class="err">'+esc(netText(e))+'</td></tr>'; });
+  }).catch(function(e){ el('list').innerHTML='<tr><td colspan="7" class="err">'+esc(netText(e))+'</td></tr>'; });
 }
 function renderList(){
-  var q=(el('q').value||'').toLowerCase().trim(), ft=el('ft').value;
+  var q=(el('q').value||'').toLowerCase().trim(), ft=el('ft').value, fm=el('fm').value;
   var rows=BUYERS.filter(function(b){
     var t=typeOf(b); if(ft==='ul'&&t==='физлицо') return false; if(ft==='fl'&&t!=='физлицо') return false;
+    if(fm && b.market!==fm) return false;
     return !q || (name_(b)+' '+(b['УНП']||'')+' '+(b['ИНН']||'')+' '+(b['тел']||'')+' '+(b['e-mail']||'')+' '+(b['Паспорт']||'')).toLowerCase().indexOf(q)>=0;
   });
   el('cnt').textContent='всего: '+BUYERS.length+(rows.length!==BUYERS.length?(' · показано: '+rows.length):'');
-  if(!rows.length){ el('list').innerHTML='<tr><td colspan="6" class="muted">Нет клиентов'+((q||ft)?' по запросу':'')+'</td></tr>'; return; }
+  if(!rows.length){ el('list').innerHTML='<tr><td colspan="7" class="muted">Нет клиентов'+((q||ft||fm)?' по запросу':'')+'</td></tr>'; return; }
   el('list').innerHTML=rows.map(function(b){
     var t=typeOf(b), ul=(t!=='физлицо');
-    var iddoc=ul?('УНП '+esc(b['УНП']||b['ИНН']||'—')):(b['Паспорт']?('пасп. '+esc(b['Паспорт'])):'—');
-    var k=esc(JSON.stringify(key(b))), adr=b['Юридический адрес']||b['Адрес регистрации'];
-    return '<tr>'
+    var iddoc=ul?((b['УНП']?'УНП ':(b['ИНН']?'ИНН ':''))+esc(b['УНП']||b['ИНН']||'—')):(b['Паспорт']?('пасп. '+esc(b['Паспорт'])):'—');
+    var k=jq(key(b)), ck=jq(cardKey(b)), adr=b['Юридический адрес']||b['Адрес регистрации'];
+    return '<tr onclick="goClient('+ck+')" title="открыть карточку клиента">'
       +'<td data-l="Клиент"><b>'+esc(name_(b))+'</b>'+(adr?('<div class="sm muted">'+esc(adr)+'</div>'):'')+'</td>'
       +'<td data-l="Тип">'+(ul?'<span class="pill info">'+esc(t)+'</span>':'<span class="pill">физлицо</span>')+'</td>'
+      +'<td data-l="Рынок">'+marketPill(b.market)+'</td>'
       +'<td data-l="УНП / паспорт" class="sm">'+iddoc+'</td>'
       +'<td data-l="Телефон" class="sm">'+esc(b['тел']||'')+'</td>'
       +'<td data-l="E-mail" class="sm">'+esc(b['e-mail']||'')+'</td>'
-      +'<td><div class="row"><button class="gray sm" onclick="edit('+k+')">править</button><button class="danger sec sm" onclick="del('+k+')">удалить</button></div></td>'
+      +'<td onclick="event.stopPropagation()"><div class="row"><button class="gray sm" onclick="edit('+k+')">править</button><button class="danger sec sm" onclick="del('+k+')">удалить</button></div></td>'
       +'</tr>';
   }).join('');
 }
@@ -175,14 +236,14 @@ function renderFields(cur){
 function collectRaw(){ var o={}, ins=el('fields').querySelectorAll('input'); for(var i=0;i<ins.length;i++) o[ins[i].getAttribute('data-f')]=ins[i].value.trim(); return o; }
 function collect(){
   var o=collectRaw(); o['Тип']=CTYPE;
-  if(EDIT){ if(EDIT['УНП']) o['УНП']=o['УНП']||EDIT['УНП']; if(EDIT['ID']) o['ID']=EDIT['ID']; }
+  if(EDIT){ if(EDIT['УНП']) o['УНП']=o['УНП']||EDIT['УНП']; if(EDIT['ИНН']) o['ИНН']=EDIT['ИНН']; if(EDIT['ID']) o['ID']=EDIT['ID']; }
   if(!o['Валюта']) o['Валюта']=(o['Страна']==='Россия')?'RUB':'BYN';
   return o;
 }
 function openAdd(){ EDIT=null; el('formTitle').textContent='Новый клиент'; el('form').className='card'; el('raw').value=''; setm('reqMsg','',''); setm('saveMsg','','');
   el('fields').innerHTML=''; setType('юрлицо'); }
-function edit(k){
-  var b=BUYERS.filter(function(x){ return key(x)===k; })[0]; if(!b) return;
+function edit(k){ var b=BUYERS.filter(function(x){ return key(x)===k; })[0]; if(b) editB(b); }
+function editB(b){
   EDIT=b; el('formTitle').textContent='Правка: '+name_(b); el('form').className='card'; setm('saveMsg','',''); setm('reqMsg','','');
   el('fields').innerHTML=''; setType(typeOf(b)); renderFields(b); window.scrollTo(0,0);
 }
@@ -210,12 +271,130 @@ function del(k){
     function(){ run({vapi:'delbuyer', unp:k}, 'Удаляю клиента…').then(function(r){ if(r) load(); }); }, 'Удалить');
 }
 
-load();
+/* ══════════ маршрут: справочник ↔ карточка (?client=<ключ>) ══════════ */
+var CKEY='', CC=null, CC_ST='';
+function route(){
+  CKEY=qp('client');
+  if(CKEY){ el('vList').className='hide'; el('vCard').className=''; openClient(); }
+  else { el('vCard').className='hide'; el('vList').className=''; el('ttl').textContent='👤 Клиенты'; load(); }
+}
+function goClient(k){
+  var sp=new URLSearchParams(location.search); sp.delete('client'); if(k) sp.set('client', k);
+  var s=sp.toString(); try{ history.pushState(null,'',location.pathname+(s?'?'+s:'')); }catch(e){ location.search=s; return; }
+  window.scrollTo(0,0); route();
+}
+window.addEventListener('popstate', route);
+
+/* ══════════ КАРТОЧКА КЛИЕНТА (clientcard) ══════════ */
+function openClient(){
+  CC=null; CC_ST=''; el('ccErr').className='note bad hide'; el('ccFw').style.display='none';
+  el('ccBody').innerHTML='<div class="center">Загрузка карточки…</div>';
+  get({vapi:'clientcard', key:CKEY}).then(function(r){
+    if(!r||!r.ok){ ccErr('Карточка клиента не загрузилась: '+errText(r)); return; }
+    CC=r; renderClient();
+  }).catch(function(e){ ccErr(netText(e)); });
+}
+function ccErr(t){ el('ccBody').innerHTML=''; el('ccErr').className='note bad'; el('ccErr').innerHTML='<div>⚠️ '+esc(t)+'</div>'; }
+function curSum(o){ o=o||{}; return Object.keys(o).map(function(k){ return money(o[k])+' '+esc(k); }).join(' + '); }
+function tile(t, v, s){ return '<div class="tile"><div class="t">'+esc(t)+'</div><div class="v">'+esc(v==null?0:v)+'</div>'+(s?('<div class="sm muted">'+s+'</div>'):'')+'</div>'; }
+function renderClient(){
+  var r=CC, b=r.buyer||{}, t=typeOf(b), ul=(t!=='физлицо'), m=b.market||'', tot=r.totals||{};
+  el('ttl').textContent='👤 '+name_(b);
+  el('ccFw').style.display=ul?'':'none';
+  var show=(ul?[['Наименование ЮЛ (полное)'],['УНП'],['ИНН'],['КПП'],['ОГРН'],['Юридический адрес'],['Почтовый адрес'],['р/с'],['р/с в'],['Код банка (БИК)'],['В лице'],['Полное ФИО'],['Действует на основании'],['тел'],['e-mail'],['Страна'],['Валюта']]:FL_FIELDS);
+  var kv=show.map(function(f){ var v=String(b[f[0]]==null?'':b[f[0]]).trim(); return v?('<span class="k">'+esc(LABELS[f[0]]||f[0])+'</span><span class="v">'+esc(v)+'</span>'):''; }).join('');
+  var mopts=['by','ru','eu','other'].map(function(x){ return '<option value="'+x+'"'+(x===m?' selected':'')+'>'+esc(MARKET_RU[x])+' ('+CUR[x]+')</option>'; }).join('');
+  var h='<div class="card">'
+    +'<div class="cname">'+esc(name_(b))+'</div>'
+    +'<div class="row" style="margin-top:var(--s-1)">'+(ul?'<span class="pill info">'+esc(t)+'</span>':'<span class="pill">физлицо</span>')+' '+marketPill(m)+'</div>'
+    +(kv?('<div class="kv">'+kv+'</div>'):'<div class="empty">Реквизитов нет.</div>')
+    +'<div class="toolbar" style="margin:var(--s-4) 0 0"><label for="ccMarket">Рынок</label><select id="ccMarket">'+(m?'':'<option value="" selected>— не задан —</option>')+mopts+'</select>'
+    +'<button class="sm sec" onclick="saveMarket()">Сохранить рынок</button><span class="msg" id="mkMsg" style="margin:0"></span></div>'
+    +'<div class="sm muted" style="margin-top:var(--s-2)">От рынка зависят шаблоны договоров и счетов, валюта и серия номеров: Беларусь — BYN, Россия — RUB, Европа и другое — EUR (проформа, затем коммерческий инвойс).</div>'
+    +'</div>';
+  h+='<div class="tiles">'
+    +tile('Сделок', tot.deals, tot.inquiries?('из них заявок: '+esc(tot.inquiries)):'')
+    +tile('Заказов', tot.orders, curSum(tot.ordersSum))
+    +tile('Договоров', tot.contracts, tot.frameworks?('рамочных действует: '+esc(tot.frameworks)):'')
+    +tile('Счетов к оплате', tot.invoices, curSum(tot.invoicedSum))
+    +'</div>';
+  h+='<div class="sect">Сделки <span class="n" id="ccDealsCnt"></span></div><div class="chips" id="ccChips" style="margin-bottom:var(--s-3)"></div>'
+    +'<div class="card"><div class="tbl-wrap"><table class="tbl sm mob"><thead><tr><th>№</th><th>Дата</th><th>Стадия</th><th class="num">Сумма</th></tr></thead><tbody id="ccDeals"></tbody></table></div></div>';
+  h+='<div class="sect">Договоры <span class="n">'+esc((r.contracts||[]).length)+'</span></div>'
+    +'<div class="card"><div class="tbl-wrap"><table class="tbl sm mob"><thead><tr><th>№</th><th>Тип</th><th>Дата</th><th>Статус</th><th>Сделка</th><th class="num">Сумма</th><th></th></tr></thead><tbody>'
+    +((r.contracts||[]).length?(r.contracts.map(function(c){
+      return '<tr><td data-l="№"><b>'+esc(c.number)+'</b></td><td data-l="Тип" class="sm">'+esc(c.type||'')+'</td><td data-l="Дата" class="sm">'+esc(c.date||'')+'</td>'
+        +'<td data-l="Статус">'+conPills(c)+'</td><td data-l="Сделка">'+(c.dealId?dealLink(c.dealId):(c.isFramework?'<span class="sm muted">на клиента</span>':'—'))+'</td>'
+        +'<td data-l="Сумма" class="num">'+(c.sum!==''&&c.sum!=null?money(c.sum):'—')+'</td>'
+        +'<td><div class="row">'+(canSign(c)?'<button class="sm sec" onclick="signContract('+jq(c.number)+',openClient)">Подписан</button>':'')
+        +(c.url?'<a class="btn sm" href="'+esc(c.url)+'" target="_blank" rel="noopener">открыть</a>':'')+'</div></td></tr>'; }).join(''))
+      :'<tr><td colspan="7" class="sm muted">Договоров нет.'+(ul?' Для оптовика оформите рамочный — кнопка «Рамочный договор».':'')+'</td></tr>')
+    +'</tbody></table></div></div>';
+  h+='<div class="sect">Счета <span class="n">'+esc((r.invoices||[]).length)+'</span></div>'
+    +'<div class="card"><div class="tbl-wrap"><table class="tbl sm mob"><thead><tr><th>№</th><th>Дата</th><th>Вид</th><th>Рынок</th><th>Валюта</th><th class="num">Сумма</th><th>Статус</th><th>Договор</th><th>Сделка</th><th></th></tr></thead><tbody>'
+    +((r.invoices||[]).length?(r.invoices.map(function(v){
+      return '<tr><td data-l="№"><b>'+esc(v.number)+'</b></td><td data-l="Дата" class="sm">'+esc(v.date||'')+'</td>'
+        +'<td data-l="Вид" class="sm">'+esc(invKind(v))+(v.proforma?(' <span class="muted">к '+esc(v.proforma)+'</span>'):'')+'</td>'
+        +'<td data-l="Рынок" class="sm">'+esc(MARKET_RU[v.market]||v.market||'—')+'</td><td data-l="Валюта" class="sm">'+esc(v.currency||'')+'</td>'
+        +'<td data-l="Сумма" class="num">'+money(v.sum)+'</td>'
+        +'<td data-l="Статус"><span class="pill '+(v.status==='аннулирован'?'muted':'')+'">'+esc(v.status||'—')+'</span></td>'
+        +'<td data-l="Договор" class="sm">'+esc(v.contract||'—')+'</td><td data-l="Сделка">'+(v.dealId?dealLink(v.dealId):'—')+'</td>'
+        +'<td>'+(v.url?'<a class="btn sm" href="'+esc(v.url)+'" target="_blank" rel="noopener">открыть</a>':'')+'</td></tr>'; }).join(''))
+      :'<tr><td colspan="10" class="sm muted">Счетов нет.</td></tr>')
+    +'</tbody></table></div></div>';
+  el('ccBody').innerHTML=h;
+  renderClientDeals();
+}
+function invKind(v){ if(v.kind==='commercial') return 'коммерческий инвойс'; if(v.market==='eu'||v.market==='other') return 'проформа'; return v.kindRu==='на оплату'||!v.kindRu?'счёт':v.kindRu; }
+function dealNo(d){ return d.num||d.inquiryNum||d.id; }
+function dealLink(id){ var d=((CC&&CC.deals)||[]).filter(function(x){ return String(x.id)===String(id); })[0];
+  return '<a href="'+esc(pageUrl('sales.html','deal',id))+'">'+esc(d?dealNo(d):'сделка')+'</a>'; }
+function setCcStage(s){ CC_ST=s; renderClientDeals(); }
+function renderClientDeals(){
+  var ds=(CC&&CC.deals)||[], cnt={};
+  ds.forEach(function(d){ cnt[d.stage]=(cnt[d.stage]||0)+1; });
+  el('ccDealsCnt').textContent=ds.length;
+  el('ccChips').innerHTML='<span class="chip'+(CC_ST?'':' on')+'" role="button" tabindex="0" onclick="setCcStage(\'\')">все '+ds.length+'</span>'
+    +STAGES.filter(function(s){ return cnt[s]; }).map(function(s){ return '<span class="chip'+(CC_ST===s?' on':'')+'" role="button" tabindex="0" onclick="setCcStage(\''+s+'\')">'+esc(STAGE_RU[s])+' '+cnt[s]+'</span>'; }).join('');
+  var list=ds.filter(function(d){ return !CC_ST || d.stage===CC_ST; });
+  el('ccDeals').innerHTML=list.length?list.map(function(d){
+    return '<tr data-id="'+esc(d.id)+'" onclick="location.href='+jq(pageUrl('sales.html','deal',d.id))+'" title="открыть сделку">'
+      +'<td data-l="№"><b>'+esc(dealNo(d))+'</b></td><td data-l="Дата" class="sm">'+esc(d.date||'')+'</td>'
+      +'<td data-l="Стадия">'+stagePill(d)+'</td><td data-l="Сумма" class="num">'+money(d.sum)+' '+esc(d.currency||'')+'</td></tr>'; }).join('')
+    :'<tr><td colspan="4" class="sm muted">Сделок нет.</td></tr>';
+}
+function saveMarket(){
+  var b=(CC&&CC.buyer)||{}, m=val('ccMarket'); if(!m){ setm('mkMsg','err','Выберите рынок'); return; }
+  var o={ market:m }; if(b['УНП']) o['УНП']=b['УНП']; else if(b['ИНН']) o['ИНН']=b['ИНН']; else o['ID']=b['ID']||CKEY;
+  run({vapi:'savebuyer', data:JSON.stringify(o)}, 'Сохраняю рынок…', 'mkMsg').then(function(r){ if(!r) return;
+    if(r.market && r.market!==m){ setm('mkMsg','err','⚠️ Сервер сохранил рынок «'+esc(MARKET_RU[r.market]||r.market)+'» — рынок пока не меняется'); return; }
+    openClient(); });
+}
+function editFromCard(){ var b=CC&&CC.buyer; if(!b) return; goClient(''); editB(b); }
+function frameworkDlg(){
+  var b=(CC&&CC.buyer)||{}, m=b.market||'by';
+  var types=['Договор поставки','Договор услуг','Договор сотрудничества'];
+  ask('Рамочный договор', '<div class="sm">Договор на клиента, без сделки: к нему выставляются счета любых его сделок, пока он действует.'
+      +(m==='ru'?' Рынок клиента — Россия: будет «Договор поставки РФ» (RUB).':'')+'</div>'
+    +'<div class="grid"><label class="fl full"><span>Тип договора</span><select id="fwType">'+types.map(function(x){ return '<option>'+esc(x)+'</option>'; }).join('')+'</select></label>'
+    +'<label class="fl"><span>Срок действия, дней</span><input id="fwDays" type="number" min="1" value="365" inputmode="numeric"></label>'
+    +'<label class="fl"><span>Предоплата, %</span><input id="fwPct" type="number" min="0" max="100" value="80" inputmode="numeric"></label>'
+    +'<label class="fl"><span>Срок производства, раб. дней</span><input id="fwProd" type="number" min="1" value="14" inputmode="numeric"></label></div>'
+    +'<div class="msg" id="fwMsg"></div>',
+    function(){ var days=Number(val('fwDays'))||0; if(days<=0){ setm('fwMsg','err','Укажите срок действия в днях'); return false; }
+      run({vapi:'contractframework', unp:CKEY, type:val('fwType'), opts:JSON.stringify({ termDays:days, prepayPct:Number(val('fwPct'))||'', prodDays:Number(val('fwProd'))||14 })}, 'Формирую рамочный договор…').then(function(r){ if(!r) return;
+        var c=r.contract||{};
+        info('Готово', '<div>✅ Рамочный договор № <b>'+esc(c.number||'')+'</b>'+(c.validUntil?(' действует до '+esc(c.validUntil)):'')+'.'
+          +(c.url?' <a href="'+esc(c.url)+'" target="_blank" rel="noopener">Открыть →</a>':'')+'</div><div class="sm muted" style="margin-top:var(--s-2)">Когда клиент подпишет — отметьте «Подписан».</div>');
+        openClient(); }); }, 'Сформировать');
+}
+
+route();
 
 // авто-обновление: оболочка шлёт «refresh» при возврате на раздел
 (function(){
   try{ window.top.postMessage({tw:'hello',sec:qp('twsec')},'*'); }catch(e){}
-  window.addEventListener('message',function(e){ var d=e&&e.data; if(d&&d.tw==='refresh'){ try{ load(); }catch(err){} } });
+  window.addEventListener('message',function(e){ var d=e&&e.data; if(d&&d.tw==='refresh'){ try{ if(CKEY) openClient(); else load(); }catch(err){} } });
 })();
 </script>
 </body>

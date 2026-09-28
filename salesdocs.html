@@ -7,9 +7,17 @@
 <script src="tw-config.js"></script>
 <title>Тигервуд — Договоры, счета, накладные</title>
 <!-- Замена GAS-панелей хаба ContractsPanel (?page=contracts), InvoicesPanel (?page=invoices), DocsPanel (?page=docs).
-     ?tab=contracts|invoices|docs — открыть вкладку (так ведут пункты меню). Вкладки видны по разделам роли (people/model.ts ROLE_SECTIONS). -->
+     ?tab=contracts|invoices|docs — открыть вкладку (так ведут пункты меню). Вкладки видны по разделам роли (people/model.ts ROLE_SECTIONS).
+     С 28.09.2026: договоры — рамочный / подписан / рынок, фильтр статуса, «Подписан» (contractsign), «Аннулировать» (contractcancel, отказ — текстом сервера);
+     счета — рынок / валюта / вид (счёт, проформа, коммерческий инвойс); сделки для договора/счёта — по стадии с сервера. Продавец не выбирается (всегда Тигервуд). -->
 <style>
   .hide{ display:none !important; }
+  td.num, td[data-l="№"]{ white-space:nowrap; }   /* сумма и номер не рвём на две строки */
+  /* действия строки реестра — столбиком ссылок: 4 кнопки в ряд не влезают в 11 колонок */
+  td.acts .row{ flex-direction:column; align-items:flex-start; gap:var(--s-1); flex-wrap:nowrap; }
+  td.acts .btn, td.acts button{ min-height:0; padding:0; background:none; border:0; color:var(--accent-text); font:var(--t-small); text-decoration:underline; text-underline-offset:2px; }
+  td.acts .btn:hover, td.acts button:hover{ background:none; color:var(--fg); }
+  td.acts button.danger{ color:var(--red); }
   input,select{ width:100%; }
   input[type=checkbox]{ width:auto; }
   .sm:not(button):not(.btn){ font:var(--t-small); color:var(--muted); }
@@ -46,6 +54,11 @@
 <div id="tab_contracts" class="hide">
   <div class="toolbar">
     <input id="cq" type="search" class="search" placeholder="🔎 номер, тип, клиент" oninput="renderContracts()">
+    <select id="cst" onchange="renderContracts()" title="Статус договора">
+      <option value="">все статусы</option><option value="сформирован">сформирован (не подписан)</option><option value="подписан">подписан</option>
+      <option value="номер выдан">номер выдан</option><option value="истёк">истёк</option><option value="аннулирован">аннулирован</option>
+    </select>
+    <select id="cfw" onchange="renderContracts()" title="Рамочные"><option value="">все договоры</option><option value="1">только рамочные</option><option value="0">договоры сделок</option></select>
     <span class="meta" id="ccnt"></span>
     <div class="end"><button class="sec" onclick="loadContracts()">Обновить</button><button onclick="toggleNewContract()">Новый договор</button></div>
   </div>
@@ -60,33 +73,37 @@
     <div class="sm" id="c_hint" style="margin-top:var(--s-2)"></div>
     <div class="msg" id="c_msg"></div>
   </div>
-  <div class="card tbwrap">
+  <div class="card"><div class="tbl-wrap">
     <table class="tbl mob">
-      <thead><tr><th>№</th><th>Дата</th><th>Тип</th><th>Клиент</th><th class="num">Сумма</th><th>Статус</th><th>Заказчик перевозки</th><th></th></tr></thead>
-      <tbody id="crows"><tr><td colspan="8" class="sm">Загрузка…</td></tr></tbody>
+      <thead><tr><th>№</th><th>Дата</th><th>Тип</th><th>Клиент</th><th class="num">Сумма</th><th>Статус</th><th>Рамочный</th><th>Подписан</th><th>Рынок</th><th></th></tr></thead>
+      <tbody id="crows"><tr><td colspan="10" class="sm">Загрузка…</td></tr></tbody>
     </table>
-  </div>
+  </div></div>
 </div>
 
 <!-- ═══ СЧЕТА (бывшая InvoicesPanel) ═══ -->
 <div id="tab_invoices" class="hide">
   <div class="toolbar">
     <input id="iq" type="search" class="search" placeholder="🔎 номер, клиент, договор" oninput="renderInvoices()">
+    <select id="ik" onchange="renderInvoices()" title="Вид счёта"><option value="">все виды</option><option value="счёт">счёт</option><option value="проформа">проформа</option><option value="коммерческий инвойс">коммерческий инвойс</option></select>
+    <select id="im" onchange="renderInvoices()" title="Рынок"><option value="">все рынки</option><option value="by">Беларусь</option><option value="ru">Россия</option><option value="eu">Европа</option><option value="other">другое</option></select>
     <span class="meta" id="icnt"></span>
     <div class="end"><button class="sec" onclick="loadInvoices()">Обновить</button><button onclick="toggleNewInvoice()">+ Новый счёт</button></div>
   </div>
   <div id="iNew" class="card hide">
-    <div class="note"><div>Счёт выставляется <b>к договору сделки</b>. Выберите сделку — подскажу, что делать (у физлица счёт формируется внутри договора).</div></div>
-    <div class="row"><div style="flex:3;min-width:200px"><select id="i_deal"><option value="">— загрузка сделок… —</option></select></div>
+    <div class="note"><div>Счёт выставляется <b>к договору сделки</b> или к действующему <b>рамочному</b> договору клиента. Выберите сделку — подскажу, что делать (у физлица счёт формируется внутри договора).</div></div>
+    <div class="row"><div style="flex:0 0 190px;min-width:0"><select id="i_stage" onchange="fillInvoiceDeals()" title="Стадия сделки">
+        <option value="open">заявки и заказы</option><option value="inquiry">заявки</option><option value="order">заказы</option><option value="in_production">в производстве</option><option value="shipped">отгружено</option><option value="">все</option></select></div>
+      <div style="flex:3;min-width:200px"><select id="i_deal"><option value="">— загрузка сделок… —</option></select></div>
       <div style="flex:0 0 auto;min-width:0"><button onclick="checkDeal()">Проверить</button></div></div>
     <div id="i_res" class="sm" style="margin-top:var(--s-3)"></div>
   </div>
-  <div class="card tbwrap">
+  <div class="card"><div class="tbl-wrap">
     <table class="tbl mob">
-      <thead><tr><th>№</th><th>Дата</th><th>Клиент</th><th class="num">Сумма</th><th>Договор</th><th>Статус</th><th>Источник</th><th></th></tr></thead>
-      <tbody id="irows"><tr><td colspan="8" class="sm">Загрузка…</td></tr></tbody>
+      <thead><tr><th>№</th><th>Дата</th><th>Вид</th><th>Клиент</th><th>Рынок</th><th>Валюта</th><th class="num">Сумма</th><th>Договор</th><th>Статус</th><th></th></tr></thead>
+      <tbody id="irows"><tr><td colspan="10" class="sm">Загрузка…</td></tr></tbody>
     </table>
-  </div>
+  </div></div>
 </div>
 
 <!-- ═══ НАКЛАДНЫЕ И ДОКУМЕНТЫ (бывшая DocsPanel) ═══ -->
@@ -158,13 +175,13 @@
   </details>
 </div>
 
-<div class="scrim" id="askmodal" style="display:none"><div class="modal">
+<div class="dlg-bg" id="askmodal" style="display:none"><div class="dlg">
   <h3 id="askT"></h3><div id="askB"></div>
-  <div class="toolbar" style="margin:var(--s-4) 0 0"><div class="end"><button class="sm sec" onclick="hide('askmodal')">Отмена</button><button class="sm" id="askOk">OK</button></div></div>
+  <div class="dlg-btns"><button class="sec" id="askNo" onclick="hide('askmodal')">Отмена</button><button id="askOk">OK</button></div>
 </div></div>
-<div class="scrim" id="oopsmodal" style="display:none;z-index:60"><div class="modal">
+<div class="dlg-bg" id="oopsmodal" style="display:none;z-index:60"><div class="dlg sm">
   <h3>Не получилось</h3><div id="oopsB" class="note bad" style="display:block;white-space:pre-line"></div>
-  <div class="toolbar" style="margin:var(--s-4) 0 0"><div class="end"><button class="sm" onclick="hide('oopsmodal')">Понятно</button></div></div>
+  <div class="dlg-btns"><button onclick="hide('oopsmodal')">Понятно</button></div>
 </div></div>
 
 <script>
@@ -210,8 +227,8 @@ function val(id){ return (el(id)||{}).value||''; }
 function setm(m, cls, html){ if(typeof m==='string') m=el(m); if(!m) return; m.className='msg '+(cls||''); m.innerHTML=html; }
 function oops(t){ el('oopsB').textContent=t||'Сервер не ответил — повторите.'; el('oopsmodal').style.display='flex'; }
 function hide(id){ el(id).style.display='none'; }
-function ask(title, body, onOk, okText){
-  el('askT').textContent=title; el('askB').innerHTML=body; el('askOk').textContent=okText||'OK';
+function ask(title, body, onOk, okText, noCancel){
+  el('askT').textContent=title; el('askB').innerHTML=body; el('askOk').textContent=okText||'OK'; el('askNo').style.display=noCancel?'none':'';
   el('askOk').onclick=function(){ if(onOk(el('askB'))!==false) hide('askmodal'); };
   el('askmodal').style.display='flex';
 }
@@ -219,6 +236,36 @@ function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){retu
 function jq(s){ return esc(JSON.stringify(String(s==null?'':s))); }   // строка в onclick="f(…)"
 function money(n){ n=Number(n)||0; return n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,' '); }
 function fmt(n){ return (Number(n)||0).toLocaleString('ru-RU'); }
+function info(title, html){ ask(title, html, function(){}, 'Понятно', true); }
+function ruDate(s){ if(!s) return ''; var p=String(s).split('-'); return p.length===3 ? (p[2]+'.'+p[1]+'.'+p[0]) : s; }
+function todayIso(){ var d=new Date(); return new Date(d.getTime()-d.getTimezoneOffset()*6e4).toISOString().slice(0,10); }
+
+/* ══════════ стадии, рынки, договоры (как в sales.html) ══════════ */
+var STAGE_RU={inquiry:'заявка',order:'заказ',in_production:'в производстве',shipped:'отгружено',lost:'не состоялась',cancelled:'аннулирована'};
+var MARKET_RU={by:'Беларусь',ru:'Россия',eu:'Европа',other:'другое'};
+var CST_CLS={'сформирован':'','подписан':'ok','номер выдан':'warn','аннулирован':'muted'};
+function canSign(c){ return c.status==='сформирован' && !c.expired; }
+function signContract(number, after){
+  ask('Договор № '+number+' подписан', '<div>Укажите дату подписи. Если договор относится к заявке — она станет заказом и получит сквозной номер.</div>'
+    +'<div class="sm" style="margin-top:var(--s-3)">Дата подписи</div><input type="date" id="signDate" value="'+todayIso()+'"><div class="msg" id="signMsg"></div>',
+    function(){ var d=val('signDate'); if(!d){ setm('signMsg','err','Укажите дату'); return false; }
+      run({vapi:'contractsign', number:number, date:ruDate(d)}, 'Отмечаю подпись…').then(function(r){ if(!r) return;
+        var dl=r.deal||{};
+        info('Готово', '<div>✅ Договор № '+esc(number)+' подписан '+esc(r.signedAt||ruDate(d))+'.'
+          +(dl.num?(dl.issued?(' Заявка стала заказом <b>'+esc(dl.num)+'</b>.'):(' Заказ '+esc(dl.num)+'.')):'')+'</div>');
+        if(after) after(); }); }, 'Подписан');
+}
+/** Аннулировать договор: сервер откажет, пока по нему есть неаннулированные счета, — текст отказа в окне «Не получилось». */
+function cancelContract(number){
+  ask('Аннулировать договор № '+number+'?', '<div>Документ уйдёт в корзину, запись останется в реестре как аннулированная.</div>'
+    +'<div class="note" style="margin-top:var(--s-3)"><div>Договор, к которому выставлены счета, аннулировать нельзя — сначала аннулируйте счета.</div></div>',
+    function(){ run({vapi:'contractcancel', number:number}, 'Аннулирую договор…').then(function(r){ if(r) loadContracts(); }); }, 'Аннулировать');
+}
+function stageOk(d, f){ var s=d.stage;
+  if(!s) return !/отмен|аннулир/.test(String(d.status||''));   // старый сервер без стадии
+  if(s==='lost'||s==='cancelled') return false;
+  return !f || (f==='open' ? (s==='inquiry'||s==='order'||s==='in_production') : s===f); }
+function dealOpt(d){ return '<option value="'+esc(d.id)+'">'+esc(d.num||d.inquiryNum||('#'+d.id))+' · '+esc(d.client||'—')+(d.clientType?(' · '+esc(d.clientType)):'')+' · '+esc(d.stageRu||STAGE_RU[d.stage]||d.status||'')+'</option>'; }
 
 /* ══════════ вкладки по разделам роли ══════════ */
 var SECS=null, TAB='', TABS=['contracts','invoices','docs'], LOADED={};
@@ -230,7 +277,7 @@ function setTab(t){
   TABS.forEach(function(k){ el('tab_'+k).className=(k===t)?'':'hide'; });
   if(!LOADED[t]){ LOADED[t]=1; refresh(t); }
 }
-function refresh(t){ if(t==='contracts') loadContracts(); else if(t==='invoices') loadInvoices(); else if(t==='docs'){ loadRegistry(); loadBlanksStatus(); loadSalesList(); loadSellers(); } }
+function refresh(t){ if(t==='contracts') loadContracts(); else if(t==='invoices') loadInvoices(); else if(t==='docs'){ loadRegistry(); loadBlanksStatus(); loadSalesList(); } }
 function start(){
   var want=qp('tab'); if(TABS.indexOf(want)<0) want='';
   var allowed=TABS.filter(hasSec);
@@ -246,7 +293,7 @@ function withDeals(cb, errBox){
   if(DEALS) return cb(DEALS);
   get({vapi:'dealslist'}).then(function(r){
     if(!r||!r.ok){ setm(errBox,'err','⚠️ Сделки: '+esc(errText(r))); return; }
-    DEALS=(r.deals||[]).filter(function(d){ return !/отмен/.test(String(d.status||'')); }); cb(DEALS);
+    DEALS=(r.deals||[]).filter(function(d){ return stageOk(d, ''); }); cb(DEALS);
   }).catch(function(e){ setm(errBox,'err',esc(netText(e))); });
 }
 
@@ -254,24 +301,33 @@ function withDeals(cb, errBox){
 var CONTRACTS=[], TYPES_UL=['Договор поставки','Договор поставки РФ','Договор услуг','Договор сотрудничества'], TYPES_FL=['Договор 100%','Договор рассрочки'];
 function loadContracts(){
   get({vapi:'contracts'}).then(function(r){
-    if(!r||!r.ok){ el('crows').innerHTML='<tr><td colspan="8" class="err">⚠️ '+esc(errText(r))+'</td></tr>'; return; }
+    if(!r||!r.ok){ el('crows').innerHTML='<tr><td colspan="10" class="err">⚠️ '+esc(errText(r))+'</td></tr>'; return; }
     CONTRACTS=r.contracts||[]; renderContracts();
-  }).catch(function(e){ el('crows').innerHTML='<tr><td colspan="8" class="err">'+esc(netText(e))+'</td></tr>'; });
+  }).catch(function(e){ el('crows').innerHTML='<tr><td colspan="10" class="err">'+esc(netText(e))+'</td></tr>'; });
 }
 function renderContracts(){
-  var q=val('cq').toLowerCase().trim();
-  var d=CONTRACTS.filter(function(x){ return !q || (x.number+' '+x.type+' '+x.client).toLowerCase().indexOf(q)>=0; });
-  el('ccnt').textContent='всего: '+CONTRACTS.length+(q?(' · найдено: '+d.length):'');
-  if(!d.length){ el('crows').innerHTML='<tr><td colspan="8" class="sm">Нет договоров.</td></tr>'; return; }
+  var q=val('cq').toLowerCase().trim(), st=val('cst'), fw=val('cfw');
+  var d=CONTRACTS.filter(function(x){
+    if(st==='истёк' ? !x.expired : (st && (x.status!==st || (st==='сформирован' && x.expired)))) return false;
+    if(fw && (!!x.isFramework)!==(fw==='1')) return false;
+    return !q || (x.number+' '+x.type+' '+x.client).toLowerCase().indexOf(q)>=0; });
+  el('ccnt').textContent='всего: '+CONTRACTS.length+(d.length!==CONTRACTS.length?(' · показано: '+d.length):'');
+  if(!d.length){ el('crows').innerHTML='<tr><td colspan="10" class="sm">Нет договоров'+((q||st||fw)?' по запросу':'')+'.</td></tr>'; return; }
   el('crows').innerHTML=d.map(function(x){
-    return '<tr><td data-l="№"><b>'+esc(x.number)+'</b></td><td data-l="Дата" class="sm">'+esc(x.date)+'</td><td data-l="Тип" class="sm">'+esc(x.type||'')+'</td><td data-l="Клиент">'+esc(x.client||'—')+'</td>'
-      +'<td data-l="Сумма" class="num">'+(x.sum?money(x.sum):'—')+'</td><td data-l="Статус" class="sm">'+esc(x.status||'')+'</td><td data-l="Перевозка" class="sm">'+esc(x.freight||'—')+'</td>'
-      +'<td><div class="row">'+(x.url?'<a class="btn pri sm" href="'+esc(x.url)+'" target="_blank" rel="noopener">договор</a>':'')+dealLink(x.dealId)+'</div></td></tr>';
+    var n=jq(x.number), live=(x.status!=='аннулирован');
+    var stp='<span class="pill '+(CST_CLS[x.status]||'')+'">'+esc(x.status||'—')+'</span>'+(x.expired?' <span class="pill bad">истёк</span>':'');
+    var fwc=x.isFramework?('<span class="pill info">рамочный</span>'+(x.validUntil?('<div class="sm muted">до '+esc(x.validUntil)+'</div>'):'')):'<span class="muted">—</span>';
+    return '<tr><td data-l="№"><b>'+esc(x.number)+'</b></td><td data-l="Дата" class="sm">'+esc(x.date)+'</td><td data-l="Тип" class="sm">'+esc(x.type||'')+(x.freight?('<div class="muted">перевозка: '+esc(x.freight)+'</div>'):'')+'</td><td data-l="Клиент">'+esc(x.client||'—')+'</td>'
+      +'<td data-l="Сумма" class="num">'+(x.sum?money(x.sum):'—')+'</td><td data-l="Статус">'+stp+'</td>'
+      +'<td data-l="Рамочный">'+fwc+'</td><td data-l="Подписан" class="sm">'+esc(x.signedAt||'—')+'</td>'
+      +'<td data-l="Рынок" class="sm">'+esc(MARKET_RU[x.market]||x.market||'—')+'</td>'
+      +'<td class="acts"><div class="row">'+(canSign(x)?'<button class="sm" onclick="signContract('+n+',loadContracts)">Подписан</button>':'')
+      +(x.url?'<a class="btn pri sm" href="'+esc(x.url)+'" target="_blank" rel="noopener">договор</a>':'')+dealLink(x.dealId)
+      +(live?'<button class="danger sec sm" onclick="cancelContract('+n+')">аннулировать</button>':'')+'</div></td></tr>';
   }).join('');
 }
 function toggleNewContract(){ var f=el('cNew'), show=f.className.indexOf('hide')>=0; f.className=show?'card':'card hide';
-  if(show) withDeals(function(ds){ el('c_deal').innerHTML='<option value="">— выберите сделку —</option>'+ds.map(function(d){
-    return '<option value="'+esc(d.id)+'">'+esc(d.num||d.id)+' · '+esc(d.client||'—')+' ('+esc(d.clientType||'?')+')</option>'; }).join(''); }, 'c_msg'); }
+  if(show) withDeals(function(ds){ el('c_deal').innerHTML='<option value="">— выберите сделку —</option>'+ds.map(dealOpt).join(''); }, 'c_msg'); }
 function curCDeal(){ var id=val('c_deal'); return (DEALS||[]).filter(function(d){ return String(d.id)===String(id); })[0]||null; }
 function onCDeal(){
   var d=curCDeal();
@@ -297,25 +353,35 @@ function createContract(){
 var INVOICES=[];
 function loadInvoices(){
   get({vapi:'invoices'}).then(function(r){
-    if(!r||!r.ok){ el('irows').innerHTML='<tr><td colspan="8" class="err">⚠️ '+esc(errText(r))+'</td></tr>'; return; }
+    if(!r||!r.ok){ el('irows').innerHTML='<tr><td colspan="10" class="err">⚠️ '+esc(errText(r))+'</td></tr>'; return; }
     INVOICES=r.invoices||[]; renderInvoices();
-  }).catch(function(e){ el('irows').innerHTML='<tr><td colspan="8" class="err">'+esc(netText(e))+'</td></tr>'; });
+  }).catch(function(e){ el('irows').innerHTML='<tr><td colspan="10" class="err">'+esc(netText(e))+'</td></tr>'; });
 }
 function renderInvoices(){
-  var q=val('iq').toLowerCase().trim();
-  var d=INVOICES.filter(function(x){ return !q || (x.number+' '+x.client+' '+x.contract).toLowerCase().indexOf(q)>=0; });
-  el('icnt').textContent='всего: '+INVOICES.length+(q?(' · найдено: '+d.length):'');
-  if(!d.length){ el('irows').innerHTML='<tr><td colspan="8" class="sm">Нет счетов.</td></tr>'; return; }
+  var q=val('iq').toLowerCase().trim(), k=val('ik'), m=val('im');
+  var d=INVOICES.filter(function(x){
+    if(k && invKind(x)!==k) return false;
+    if(m && x.market!==m) return false;
+    return !q || (x.number+' '+x.client+' '+x.contract).toLowerCase().indexOf(q)>=0; });
+  el('icnt').textContent='всего: '+INVOICES.length+(d.length!==INVOICES.length?(' · показано: '+d.length):'');
+  if(!d.length){ el('irows').innerHTML='<tr><td colspan="10" class="sm">Нет счетов'+((q||k||m)?' по запросу':'')+'.</td></tr>'; return; }
   el('irows').innerHTML=d.map(function(x){
     var src=x.source==='amoCRM'?'<span class="pill info">amoCRM</span>':'<span class="pill">'+esc(x.source||'—')+'</span>';
-    return '<tr><td data-l="№"><b>'+esc(x.number)+'</b></td><td data-l="Дата" class="sm">'+esc(x.date)+'</td><td data-l="Клиент">'+esc(x.client||'—')+'</td>'
-      +'<td data-l="Сумма" class="num">'+money(x.sum)+'</td><td data-l="Договор" class="sm">'+esc(x.contract||'—')+'</td><td data-l="Статус" class="sm">'+esc(x.status||'')+'</td><td data-l="Источник">'+src+'</td>'
-      +'<td><div class="row">'+(x.url?'<a class="btn pri sm" href="'+esc(x.url)+'" target="_blank" rel="noopener">счёт</a>':'')+dealLink(x.dealId)+'</div></td></tr>';
+    return '<tr><td data-l="№"><b>'+esc(x.number)+'</b><div>'+src+'</div></td><td data-l="Дата" class="sm">'+esc(x.date)+'</td>'
+      +'<td data-l="Вид" class="sm">'+esc(invKind(x))+(x.proforma?(' <span class="muted">к '+esc(x.proforma)+'</span>'):'')+'</td><td data-l="Клиент">'+esc(x.client||'—')+'</td>'
+      +'<td data-l="Рынок" class="sm">'+esc(x.marketRu||MARKET_RU[x.market]||x.market||'—')+'</td><td data-l="Валюта" class="sm">'+esc(x.currency||'—')+'</td>'
+      +'<td data-l="Сумма" class="num">'+money(x.sum)+'</td><td data-l="Договор" class="sm">'+esc(x.contract||'—')+'</td>'
+      +'<td data-l="Статус"><span class="pill '+(x.status==='аннулирован'?'muted':'')+'">'+esc(x.status||'—')+'</span></td>'
+      +'<td class="acts"><div class="row">'+(x.url?'<a class="btn pri sm" href="'+esc(x.url)+'" target="_blank" rel="noopener">счёт</a>':'')+dealLink(x.dealId)+'</div></td></tr>';
   }).join('');
 }
+/** Вид счёта для реестра: коммерческий инвойс / проформа (рынок eu, other) / счёт. */
+function invKind(x){ if(x.kind==='commercial') return 'коммерческий инвойс'; if(x.market==='eu'||x.market==='other') return 'проформа'; return 'счёт';
+}
 function toggleNewInvoice(){ var b=el('iNew'), show=b.className.indexOf('hide')>=0; b.className=show?'card':'card hide';
-  if(show) withDeals(function(ds){ el('i_deal').innerHTML='<option value="">— выберите сделку —</option>'+ds.map(function(d){
-    return '<option value="'+esc(d.id)+'">'+esc(d.num||('#'+d.id))+' · '+esc(d.client||'—')+' · '+esc(d.clientType||'')+' · '+esc(d.status||'')+'</option>'; }).join(''); }, 'i_res'); }
+  if(show) withDeals(fillInvoiceDeals, 'i_res'); }
+function fillInvoiceDeals(){ var f=val('i_stage'), ds=(DEALS||[]).filter(function(d){ return stageOk(d, f); });
+  el('i_deal').innerHTML='<option value="">— '+(ds.length?'выберите сделку':'нет сделок в этой стадии')+' —</option>'+ds.map(dealOpt).join(''); el('i_res').innerHTML=''; }
 function checkDeal(){
   var key=val('i_deal'), box=el('i_res');
   if(!key){ box.innerHTML='<span class="err">Выберите сделку</span>'; return; }
@@ -323,16 +389,17 @@ function checkDeal(){
   get({vapi:'invoicectx', deal:key}).then(function(r){
     if(!r||!r.ok){ box.innerHTML='<span class="err">⚠️ '+esc(errText(r))+'</span>'; return; }
     var icon=r.action==='go_issue'?'✅':(r.action==='blocked'?'🔒':'⚠️'), cls=r.action==='go_issue'?'ok':(r.action==='blocked'?'muted':'warn');
-    box.innerHTML='<div class="'+cls+'" style="margin-bottom:var(--s-2)">'+icon+' '+esc(r.message)+'</div><div class="row">'
-      +(r.action==='blocked'?'':dealLink(r.dealId))
-      +(r.contracts&&r.contracts.length?(' <span class="sm">Договоры: '+esc(r.contracts.map(function(c){ return c.type+' №'+c.number; }).join('; '))+'</span>'):' <span class="sm">Договоров нет</span>')+'</div>';
+    var fw=r.frameworks||[];
+    box.innerHTML='<div class="'+cls+'" style="margin-bottom:var(--s-2)">'+icon+' '+esc(r.message)+'</div>'
+      +(r.market?('<div class="sm" style="margin-bottom:var(--s-2)">Рынок клиента: <b>'+esc(r.marketRu||MARKET_RU[r.market]||r.market)+'</b>'+(r.invoiceKinds&&r.invoiceKinds.length?(' · выставляется: '+esc(r.invoiceKinds.join(', '))):'')+'</div>'):'')
+      +'<div class="row">'+(r.action==='blocked'?'':dealLink(r.dealId))
+      +(r.contracts&&r.contracts.length?(' <span class="sm">Договоры сделки: '+esc(r.contracts.map(function(c){ return c.type+' №'+c.number+(c.status?(' ('+c.status+')'):''); }).join('; '))+'</span>'):' <span class="sm">Договоров у сделки нет</span>')
+      +(fw.length?(' <span class="sm">· рамочные клиента: '+esc(fw.map(function(c){ return '№'+c.number+(c.validUntil?(' до '+c.validUntil):''); }).join('; '))+'</span>'):'')+'</div>';
   }).catch(function(e){ box.innerHTML='<span class="err">'+esc(netText(e))+'</span>'; });
 }
 
 /* ══════════ НАКЛАДНЫЕ И ДОКУМЕНТЫ ══════════ */
-var SELLERS=[{code:'TW',name:'Тигервуд'}], REG_KIND='ТН', WB_PREP=null;
-function loadSellers(){ get({vapi:'sellers'}).then(function(s){ var l=Array.isArray(s)?s:(s&&s.sellers); if(l&&l.length) SELLERS=l; }).catch(function(){}); }
-function selOpts(){ return SELLERS.map(function(s){ return '<option value="'+esc(s.code)+'">'+esc(s.name)+'</option>'; }).join(''); }
+var REG_KIND='ТН', WB_PREP=null;   // продавец документов — всегда Тигервуд (SIT убран 28.09.2026)
 
 // бланки строгой отчётности
 function blk(k){ return '<b>'+esc(k.kind)+'</b>: свободно '+esc(k.free)+', использовано '+esc(k.used)+', испорчено '+esc(k.spoiled)
@@ -380,7 +447,7 @@ function loadRegistry(){
     var rows=r.rows||[];
     if(!rows.length){ box.innerHTML='<div class="empty">Пока нет выписанных '+esc(REG_KIND)+'. Выпишите кнопкой «Выписать накладную».</div>'; return; }
     box.innerHTML='<div class="sm" style="margin-bottom:var(--s-2)">Вкладка журнала: <b>'+esc(r.tab)+'</b> · выписано: '+esc(r.count)+'</div>'
-      +'<div class="tbwrap"><table class="tbl reg mob"><thead><tr><th>№ бланка</th><th>Дата</th><th>Контрагент</th><th>Договор</th><th class="num">Сумма</th><th>Заказ</th><th>Оплата</th><th></th></tr></thead><tbody>'
+      +'<div class="tbl-wrap"><table class="tbl reg mob"><thead><tr><th>№ бланка</th><th>Дата</th><th>Контрагент</th><th>Договор</th><th class="num">Сумма</th><th>Заказ</th><th>Оплата</th><th></th></tr></thead><tbody>'
       +rows.map(function(x){
         var act=(x.docUrl?('<a class="btn sm" href="'+esc(x.docUrl)+'" target="_blank" rel="noopener">открыть</a>'):'')
           +((x.order&&!x.spoiled)?' <button class="danger sec sm" onclick="deleteWaybill('+jq(x.order)+')">отменить</button>':'');
@@ -432,9 +499,8 @@ function renderWbForm(p){
     +'<div class="row" style="margin-top:var(--s-2)">'
     +'<div style="min-width:150px"><div class="sm">📅 Дата накладной</div><input id="wbDate" class="wb-hi" value="'+esc(p.date)+'" placeholder="дд.мм.гггг"><div class="hint">проверьте дату!</div></div>'
     +'<div style="flex:2;min-width:200px"><div class="sm">📍 Адрес доставки</div><input id="wbAddr" class="wb-hi" value="'+esc(p.address)+'"><div class="hint">проверьте адрес!</div></div></div>'
-    +'<div class="tbwrap" style="margin-top:var(--s-3)"><table class="tbl mob wbt"><thead><tr><th>Наименование</th><th class="num">Кол-во</th><th>Мест</th><th>Масса, кг</th></tr></thead><tbody>'+rows
+    +'<div class="tbl-wrap" style="margin-top:var(--s-3)"><table class="tbl mob wbt"><thead><tr><th>Наименование</th><th class="num">Кол-во</th><th>Мест</th><th>Масса, кг</th></tr></thead><tbody>'+rows
     +'<tr style="font-weight:600"><td>Итого</td><td></td><td data-l="Мест" id="wbTotPl">0</td><td data-l="Масса, кг" id="wbTotMs">0</td></tr></tbody></table></div>'
-    +'<div class="row" style="margin-top:var(--s-3)"><span class="sm">Продавец:</span><select id="wbSeller" style="width:auto">'+selOpts()+'</select></div>'
     +'<label class="sm" style="display:block;margin-top:var(--s-3)"><input type="checkbox" id="wbCheck" onchange="el(\'wbGo\').disabled=!this.checked"> Я проверил <b>дату накладной</b> и <b>адрес доставки</b></label>'
     +'<button class="green" id="wbGo" disabled style="margin-top:var(--s-2)" onclick="issueWaybill()">Сформировать накладную</button>';
   wbSums();
@@ -444,7 +510,7 @@ function wbSums(){ var pl=0,ms=0; ((WB_PREP&&WB_PREP.items)||[]).forEach(functio
 function issueWaybill(){
   var key=val('wbDeal'), kind=val('wbKind'), date=val('wbDate'), addr=val('wbAddr');
   if(!date.trim()){ setm('wbMsg','err','Укажите дату накладной'); return; }
-  var payload={ date:date, address:addr, seller:val('wbSeller')||'TW', items:((WB_PREP&&WB_PREP.items)||[]).map(function(it){ return {places:Number(it.places)||0, mass:Number(it.mass)||0}; }) };
+  var payload={ date:date, address:addr, items:((WB_PREP&&WB_PREP.items)||[]).map(function(it){ return {places:Number(it.places)||0, mass:Number(it.mass)||0}; }) };
   run({vapi:'wbissue', deal:key, kind:kind, data:JSON.stringify(payload)}, 'Формирую накладную…', 'wbMsg').then(function(r){ if(!r) return;
     setm('wbMsg','ok','✅ Накладная сформирована'+(r.waybill?(' · № бланка <b>'+esc(r.waybill)+'</b>'):'')+': <a href="'+esc(r.url)+'" target="_blank" rel="noopener">открыть/печать</a>');
     el('wbGo').disabled=true; loadRegistry(); loadBlanksStatus();
@@ -473,7 +539,6 @@ function renderDocs(id,r){
   }).join('');
   var ov=r.override||{};
   box.innerHTML='<div class="sm" style="margin-top:var(--s-2)">Категория: <b>'+esc(r.category)+'</b> · позиций: '+esc(r.positions)+'</div>'
-    +'<div class="row" style="margin-top:var(--s-2)"><span class="sm">Продавец:</span><select id="sl-'+esc(id)+'" style="width:auto">'+selOpts()+'</select></div>'
     +'<div style="margin-top:var(--s-2)">'+rows+'</div>'
     +'<details style="margin-top:var(--s-2)"><summary class="sm">✏️ Корректировка накладной (дата отгрузки / адрес)</summary>'
     +'<div class="row" style="margin-top:var(--s-2)"><div style="flex:0 0 180px;min-width:0"><input id="ovd-'+esc(id)+'" placeholder="Дата дд.мм.гггг" value="'+esc(ov.date||'')+'"></div>'
@@ -483,8 +548,7 @@ function renderDocs(id,r){
     +'<div class="msg" id="ovm-'+esc(id)+'"></div></details>';
 }
 function genDoc(id,dt){
-  var sl=val('sl-'+id)||'TW';
-  run({vapi:'docgen', lead:id, type:dt, seller:sl}, 'Формирую «'+dt+'»…', 'm-'+id).then(function(r){ if(!r) return;
+  run({vapi:'docgen', lead:id, type:dt}, 'Формирую «'+dt+'»…', 'm-'+id).then(function(r){ if(!r) return;
     setm('m-'+id,'ok','✅ '+esc(dt)+': <a href="'+esc(r.url)+'" target="_blank" rel="noopener">'+esc(r.name)+'</a>'+(r.waybill?(' · накладная № <b>'+esc(r.waybill)+'</b>'):''));
     if(r.waybill){ loadBlanksStatus(); loadRegistry(); } });
 }
