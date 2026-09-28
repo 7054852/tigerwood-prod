@@ -813,6 +813,16 @@ function cardView(){
     +fld('hs','HS-код',d.hs,'пусто = подставится сам')
     +fld('warranty','Гарантия, мес',d.warranty)
     +'</div></div>';
+  /* цена продажи — только Прохаб (таблица price): правка заводит новую строку «с сегодня», пустое поле = не менять */
+  if(PROHUB){
+    var pf=d.priceFrom?String(d.priceFrom).split('-').reverse().join('.'):'';
+    h+='<div class="card"><b>💰 Цена</b><span class="muted" style="font:var(--t-small);margin-left:var(--s-2)">'
+      +(pf?'действует с '+esc(pf):(isNew?'':'цена не задана'))+'</span><div class="grid" style="margin-top:var(--s-2)">'
+      +fld('priceByn','Цена BYN',d.priceByn,'напр. 1 250,00')
+      +fld('priceEur','Цена EUR',d.priceEur)
+      +fld('discountPercent','Скидка %',d.discountPercent,'26')
+      +'</div></div>';
+  }
   h+='<div class="card"><b>📦 Упаковка и логистика</b><div class="grid" style="margin-top:var(--s-2)">'
     +fld('boxSize','Размер коробки',d.boxSize,'630*440*70')
     +fld('boxW','Вес коробки, кг',d.boxW)
@@ -836,6 +846,7 @@ function cardCollect(){
   FIELDS.forEach(function(k){ var e=$('c_'+k); if(e) d[k]=e.value.trim(); });
   d.group=$('c_group')?$('c_group').value:'';
   var u=$('c_unit'); if(u) d.unit=u.value.trim();   // только Прохаб: без поля сервер «Ед.изм» не трогает
+  ['priceByn','priceEur','discountPercent'].forEach(function(k){ var e=$('c_'+k); if(e) d[k]=e.value.trim(); });   // цена: пусто = не менять
   return d;
 }
 function cardSave(){
@@ -849,7 +860,7 @@ function cardSave(){
     if(r.cascade){ var n=0; Object.keys(r.cascade).forEach(function(k){ n+=Number(r.cascade[k])||0; });
       if(n) casc=' · артикул обновлён в связанных листах: '+n+' строк'; }
     var fol=r.folderUrl?' · 📁 <a href="'+esc(r.folderUrl)+'" target="_blank">папка создана</a>':'';
-    msg('✓ сохранено'+(r.created?' (создан)':'')+casc+fol,1);
+    msg('✓ сохранено'+(r.created?' (создан)':'')+(r.priceChanged?' · цена с сегодня':'')+casc+fol,1);
     CARD=null;
     load(true); renderBody();
   });
