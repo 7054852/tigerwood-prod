@@ -8,7 +8,9 @@
 <title>Тигервуд — Клиенты</title>
 <!-- Замена GAS-панели хаба ClientsPanel (?page=clients): справочник контрагентов (юрлица, ИП, физлица), распознавание реквизитов, правка, удаление.
      С 28.09.2026: ?client=<УНП|ИНН|ID> — карточка клиента (clientcard): реквизиты, рынок (by/ru/eu/other — savebuyer market),
-     сделки по стадиям (→ sales.html?deal=), договоры (рамочный, срок, «Подписан» — contractsign), счета, итоги; «Рамочный договор» — contractframework. -->
+     сделки по стадиям (→ sales.html?deal=), договоры (рамочный, срок, «Подписан» — contractsign), счета, итоги.
+     С 30.09.2026: «Рамочный договор» ведёт в карточку договора contract.html?contract=new&client=<ключ>&framework=1 (диалог contractframework убран);
+     строки договоров клиента — ссылки в карточку договора. -->
 <style>
   .hide{ display:none !important; }
   td.num, td[data-l="№"]{ white-space:nowrap; }   /* сумма и номер не рвём на две строки */
@@ -85,7 +87,8 @@
     <button class="sec sm" onclick="goClient('')">← Все клиенты</button>
     <div class="end">
       <button class="sec sm" id="ccEdit" onclick="editFromCard()">Править реквизиты</button>
-      <button class="sm" id="ccFw" onclick="frameworkDlg()">Рамочный договор</button>
+      <button class="sm sec" id="ccNewC" onclick="location.href=contractUrl('new','')">Новый договор</button>
+      <button class="sm" id="ccFw" onclick="location.href=contractUrl('new','1')">Рамочный договор</button>
     </div>
   </div>
   <div id="ccErr" class="note bad hide"></div>
@@ -151,7 +154,9 @@ function money(n){ n=Number(n)||0; return n.toFixed(2).replace(/\B(?=(\d{3})+(?!
 function ruDate(s){ if(!s) return ''; var p=String(s).split('-'); return p.length===3 ? (p[2]+'.'+p[1]+'.'+p[0]) : s; }
 function todayIso(){ var d=new Date(); return new Date(d.getTime()-d.getTimezoneOffset()*6e4).toISOString().slice(0,10); }
 /** Ссылка на соседний экран с теми же параметрами (embed=1, twsec — оболочка app.html). */
-function pageUrl(page, k, v){ var sp=new URLSearchParams(location.search); ['deal','lead','client'].forEach(function(x){ sp.delete(x); }); sp.set(k, v); return page+'?'+sp.toString(); }
+function pageUrl(page, k, v){ var sp=new URLSearchParams(location.search); ['deal','lead','client','contract','framework'].forEach(function(x){ sp.delete(x); }); sp.set(k, v); return page+'?'+sp.toString(); }
+/** Карточка договора: contract.html?contract=<id|номер|new>[&client=<ключ клиента>&framework=1] */
+function contractUrl(key, fw){ var u=pageUrl('contract.html','contract',key||'new'); if(key==='new'&&CKEY) u+='&client='+encodeURIComponent(CKEY); if(fw) u+='&framework=1'; return u; }
 
 /* раздел «Клиенты» — people/model.ts ROLE_SECTIONS (админ, директор, менеджер); сервер проверяет сам */
 get({vapi:'me'}).then(function(m){
@@ -164,7 +169,7 @@ var STAGES=['inquiry','order','in_production','shipped','lost','cancelled'];
 var STAGE_RU={inquiry:'заявка',order:'заказ',in_production:'в производстве',shipped:'отгружено',lost:'не состоялась',cancelled:'аннулирована'};
 var STAGE_CLS={inquiry:'warn',order:'info',in_production:'info',shipped:'ok',lost:'muted',cancelled:'bad'};
 var MARKET_RU={by:'Беларусь',ru:'Россия',eu:'Европа',other:'другое'}, CUR={by:'BYN',ru:'RUB',eu:'EUR',other:'EUR'};
-var CST_CLS={'сформирован':'','подписан':'ok','номер выдан':'warn','аннулирован':'muted'};
+var CST_CLS={'сформирован':'','подписан':'ok','номер выдан':'warn','черновик':'warn','аннулирован':'muted'};
 function stagePill(x){ var s=x&&x.stage; if(!s) return '<span class="pill muted">'+esc((x&&x.status)||'—')+'</span>';
   return '<span class="pill '+(STAGE_CLS[s]||'')+'">'+esc(x.stageRu||STAGE_RU[s]||s)+'</span>'; }
 function conPills(c){
@@ -300,7 +305,7 @@ function tile(t, v, s){ return '<div class="tile"><div class="t">'+esc(t)+'</div
 function renderClient(){
   var r=CC, b=r.buyer||{}, t=typeOf(b), ul=(t!=='физлицо'), m=b.market||'', tot=r.totals||{};
   el('ttl').textContent='👤 '+name_(b);
-  el('ccFw').style.display=ul?'':'none';
+  el('ccFw').style.display=ul?'':'none'; el('ccNewC').style.display='';
   var show=(ul?[['Наименование ЮЛ (полное)'],['УНП'],['ИНН'],['КПП'],['ОГРН'],['Юридический адрес'],['Почтовый адрес'],['р/с'],['р/с в'],['Код банка (БИК)'],['В лице'],['Полное ФИО'],['Действует на основании'],['тел'],['e-mail'],['Страна'],['Валюта']]:FL_FIELDS);
   var kv=show.map(function(f){ var v=String(b[f[0]]==null?'':b[f[0]]).trim(); return v?('<span class="k">'+esc(LABELS[f[0]]||f[0])+'</span><span class="v">'+esc(v)+'</span>'):''; }).join('');
   var mopts=['by','ru','eu','other'].map(function(x){ return '<option value="'+x+'"'+(x===m?' selected':'')+'>'+esc(MARKET_RU[x])+' ('+CUR[x]+')</option>'; }).join('');
@@ -323,12 +328,13 @@ function renderClient(){
   h+='<div class="sect">Договоры <span class="n">'+esc((r.contracts||[]).length)+'</span></div>'
     +'<div class="card"><div class="tbl-wrap"><table class="tbl sm mob"><thead><tr><th>№</th><th>Тип</th><th>Дата</th><th>Статус</th><th>Сделка</th><th class="num">Сумма</th><th></th></tr></thead><tbody>'
     +((r.contracts||[]).length?(r.contracts.map(function(c){
-      return '<tr><td data-l="№"><b>'+esc(c.number)+'</b></td><td data-l="Тип" class="sm">'+esc(c.type||'')+'</td><td data-l="Дата" class="sm">'+esc(c.date||'')+'</td>'
+      var cu=contractUrl(c.id||c.number,'');
+      return '<tr><td data-l="№"><b><a href="'+esc(cu)+'" title="карточка договора">'+(c.number?esc(c.number):'черновик')+'</a></b>'+(c.origin==='uploaded'?'<div class="sm muted">загружен</div>':'')+'</td><td data-l="Тип" class="sm">'+esc(c.type||'')+'</td><td data-l="Дата" class="sm">'+esc(c.date||'')+'</td>'
         +'<td data-l="Статус">'+conPills(c)+'</td><td data-l="Сделка">'+(c.dealId?dealLink(c.dealId):(c.isFramework?'<span class="sm muted">на клиента</span>':'—'))+'</td>'
         +'<td data-l="Сумма" class="num">'+(c.sum!==''&&c.sum!=null?money(c.sum):'—')+'</td>'
-        +'<td><div class="row">'+(canSign(c)?'<button class="sm sec" onclick="signContract('+jq(c.number)+',openClient)">Подписан</button>':'')
-        +(c.url?'<a class="btn sm" href="'+esc(c.url)+'" target="_blank" rel="noopener">открыть</a>':'')+'</div></td></tr>'; }).join(''))
-      :'<tr><td colspan="7" class="sm muted">Договоров нет.'+(ul?' Для оптовика оформите рамочный — кнопка «Рамочный договор».':'')+'</td></tr>')
+        +'<td><div class="row"><a class="btn sm" href="'+esc(cu)+'">карточка</a>'+(canSign(c)?'<button class="sm sec" onclick="signContract('+jq(c.number)+',openClient)">Подписан</button>':'')
+        +(c.url?'<a class="btn sm" href="'+esc(c.url)+'" target="_blank" rel="noopener">документ</a>':'')+'</div></td></tr>'; }).join(''))
+      :'<tr><td colspan="7" class="sm muted">Договоров нет.'+(ul?' Для оптовика оформите рамочный — кнопка «Рамочный договор»; обычный — «Новый договор».':' Кнопка «Новый договор» откроет карточку.')+'</td></tr>')
     +'</tbody></table></div></div>';
   h+='<div class="sect">Счета <span class="n">'+esc((r.invoices||[]).length)+'</span></div>'
     +'<div class="card"><div class="tbl-wrap"><table class="tbl sm mob"><thead><tr><th>№</th><th>Дата</th><th>Вид</th><th>Рынок</th><th>Валюта</th><th class="num">Сумма</th><th>Статус</th><th>Договор</th><th>Сделка</th><th></th></tr></thead><tbody>'
@@ -371,23 +377,6 @@ function saveMarket(){
     openClient(); });
 }
 function editFromCard(){ var b=CC&&CC.buyer; if(!b) return; goClient(''); editB(b); }
-function frameworkDlg(){
-  var b=(CC&&CC.buyer)||{}, m=b.market||'by';
-  var types=['Договор поставки','Договор услуг','Договор сотрудничества'];
-  ask('Рамочный договор', '<div class="sm">Договор на клиента, без сделки: к нему выставляются счета любых его сделок, пока он действует.'
-      +(m==='ru'?' Рынок клиента — Россия: будет «Договор поставки РФ» (RUB).':'')+'</div>'
-    +'<div class="grid"><label class="fl full"><span>Тип договора</span><select id="fwType">'+types.map(function(x){ return '<option>'+esc(x)+'</option>'; }).join('')+'</select></label>'
-    +'<label class="fl"><span>Срок действия, дней</span><input id="fwDays" type="number" min="1" value="365" inputmode="numeric"></label>'
-    +'<label class="fl"><span>Предоплата, %</span><input id="fwPct" type="number" min="0" max="100" value="80" inputmode="numeric"></label>'
-    +'<label class="fl"><span>Срок производства, раб. дней</span><input id="fwProd" type="number" min="1" value="14" inputmode="numeric"></label></div>'
-    +'<div class="msg" id="fwMsg"></div>',
-    function(){ var days=Number(val('fwDays'))||0; if(days<=0){ setm('fwMsg','err','Укажите срок действия в днях'); return false; }
-      run({vapi:'contractframework', unp:CKEY, type:val('fwType'), opts:JSON.stringify({ termDays:days, prepayPct:Number(val('fwPct'))||'', prodDays:Number(val('fwProd'))||14 })}, 'Формирую рамочный договор…').then(function(r){ if(!r) return;
-        var c=r.contract||{};
-        info('Готово', '<div>✅ Рамочный договор № <b>'+esc(c.number||'')+'</b>'+(c.validUntil?(' действует до '+esc(c.validUntil)):'')+'.'
-          +(c.url?' <a href="'+esc(c.url)+'" target="_blank" rel="noopener">Открыть →</a>':'')+'</div><div class="sm muted" style="margin-top:var(--s-2)">Когда клиент подпишет — отметьте «Подписан».</div>');
-        openClient(); }); }, 'Сформировать');
-}
 
 route();
 

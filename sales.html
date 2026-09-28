@@ -10,7 +10,10 @@
      ?deal=<ID сделки> или ?lead=<ID лида amoCRM> — сразу карточка. Все вызовы — vapi (маршруты М4, prohub/docs/M4-plan.md).
      С 28.09.2026: стадия сделки с сервера (stage: inquiry/order/in_production/shipped/lost/cancelled), «Заявка З-…» → «Заказ №…»
      (dealconfirm / deallost / deletedeal), «Подписан» у договора (contractsign), счёт по рынку клиента (by/ru — «Счёт»,
-     eu — проформа + коммерческий инвойс invoicecommercial), рамочные договоры клиента из invoicectx. Продавец не выбирается (всегда Тигервуд). -->
+     eu — проформа + коммерческий инвойс invoicecommercial), рамочные договоры клиента из invoicectx. Продавец не выбирается (всегда Тигервуд).
+     С 30.09.2026: «Создать сделку» → ?deal=new — карточка из локального состояния (шапка + позиции), «Сохранить» → dealcreate (с items), «Отмена» — без записи;
+     договоры сделки — ссылки в карточку договора contract.html (черновик/формирование/загрузка подписанного там), быстрый путь contractfordeal для ЮЛ оставлен;
+     типы договоров — contractkinds по рынку клиента; график рассрочки в карточке сделки — только чтение (правится в договоре). -->
 <style>
   .hide{ display:none !important; }
   .sm:not(button):not(.btn){ font:var(--t-small); color:var(--muted); }
@@ -82,20 +85,8 @@
     <span class="meta" id="cnt"></span>
     <div class="end">
       <button class="sec" onclick="loadList()">Обновить</button>
-      <button onclick="toggleNew()">Новая сделка</button>
+      <button onclick="go('new')">Создать сделку</button>
     </div>
-  </div>
-  <div id="newForm" class="card hide" style="margin-bottom:var(--s-4)">
-    <div class="row">
-      <div style="flex:2;min-width:200px"><div class="sm">Клиент (название/ФИО)</div><input id="n_client" list="clientList" placeholder="начните вводить — подставится из базы" autocomplete="off"><datalist id="clientList"></datalist></div>
-      <div><div class="sm">Тип клиента</div><select id="n_ctype" onchange="fillClientList()"><option value="юрлицо">юрлицо</option><option value="физлицо">физлицо</option></select></div>
-      <div><div class="sm">Опт/розница</div><select id="n_type"><option value="розница">розница</option><option value="опт">опт</option></select></div>
-    </div>
-    <div class="row" style="margin-top:var(--s-2);align-items:flex-end">
-      <div style="flex:3;min-width:200px"><div class="sm">Комментарий</div><input id="n_note" placeholder="необязательно"></div>
-      <div style="flex:0 0 auto;min-width:0"><button class="green" onclick="createDeal()">Создать</button></div>
-    </div>
-    <div class="msg" id="nmsg"></div>
   </div>
   <div class="card"><div class="tbl-wrap">
     <table class="tbl mob">
@@ -114,14 +105,16 @@
 
   <!-- редактирование шапки -->
   <div id="editPanel" class="blk hide">
-    <div class="h">✏️ Редактирование сделки <span class="sp"><button class="gray sm" onclick="toggleEdit()">закрыть</button></span></div>
+    <div class="h"><span id="editTtl">✏️ Редактирование сделки</span> <span class="sp" id="editClose"><button class="gray sm" onclick="toggleEdit()">закрыть</button></span></div>
     <label class="fl" id="numWrap"><span class="sm">№ заказа — только цифры; менять может администратор или директор (сохранение переименует сделку в amoCRM)</span><input id="e_num" placeholder="2512" inputmode="numeric"></label>
-    <label class="fl"><span class="sm">Клиент (название)</span><input id="e_client"></label>
+    <label class="fl"><span class="sm">Клиент (название / ФИО)</span><input id="e_client" list="clientList" autocomplete="off" placeholder="начните вводить — подставится из справочника"><datalist id="clientList"></datalist></label>
     <div class="row" style="margin-top:var(--s-2)">
+      <div id="ctypeWrap" class="hide"><span class="sm">Тип клиента</span><select id="e_ctype" onchange="fillClientList()"><option value="юрлицо">юрлицо</option><option value="ИП">ИП</option><option value="физлицо">физлицо</option></select></div>
       <div id="typeWrap"><span class="sm">Опт/розница</span><select id="e_type"><option value="розница">розница</option><option value="опт">опт</option></select></div>
       <div><span class="sm">Менеджер</span><input id="e_manager"></div>
     </div>
-    <div class="row" style="margin-top:var(--s-2)"><button class="green sm" onclick="saveDeal()">Сохранить</button><span class="msg" id="editMsg"></span></div>
+    <label class="fl hide" id="noteWrap"><span class="sm">Комментарий</span><input id="e_note" placeholder="необязательно"></label>
+    <div class="row" style="margin-top:var(--s-2)" id="editBtns"><button class="green sm" onclick="saveDeal()">Сохранить</button><span class="msg" id="editMsg"></span></div>
   </div>
 
   <!-- клиент -->
@@ -164,16 +157,19 @@
   </div>
 
   <!-- позиции -->
-  <div class="blk">
+  <div class="blk" id="s_pos">
     <div class="h">📦 Что продаём <span class="sp"><span class="sm" id="posHint"></span></span></div>
     <datalist id="prodlist"></datalist>
     <div class="pos" id="posBox"></div>
     <div class="row" style="justify-content:space-between">
       <button class="gho" onclick="addPos()">+ добавить позицию</button>
-      <button class="green sm" onclick="savePos()">Сохранить позиции</button>
+      <button class="green sm" id="posSaveBtn" onclick="savePos()">Сохранить позиции</button>
     </div>
     <div class="msg" id="posMsg"></div>
   </div>
+
+  <!-- новая сделка (?deal=new): ничего не записано, пока не нажали «Сохранить» -->
+  <div class="toolbar hide" id="newBar"><div class="end"><button class="sec" onclick="toList()">Отмена</button><button class="green" onclick="createDealNew()">Сохранить сделку</button></div><div class="msg" id="nmsg" style="flex-basis:100%"></div></div>
 
   <!-- примечание -->
   <div class="blk" id="s_note">
@@ -225,6 +221,10 @@
   <div class="blk" id="s_con">
     <div class="h tg" onclick="toggleSec('con')">📄 Договор <span class="sp" id="conArrow">▸ развернуть</span></div>
     <div id="conBody" class="hide">
+      <div id="conList"></div>
+      <div class="row" style="margin:var(--s-2) 0 var(--s-3)"><a class="btn sm" id="conNewLink" href="#">Новый договор → карточка</a><span class="sm">черновик, условия, график рассрочки, документ в Google Docs, загрузка подписанного</span></div>
+      <div id="conQuick">
+      <div class="sm" style="font-weight:600;margin-bottom:var(--s-1)">Быстро: сформировать договор по условиям ниже</div>
       <label class="fl"><span class="sm">Тип договора</span><select id="ctypeSel" onchange="toggleSvc()"></select></label>
       <div id="conCountry" class="sm" style="margin:var(--s-2) 0"></div>
       <div id="conFw" class="note info hide"></div>
@@ -247,6 +247,7 @@
       <button class="green block" style="margin-top:var(--s-2)" onclick="issueContract()">Сформировать договор</button>
       <div class="msg" id="cmsg"></div>
       <div id="cout" style="margin-top:var(--s-2)"></div>
+      </div>
     </div>
   </div>
 
@@ -384,7 +385,7 @@ function isoDate(s){ s=String(s||''); if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.
 function todayIso(){ var d=new Date(); return new Date(d.getTime()-d.getTimezoneOffset()*6e4).toISOString().slice(0,10); }
 function jq(s){ return esc(JSON.stringify(String(s==null?'':s))); }   // строка в onclick="f(…)"
 /** Ссылка на соседний экран с теми же параметрами (embed=1, twsec — оболочка app.html), без ключей карточек. */
-function pageUrl(page, k, v){ var sp=new URLSearchParams(location.search); ['deal','lead','client'].forEach(function(x){ sp.delete(x); }); sp.set(k, v); return page+'?'+sp.toString(); }
+function pageUrl(page, k, v){ var sp=new URLSearchParams(location.search); ['deal','lead','client','contract','framework'].forEach(function(x){ sp.delete(x); }); sp.set(k, v); return page+'?'+sp.toString(); }
 
 /* ══════════ стадии, рынки, договоры (сервер отдаёт stage/stageRu, market, isFramework…) ══════════ */
 var STAGE_RU={inquiry:'заявка',order:'заказ',in_production:'в производстве',shipped:'отгружено',lost:'не состоялась',cancelled:'аннулирована'};
@@ -398,7 +399,9 @@ function dealNo(x){ return (x&&(x.num||x.inquiryNum||x.id))||''; }
 function isClosed(x){ return !!x && (x.stage==='lost'||x.stage==='cancelled'); }
 function isOrder(x){ return !!x && (x.stage==='order'||x.stage==='in_production'||x.stage==='shipped'); }
 function dealTitle(d){ if(d.num) return 'Заказ '+(/^\d/.test(d.num)?'№':'')+d.num; if(isOrder(d)) return 'Заказ (номер не выдан)'; return 'Заявка '+(d.inquiryNum||d.id||''); }
-var CST_CLS={'сформирован':'','подписан':'ok','номер выдан':'warn','аннулирован':'muted'};
+var CST_CLS={'сформирован':'','подписан':'ok','номер выдан':'warn','черновик':'warn','аннулирован':'muted'};
+/** Ссылка на карточку договора (contract.html): по id, если сервер его отдаёт, иначе по номеру (contractget принимает оба). */
+function contractUrl(c){ var k=(c&&(c.id||c.number))||''; return pageUrl('contract.html','contract',k); }
 function conPills(c){
   var h='<span class="pill '+(CST_CLS[c.status]||'')+'">'+esc(c.status||'—')+(c.status==='подписан'&&c.signedAt?(' '+esc(c.signedAt)):'')+'</span>';
   if(c.isFramework) h+=' <span class="pill info">рамочный</span>';
@@ -429,7 +432,8 @@ get({vapi:'me'}).then(function(m){
 var KEY='', AMOBASE='https://tigerwoodby.amocrm.ru/leads/detail/';
 function route(){
   KEY=qp('deal')||qp('lead');
-  if(KEY){ el('vList').className='hide'; el('vCard').className=''; el('ttl').textContent='🧾 Сделка'; openCard(); }
+  if(KEY==='new'){ el('vList').className='hide'; el('vCard').className=''; el('ttl').textContent='🧾 Новая сделка'; openNew(); }
+  else if(KEY){ el('vList').className='hide'; el('vCard').className=''; el('ttl').textContent='🧾 Сделка'; openCard(); }
   else { el('vCard').className='hide'; el('vList').className=''; el('ttl').textContent='🧾 Сделки'; loadList(); }
 }
 function go(id){ var sp=new URLSearchParams(location.search); sp.delete('deal'); sp.delete('lead'); if(id) sp.set('deal', id);
@@ -444,10 +448,9 @@ var DEALS=[], BUYERS=[];
 function buyerName_(b){ return String(b['Наименование ЮЛ (полное)']||'').trim(); }
 function buyerFio_(b){ return String(b['Полное ФИО']||b['И. О. Фамилия']||'').trim(); }
 function buyerKey_(b){ return String(b['УНП']||b['ИНН']||b['ID']||'').trim(); }
-function toggleNew(){ var f=el('newForm'); f.className=f.className.indexOf('hide')>=0?'card':'card hide'; if(!BUYERS.length) loadBuyersList(); }
 function loadBuyersList(){ get({vapi:'buyers'}).then(function(r){ BUYERS=(r&&r.buyers)||[]; fillClientList(); }).catch(function(){}); }
 function fillClientList(){
-  var ul=(val('n_ctype')==='юрлицо'), seen={}, opts=[];
+  var ul=(val('e_ctype')!=='физлицо'), seen={}, opts=[];
   BUYERS.forEach(function(b){ var nm=ul?buyerName_(b):buyerFio_(b); if(!nm||seen[nm]) return; seen[nm]=1; opts.push('<option value="'+esc(nm)+'">'); });
   el('clientList').innerHTML=opts.join('');
 }
@@ -472,7 +475,7 @@ function renderList(){
     return !q || [x.num,x.inquiryNum,x.id,x.client,x.manager,x.type,x.clientType].join(' ').toLowerCase().indexOf(q)>=0;
   });
   el('cnt').textContent='всего: '+DEALS.length+(d.length!==DEALS.length?(' · показано: '+d.length):'')+(noStage?' · сервер ещё не отдаёт стадию — фильтр по стадии не работает':'');
-  if(!DEALS.length){ el('rows').innerHTML='<tr><td colspan="9" class="sm">Пока нет сделок. Создайте первую кнопкой «Новая сделка» или подтяните из amoCRM.</td></tr>'; return; }
+  if(!DEALS.length){ el('rows').innerHTML='<tr><td colspan="9" class="sm">Пока нет сделок. Создайте первую кнопкой «Создать сделку» или подтяните из amoCRM.</td></tr>'; return; }
   if(!d.length){ el('rows').innerHTML='<tr><td colspan="9" class="sm">Ничего не найдено.</td></tr>'; return; }
   el('rows').innerHTML=d.map(function(x){
     var src=x.source==='amoCRM'?'<span class="pill info">amoCRM</span>':(x.source==='сайт'?'<span class="pill acc">сайт</span>':'<span class="pill">'+esc(x.source||'—')+'</span>');
@@ -491,14 +494,36 @@ function renderList(){
       +(isClosed(x)?'':' <button class="ic" title="Отменить сделку" onclick="delDeal('+id+','+num+')">🗑</button>')+'</td></tr>';
   }).join('');
 }
-function createDeal(){
-  var f={ client:val('n_client').trim(), clientType:val('n_ctype'), type:val('n_type'), note:val('n_note').trim() };
-  if(!f.client){ setm('nmsg','err','Укажите клиента'); return; }
-  var mb=matchedBuyer_(f.client, f.clientType==='юрлицо'); if(mb) f.buyer=buyerKey_(mb);   // выбран из базы → привязываем контрагента
+/* ── новая сделка «сразу в карточку» (?deal=new): шапка + позиции из локального состояния; в БД ничего нет до «Сохранить» ── */
+var NEW=false;
+function openNew(){
+  NEW=true; DEAL=null; INVCTX=null; el('loaderr').className='note bad hide';
+  el('hdr').innerHTML='<div class="t">Новая сделка <span class="pill warn">не сохранена</span></div><div class="m">заполните клиента и позиции — номер заявки З-… выдастся при сохранении</div>';
+  el('main').className='';
+  // видны только шапка и позиции; остальные блоки требуют сохранённой сделки
+  var blks=el('main').children; for(var i=0;i<blks.length;i++){ var b=blks[i]; if(b.className.indexOf('blk')<0) continue; b.className=(b.id==='editPanel'||b.id==='s_pos')?'blk':'blk hide'; }
+  el('cancelBar').className='toolbar hide'; el('newBar').className='toolbar';
+  el('editTtl').textContent='Сделка'; el('editClose').className='sp hide'; el('editBtns').className='row hide';
+  el('numWrap').className='fl hide'; el('ctypeWrap').className=''; el('noteWrap').className='fl'; el('posSaveBtn').className='green sm hide';
+  el('e_client').value=''; el('e_manager').value=''; el('e_note').value=''; el('e_type').value='розница'; el('e_type').disabled=false; el('e_ctype').value='юрлицо';
+  setm('nmsg','',''); CTYPE='юрлицо';
+  POS=[{name:'',qty:1,price:''}]; POS0=posKey(POS); renderPos();
+  loadProducts(); if(!BUYERS.length) loadBuyersList(); else fillClientList();
+}
+function leaveNew(){
+  if(!NEW) return; NEW=false;
+  var blks=el('main').children; for(var i=0;i<blks.length;i++){ var b=blks[i]; if(b.className.indexOf('blk')>=0 && b.id!=='editPanel') b.className='blk'; }
+  el('newBar').className='toolbar hide'; el('editTtl').textContent='✏️ Редактирование сделки'; el('editClose').className='sp'; el('editBtns').className='row';
+  el('ctypeWrap').className='hide'; el('noteWrap').className='fl hide'; el('posSaveBtn').className='green sm'; el('editPanel').className='blk hide';
+}
+function createDealNew(){
+  var f={ client:val('e_client').trim(), clientType:val('e_ctype'), type:val('e_type'), manager:val('e_manager').trim(), note:val('e_note').trim(), items:cleanPos() };
+  if(!f.client){ setm('nmsg','err','Укажите клиента'); oops('Укажите клиента — название юрлица или ФИО.'); return; }
+  var mb=matchedBuyer_(f.client, f.clientType!=='физлицо'); if(mb) f.buyer=buyerKey_(mb);   // выбран из справочника → привязываем контрагента
   setm('nmsg','','');
   run({vapi:'dealcreate', data:JSON.stringify(f)}, 'Создаю сделку…', 'nmsg').then(function(r){ if(!r) return;
-    setm('nmsg','ok','✅ Создана заявка '+esc(r.inquiryNum||r.num||r.id)+'. <a href="#" onclick="cardOf('+jq(r.id)+');return false;">Открыть карточку →</a>');
-    el('n_client').value=''; el('n_note').value=''; loadList();
+    setm('nmsg','ok','✅ Создана заявка '+esc(r.inquiryNum||r.num||r.id));
+    cardOf(r.id);
   });
 }
 // в хабе «удалить»; в Прохабе — аннулирование (deletedeal, админ/директор): история остаётся, номер не выдаётся повторно
@@ -526,6 +551,7 @@ function loadProducts(){
 }
 function pickProd(i,v){ var p=PRODBYNAME[v]; if(p){ POS[i].name=p.name; POS[i].sku=p.sku; if(!(Number(POS[i].price)>0)) POS[i].price=p.price; renderPos(); } }
 function openCard(){
+  leaveNew();
   DEAL=null; INVCTX=null; INVKIND='payment'; el('total').value=''; el('main').className='hide'; el('loaderr').className='note bad hide';
   el('hdr').innerHTML='<div class="t">Сделка…</div><div class="m">загрузка…</div>';
   loadProducts(); loadDeal();
@@ -552,7 +578,8 @@ function saveDeal(){
 }
 function fillEdit(d){
   el('e_num').value=String(d.num||'').replace(/^№\s*/,''); el('e_client').value=d.client||'';
-  el('numWrap').className=(isOrder(d)||d.num)?'fl':'fl hide';   // у заявки №N нет — он выдаётся при подтверждении заказа el('e_type').value=d.type||'розница'; el('e_manager').value=d.manager||'';
+  el('numWrap').className=(isOrder(d)||d.num)?'fl':'fl hide';   // у заявки №N нет — он выдаётся при подтверждении заказа
+  el('e_type').value=d.type||'розница'; el('e_manager').value=d.manager||'';
   if(CTYPE==='физлицо'){ el('e_type').value='розница'; el('e_type').disabled=true; el('typeWrap').title='Физлицо — всегда розница'; }
   else { el('e_type').disabled=false; el('typeWrap').title=''; }
 }
@@ -603,7 +630,7 @@ function saveNote(){
 }
 
 function render(){
-  el('main').className='';
+  leaveNew(); el('main').className='';
   var d=DEAL;
   CTYPE=d.clientType||'юрлицо';
   var amoLink=isAmo()?(' <a class="pill info" href="'+AMOBASE+esc(d.leadId)+'" target="_blank" rel="noopener">amoCRM #'+esc(d.leadId)+' ↗</a>'):'';
@@ -653,7 +680,7 @@ function render(){
   loadBuyers();
   el('stdocsWrap').className=isAmo()?'':'hide';
   if(isAmo()) loadStDocs();
-  renderDealDocs();
+  renderDealDocs(); renderConList();
   renderInvMarket(); fillInvContracts(); fillCommercial();
   if(d.buyerKey) loadInvCtx();
 }
@@ -888,8 +915,8 @@ function toFinance(){
 function renderDealDocs(){
   var d=DEAL, h='';
   (d.contracts||[]).forEach(function(c){
-    var n=jq(c.number), live=(c.status!=='аннулирован');
-    h+='<div class="drow"><span class="dname">📄 Договор № '+esc(c.number)+'</span> <span class="sm">'+esc(c.type)+' · '+esc(c.date)+'</span> '+conPills(c)
+    var n=jq(c.number), live=(c.status!=='аннулирован'&&c.status!=='черновик');
+    h+='<div class="drow"><span class="dname">📄 <a href="'+esc(contractUrl(c))+'">Договор '+(c.number?('№ '+esc(c.number)):'(черновик)')+'</a></span> <span class="sm">'+esc(c.type)+' · '+esc(c.date)+(c.origin==='uploaded'?' · загружен':'')+'</span> '+conPills(c)
       +'<span class="sp">'+(canSign(c)?'<button class="sm sec" onclick="signContract('+n+',reload)">Подписан</button>':'')
       +(c.url?'<a href="'+esc(c.url)+'" target="_blank" rel="noopener">открыть</a>':'')
       +(live?'<a href="#" style="color:var(--red)" onclick="delDoc(\'contract\','+n+');return false;">отменить</a>':'')+'</span></div>';
@@ -930,12 +957,37 @@ function editInvoice(number){
 }
 
 /* ── договор ── */
-function contractTypesForClient(){ return CTYPE==='физлицо'?['Договор рассрочки','Договор 100%']:(isEu()?['Контракт (Европа)']:['Договор поставки','Договор услуг','Договор сотрудничества']); }
-function fillContractTypes(){ var sel=el('ctypeSel'), cur=sel.value; sel.innerHTML=contractTypesForClient().map(function(t){ return '<option'+(t===cur?' selected':'')+'>'+t+'</option>'; }).join(''); toggleSvc(); }
+// запасной список, пока сервер не отдал contractkinds (типы по рынку клиента)
+function contractTypesForClient(){ return CTYPE==='физлицо'?['Договор рассрочки','Договор 100%']:(isEu()?['Договор поставки (Европа)']:(mkt()==='ru'?['Договор поставки РФ']:['Договор поставки','Договор услуг','Договор сотрудничества'])); }
+var KINDS=null, KINDS_KEY='';
+function fillContractTypes(){
+  var sel=el('ctypeSel'), key=(DEAL&&DEAL.buyerKey)||'';
+  function apply(list){ var cur=sel.value; sel.innerHTML=list.map(function(t){ return '<option'+(t===cur?' selected':'')+'>'+esc(t)+'</option>'; }).join(''); toggleSvc(); }
+  if(KINDS && KINDS_KEY===key){ apply(KINDS); return; }
+  apply(contractTypesForClient());
+  if(!key) return;
+  get({vapi:'contractkinds', key:key}).then(function(r){
+    if(!r||!r.ok||!r.kinds||!r.kinds.length) return;   // маршрут ещё не выложен / отказ — остаётся запасной список
+    KINDS=r.kinds.filter(function(k){ return !k.framework; }).map(function(k){ return k.label||k.kind; }); KINDS_KEY=key; apply(KINDS);
+  }).catch(function(){});
+}
+/** список договоров сделки — ссылки в карточку договора; «Новый договор →» ведёт в contract.html?contract=new&deal=… */
+function renderConList(){
+  var d=DEAL||{}, cs=d.contracts||[];
+  el('conNewLink').href=contractUrl({id:'new'})+'&deal='+encodeURIComponent(KEY);
+  el('conList').innerHTML=cs.length?cs.map(function(c){
+    var legs=(c.legs||[]).length?('<ul class="pvlegs">'+c.legs.map(function(l){ return '<li>'+(l.beforeShip?'до отгрузки':'платёж '+esc(l.legNo))+': <b>'+money(l.amount)+'</b>'+(l.dueDate?(' — '+esc(l.dueDate)):'')+'</li>'; }).join('')+'</ul>'):'';
+    return '<div class="drow"><span class="dname"><a href="'+esc(contractUrl(c))+'">'+(c.number?('№ '+esc(c.number)):'черновик')+'</a></span> <span class="sm">'+esc(c.type||'')+' · '+esc(c.date||'')+'</span> '+conPills(c)
+      +'<span class="sp"><a href="'+esc(contractUrl(c))+'">карточка →</a>'+(c.url?'<a href="'+esc(c.url)+'" target="_blank" rel="noopener">документ</a>':'')+'</span>'
+      +(legs?('<div class="sm" style="flex-basis:100%">График оплаты (правится в карточке договора):'+legs+'</div>'):'')+'</div>'; }).join('')
+    :'<div class="sm">Договоров у сделки нет.</div>';
+  // быстрый путь (тип + условия → contractfordeal) — для юрлиц/ИП; физ-договоры и рассрочка — в карточке договора
+  el('conQuick').className=(CTYPE==='физлицо')?'hide':'';
+}
 function toggleSvc(){ var t=val('ctypeSel'), isSvc=(t==='Договор услуг');
   el('freightRow').style.display=isSvc?'none':'';
   el('cprod').style.display=(isSvc||t==='Договор сотрудничества')?'none':'';
-  el('conTerms').style.display=(t==='Договор поставки')?'':'none';
+  el('conTerms').style.display=/поставк/i.test(t)?'':'none';
   conCountryLabel(); showConReady(); }
 // рынок — у клиента (Беларусь / Россия / Европа / другое); от него шаблон, валюта и серия номера. Меняется в карточке клиента.
 function conCountryLabel(){
@@ -943,7 +995,7 @@ function conCountryLabel(){
   if(CTYPE==='физлицо' || !DEAL || !DEAL.buyerKey) return;
   var m=mkt(), t=val('ctypeSel');
   e.innerHTML=(m==='ru'&&t==='Договор поставки')?'<span class="ok">→ рынок клиента Россия: будет <b>Договор поставки РФ</b> (RUB, серия RU-…)</span>'
-    :isEu()?'<span class="ok">→ рынок клиента '+esc(MARKET_RU[m])+': <b>Контракт (Европа)</b> (EUR, серия EU-…)</span>'
+    :isEu()?'<span class="ok">→ рынок клиента '+esc(MARKET_RU[m])+': <b>Договор поставки (Европа)</b> (EUR, серия EU-…)</span>'
     :'<span class="muted">→ рынок клиента '+esc(MARKET_RU[m]||'Беларусь')+' ('+esc(CUR[m]||'BYN')+')</span>';
   e.innerHTML+=' <span class="muted">Рынок меняется в карточке клиента.</span>';
 }
@@ -1137,7 +1189,7 @@ onScen(); route();
 // авто-обновление: оболочка шлёт «refresh» при возврате на раздел — перечитываем данные
 (function(){
   try{ window.top.postMessage({tw:'hello',sec:qp('twsec')},'*'); }catch(e){}
-  window.addEventListener('message',function(e){ var d=e&&e.data; if(d&&d.tw==='refresh'){ try{ if(KEY) reload(); else loadList(); }catch(err){} } });
+  window.addEventListener('message',function(e){ var d=e&&e.data; if(d&&d.tw==='refresh'){ try{ if(KEY==='new') return; if(KEY) reload(); else loadList(); }catch(err){} } });
 })();
 </script>
 </body>
