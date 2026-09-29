@@ -40,6 +40,11 @@
   .pos .pr .lt{ text-align:right; font-weight:600; font-variant-numeric:tabular-nums; }
   .pos .rm{ color:var(--red); }
   .pos .tot{ text-align:right; font:var(--t-heading); font-variant-numeric:tabular-nums; margin-top:var(--s-1); }
+  /* опции строки (канат, зацепы горки, доп. перемычки) — под строкой позиции, по схеме товара (saleproducts → opt) */
+  .pos .popt{ display:flex; flex-wrap:wrap; gap:var(--s-1) var(--s-3); align-items:center; font:var(--t-small); color:var(--muted); margin:0 0 var(--s-2); padding-left:var(--s-2); }
+  .pos .popt label{ display:inline-flex; align-items:center; gap:var(--s-1); }
+  .pos .popt select{ width:auto; }
+  table.pv .ot{ font:var(--t-small); color:var(--muted); }
   .pvbox{ margin-top:var(--s-3); padding:var(--s-3); border:1px dashed var(--line2); border-radius:var(--r-ctl); background:var(--card2); overflow-x:auto; }
   table.pv{ font:var(--t-small); margin-top:var(--s-1); }
   table.pv th, table.pv td{ border:1px solid var(--line); padding:var(--s-1) var(--s-2); text-align:left; }
@@ -546,16 +551,30 @@ var DEAL=null, POS=[], POS0='', CTYPE='юрлицо', REQ={}, INVCTX=null, INVKI
 function ctypeVal(){ return CTYPE; }
 function isAmo(){ return DEAL && DEAL.leadId && /^\d+$/.test(String(DEAL.leadId)); }
 function EX(k){ return (DEAL&&DEAL.extra&&DEAL.extra[k]!=null)?String(DEAL.extra[k]):''; }
-var PRODS=[], PRODBYNAME={};
+var PRODS=[], PRODBYNAME={}, PRODBYSKU={};
 function loadProducts(){
   if(PRODS.length) return;
   get({vapi:'saleproducts'}).then(function(r){
-    PRODS=(r&&r.products)||[]; PRODBYNAME={};
+    PRODS=(r&&r.products)||[]; PRODBYNAME={}; PRODBYSKU={};
     el('prodlist').innerHTML=PRODS.map(function(p){ return '<option value="'+esc(p.name)+'">'+(p.price?(money(p.price)+' руб'):'')+'</option>'; }).join('');
-    PRODS.forEach(function(p){ PRODBYNAME[p.name]=p; });
+    PRODS.forEach(function(p){ PRODBYNAME[p.name]=p; PRODBYSKU[p.sku]=p; });
+    if(POS.length) renderPos();   // схемы опций подъехали позже позиций сделки
   }).catch(function(){});
 }
-function pickProd(i,v){ var p=PRODBYNAME[v]; if(p){ POS[i].name=p.name; POS[i].sku=p.sku; if(!(Number(POS[i].price)>0)) POS[i].price=p.price; renderPos(); } }
+function pickProd(i,v){ var p=PRODBYNAME[v]; if(p){ POS[i].name=p.name; POS[i].sku=p.sku; POS[i].opt=p.opt||null; POS[i].crossbar=p.crossbar||0; POS[i].options={}; if(!(Number(POS[i].price)>0)) POS[i].price=p.price; renderPos(); } }
+/* ── опции строки (catalog/options.ts): схема opt и цена комплекта перемычек crossbar — с сервера (позиции сделки или saleproducts) ── */
+function optOf(p){ return p.opt || ((PRODBYSKU[p.sku]||{}).opt) || null; }
+function cbOf(p){ return Number(p.crossbar)||Number((PRODBYSKU[p.sku]||{}).crossbar)||0; }
+function extraOf(p){ return (Number((p.options||{}).extraCrossbars)||0)*cbOf(p); }   // надбавка к цене единицы
+function lineSum(p){ return (Number(p.qty)||0)*((Number(p.price)||0)+extraOf(p)); }
+function optText(p){ var o=p.options||{}, t=[]; if(o.ropeColor) t.push('канат '+o.ropeColor); if(o.slideHooks) t.push('горка с '+(o.slideHooks==='реечки'?'реечками':'кружочками')); if(o.extraCrossbars) t.push('+ '+o.extraCrossbars+' компл. перемычек'); return t.join('; '); }
+function setOpt(i,k,v){ var o=POS[i].options||(POS[i].options={}); if(v===''||v==='0') delete o[k]; else o[k]=(k==='extraCrossbars')?Number(v):v; renderPos(); posTot(); }
+function optHtml(p,i){ var s=optOf(p); if(!s) return ''; var o=p.options||{}, h='<div class="popt"><span>Опции:</span>';
+  var sel=function(k,cur,opts,after){ return '<label>'+k+' <select onchange="setOpt('+i+',\''+after+'\',this.value)">'+opts.map(function(x){ return '<option value="'+esc(x[0])+'"'+(String(cur||'')===String(x[0])?' selected':'')+'>'+esc(x[1])+'</option>'; }).join('')+'</select></label>'; };
+  if(s.ropeColor) h+=sel('канат',o.ropeColor,[['','—'],['синий','синий'],['красный','красный']],'ropeColor');
+  if(s.slideHooks) h+=sel('горка',o.slideHooks,[['','—'],['реечки','с реечками'],['кружочки','с кружочками']],'slideHooks');
+  if(s.extraCrossbars>0){ var os=[['','нет']]; for(var n=1;n<=s.extraCrossbars;n++) os.push([String(n),n+' компл.']); h+=sel('доп. перемычки',o.extraCrossbars,os,'extraCrossbars')+(cbOf(p)?'<span>'+money(cbOf(p))+' руб/компл.</span>':''); }
+  return h+'</div>'; }
 function openCard(){
   leaveNew();
   DEAL=null; INVCTX=null; INVKIND='payment'; el('total').value=''; el('main').className='hide'; el('loaderr').className='note bad hide';
@@ -687,7 +706,8 @@ function render(){
   } else { el('curbuyer').className='pill'; el('curbuyer').textContent='не привязан';
     el('cliAttached').className='hide'; el('cliManage').className=''; el('cliCancel').style.display='none'; }
   fillDeliv(); fillNote(); presetScenario();
-  POS=(d.items||[]).map(function(it){ return { name:(it.equip?it.equip+' ':'')+(it.model||it.name||''), qty:it.qty, price:it.price, sku:it.sku||it.art||'' }; });
+  POS=(d.items||[]).map(function(it){ var o=it.options||{}; return { name:(it.equip?it.equip+' ':'')+(it.model||it.name||''), qty:it.qty, price:it.price, sku:it.sku||it.art||'',
+    options:o, opt:it.opt||null, crossbar:(it.extra&&o.extraCrossbars)?it.extra/o.extraCrossbars:0 }; });
   POS0=posKey(POS);
   renderPos();
   if(!val('total') && !isEu()) el('total').value=d.sum||'';   // проформа EUR — по прайсу EUR, не по сумме сделки
@@ -722,25 +742,25 @@ function syncSeg(){ var bs=document.querySelectorAll('#segType button'); for(var
 /* ── позиции ── */
 function renderPos(){
   var h='<div class="pr ph"><div>Наименование</div><div>Кол-во</div><div>Цена</div><div style="text-align:right">Сумма</div><div></div></div>', tot=0;
-  POS.forEach(function(p,i){ var s=(Number(p.qty)||0)*(Number(p.price)||0); tot+=s;
+  POS.forEach(function(p,i){ var s=lineSum(p); tot+=s;
     h+='<div class="pr">'
       +'<input list="prodlist" value="'+esc(p.name||'')+'" oninput="POS['+i+'].name=this.value" onchange="pickProd('+i+',this.value)" placeholder="товар из каталога или свой">'
       +'<input type="number" inputmode="decimal" value="'+esc(p.qty||'')+'" oninput="POS['+i+'].qty=this.value;posTot()">'
       +'<input type="number" inputmode="decimal" value="'+esc(p.price||'')+'" oninput="POS['+i+'].price=this.value;posTot()">'
       +'<div class="lt" id="lt'+i+'">'+money(s)+'</div>'
-      +'<button class="ic rm" onclick="rmPos('+i+')" title="удалить позицию">✕</button></div>';
+      +'<button class="ic rm" onclick="rmPos('+i+')" title="удалить позицию">✕</button></div>'+optHtml(p,i);
   });
   h+='<div class="tot">Итого: <span id="posTotal">'+money(tot)+'</span> '+esc((DEAL&&DEAL.currency)||'руб')+'</div>';
   el('posBox').innerHTML=h;
   el('posHint').textContent=POS.length?'':'добавьте товары или услуги';
 }
-function posTotalValue(){ var tot=0; POS.forEach(function(p){ tot+=(Number(p.qty)||0)*(Number(p.price)||0); }); return Math.round(tot*100)/100; }
-function posTot(){ POS.forEach(function(p,i){ var e=el('lt'+i); if(e) e.textContent=money((Number(p.qty)||0)*(Number(p.price)||0)); }); var t=el('posTotal'); if(t) t.textContent=money(posTotalValue()); syncTotal(); if(isOpen('inv')) refreshPreview(); }
+function posTotalValue(){ var tot=0; POS.forEach(function(p){ tot+=lineSum(p); }); return Math.round(tot*100)/100; }
+function posTot(){ POS.forEach(function(p,i){ var e=el('lt'+i); if(e) e.textContent=money(lineSum(p)); }); var t=el('posTotal'); if(t) t.textContent=money(posTotalValue()); syncTotal(); if(isOpen('inv')) refreshPreview(); }
 function syncTotal(){ if(!isEu() && posTotalValue()>0) el('total').value=posTotalValue(); }   // проформа EUR — по прайсу EUR, а не по ценам позиций
 function addPos(){ POS.push({name:'',qty:1,price:''}); renderPos(); }
 function rmPos(i){ POS.splice(i,1); renderPos(); posTot(); }
 function cleanPos(){ return POS.filter(function(p){ return String(p.name||'').trim() || (Number(p.qty)||0)>0; }); }
-function posKey(list){ return JSON.stringify(list.filter(function(p){ return String(p.name||'').trim() || (Number(p.qty)||0)>0; }).map(function(p){ return [String(p.name||'').trim(), Number(p.qty)||0, Number(p.price)||0]; })); }
+function posKey(list){ return JSON.stringify(list.filter(function(p){ return String(p.name||'').trim() || (Number(p.qty)||0)>0; }).map(function(p){ return [String(p.name||'').trim(), Number(p.qty)||0, Number(p.price)||0, optText(p)]; })); }
 function savePos(){
   run({vapi:'dealitems', deal:KEY, items:JSON.stringify(cleanPos())}, 'Сохраняю позиции…', 'posMsg').then(function(r){ if(!r) return;
     setm('posMsg','ok','✅ Сохранено, сумма: '+money(r.sum)+' руб');
@@ -761,8 +781,8 @@ function toggleSec(w){ var m=SECS_UI[w], open=isOpen(w); el(m[0]).className=open
 /* ── превью счёта ── */
 function posTableHtml(){
   var h='<div class="tbl-wrap"><table class="tbl pv"><tr><th class="n">№</th><th>Наименование</th><th class="n">Кол-во</th><th class="n">Цена</th><th class="n">Сумма</th></tr>', tot=0, k=0;
-  POS.forEach(function(p){ var q=Number(p.qty)||0, pr=Number(p.price)||0, s=q*pr; if(!String(p.name||'').trim() && q<=0) return; tot+=s; k++;
-    h+='<tr><td class="n">'+k+'</td><td>'+esc(p.name||'')+'</td><td class="n">'+q+'</td><td class="n">'+money(pr)+'</td><td class="n">'+money(s)+'</td></tr>'; });
+  POS.forEach(function(p){ var q=Number(p.qty)||0, pr=(Number(p.price)||0)+extraOf(p), s=lineSum(p), ot=optText(p); if(!String(p.name||'').trim() && q<=0) return; tot+=s; k++;
+    h+='<tr><td class="n">'+k+'</td><td>'+esc(p.name||'')+(ot?'<div class="ot">'+esc(ot)+'</div>':'')+'</td><td class="n">'+q+'</td><td class="n">'+money(pr)+'</td><td class="n">'+money(s)+'</td></tr>'; });
   h+='<tr><td colspan="4" class="n"><b>Итого:</b></td><td class="n"><b>'+money(tot)+'</b></td></tr></table></div>';
   return k?h:'<div class="sm">Добавьте позиции в блоке «Что продаём».</div>';
 }
