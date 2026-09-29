@@ -248,6 +248,12 @@ function renderTabs(){
   }).join('');
 }
 function go(tab){ TAB=tab; CARD=null; CMPV=null; PENDCONF=null; renderTabs(); renderBody(); }
+/** раскрыть/свернуть группу: перерисовка не должна «уносить» экран — прокрутка остаётся, заголовок группы держим в поле зрения */
+function toggleGrp(key){
+  var sy=window.scrollY; CLOSED[key]=!CLOSED[key]; renderBody(); window.scrollTo(0,sy);
+  var h=null; document.querySelectorAll('tr[data-grp]').forEach(function(t){ if(t.getAttribute('data-grp')===key) h=t; });
+  if(h){ var r=h.getBoundingClientRect(); if(r.top<0||r.bottom>window.innerHeight) h.scrollIntoView({block:'start'}); }
+}
 function renderBody(){
   var b=$('tabbody'); if(!b) return;
   regBar('','');                   // счётчик и «колонки / развернуть» — только на самом реестре
@@ -378,14 +384,14 @@ function regView(){
     if(!sorted && g!==cur){ cur=g; cur2=null;
       var gi=(GRPBY==='equip')?{}:(grpInfo(g)||{});
       var gc=gi.bg||gi.fg||'';   // цвет группы из листа — точкой, строка нейтральная (заливка слепила ночью)
-      h+='<tr class="grph" onclick="CLOSED[\''+jsq(g)+'\']=!CLOSED[\''+jsq(g)+'\'];renderBody()"><td colspan="'+(cols.length+1)+'">'+(!open&&CLOSED[g]?'▸':'▾')+' '+(gc?'<span class="dot g" style="background:'+gc+'"></span>':'')+esc(g)+hdrStat(gStat[g])+'</td></tr>';
+      h+='<tr class="grph" data-grp="'+esc(g)+'" onclick="toggleGrp(\''+jsq(g)+'\')"><td colspan="'+(cols.length+1)+'">'+(!open&&CLOSED[g]?'▸':'▾')+' '+(gc?'<span class="dot g" style="background:'+gc+'"></span>':'')+esc(g)+hdrStat(gStat[g])+'</td></tr>';
     }
     if(!open && !sorted && CLOSED[g]) return;
     // второй уровень: оборудование внутри группы (ключ свёртки составной — имена могут совпадать)
     if(!sorted && GRPBY==='group'){
       var ek=g+'▸'+(p.equip||'—');
       if(ek!==cur2){ cur2=ek;
-        h+='<tr class="grph2" onclick="CLOSED[\''+jsq(ek)+'\']=!CLOSED[\''+jsq(ek)+'\'];renderBody()"><td colspan="'+(cols.length+1)+'">'+(!open&&CLOSED[ek]?'▸':'▾')+' '+esc(p.equip||'(без оборудования)')+hdrStat(eStat[ek])+'</td></tr>';
+        h+='<tr class="grph2" data-grp="'+esc(ek)+'" onclick="toggleGrp(\''+jsq(ek)+'\')"><td colspan="'+(cols.length+1)+'">'+(!open&&CLOSED[ek]?'▸':'▾')+' '+esc(p.equip||'(без оборудования)')+hdrStat(eStat[ek])+'</td></tr>';
       }
       if(!open && CLOSED[ek]) return;
     }
