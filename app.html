@@ -159,13 +159,14 @@ function CARD(e){ return '<div class="plain"><div class="box">'
 <script>
 var BASE=(window.TW_CFG&&TW_CFG.hub)||'https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';   // адрес задаёт tw-config.js; запасной — живой GAS
 var APP='tw7prod', TGID='', ME=null, ROLE='', app=document.getElementById('app');
-var VER='20260925a';
+var VER='20260929a';
 var RUN=String(Date.now());   // одна метка на загрузку оболочки — сбивает кеш встроенных страниц   // бамп при изменении встраиваемых stat-страниц — сбивает кеш GitHub Pages в iframe
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
 // ⚠ ЛИЧНОСТЬ — ТОКЕНОМ, А НЕ АДРЕСОМ: ?tgid= в ссылке ничего не доказывает (Telegram ID виден
 // в списке сотрудников). Токен выдаётся после входа в сервис и лежит в localStorage этого браузера.
-function twTok(){ try{ return twQp('tok')||localStorage.getItem('tw_tok')||''; }catch(e){ return twQp('tok')||''; } }
+var TW_TOK_MEM='';   // токен и в памяти: в части WebView Telegram localStorage недоступен
+function twTok(){ try{ return twQp('tok')||localStorage.getItem('tw_tok')||TW_TOK_MEM||''; }catch(e){ return twQp('tok')||TW_TOK_MEM||''; } }
 function twQp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
 (function(){ var t=twQp('tok'); if(t){ try{ localStorage.setItem('tw_tok',t); }catch(e){} } })();
 function twAuthWall(r){
@@ -234,6 +235,9 @@ function load(){
     if(!m||!m.ok){ app.innerHTML='<div class="center err">Ошибка доступа</div>'; return; }
     if(m.badCode){ try{localStorage.removeItem('tw_code');}catch(e){} CODE=''; return identify(m); }
     if(m.needTg||m.badAuth) return identify(m);   // нет подтверждённой личности → вход по коду или через бота
+    // токен (личность подтверждена подписью Telegram) сохраняем ДО формы регистрации — без него register отклоняется
+    // («откройте сервис из бота»): новый сотрудник не мог зарегистрироваться (29.09.2026)
+    if(m.token){ TW_TOK_MEM=m.token; try{ localStorage.setItem('tw_tok', m.token); }catch(e){} }
     if(!m.registered) return register();
     if(m.tgId){ TGID=String(m.tgId); try{localStorage.setItem('tw_tgid',TGID);}catch(e){} }   // код опознал сотрудника → его tgId для встроенных панелей
     // ⚠ ТОКЕН — доказательство личности для встроенных панелей: без него прямая ссылка
