@@ -44,6 +44,8 @@
   .pos .popt{ display:flex; flex-wrap:wrap; gap:var(--s-1) var(--s-3); align-items:center; font:var(--t-small); color:var(--muted); margin:0 0 var(--s-2); padding-left:var(--s-2); }
   .pos .popt label{ display:inline-flex; align-items:center; gap:var(--s-1); }
   .pos .popt select{ width:auto; }
+  /* обязательная опция не выбрана (канат, зацепы горки — opt.required, решение 30.09.2026): рамка красная, после попытки сохранить — текст рядом */
+  .pos .popt select.req{ border-color:var(--red); box-shadow:0 0 0 1px var(--red); }
   /* «в комплекте с» (навесное к комплексу, sales/bundle.ts): ребёнок под родителем с отступом, у родителя — подпись про документы */
   .pos .pr.kid > input:first-child{ margin-left:var(--s-4); width:calc(100% - var(--s-4)); }
   .pos .kidmark{ color:var(--muted); margin-left:var(--s-2); }
@@ -573,6 +575,11 @@ function cbOf(p){ return Number(p.crossbar)||Number((PRODBYSKU[p.sku]||{}).cross
 function extraOf(p){ return (Number((p.options||{}).extraCrossbars)||0)*cbOf(p); }   // надбавка к цене единицы
 function lineSum(p){ return (Number(p.qty)||0)*((Number(p.price)||0)+extraOf(p)); }
 function optText(p){ var o=p.options||{}, t=[]; if(o.ropeColor) t.push('канат '+o.ropeColor); if(o.slideHooks) t.push('горка с '+(o.slideHooks==='реечки'?'реечками':'кружочками')); if(o.extraCrossbars) t.push('+ '+o.extraCrossbars+' компл. перемычек'); return t.join('; '); }
+/* ── обязательные опции (opt.required с сервера): без них позиции не сохраняются; у «в комплекте с» канат комплекса — не проверяем ── */
+var POSCHK=false, OPTNAME={ropeColor:'цвет каната', slideHooks:'зацепы горки'};
+function optMiss(p){ var s=optOf(p), o=p.options||{}; if(!s||p.par) return []; return (s.required||[]).filter(function(k){ return !o[k]; }).map(function(k){ return OPTNAME[k]||k; }); }
+function posMissMsg(){ var l=POS.filter(keepPos); for(var j=0;j<l.length;j++){ var m=optMiss(l[j]); if(m.length) return 'Позиция '+(j+1)+' ('+String(l[j].name||'').trim()+'): выберите '+m.join(' и '); } return ''; }
+function checkPos(m){ var t=posMissMsg(); if(!t) return true; POSCHK=true; renderPos(); setm(m,'err','⚠️ '+t); var x=document.querySelector('#posBox select.req'); if(x) x.focus(); return false; }
 function setOpt(i,k,v){ var o=POS[i].options||(POS[i].options={}); if(v===''||v==='0') delete o[k]; else o[k]=(k==='extraCrossbars')?Number(v):v; renderPos(); posTot(); }
 /* ── «в комплекте с»: комплекс — строка со схемой зацепов горки (DSK/DSK-L) или complex с сервера; ребёнок хранит ссылку par на объект строки ── */
 function isCx(p){ var s=optOf(p); return !!(p.complex || (s && s.slideHooks)); }
@@ -583,13 +590,15 @@ function bundleSum(p){ var t=lineSum(p); POS.forEach(function(k){ if(k.par===p) 
 function optHtml(p,i){ var s=optOf(p), cx=cxList(), kid=!!p.par, o=p.options||{};
   if(!s && (isCx(p) || !cx.length)) return '';
   var h='<div class="popt'+(kid?' kid':'')+'"><span>Опции:</span>';
-  var sel=function(k,cur,opts,after){ return '<label>'+k+' <select onchange="setOpt('+i+',\''+after+'\',this.value)">'+opts.map(function(x){ return '<option value="'+esc(x[0])+'"'+(String(cur||'')===String(x[0])?' selected':'')+'>'+esc(x[1])+'</option>'; }).join('')+'</select></label>'; };
+  var req=(s&&s.required)||[];
+  var sel=function(k,cur,opts,after){ var bad=req.indexOf(after)>=0 && !cur; return '<label>'+k+(req.indexOf(after)>=0?' *':'')+' <select'+(bad?' class="req" aria-invalid="true"':'')+' onchange="setOpt('+i+',\''+after+'\',this.value)">'+opts.map(function(x){ return '<option value="'+esc(x[0])+'"'+(String(cur||'')===String(x[0])?' selected':'')+'>'+esc(x[1])+'</option>'; }).join('')+'</select></label>'; };
   if(!isCx(p) && cx.length) h+='<label>В комплекте с <select onchange="setParent('+i+',this.value)"><option value="">—</option>'
     +cx.map(function(c){ var k=POS.indexOf(c); return '<option value="'+k+'"'+(p.par===c?' selected':'')+'>'+esc(c.name||('строка '+(k+1)))+'</option>'; }).join('')+'</select></label>';
   if(!s) return h+'</div>';
   if(s.ropeColor && kid) h+='<span>канат как у комплекса: '+esc(ropeOf(p)||'не выбран')+'</span>';
   else if(s.ropeColor) h+=sel('канат',o.ropeColor,[['','—'],['синий','синий'],['красный','красный']],'ropeColor');
   if(s.slideHooks) h+=sel('горка',o.slideHooks,[['','—'],['реечки','с реечками'],['кружочки','с кружочками']],'slideHooks');
+  var miss=optMiss(p); if(POSCHK && miss.length) h+='<span class="err">выберите '+esc(miss.join(' и '))+'</span>';
   if(s.extraCrossbars>0){ var os=[['','нет']]; for(var n=1;n<=s.extraCrossbars;n++) os.push([String(n),n+' компл.']); h+=sel('доп. перемычки',o.extraCrossbars,os,'extraCrossbars')+(cbOf(p)?'<span>'+money(cbOf(p))+' руб/компл.</span>':''); }
   return h+'</div>'; }
 function openCard(){
@@ -786,6 +795,7 @@ function keepPos(p){ return String(p.name||'').trim() || (Number(p.qty)||0)>0; }
 function cleanPos(){ var list=POS.filter(keepPos); return list.map(function(p){ var o={}; for(var k in p) if(k!=='par') o[k]=p[k]; o.parentLine=p.par?list.indexOf(p.par)+1:0; return o; }); }
 function posKey(list){ var l=list.filter(keepPos); return JSON.stringify(l.map(function(p){ return [String(p.name||'').trim(), Number(p.qty)||0, Number(p.price)||0, optText(p), p.par?l.indexOf(p.par)+1:0]; })); }
 function savePos(){
+  if(!checkPos('posMsg')) return;
   run({vapi:'dealitems', deal:KEY, items:JSON.stringify(cleanPos())}, 'Сохраняю позиции…', 'posMsg').then(function(r){ if(!r) return;
     setm('posMsg','ok','✅ Сохранено, сумма: '+money(r.sum)+' руб');
     if(!val('total')||Number(val('total'))===0) el('total').value=r.sum;
@@ -794,6 +804,7 @@ function savePos(){
 }
 // перед договором/счётом позиции сохраняются, только если их меняли (после запуска в производство сервер правку не примет — Р-3)
 function savePosIfChanged(m){ if(posKey(POS)===POS0) return Promise.resolve(true);
+  if(!checkPos(m)) return Promise.resolve(false);
   return run({vapi:'dealitems', deal:KEY, items:JSON.stringify(cleanPos())}, 'Сохраняю позиции…', m).then(function(r){ if(r) POS0=posKey(POS); return !!r; }); }
 
 /* ── свёртки ── */
@@ -1065,8 +1076,13 @@ function contractReadiness(){
   if(posTotalValue()<=0 && !(Number(DEAL.sum)>0)) miss.push('нет позиций/суммы');
   return miss;
 }
-function showConReady(){ var e=el('conReady'); if(!DEAL) return; var m=contractReadiness();
-  e.innerHTML=m.length?('⚠️ Не хватает: '+m.map(esc).join(', ')):'✓ данные для договора готовы'; e.className=m.length?'sm err':'sm ok'; }
+// розничные договоры: недостающее считает сервер (readiness — те же проверки, что при формировании: телефон, адрес/самовывоз, срок, доставка, паспорт и график у рассрочки, опции позиций)
+function showConReady(){ var e=el('conReady'); if(!DEAL) return; var m=contractReadiness(), t=val('ctypeSel');
+  var paint=function(l){ e.innerHTML=l.length?('⚠️ Не хватает: '+l.map(esc).join(', ')):'✓ данные для договора готовы'; e.className=l.length?'sm err':'sm ok'; };
+  paint(m);
+  if((t!=='Договор 100%' && t!=='Договор рассрочки') || !DEAL.buyerKey) return;
+  get({vapi:'readiness', deal:KEY}).then(function(r){ if(val('ctypeSel')!==t) return;
+    var c=((r&&r.checks)||[]).filter(function(x){ return x.doc===t; })[0]; if(c) paint(m.concat(c.missing||[])); }).catch(function(){}); }
 function onConPct(){
   var pct=Number(val('c_prepay_pct'))||0, total=posTotalValue()||Number(val('total'))||Number(DEAL&&DEAL.sum)||0;
   if(total>0&&pct>0){ if(pct>=100) el('scen').value='prepay100'; else { el('scen').value='prepay_balance'; el('prepay').value=Math.round(total*pct/100); } onScen(); }
