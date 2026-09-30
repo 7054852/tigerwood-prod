@@ -40,7 +40,7 @@
 <!-- ═══ СПРАВОЧНИК ═══ -->
 <div id="vList">
 <div class="toolbar">
-  <input id="q" type="search" class="search" placeholder="🔎 наименование, ФИО, УНП, телефон" oninput="renderList()">
+  <input id="q" type="search" class="search" placeholder="🔎 наименование, ФИО, УНП, телефон" oninput="renderList()" autocomplete="off">
   <select id="ft" onchange="renderList()"><option value="">все</option><option value="ul">юрлица и ИП</option><option value="fl">физлица</option></select>
   <select id="fm" onchange="renderList()" title="Рынок"><option value="">все рынки</option><option value="by">Беларусь</option><option value="ru">Россия</option><option value="eu">Европа</option><option value="other">другое</option></select>
   <span class="meta" id="cnt"></span>
@@ -66,7 +66,7 @@
   </div>
   <div id="ulReq" class="hide" style="margin-top:var(--s-3)">
     <label class="fl"><span>Вставьте реквизиты — распознаю и заполню поля</span>
-      <textarea id="raw" placeholder="ООО «...», УНП…, р/с…, банк, БИК, адрес, тел, e-mail"></textarea></label>
+      <textarea id="raw" placeholder="ООО «...», УНП…, р/с…, банк, БИК, адрес, тел, e-mail" autocomplete="off"></textarea></label>
     <div class="row" style="margin-top:var(--s-2)"><button class="gray sm" onclick="parseReq()">🔍 Распознать</button><span class="msg" id="reqMsg"></span></div>
   </div>
   <div class="grid" id="fields"></div>
@@ -180,7 +180,7 @@ function conPills(c){
 function canSign(c){ return c.status==='сформирован' && !c.expired; }
 function signContract(number, after){
   ask('Договор № '+number+' подписан', '<div>Укажите дату подписи. Если договор относится к заявке — она станет заказом и получит сквозной номер.</div>'
-    +'<label class="fl"><span>Дата подписи</span><input type="date" id="signDate" value="'+todayIso()+'"></label><div class="msg" id="signMsg"></div>',
+    +'<label class="fl"><span>Дата подписи</span><input type="date" id="signDate" value="'+todayIso()+'" autocomplete="off"></label><div class="msg" id="signMsg"></div>',
     function(){ var d=val('signDate'); if(!d){ setm('signMsg','err','Укажите дату'); return false; }
       run({vapi:'contractsign', number:number, date:ruDate(d)}, 'Отмечаю подпись…').then(function(r){ if(!r) return;
         var dl=r.deal||{};
@@ -235,7 +235,7 @@ function renderFields(cur){
   cur=cur||{};
   var fs=(CTYPE==='физлицо')?FL_FIELDS:UL_FIELDS;
   el('fields').innerHTML=fs.map(function(f){
-    return '<label class="fl '+(f[1]==='full'?'full':'')+'"><span>'+esc(LABELS[f[0]]||f[0])+'</span><input data-f="'+esc(f[0])+'" value="'+esc(cur[f[0]]||'')+'"></label>';
+    return '<label class="fl '+(f[1]==='full'?'full':'')+'"><span>'+esc(LABELS[f[0]]||f[0])+'</span><input data-f="'+esc(f[0])+'" value="'+esc(cur[f[0]]||'')+'" autocomplete="off"></label>';
   }).join('');
 }
 function collectRaw(){ var o={}, ins=el('fields').querySelectorAll('input'); for(var i=0;i<ins.length;i++) o[ins[i].getAttribute('data-f')]=ins[i].value.trim(); return o; }

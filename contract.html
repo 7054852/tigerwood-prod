@@ -76,9 +76,9 @@
       <span class="k" id="dealK">Сделка</span>
       <span class="v" id="dealV"><select id="f_deal" onchange="onDeal()"></select><div class="sm" id="dealHint"></div></span>
       <span class="k">Дата договора</span>
-      <span class="v"><input type="date" id="f_date"></span>
+      <span class="v"><input type="date" id="f_date" autocomplete="off"></span>
       <span class="k">Действует до</span>
-      <span class="v"><input type="date" id="f_valid"><div class="sm" id="validHint"></div></span>
+      <span class="v"><input type="date" id="f_valid" autocomplete="off"><div class="sm" id="validHint"></div></span>
     </div>
   </div>
 
@@ -86,9 +86,9 @@
   <div class="blk" id="s_terms">
     <div class="h">Условия</div>
     <div class="grid2">
-      <label class="fl"><span class="sm">Сумма, <span id="curLbl">BYN</span></span><input id="f_amount" type="number" inputmode="decimal" min="0" step="0.01" oninput="onAmount()">
+      <label class="fl"><span class="sm">Сумма, <span id="curLbl">BYN</span></span><input id="f_amount" type="number" inputmode="decimal" min="0" step="0.01" oninput="onAmount()" autocomplete="off">
         <span class="ck"><input type="checkbox" id="f_noamount" onchange="onNoAmount()"> без суммы (стоимость — по счетам и накладным)</span></label>
-      <label class="fl" id="w_prepay"><span class="sm">Предоплата, %</span><input id="f_prepay" type="number" inputmode="numeric" min="0" max="100" value="80" oninput="checkLegs()"></label>
+      <label class="fl" id="w_prepay"><span class="sm">Предоплата, %</span><input id="f_prepay" type="number" inputmode="numeric" min="0" max="100" value="80" oninput="checkLegs()" autocomplete="off"></label>
       <label class="fl" id="w_balance"><span class="sm">Остаток (доплата) — условие</span>
         <select id="f_balance">
           <option>по готовности товара к отгрузке</option>
@@ -97,15 +97,15 @@
           <option>100% предоплатой (без остатка)</option>
           <option>по графику (рассрочка / отсрочка)</option>
         </select></label>
-      <label class="fl" id="w_bdays"><span class="sm">Срок доплаты, дней от отгрузки</span><input id="f_bdays" type="number" inputmode="numeric" min="0" placeholder="пусто — условие из списка" oninput="onBalanceDays()"><span class="sm" id="bdaysHint"></span></label>
-      <label class="fl" id="w_prod"><span class="sm">Срок производства, раб. дней</span><input id="f_prod" type="number" inputmode="numeric" min="1" value="14"></label>
+      <label class="fl" id="w_bdays"><span class="sm">Срок доплаты, дней от отгрузки</span><input id="f_bdays" type="number" inputmode="numeric" min="0" placeholder="пусто — условие из списка" oninput="onBalanceDays()" autocomplete="off"><span class="sm" id="bdaysHint"></span></label>
+      <label class="fl" id="w_prod"><span class="sm">Срок производства, раб. дней</span><input id="f_prod" type="number" inputmode="numeric" min="1" value="14" autocomplete="off"></label>
       <label class="fl" id="w_freight"><span class="sm">Заказчик перевозки (для ТН/ТТН)</span><select id="f_freight"><option value="Мы">Мы (Тигервуд)</option><option value="Клиент">Клиент</option></select></label>
     </div>
     <!-- валютный договор (рынки Россия / Европа): регистрация в банке при сумме от 4000 БВ -->
     <div id="w_creg" class="hide" style="margin-top:var(--s-3)">
       <div class="grid2">
-        <label class="fl"><span class="sm">Рег. номер валютного договора</span><input id="f_regNo" placeholder="из банка"></label>
-        <label class="fl"><span class="sm">Дата регистрации</span><input id="f_regDate" type="date"></label>
+        <label class="fl"><span class="sm">Рег. номер валютного договора</span><input id="f_regNo" placeholder="из банка" autocomplete="off"></label>
+        <label class="fl"><span class="sm">Дата регистрации</span><input id="f_regDate" type="date" autocomplete="off"></label>
       </div>
       <div class="sm" id="cregHint"></div>
     </div>
@@ -138,8 +138,8 @@
       </table></div>
       <div class="toolbar" style="margin:var(--s-3) 0 0">
         <button class="gho" id="addLegBtn" onclick="addLeg()">+ строка</button>
-        <label>после отгрузки, платежей <input id="f_n" type="number" inputmode="numeric" min="1" max="5" value="2"></label>
-        <label>первый из них <input id="f_second" type="date"></label>
+        <label>после отгрузки, платежей <input id="f_n" type="number" inputmode="numeric" min="1" max="5" value="2" autocomplete="off"></label>
+        <label>первый из них <input id="f_second" type="date" autocomplete="off"></label>
         <button class="sec sm" id="splitBtn" onclick="splitRest()">Разбить остаток помесячно</button>
       </div>
       <div class="msg" id="schedMsg"></div>
@@ -460,9 +460,9 @@ function amountVal(){ return el('f_noamount').checked?null:(Number(val('f_amount
 /* ── позиции ── */
 function renderItems(){
   el('itemRows').innerHTML=ITEMS.map(function(p,i){ var s=(Number(p.qty)||0)*(Number(p.price)||0);
-    return '<tr><td data-l="Наименование"><input list="prodlist" value="'+esc(p.name||'')+'" placeholder="товар из каталога или свой" oninput="ITEMS['+i+'].name=this.value" onchange="pickProd('+i+',this.value)"></td>'
-      +'<td class="num" data-l="Кол-во"><input type="number" inputmode="decimal" min="0" value="'+esc(p.qty==null?'':p.qty)+'" oninput="ITEMS['+i+'].qty=this.value;itemsTot()"></td>'
-      +'<td class="num" data-l="Цена"><input type="number" inputmode="decimal" min="0" step="0.01" value="'+esc(p.price==null?'':p.price)+'" oninput="ITEMS['+i+'].price=this.value;itemsTot()"></td>'
+    return '<tr><td data-l="Наименование"><input list="prodlist" value="'+esc(p.name||'')+'" placeholder="товар из каталога или свой" oninput="ITEMS['+i+'].name=this.value" onchange="pickProd('+i+',this.value)" autocomplete="off"></td>'
+      +'<td class="num" data-l="Кол-во"><input type="number" inputmode="decimal" min="0" value="'+esc(p.qty==null?'':p.qty)+'" oninput="ITEMS['+i+'].qty=this.value;itemsTot()" autocomplete="off"></td>'
+      +'<td class="num" data-l="Цена"><input type="number" inputmode="decimal" min="0" step="0.01" value="'+esc(p.price==null?'':p.price)+'" oninput="ITEMS['+i+'].price=this.value;itemsTot()" autocomplete="off"></td>'
       +'<td class="num" id="it'+i+'" data-l="Сумма">'+money(s)+'</td><td><button class="gho sm" title="убрать позицию" onclick="ITEMS.splice('+i+',1);renderItems();itemsTot()">✕</button></td></tr>'; }).join('')
     ||'<tr><td colspan="5" class="sm">Позиций нет — добавьте товары или услуги, либо укажите сумму вручную.</td></tr>';
   itemsTot(); setEditable();
@@ -488,8 +488,8 @@ function onSchedOn(){
 }
 function renderLegs(){
   el('legRows').innerHTML=LEGS.map(function(l,i){
-    return '<tr><td data-l="№">'+(i+1)+'</td><td class="num" data-l="Сумма"><input type="number" inputmode="decimal" min="0" step="0.01" value="'+esc(l.amount==null?'':l.amount)+'" oninput="LEGS['+i+'].amount=this.value;checkLegs()"></td>'
-      +'<td data-l="Дата"><input type="date" value="'+esc(l.dueDate||'')+'" onchange="LEGS['+i+'].dueDate=this.value;checkLegs()"></td>'
+    return '<tr><td data-l="№">'+(i+1)+'</td><td class="num" data-l="Сумма"><input type="number" inputmode="decimal" min="0" step="0.01" value="'+esc(l.amount==null?'':l.amount)+'" oninput="LEGS['+i+'].amount=this.value;checkLegs()" autocomplete="off"></td>'
+      +'<td data-l="Дата"><input type="date" value="'+esc(l.dueDate||'')+'" onchange="LEGS['+i+'].dueDate=this.value;checkLegs()" autocomplete="off"></td>'
       +'<td data-l="До отгрузки"><input type="checkbox" '+(l.beforeShip?'checked':'')+' onchange="LEGS['+i+'].beforeShip=this.checked;checkLegs()"></td>'
       +'<td><button class="gho sm" title="убрать строку" onclick="LEGS.splice('+i+',1);renderLegs()">✕</button></td></tr>'; }).join('')
     ||'<tr><td colspan="5" class="sm">Строк нет — «+ строка» или «Разбить остаток помесячно».</td></tr>';
@@ -580,7 +580,7 @@ function renderDoc(){
 function signDlg(){
   var c=C||{}, n=c.number||'';
   ask('Договор № '+n+' подписан', '<div>Укажите дату подписи. Если договор относится к заявке — она станет заказом и получит сквозной номер.</div>'
-    +'<label class="fl" style="margin-top:var(--s-3)"><span class="sm">Дата подписи</span><input type="date" id="signDate" value="'+todayIso()+'"></label><div class="msg" id="signMsg"></div>',
+    +'<label class="fl" style="margin-top:var(--s-3)"><span class="sm">Дата подписи</span><input type="date" id="signDate" value="'+todayIso()+'" autocomplete="off"></label><div class="msg" id="signMsg"></div>',
     function(){ var d=val('signDate'); if(!d){ setm('signMsg','err','Укажите дату'); return false; }
       run({vapi:'contractsign', number:n, date:ruDate(d)}, 'Отмечаю подпись…').then(function(r){ if(!r) return;
         var dl=r.deal||{};
@@ -592,8 +592,8 @@ function uploadDlg(){
   var c=C, kinds=KINDS.filter(function(k){ return !!k.framework===isFw(); });
   ask('Загрузить подписанный договор', '<div class="sm">Загруженный файл = подписанный документ: договор станет «подписан», номер берётся <b>с бумаги</b> (серии не тратятся). Если по договору есть заявка — она станет заказом.</div>'
     +(c?'':'<label class="fl" style="margin-top:var(--s-3)"><span class="sm">Тип договора</span><select id="upKind">'+kinds.map(function(k){ return '<option value="'+esc(k.kind)+'"'+(k.kind===val('f_kind')?' selected':'')+'>'+esc(k.label)+'</option>'; }).join('')+'</select></label>')
-    +'<label class="fl" style="margin-top:var(--s-3)"><span class="sm">Номер договора (как на бумаге)</span><input id="upNum" value="'+esc((c&&c.number)||'')+'" placeholder="например 12/2026"></label>'
-    +'<label class="fl" style="margin-top:var(--s-2)"><span class="sm">Дата подписи</span><input type="date" id="upDate" value="'+todayIso()+'"></label>'
+    +'<label class="fl" style="margin-top:var(--s-3)"><span class="sm">Номер договора (как на бумаге)</span><input id="upNum" value="'+esc((c&&c.number)||'')+'" placeholder="например 12/2026" autocomplete="off"></label>'
+    +'<label class="fl" style="margin-top:var(--s-2)"><span class="sm">Дата подписи</span><input type="date" id="upDate" value="'+todayIso()+'" autocomplete="off"></label>'
     +'<label class="fl" style="margin-top:var(--s-2)"><span class="sm">Файл (PDF или фото, до 15 МБ)</span><input type="file" id="upFile" accept="application/pdf,image/*,.doc,.docx"></label>'
     +'<div class="msg" id="upMsg"></div>',
     function(){
