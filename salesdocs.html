@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="tw-theme.js"></script>
 <script src="tw-config.js"></script>
+<script src="tw-waybill.js"></script>
 <title>Тигервуд — Договоры, счета, накладные</title>
 <!-- Замена GAS-панелей хаба ContractsPanel (?page=contracts), InvoicesPanel (?page=invoices), DocsPanel (?page=docs).
      ?tab=contracts|invoices|docs — открыть вкладку (так ведут пункты меню). Вкладки видны по разделам роли (people/model.ts ROLE_SECTIONS).
@@ -12,7 +13,8 @@
      счета — рынок / валюта / вид (счёт, проформа, коммерческий инвойс); сделки для договора/счёта — по стадии с сервера. Продавец не выбирается (всегда Тигервуд).
      С 30.09.2026: «Новый договор» и строка реестра ведут в карточку договора contract.html (черновик, формирование, загрузка подписанного);
      колонка «Происхождение» (сформирован / загружен), статус «черновик»; счета РФ — колонка «Ввозной НДС» (importvatset: дата + файл заявления с отметкой ИФНС),
-     фильтр «НДС не подтверждён». -->
+     фильтр «НДС не подтверждён». С 30.09.2026: выписка ТН/ТТН — общий диалог накладной tw-waybill.js (дата отгрузки, адрес, заказчик перевозки,
+     водитель, автомобиль, прицеп, путевой лист, места/масса), тот же, что в карточке сделки и договора. -->
 <style>
   .hide{ display:none !important; }
   td.num, td[data-l="№"]{ white-space:nowrap; }   /* сумма и номер не рвём на две строки */
@@ -34,11 +36,7 @@
   .dname{ font-weight:600; min-width:150px; }
   .drow button{ margin-left:auto; }
   table.reg tr.sp td{ color:var(--muted); text-decoration:line-through; }
-  input.wb-hi{ border-color:var(--amber); background:var(--amber-bg); font-weight:600; }
-  .hint{ font:var(--t-small); color:var(--amber); margin-top:var(--s-1); }
   details > summary{ cursor:pointer; font-weight:600; }
-  table.wbt input{ width:84px; }
-  @media (max-width:640px){ table.wbt input{ width:64px; } }
 </style>
 </head>
 <body>
@@ -109,13 +107,12 @@
   <div class="note info"><div id="nextBlanks">Следующий свободный бланк — загрузка…</div></div>
 
   <div id="wbPanel" class="card hide">
-    <div class="note"><div>Выберите сделку и вид накладной, проверьте данные (особенно <b>дату</b> и <b>адрес</b>) и сформируйте. Номер бланка присваивается автоматически.</div></div>
+    <div class="note"><div>Выберите сделку и вид накладной — откроется диалог накладной: проверьте <b>дату</b> и <b>адрес</b>, заполните перевозку, места и массу. Номер бланка присваивается автоматически.</div></div>
     <div class="row">
       <div style="flex:3;min-width:200px"><select id="wbDeal"><option value="">— загрузка сделок… —</option></select></div>
       <div style="flex:0 0 90px;min-width:0"><select id="wbKind"><option>ТН</option><option>ТТН</option></select></div>
-      <div style="flex:0 0 auto;min-width:0"><button onclick="prepWaybill()">Подготовить</button></div>
+      <div style="flex:0 0 auto;min-width:0"><button onclick="prepWaybill()">✍️ Выписать</button></div>
     </div>
-    <div id="wbForm" style="margin-top:var(--s-3)"></div>
     <div class="msg" id="wbMsg"></div>
     <details style="margin-top:var(--s-4)"><summary class="sm">Прочие документы по сделке (чек / счёт-фактура / договор)</summary>
       <div class="row" style="margin-top:var(--s-2)"><div style="flex:3;min-width:200px"><input id="leadInp" placeholder="Поиск: ссылка на сделку amoCRM или ID"></div>
@@ -423,7 +420,7 @@ function checkDeal(){
 }
 
 /* ══════════ НАКЛАДНЫЕ И ДОКУМЕНТЫ ══════════ */
-var REG_KIND='ТН', WB_PREP=null;   // продавец документов — всегда Тигервуд (SIT убран 28.09.2026)
+var REG_KIND='ТН';   // продавец документов — всегда Тигервуд (SIT убран 28.09.2026)
 
 // бланки строгой отчётности
 function blk(k){ return '<b>'+esc(k.kind)+'</b>: свободно '+esc(k.free)+', использовано '+esc(k.used)+', испорчено '+esc(k.spoiled)
@@ -504,41 +501,8 @@ function loadSalesList(){
 function prepWaybill(){
   var key=val('wbDeal'), kind=val('wbKind');
   if(!key){ setm('wbMsg','err','Выберите сделку'); return; }
-  setm('wbMsg','','Готовлю данные…'); el('wbForm').innerHTML='';
-  get({vapi:'wbprep', deal:key, kind:kind}).then(function(r){
-    if(!r||!r.ok){ setm('wbMsg','err','⚠️ '+esc(errText(r))); return; }
-    setm('wbMsg','',''); renderWbForm(r);
-  }).catch(function(e){ setm('wbMsg','err',esc(netText(e))); });
-}
-function renderWbForm(p){
-  WB_PREP=p;
-  var miss=(p.missing&&p.missing.length)?('<div class="msg err">⚠ Не хватает для накладной: '+esc(p.missing.join(', '))+'</div>'):'';
-  var rows=(p.items||[]).map(function(it,i){
-    return '<tr><td data-l="Наименование">'+esc(it.name)+'</td><td data-l="Кол-во" class="num">'+esc(it.qty)+'</td>'
-      +'<td data-l="Мест"><input type="number" min="0" value="'+esc(it.places)+'" oninput="WB_PREP.items['+i+'].places=this.value;wbSums()"></td>'
-      +'<td data-l="Масса, кг"><input type="number" min="0" step="0.01" value="'+esc(it.mass)+'" oninput="WB_PREP.items['+i+'].mass=this.value;wbSums()"></td></tr>';
-  }).join('');
-  el('wbForm').innerHTML=miss
-    +'<div class="sm">Клиент: <b>'+esc(p.client)+'</b>'+(p.contract?(' · '+esc(p.contract)):' · <span class="err">договор не привязан</span>')+'</div>'
-    +'<div class="row" style="margin-top:var(--s-2)">'
-    +'<div style="min-width:150px"><div class="sm">📅 Дата накладной</div><input id="wbDate" class="wb-hi" value="'+esc(p.date)+'" placeholder="дд.мм.гггг"><div class="hint">проверьте дату!</div></div>'
-    +'<div style="flex:2;min-width:200px"><div class="sm">📍 Адрес доставки</div><input id="wbAddr" class="wb-hi" value="'+esc(p.address)+'"><div class="hint">проверьте адрес!</div></div></div>'
-    +'<div class="tbl-wrap" style="margin-top:var(--s-3)"><table class="tbl mob wbt"><thead><tr><th>Наименование</th><th class="num">Кол-во</th><th>Мест</th><th>Масса, кг</th></tr></thead><tbody>'+rows
-    +'<tr style="font-weight:600"><td>Итого</td><td></td><td data-l="Мест" id="wbTotPl">0</td><td data-l="Масса, кг" id="wbTotMs">0</td></tr></tbody></table></div>'
-    +'<label class="sm" style="display:block;margin-top:var(--s-3)"><input type="checkbox" id="wbCheck" onchange="el(\'wbGo\').disabled=!this.checked"> Я проверил <b>дату накладной</b> и <b>адрес доставки</b></label>'
-    +'<button class="green" id="wbGo" disabled style="margin-top:var(--s-2)" onclick="issueWaybill()">Сформировать накладную</button>';
-  wbSums();
-}
-function wbSums(){ var pl=0,ms=0; ((WB_PREP&&WB_PREP.items)||[]).forEach(function(it){ pl+=Number(it.places)||0; ms+=Number(it.mass)||0; });
-  var a=el('wbTotPl'), b=el('wbTotMs'); if(a) a.textContent=pl; if(b) b.textContent=Math.round(ms*100)/100; }
-function issueWaybill(){
-  var key=val('wbDeal'), kind=val('wbKind'), date=val('wbDate'), addr=val('wbAddr');
-  if(!date.trim()){ setm('wbMsg','err','Укажите дату накладной'); return; }
-  var payload={ date:date, address:addr, items:((WB_PREP&&WB_PREP.items)||[]).map(function(it){ return {places:Number(it.places)||0, mass:Number(it.mass)||0}; }) };
-  run({vapi:'wbissue', deal:key, kind:kind, data:JSON.stringify(payload)}, 'Формирую накладную…', 'wbMsg').then(function(r){ if(!r) return;
-    setm('wbMsg','ok','✅ Накладная сформирована'+(r.waybill?(' · № бланка <b>'+esc(r.waybill)+'</b>'):'')+': <a href="'+esc(r.url)+'" target="_blank" rel="noopener">открыть/печать</a>');
-    el('wbGo').disabled=true; loadRegistry(); loadBlanksStatus();
-  });
+  setm('wbMsg','','');
+  twWaybill(key, kind, function(r){ setm('wbMsg','ok','✅ Накладная сформирована'+(r.waybill?(' · № бланка <b>'+esc(r.waybill)+'</b>'):'')+': <a href="'+esc(r.url)+'" target="_blank" rel="noopener">открыть/печать</a>'); loadRegistry(); loadBlanksStatus(); });
 }
 
 // прочие документы по сделке (по ID лида amoCRM)
