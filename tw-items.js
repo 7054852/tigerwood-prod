@@ -46,7 +46,7 @@ function optHtml(p,i){ var s=optOf(p), cx=cxList(), kid=!!p.par, o=p.options||{}
   var h='<div class="popt'+(kid?' kid':'')+'"><span>Опции:</span>';
   var req=(s&&s.required)||[];
   var sel=function(k,cur,opts,after){ var bad=req.indexOf(after)>=0 && !cur; return '<label>'+k+(req.indexOf(after)>=0?' *':'')+' <select'+(bad?' class="req" aria-invalid="true"':'')+' onchange="setOpt('+i+',\''+after+'\',this.value)">'+opts.map(function(x){ return '<option value="'+esc(x[0])+'"'+(String(cur||'')===String(x[0])?' selected':'')+'>'+esc(x[1])+'</option>'; }).join('')+'</select></label>'; };
-  if(!isCx(p) && cx.length) h+='<label>В комплекте с <select onchange="setParent('+i+',this.value)"><option value="">—</option>'
+  if(!isCx(p) && cx.length) h+='<label class="bnd">В комплекте с <select onchange="setParent('+i+',this.value)"><option value="">—</option>'
     +cx.map(function(c){ var k=POS.indexOf(c); return '<option value="'+k+'"'+(p.par===c?' selected':'')+'>'+esc(c.name||('строка '+(k+1)))+'</option>'; }).join('')+'</select></label>';
   if(!s) return h+'</div>';
   if(s.ropeColor && kid) h+='<span>канат как у комплекса: '+esc(ropeOf(p)||'не выбран')+'</span>';
