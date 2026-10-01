@@ -175,7 +175,7 @@
       <div class="fl full" id="w_way"><span class="sm">Способ</span>
         <span class="seg" id="segWay"><button type="button" data-v="pick" onclick="setWay('pick')">Самовывоз</button><button type="button" data-v="del" id="btnWayDel" onclick="setWay('del')">Доставка</button></span><span class="sm" id="wayHint"></span></div>
       <div class="fl full" id="w_cost"><span class="sm" id="lblCost">Стоимость доставки</span>
-        <div class="row"><span class="seg" id="segInc"><button type="button" data-v="1" onclick="setInc('1')">включена в цену</button><button type="button" data-v="0" id="btnIncNo" onclick="setInc('0')">оплачивается отдельно</button></span>
+        <div class="row"><span class="seg" id="segInc"><button type="button" data-v="1" id="btnIncYes" onclick="setInc('1')">включена в цену</button><button type="button" data-v="0" id="btnIncNo" onclick="setInc('0')">оплачивается отдельно</button></span>
         <label class="fl" id="w_costSum"><input id="d_delivCost" type="number" inputmode="decimal" min="0" step="0.01" placeholder="сумма, руб." autocomplete="off" oninput="renderReady()"></label></div>
         <span class="sm" id="costHint"></span></div>
       <label class="fl" id="w_region"><span class="sm">Область</span><input id="d_region" autocomplete="off"></label>
@@ -325,15 +325,15 @@ function isFw(){ return mode()==='legal' && fwAvail() && el('f_fw').checked; }
 /** рамочный РБ — без суммы (стоимость по счетам); РФ/Европа — валютный, сумма обязательна (владелец 01.10.2026) */
 function fwNoSum(){ var k=curKind(); return isFw() && (!k || !k.market || k.market==='by'); }
 function curKind(){ var k=kindVal(), fw=isFw(), hit=null; KINDS.forEach(function(x){ if(x.kind===k && !!x.framework===fw && !hit) hit=x; }); if(!hit) KINDS.forEach(function(x){ if(x.kind===k && !hit) hit=x; }); return hit; }
-/** РФ v3 / EU v3 (владелец 01.10.2026): поставка всегда FCA склад — доставку в карточке не спрашиваем */
-function isFca(){ var k=curKind(); return mode()==='legal' && !!k && (k.market==='ru'||isEu()); }
+/** РФ v3 (владелец 01.10.2026): поставка всегда FCA склад — доставку в карточке не спрашиваем. EU (02.10.2026): выбор FCA (перевозку оплачивает покупатель) / CPT (доставка в цене) */
+function isFca(){ var k=curKind(); return mode()==='legal' && !!k && k.market==='ru'; }
 /** EU v3: контракт Европа — остаток с даты поставки (штамп на CMR), сроки в календарных днях, срок изготовления — в Счёте (Invoice) */
 function isEu(){ var k=curKind(); return mode()==='legal' && !!k && (k.market==='eu'||k.market==='other'); }
 /** новый договор, смена рынка типа: умолчания — РФ 60 % / остаток по готовности / 15 раб. дней; Европа 70 % за 3 календ. дня / 7 календ. дней с даты поставки; иначе 80 % / с даты отгрузки / 14 */
 var KIND_MKT='';
 function kindDefaults(){ var k=curKind(), m=(k&&k.market)||''; if(m===KIND_MKT) return; KIND_MKT=m;
   var eu=isEu(), ru=isFca()&&!eu; el('f_prepay').value=ru?60:eu?70:80; setSel('f_balance', ru?'ready':'shipped'); el('f_prod').value=ru?15:14;
-  el('f_pdays').value=eu?3:5; if(eu) el('f_bdays').value=7; }
+  el('f_pdays').value=eu?3:5; if(eu){ el('f_bdays').value=7; if(!val('d_delivInc')) el('d_delivInc').value='0'; } }   // EU: по умолчанию FCA
 function schedOn(){ var m=mode(); return m==='retail' ? isInst() : (m==='legal' && !isFw() && val('f_balance')===SCHED_TXT); }
 function defaultValid(){ return isFw()?addDays(todayIso(),365):(todayIso().slice(0,4)+'-12-31'); }
 function vis(id, on){ var e=el(id); if(e) e.classList.toggle('hide', !on); }
@@ -520,9 +520,11 @@ function applyMode(){
   var fca=isFca();   // РФ: FCA всегда — блока «Доставка» нет, остаётся гарантия
   vis('w_way', !legal); vis('w_cost', (legal && !fca) || del); vis('w_costSum', !legal && del && inc==='0');
   vis('w_city', legal ? !fca && inc==='1' : del); vis('w_addr', legal ? !fca && inc==='1' : del);
-  el('lblAddr').textContent='Адрес доставки'; el('lblCost').textContent=legal?'Доставка':'Стоимость доставки';
-  el('btnIncNo').textContent=legal?'не включена (франко-склад)':'оплачивается отдельно';
-  el('costHint').textContent=legal?(inc==='1'?'Поставщик доставляет по адресу Покупателя, стоимость в цене Товара; разгрузка — Покупатель':(inc==='0'?'франко-склад Поставщика: вывоз Товара силами и за счёт Покупателя':'в договор: доставка включена в цену или франко-склад')):'';
+  el('lblAddr').textContent=eu?'Адрес доставки — пункт назначения CPT (пусто — юр. адрес покупателя)':'Адрес доставки'; el('lblCost').textContent=eu?'Условия поставки':legal?'Доставка':'Стоимость доставки';
+  el('btnIncYes').textContent=eu?'Доставка включена в цену (CPT)':'включена в цену';
+  el('btnIncNo').textContent=eu?'Перевозку оплачивает покупатель (FCA)':legal?'не включена (франко-склад)':'оплачивается отдельно';
+  el('costHint').textContent=eu?(inc==='1'?'CPT пункт назначения: Продавец оплачивает перевозку; риск переходит при передаче первому перевозчику; разгрузка и ввоз в ЕС — Покупатель':(inc==='0'?'FCA Krasnoye: Покупатель организует и оплачивает перевозку':'в договор: FCA или CPT'))
+    :legal?(inc==='1'?'Поставщик доставляет по адресу Покупателя, стоимость в цене Товара; разгрузка — Покупатель':(inc==='0'?'франко-склад Поставщика: вывоз Товара силами и за счёт Покупателя':'в договор: доставка включена в цену или франко-склад')):'';
   el('wayHint').textContent='';
   if(!C) el('d_warranty').placeholder=(legal?12:36)+' — как у продавца';
   el('lblTransfer').textContent='Срок передачи, раб. дней '+(inst?'от поступления аванса':'от оплаты');
@@ -704,8 +706,8 @@ function localMissing(){
     var bm=val('f_balance'), lbl=(curKind()||{}).label||'';
     if(!/услуг|сотрудничеств/i.test(lbl) && (bm==='shipped'||bm==='accepted') && !(Number(val('f_bdays'))>0)) l.push('срок остатка, дней');
     var inc0=val('d_delivInc'); if(isFca()) return l;   // РФ — FCA, доставку не спрашиваем
-    if(!inc0) l.push('доставка в договоре: включена в цену или франко-склад');
-    else if(inc0==='1' && !val('d_city').trim() && !val('d_addr').trim()) l.push('адрес доставки (город/адрес)');
+    if(!inc0) l.push(isEu()?'условия поставки: FCA или CPT':'доставка в договоре: включена в цену или франко-склад');
+    else if(inc0==='1' && !isEu() && !val('d_city').trim() && !val('d_addr').trim()) l.push('адрес доставки (город/адрес)');   // EU CPT: пусто — юр. адрес покупателя
     return l;
   }
   if(m!=='retail') return l;
