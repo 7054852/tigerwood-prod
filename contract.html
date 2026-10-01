@@ -16,7 +16,10 @@
      С 30.09.2026 (бриф «перестройка сделки»): договор — главное место продажи. Позиции сделки правятся здесь (tw-items.js: товар каталога, опции
      канат/зацепы/перемычки, «в комплекте с», обязательные опции — как раньше в сделке); условия передачи (срок, доставка/сборка, способ,
      город/область/адрес, гарантия) — колонки сделки через contractsave{delivery}; готовность «Не хватает: …» — contractget.readiness / readiness(deal);
-     накладные ТН/ТТН — диалог tw-waybill.js. Карточка сделки (sales.html) эти данные только показывает. -->
+     накладные ТН/ТТН — диалог tw-waybill.js. Карточка сделки (sales.html) эти данные только показывает.
+     С 01.10.2026 (бриф «карточка договора по типу»): сначала клиент и тип — до выбора типа ниже ничего нет; дальше видны только поля этого типа
+     (розница 100 % / рассрочка — позиции, передача и доставка, оплата; ЮЛ — условия оплаты, доставка для накладной), в contractsave уходят только видимые
+     поля. «Не хватает: …» — сверху, пункты ведут к полю. «+ Создать клиента» → clients.html?new=1&type=&name=&back= (черновик формы — sessionStorage). -->
 <style>
   .hide{ display:none !important; }
   .sm:not(button):not(.btn){ font:var(--t-small); color:var(--muted); }
@@ -55,6 +58,7 @@
   .pos .popt label{ display:inline-flex; align-items:center; gap:var(--s-1); margin:0; }
   .pos .popt select{ width:auto; max-width:100%; }
   .pos .popt label{ max-width:100%; min-width:0; }
+  .pos .popt label select{ min-width:0; flex:1 1 auto; }   /* длинное имя комплекса в «В комплекте с» не вылезает за карточку */
   .pos .popt select.req{ border-color:var(--red); box-shadow:0 0 0 1px var(--red); }
   .pos .pr.kid > input:first-child{ margin-left:var(--s-4); width:calc(100% - var(--s-4)); }
   .pos .kidmark{ color:var(--muted); margin-left:var(--s-2); }
@@ -71,6 +75,10 @@
     .pos .pr input{ padding:0 var(--s-1); }
     .pos .pr .lt{ font:var(--t-small); }
   }
+  .seg button:disabled{ opacity:.6; }
+  #ready{ margin-bottom:var(--s-4); }
+  #ready a{ color:inherit; text-decoration:underline; }
+  .payfull{ font:var(--t-body); }
 </style>
 </head>
 <body>
@@ -88,45 +96,60 @@
 
 <div id="main" class="hide">
   <div class="blk hdr"><div class="t" id="hTitle">Новый договор</div><div class="m" id="hMeta"></div></div>
+  <!-- «Не хватает: …» — сверху; каждый пункт ведёт к своему полю (данные клиента — в карточку клиента) -->
+  <div id="ready" class="note hide"></div>
 
-  <!-- шапка: тип, клиент, рамочный, сделка -->
+  <!-- шапка: клиент → тип; после выбора типа — только поля этого типа -->
   <div class="blk" id="s_head">
     <div class="h">Основное</div>
     <div class="kv">
       <span class="k">Клиент</span>
-      <span class="v"><input id="f_client" list="buyerList" placeholder="начните вводить название или ФИО" autocomplete="off" oninput="onClientInput()" onchange="onClientInput()"><datalist id="buyerList"></datalist><div class="sm" id="clientInfo"></div></span>
-      <span class="k">Рамочный</span>
-      <span class="v"><label class="ck"><input type="checkbox" id="f_fw" onchange="onFw()"> на клиента, без сделки и суммы — счета его сделок выставляются к нему, пока он действует</label></span>
+      <span class="v"><input id="f_client" list="buyerList" placeholder="начните вводить название или ФИО" autocomplete="off" oninput="onClientInput()" onchange="onClientInput()"><datalist id="buyerList"></datalist>
+        <div class="row"><span class="sm" id="clientInfo">выберите клиента из справочника — от него зависят тип договора, валюта и серия номера</span><button class="gho sm" id="newClientBtn" onclick="newClient()">+ Создать клиента</button></div></span>
       <span class="k">Тип договора</span>
       <span class="v"><select id="f_kind" onchange="onKind()"></select><div class="sm" id="kindHint"></div></span>
+      <span class="k" id="fwK">Рамочный</span>
+      <span class="v" id="fwV"><label class="ck"><input type="checkbox" id="f_fw" onchange="onFw()"> на клиента, без сделки и суммы — счета его сделок выставляются к нему, пока он действует</label></span>
       <span class="k" id="dealK">Сделка</span>
       <span class="v" id="dealV"><select id="f_deal" onchange="onDeal()"></select><div class="sm" id="dealHint"></div></span>
-      <span class="k">Дата договора</span>
-      <span class="v"><input type="date" id="f_date" autocomplete="off"></span>
-      <span class="k">Действует до</span>
-      <span class="v"><input type="date" id="f_valid" autocomplete="off"><div class="sm" id="validHint"></div></span>
+      <span class="k" id="dateK">Дата договора</span>
+      <span class="v" id="dateV"><input type="date" id="f_date" autocomplete="off" onchange="renderReady()"></span>
+      <span class="k" id="validK">Действует до</span>
+      <span class="v" id="validV"><input type="date" id="f_valid" autocomplete="off"><div class="sm" id="validHint"></div></span>
     </div>
   </div>
 
-  <!-- условия -->
+  <div id="s_body" class="hide">
+  <!-- позиции (не для рамочного): редактор tw-items.js — товар каталога, опции, «в комплекте с»; сумма договора = итог позиций -->
+  <div class="blk" id="s_items">
+    <div class="h">Позиции <span class="sp"><span class="sm" id="posHint"></span></span></div>
+    <datalist id="prodlist"></datalist>
+    <div class="pos" id="posBox"></div>
+    <div class="row" style="margin-top:var(--s-2)">
+      <button class="gho" id="addItemBtn" onclick="addPos()">+ добавить позицию</button>
+      <span class="sm" id="amtNote">сумма договора = итог позиций</span>
+    </div>
+    <div class="msg" id="posMsg"></div>
+  </div>
+
+  <!-- условия оплаты ЮЛ (поставка BY/РФ/Европа, рамочные, услуги/сотрудничество) -->
   <div class="blk" id="s_terms">
-    <div class="h">Условия</div>
+    <div class="h">Условия оплаты</div>
     <div class="grid2">
-      <label class="fl"><span class="sm">Сумма, <span id="curLbl">BYN</span></span><input id="f_amount" type="number" inputmode="decimal" min="0" step="0.01" oninput="onAmount()" autocomplete="off">
-        <span class="ck"><input type="checkbox" id="f_noamount" onchange="onNoAmount()"> без суммы (стоимость — по счетам и накладным)</span></label>
+      <label class="fl" id="w_amount"><span class="sm">Сумма, <span id="curLbl">BYN</span></span><input id="f_amount" type="number" inputmode="decimal" min="0" step="0.01" oninput="onAmount()" autocomplete="off">
+        <span class="sm" id="amtHint"></span></label>
       <label class="fl" id="w_prepay"><span class="sm">Предоплата, %</span><input id="f_prepay" type="number" inputmode="numeric" min="0" max="100" value="80" oninput="checkLegs()" autocomplete="off"></label>
       <label class="fl" id="w_balance"><span class="sm">Остаток (доплата) — условие</span>
-        <select id="f_balance">
+        <select id="f_balance" onchange="onBalance()">
           <option>по готовности товара к отгрузке</option>
           <option>после отгрузки товара</option>
           <option>в течение 5 банковских дней после отгрузки</option>
           <option>100% предоплатой (без остатка)</option>
           <option>по графику (рассрочка / отсрочка)</option>
         </select></label>
-      <label class="fl" id="w_bdays"><span class="sm">Срок доплаты, дней от отгрузки</span><input id="f_bdays" type="number" inputmode="numeric" min="0" placeholder="пусто — условие из списка" oninput="onBalanceDays()" autocomplete="off"><span class="sm" id="bdaysHint"></span></label>
+      <label class="fl" id="w_bdays"><span class="sm">или срок доплаты, дней от отгрузки</span><input id="f_bdays" type="number" inputmode="numeric" min="0" placeholder="пусто — условие из списка" oninput="onBalanceDays()" autocomplete="off"><span class="sm" id="bdaysHint"></span></label>
       <label class="fl" id="w_prod"><span class="sm">Срок производства, раб. дней</span><input id="f_prod" type="number" inputmode="numeric" min="1" value="14" autocomplete="off"></label>
       <label class="fl" id="w_freight"><span class="sm">Заказчик перевозки (для ТН/ТТН)</span><select id="f_freight"><option value="Мы">Мы (Тигервуд)</option><option value="Клиент">Клиент</option></select></label>
-      <label class="fl" id="w_warranty"><span class="sm">Гарантия, мес.</span><input id="d_warranty" type="number" inputmode="numeric" min="0" placeholder="как у продавца" autocomplete="off"></label>
     </div>
     <!-- валютный договор (рынки Россия / Европа): регистрация в банке при сумме от 4000 БВ -->
     <div id="w_creg" class="hide" style="margin-top:var(--s-3)">
@@ -138,51 +161,39 @@
     </div>
   </div>
 
-  <!-- позиции (не для рамочного): редактор tw-items.js — товар каталога, опции, «в комплекте с» -->
-  <div class="blk" id="s_items">
-    <div class="h">Позиции <span class="sp"><span class="sm" id="posHint"></span></span></div>
-    <datalist id="prodlist"></datalist>
-    <div class="pos" id="posBox"></div>
-    <div class="row" style="margin-top:var(--s-2)">
-      <button class="gho" id="addItemBtn" onclick="addPos()">+ добавить позицию</button>
-      <label class="ck"><input type="checkbox" id="f_amtItems" checked onchange="itemsTot()"> сумма договора = итог позиций</label>
-    </div>
-    <div class="msg" id="posMsg"></div>
-  </div>
-
-  <!-- условия передачи (не для рамочного): колонки сделки, contractsave{delivery} -->
+  <!-- передача и доставка (не для рамочного): колонки сделки, contractsave{delivery} — уходят только видимые поля -->
   <div class="blk" id="s_deliv">
     <div class="h">Передача и доставка</div>
-    <datalist id="wayList"><option value="самовывоз"><option value="курьер"><option value="транспортная компания"><option value="доставка Тигервуд"></datalist>
+    <input type="hidden" id="d_wayMode"><input type="hidden" id="d_delivInc">
     <div class="grid2">
-      <label class="fl"><span class="sm">Срок передачи, раб. дней от оплаты</span><input id="d_transfer" type="number" inputmode="numeric" min="0" autocomplete="off"></label>
-      <label class="fl"><span class="sm">Способ доставки / самовывоз</span><input id="d_way" list="wayList" autocomplete="off"></label>
-      <label class="fl"><span class="sm">Доставка в договоре</span><select id="d_delivInc" onchange="onIncluded()"><option value="">не указано</option><option value="1">включена в стоимость</option><option value="0">оплачивается отдельно</option></select></label>
-      <label class="fl"><span class="sm">Стоимость доставки</span><input id="d_delivCost" type="number" inputmode="decimal" min="0" step="0.01" autocomplete="off"></label>
-      <label class="fl"><span class="sm">Сборка в договоре</span><select id="d_asmInc" onchange="onIncluded()"><option value="">не указано</option><option value="1">включена в стоимость</option><option value="0">оплачивается отдельно</option></select></label>
-      <label class="fl"><span class="sm">Стоимость сборки</span><input id="d_asmCost" type="number" inputmode="decimal" min="0" step="0.01" autocomplete="off"></label>
-      <label class="fl"><span class="sm">Страна</span><input id="d_country" autocomplete="off"></label>
-      <label class="fl"><span class="sm">Область</span><input id="d_region" autocomplete="off"></label>
-      <label class="fl"><span class="sm">Район</span><input id="d_district" autocomplete="off"></label>
-      <label class="fl"><span class="sm">Город</span><input id="d_city" autocomplete="off"></label>
-      <label class="fl full"><span class="sm">Адрес доставки</span><input id="d_addr" autocomplete="off"></label>
+      <label class="fl" id="w_transfer"><span class="sm" id="lblTransfer">Срок передачи, раб. дней от оплаты</span><input id="d_transfer" type="number" inputmode="numeric" min="0" autocomplete="off" oninput="renderReady()"></label>
+      <label class="fl" id="w_warranty"><span class="sm">Гарантия, мес.</span><input id="d_warranty" type="number" inputmode="numeric" min="0" placeholder="36 — как у продавца" autocomplete="off"></label>
+      <div class="fl full" id="w_way"><span class="sm">Способ</span>
+        <span class="seg" id="segWay"><button type="button" data-v="del" onclick="setWay('del')">Доставка</button><button type="button" data-v="pick" onclick="setWay('pick')">Самовывоз</button></span></div>
+      <div class="fl full" id="w_cost"><span class="sm">Стоимость доставки</span>
+        <div class="row"><span class="seg" id="segInc"><button type="button" data-v="1" onclick="setInc('1')">включена в цену</button><button type="button" data-v="0" onclick="setInc('0')">оплачивается отдельно</button></span>
+        <label class="fl" id="w_costSum"><input id="d_delivCost" type="number" inputmode="decimal" min="0" step="0.01" placeholder="сумма, руб." autocomplete="off" oninput="renderReady()"></label></div></div>
+      <label class="fl" id="w_region"><span class="sm">Область</span><input id="d_region" autocomplete="off"></label>
+      <label class="fl" id="w_city"><span class="sm">Город / населённый пункт</span><input id="d_city" autocomplete="off" oninput="renderReady()"></label>
+      <label class="fl full" id="w_addr"><span class="sm" id="lblAddr">Адрес доставки</span><input id="d_addr" autocomplete="off" oninput="renderReady()"></label>
     </div>
     <div class="sm" id="delivHint" style="margin-top:var(--s-2)"></div>
   </div>
 
-  <!-- график оплаты -->
+  <!-- оплата: 100 % — текст; рассрочка — график всегда открыт; ЮЛ — график, когда остаток «по графику» -->
   <div class="blk" id="s_sched">
-    <div class="h">График оплаты <span class="sp"><label class="ck"><input type="checkbox" id="f_schedOn" onchange="onSchedOn()"> рассрочка / отсрочка</label></span></div>
-    <div id="schedBody" class="hide">
-      <div class="sm" style="margin-bottom:var(--s-2)">Первая строка — платёж до отгрузки (может быть 0), дальше 1–5 платежей по датам; одна строка после отгрузки = отсрочка. Сумма строк должна сойтись с суммой договора.</div>
+    <div class="h" id="schedTtl">Оплата</div>
+    <div id="payFull" class="payfull hide">100 % при заключении договора</div>
+    <div id="schedBody">
+      <div class="sm" id="schedNote" style="margin-bottom:var(--s-2)"></div>
       <div class="tbl-wrap"><table class="tbl sm mob">
-        <thead><tr><th class="w">№</th><th class="num">Сумма</th><th>Дата</th><th class="w">До отгрузки</th><th class="w"></th></tr></thead>
+        <thead><tr><th class="w">№</th><th class="num">Сумма</th><th>Дата</th><th class="w" id="thPre">До отгрузки</th><th class="w"></th></tr></thead>
         <tbody id="legRows"></tbody>
         <tfoot><tr><td></td><td class="num" id="legsTot" data-l="Итого"></td><td colspan="3" id="legsChk"></td></tr></tfoot>
       </table></div>
       <div class="toolbar" style="margin:var(--s-3) 0 0">
         <button class="gho" id="addLegBtn" onclick="addLeg()">+ строка</button>
-        <label>после отгрузки, платежей <input id="f_n" type="number" inputmode="numeric" min="1" max="5" value="2" autocomplete="off"></label>
+        <label><span id="lblN">после отгрузки, платежей</span> <input id="f_n" type="number" inputmode="numeric" min="1" max="5" value="2" autocomplete="off"></label>
         <label>первый из них <input id="f_second" type="date" autocomplete="off"></label>
         <button class="sec sm" id="splitBtn" onclick="splitRest()">Разбить остаток помесячно</button>
       </div>
@@ -198,10 +209,11 @@
     <div id="wbBox"></div>
   </div>
 
-  <div id="ready" class="sm"></div>
   <div class="toolbar bot" id="botBtns"></div>
   <div class="msg" id="msg"></div>
+  </div>
 </div>
+
 
 <!-- свои диалоги: подтверждение/ввод и отказ сервера (confirm/prompt в Telegram не показываются) -->
 <div class="dlg-bg" id="askmodal" style="display:none"><div class="dlg">
@@ -271,7 +283,7 @@ function todayIso(){ var d=new Date(); return new Date(d.getTime()-d.getTimezone
 function addDays(iso, n){ var d=new Date(iso+'T00:00:00'); d.setDate(d.getDate()+n); return new Date(d.getTime()-d.getTimezoneOffset()*6e4).toISOString().slice(0,10); }
 function jq(s){ return esc(JSON.stringify(String(s==null?'':s))); }
 /** Ссылка на соседний экран с теми же служебными параметрами (embed, twsec, tok…), без ключей карточек. */
-function pageUrl(page, params){ var sp=new URLSearchParams(location.search); ['deal','lead','client','contract','framework','tab'].forEach(function(x){ sp.delete(x); });
+function pageUrl(page, params){ var sp=new URLSearchParams(location.search); ['deal','lead','client','contract','framework','tab','restore','back','new','type','name'].forEach(function(x){ sp.delete(x); });
   Object.keys(params||{}).forEach(function(k){ if(params[k]!=null&&params[k]!=='') sp.set(k, params[k]); }); var s=sp.toString(); return page+(s?'?'+s:''); }
 
 /* ══════════ словари ══════════ */
@@ -280,6 +292,7 @@ var ST_RU={draft:'черновик',reserved:'номер выдан',active:'с�
 var ST_CLS={draft:'warn',reserved:'warn',active:'',signed:'ok',cancelled:'muted'};
 var ORIGIN_RU={generated:'сформирован',uploaded:'загружен'};
 var OPEN_STAGES={inquiry:1,order:1,in_production:1};
+var SCHED_TXT='по графику (рассрочка / отсрочка)';
 /** типы, если маршрут contractkinds ещё не выложен: по типу клиента и рынку (как было на экранах) */
 function localKinds(b){
   var fl=isPerson(b), m=marketOf(b);
@@ -291,16 +304,22 @@ function localKinds(b){
 }
 
 /* ══════════ состояние ══════════ */
-var ID=qp('contract')||'new', C=null, BUYERS=[], BUYER=null, KINDS=[], KINDS_KEY=null, DEALS=null, LEGS=[], EDIT=true;   // позиции — POS (tw-items.js)
+var ID=qp('contract')||'new', C=null, BUYERS=[], BUYER=null, KINDS=[], KINDS_KEY=null, DEALS=null, LEGS=[], EDIT=true, WANT_KIND='', WAY0='';   // позиции — POS (tw-items.js)
 function isNew(){ return ID==='new'; }
 function buyerName(b){ return String(b['Наименование ЮЛ (полное)']||b['Полное ФИО']||'').trim(); }
 function buyerKey(b){ return String(b['УНП']||b['ИНН']||b['ID']||'').trim(); }
 function isPerson(b){ if(!b) return false; var t=String(b['Тип']||b.type||'').toLowerCase(); if(t) return t.indexOf('физ')>=0; return !(String(b['УНП']||'').trim()||String(b['ИНН']||'').trim()); }
 function marketOf(b){ return (b&&b.market)||''; }
 function curOf(){ return (C&&C.currency)||CUR[marketOf(BUYER)]||'BYN'; }
-function isFw(){ return el('f_fw').checked; }
-function curKind(){ var k=val('f_kind'); for(var i=0;i<KINDS.length;i++) if(KINDS[i].kind===k) return KINDS[i]; return null; }
+/** режим карточки по типу: '' — тип не выбран (видны только клиент и тип), retail — 100 % / рассрочка (физлицо), legal — ЮЛ/ИП */
+function mode(){ var k=val('f_kind'); if(!k) return ''; return (k==='installment'||k==='full_payment')?'retail':'legal'; }
+function isInst(){ return val('f_kind')==='installment'; }
+function fwAvail(){ var k=val('f_kind'); return KINDS.some(function(x){ return x.framework && x.kind===k; }) || !!(C&&C.isFramework); }
+function isFw(){ return mode()==='legal' && fwAvail() && el('f_fw').checked; }
+function curKind(){ var k=val('f_kind'), fw=isFw(), hit=null; KINDS.forEach(function(x){ if(x.kind===k && !!x.framework===fw && !hit) hit=x; }); if(!hit) KINDS.forEach(function(x){ if(x.kind===k && !hit) hit=x; }); return hit; }
+function schedOn(){ var m=mode(); return m==='retail' ? isInst() : (m==='legal' && !isFw() && val('f_balance')===SCHED_TXT); }
 function defaultValid(){ return isFw()?addDays(todayIso(),365):(todayIso().slice(0,4)+'-12-31'); }
+function vis(id, on){ var e=el(id); if(e) e.classList.toggle('hide', !on); }
 
 /* ══════════ загрузка ══════════ */
 function start(){
@@ -311,13 +330,15 @@ function start(){
   });
 }
 function fillBuyerList(){
-  el('buyerList').innerHTML=BUYERS.map(function(b){ var nm=buyerName(b); return nm?('<option value="'+esc(nm)+'">'+esc(buyerKey(b))+(b.market?(' · '+esc(MARKET_RU[b.market]||b.market)):'')+'</option>'):''; }).join('');
+  var m=mode();   // розница — только физлица, ЮЛ-типы — только юрлица и ИП; тип не выбран — все
+  el('buyerList').innerHTML=BUYERS.filter(function(b){ return !m || (m==='retail')===isPerson(b); }).map(function(b){ var nm=buyerName(b);
+    return nm?('<option value="'+esc(nm)+'">'+esc(buyerKey(b))+(b.market?(' · '+esc(MARKET_RU[b.market]||b.market)):'')+'</option>'):''; }).join('');
 }
 function loadErr(m){ el('loaderr').className='note bad'; el('loaderr').innerHTML='<div>⚠️ '+esc(m)+'</div>'; el('main').className='hide'; }
 function loadContract(){
   get({vapi:'contractget', id:ID}).then(function(r){
     if(!r||!r.ok||!r.contract){ loadErr('Договор не загрузился: '+errText(r)+(r&&/unknown|неизвест|нет такого маршрута|not found/i.test(String(r.error||''))?' Маршрут contractget ещё не выложен на сервер.':'')); return; }
-    C=r.contract; fillForm();
+    C=r.contract; fillForm(); afterLoad();
   }).catch(function(e){ loadErr(netText(e)); });
 }
 /** Новый договор из ссылки: ?client= (карточка клиента), ?deal= (карточка сделки), &framework=1 */
@@ -326,7 +347,7 @@ function prefillNew(){
   el('f_date').value=todayIso();
   el('f_fw').checked=(qp('framework')==='1');
   var ck=qp('client'), dk=qp('deal');
-  if(ck) setBuyer(findBuyer(ck));
+  if(ck && qp('restore')!=='1') setBuyer(findBuyer(ck));
   if(dk){
     get({vapi:'deal', deal:dk}).then(function(r){
       var d=(r&&r.ok&&r.deal)||null;
@@ -335,16 +356,16 @@ function prefillNew(){
       var b=findBuyer(bk)||(d.buyer?withKey(d.buyer, bk):null)||(d.client?{ 'Наименование ЮЛ (полное)':d.client, market:d.market, 'Тип':d.clientType }:null);
       if(b) setBuyer(b);
       POS=posFromItems(d.items); TWI_CUR=d.currency||'руб';
-      if(!POS.length && Number(d.sum)>0){ el('f_amtItems').checked=false; el('f_amount').value=d.sum; }
+      if(!POS.length && Number(d.sum)>0) el('f_amount').value=d.sum;
       fillDeliv(d);   // условия передачи сделки → форма (правятся здесь, сделка их показывает)
       PRESEL_DEAL={ id:String(d.id||dk), num:d.num||d.inquiryNum||dk, client:d.client, stage:d.stage, stageRu:d.stageRu, leadId:d.leadId||'' };
-      showMain();
-    }).catch(function(e){ el('dealHint').innerHTML='<span class="err">'+esc(netText(e))+'</span>'; showMain(); });
-  } else showMain();
+      showMain(); afterLoad();
+    }).catch(function(e){ el('dealHint').innerHTML='<span class="err">'+esc(netText(e))+'</span>'; showMain(); afterLoad(); });
+  } else { showMain(); afterLoad(); }
 }
 var PRESEL_DEAL=null;
 function withKey(b, k){ var o={}; for(var x in b) o[x]=b[x]; if(k&&!buyerKey(o)) o['ID']=k; return o; }
-function findBuyer(k){ k=String(k||'').trim(); if(!k) return null; for(var i=0;i<BUYERS.length;i++) if(buyerKey(BUYERS[i])===k) return BUYERS[i]; return null; }
+function findBuyer(k){ k=String(k||'').trim(); if(!k) return null; for(var i=0;i<BUYERS.length;i++) if(buyerKey(BUYERS[i])===k||String(BUYERS[i]['ID']||'')===k) return BUYERS[i]; return null; }
 function findBuyerByName(nm){ nm=String(nm||'').trim().toLowerCase(); if(!nm) return null; for(var i=0;i<BUYERS.length;i++) if(buyerName(BUYERS[i]).toLowerCase()===nm) return BUYERS[i]; return null; }
 function showMain(){ el('main').className=''; renderAll(); }
 
@@ -356,27 +377,69 @@ function fillForm(){
   el('f_fw').checked=!!c.isFramework;
   el('f_date').value=isoDate(c.contractDate)||todayIso();
   el('f_valid').value=isoDate(c.validUntil);
-  var noAmt=(c.amount==null||c.amount===''); el('f_noamount').checked=noAmt; el('f_amount').value=noAmt?'':c.amount;
+  el('f_amount').value=(c.amount==null||c.amount==='')?'':c.amount;
   if(c.prepayPercent!=null&&c.prepayPercent!=='') el('f_prepay').value=c.prepayPercent;
   if(c.balanceCondition) setSel('f_balance', c.balanceCondition);
   if(c.freightPayer) el('f_freight').value=/клиент/i.test(String(c.freightPayer))?'Клиент':'Мы';
   var t=c.terms||{}; if(t.prodDays) el('f_prod').value=t.prodDays;
   el('f_bdays').value=(c.balanceDays==null)?'':c.balanceDays; el('f_regNo').value=c.currencyRegNo||''; el('f_regDate').value=isoDate(c.currencyRegDate);
   if(c.baseValue>0) BASE_VALUE=Number(c.baseValue);
+  if(c.warrantyDefault>0) el('d_warranty').placeholder=c.warrantyDefault+' — как у продавца';
   onBalanceDays();
   POS=posFromItems(c.items); TWI_CUR=c.currency||'руб'; POSCHK=false;
-  el('f_amtItems').checked=!!POS.length && !noAmt;
   fillDeliv(c.deal||{});
   LEGS=(c.legs||[]).map(function(l,i){ return { legNo:l.legNo||(i+1), amount:l.amount, dueDate:isoDate(l.dueDate), beforeShip:!!l.beforeShip }; });
-  el('f_schedOn').checked=LEGS.length>0; if(LEGS.length) setSel('f_balance','по графику (рассрочка / отсрочка)');
+  if(LEGS.length && c.kind!=='installment' && c.kind!=='full_payment') setSel('f_balance', SCHED_TXT);
   if(c.deal) PRESEL_DEAL={ id:String(c.deal.id), num:c.deal.num||c.deal.inquiryNum||c.deal.id, stage:c.deal.stage, stageRu:c.deal.stageRu, leadId:c.deal.leadId||'' };
   EDIT=(c.status!=='signed' && c.status!=='cancelled');
-  el('main').className=''; renderAll(); el('f_kind').value=c.kind; onKind(true);
+  WANT_KIND=c.kind;
+  el('main').className=''; renderAll();
 }
 function setSel(id, v){ var s=el(id); for(var i=0;i<s.options.length;i++) if(s.options[i].value===v||s.options[i].text===v){ s.selectedIndex=i; return; } var o=document.createElement('option'); o.text=v; s.add(o); s.value=v; }
 
+/* ══════════ возврат из «Клиентов»: черновик формы в sessionStorage (под try/catch), новый клиент — по ?client= ══════════ */
+function draftKey(){ return 'tw_contract_draft:'+ID; }
+function saveDraft(){
+  var f={}, ins=el('main').querySelectorAll('input[id], select[id]');
+  for(var i=0;i<ins.length;i++){ var e=ins[i]; if(e.type==='file') continue; f[e.id]=(e.type==='checkbox'||e.type==='radio')?e.checked:e.value; }
+  var d={ f:f, pos:cleanPos(), legs:LEGS, deal:PRESEL_DEAL, cur:TWI_CUR, way0:WAY0 };
+  try{ sessionStorage.setItem(draftKey(), JSON.stringify(d)); }catch(e){}
+}
+function restoreDraft(){
+  var d=null; try{ d=JSON.parse(sessionStorage.getItem(draftKey())||'null'); sessionStorage.removeItem(draftKey()); }catch(e){ d=null; }
+  if(!d||!d.f) return false;
+  Object.keys(d.f).forEach(function(id){ var e=el(id); if(!e||e.type==='file') return; if(e.type==='checkbox'||e.type==='radio') e.checked=!!d.f[id]; else e.value=d.f[id]; });
+  WANT_KIND=d.f.f_kind||''; PRESEL_DEAL=d.deal||PRESEL_DEAL; LEGS=d.legs||[]; TWI_CUR=d.cur||TWI_CUR; WAY0=d.way0||WAY0;
+  POS=posFromItems(d.pos||[]); POS.forEach(function(p,i){ if(d.pos[i]&&d.pos[i].crossbar) p.crossbar=d.pos[i].crossbar; });
+  BUYER=findBuyerByName(val('f_client')); KINDS_KEY=null;
+  return true;
+}
+var AFTER_DONE=false;
+function afterLoad(){
+  if(AFTER_DONE || qp('restore')!=='1') return; AFTER_DONE=true;
+  restoreDraft();
+  var b=findBuyer(qp('client')); if(b && EDIT){ BUYER=b; el('f_client').value=buyerName(b); }
+  KINDS_KEY=null; renderAll(); afterBuyer();
+  var sp=new URLSearchParams(location.search); sp.delete('restore'); sp.delete('client'); try{ history.replaceState(null,'',location.pathname+'?'+sp.toString()); }catch(e){}
+}
+/** адрес возврата в эту карточку (с теми же служебными параметрами) */
+function backUrl(){ return pageUrl('contract.html', { contract:ID, deal:isNew()?qp('deal'):'', restore:'1' }); }
+/** «+ Создать клиента»: форма нового клиента в «Клиентах» с ФИО/названием и типом; после сохранения — назад сюда с новым клиентом */
+function newClient(){
+  var m=mode(), nm=BUYER?'':val('f_client').trim();
+  // тип не выбран: похоже на ФИО (нет кавычек и ООО/ЧУП/ИП…) — физлицо (\b с кириллицей не работает — границы пробелами)
+  var t=m==='retail'?'физлицо':(m==='legal'?'юрлицо':((nm && !/[«"]|(^|\s)(ООО|ОАО|ЗАО|АО|ОДО|ЧУП|ЧТУП|УП|СООО|ИООО|ИП)(\s|$)/i.test(nm))?'физлицо':''));
+  saveDraft();
+  location.replace(pageUrl('clients.html', { new:'1', type:t, name:nm, back:backUrl() }));
+}
+/** данные клиента (телефон, паспорт, реквизиты) правятся в карточке клиента — туда и обратно */
+function openClientCard(){
+  if(!BUYER||!buyerKey(BUYER)){ goField('f_client'); return; }
+  saveDraft(); location.replace(pageUrl('clients.html', { client:buyerKey(BUYER), back:backUrl() }));
+}
+
 /* ══════════ отрисовка ══════════ */
-function renderAll(){ renderHead(); renderBtns(); setEditable(); loadKinds(); fillDeals(); onFw(true); renderPos(); itemsTot(); renderLegs(); onNoAmount(); onSchedOn(); renderDocs(); renderReady(); }
+function renderAll(){ paintClient(); renderHead(); renderBtns(); loadKinds(); fillDeals(); renderPos(); renderLegs(); applyMode(); setEditable(); renderDocs(); }
 function renderHead(){
   var c=C, h='', pills='';
   if(!c){ h='Новый договор'; pills='<span class="pill warn">черновик · не сохранён</span>'; }
@@ -384,7 +447,7 @@ function renderHead(){
     h=(c.number?('Договор № '+esc(c.number)):'Договор (номер выдаётся при формировании)');
     pills='<span class="pill '+(ST_CLS[c.status]||'')+'">'+esc(c.statusRu||ST_RU[c.status]||c.status||'—')+(c.status==='signed'&&c.signedAt?(' '+esc(c.signedAt)):'')+'</span>';
     if(c.externalNumber) pills+=' <span class="pill info" title="номер взят с бумаги">номер с бумаги</span>';
-    if(c.expired) pills+=' <span class="pill bad">истёк '+esc(c.validUntil||'')+'</span>';
+    if(c.expired && mode()!=='retail') pills+=' <span class="pill bad">истёк '+esc(c.validUntil||'')+'</span>';
   }
   if(isFw()) pills+=' <span class="pill info">рамочный</span>';
   var m=(c&&c.market)||marketOf(BUYER); if(m) pills+=' <span class="pill">'+esc(MARKET_RU[m]||m)+' · '+esc(curOf())+'</span>';
@@ -394,12 +457,12 @@ function renderHead(){
   el('curLbl').textContent=curOf();
 }
 function setEditable(){
-  var ins=el('main').querySelectorAll('#s_head input, #s_head select, #s_terms input, #s_terms select, #s_items input, #s_items select, #s_deliv input, #s_deliv select, #s_sched input, #s_sched select');
+  var ins=el('main').querySelectorAll('#s_head input, #s_head select, #s_terms input, #s_terms select, #s_items input, #s_items select, #s_deliv input, #s_deliv select, #s_deliv button, #s_sched input, #s_sched select');
   for(var i=0;i<ins.length;i++) ins[i].disabled=!EDIT;
-  ['addItemBtn','addLegBtn','splitBtn'].forEach(function(id){ el(id).disabled=!EDIT; });
-  if(EDIT) onIncluded();
+  ['addItemBtn','addLegBtn','splitBtn','newClientBtn'].forEach(function(id){ el(id).disabled=!EDIT; });
+  if(EDIT){ itemsTot(); onBalanceDays(); }
   el('main').className=EDIT?'':'ro';
-  el('saveTop').style.display=EDIT?'':'none';
+  el('saveTop').style.display=(EDIT&&mode())?'':'none';
 }
 function renderBtns(){
   var c=C, h='';
@@ -411,72 +474,95 @@ function renderBtns(){
   if(c && (c.canDelete || (c.canDelete==null && c.status==='draft'))) h+='<button class="danger sec" onclick="deleteDlg()">Удалить черновик</button>';
   el('botBtns').innerHTML='<div class="end">'+h+'</div>';
 }
+/** Видимость полей по типу договора (решение владельца 01.10.2026): до выбора типа — только клиент и тип; дальше — только то, что печатает шаблон */
+function applyMode(){
+  var m=mode(), fw=isFw(), retail=m==='retail', legal=m==='legal', inst=isInst(), k=curKind(), lbl=k?(k.label||''):'';
+  var svc=/услуг/i.test(lbl), coop=/сотрудничеств/i.test(lbl);
+  vis('fwK', legal && fwAvail()); vis('fwV', legal && fwAvail());
+  vis('dealK', !!m && !fw); vis('dealV', !!m && !fw);
+  vis('dateK', !!m); vis('dateV', !!m);
+  vis('validK', legal); vis('validV', legal);
+  vis('s_body', !!m);
+  vis('s_items', !!m && !fw); vis('s_terms', legal); vis('s_deliv', !!m && !fw); vis('s_sched', retail || schedOn());
+  // ЮЛ: условия оплаты
+  vis('w_bdays', legal && !(coop||fw)); vis('w_freight', legal && !svc); vis('w_prod', legal && !(svc||coop));
+  vis('w_prepay', legal && !(coop||fw)); vis('w_balance', legal && !(coop||fw));
+  onMarketFields();
+  if(!el('f_valid').value || el('f_valid').value===(fw?(todayIso().slice(0,4)+'-12-31'):addDays(todayIso(),365))) el('f_valid').value=defaultValid();
+  el('validHint').textContent=fw?'рамочный — 365 дней':'до 31 декабря текущего года; можно изменить';
+  // передача и доставка: розница — срок, гарантия, область/город/адрес; ЮЛ — способ, стоимость, город/адрес (для накладной)
+  var way=val('d_wayMode'), del=way==='del';
+  vis('w_transfer', retail); vis('w_warranty', retail); vis('w_region', retail && del);
+  vis('w_cost', del); vis('w_costSum', del && val('d_delivInc')==='0');
+  vis('w_city', del); vis('w_addr', del);
+  el('lblAddr').textContent=legal?'Адрес доставки (для накладной)':'Адрес доставки';
+  el('lblTransfer').textContent='Срок передачи, раб. дней '+(inst?'от поступления аванса':'от оплаты');
+  paintSeg('segWay', way); paintSeg('segInc', val('d_delivInc'));
+  // оплата
+  vis('payFull', retail && !inst); vis('schedBody', schedOn());
+  el('schedTtl').textContent=retail?(inst?'Оплата — график рассрочки':'Оплата'):'График оплаты';
+  el('thPre').textContent=retail?'Аванс (до передачи)':'До отгрузки';
+  el('lblN').textContent=retail?'после передачи, платежей':'после отгрузки, платежей';
+  el('schedNote').textContent=retail?'Первая строка — аванс до передачи товара (может быть 0), дальше 1–5 платежей по датам. Сумма строк = итог позиций.'
+    :'Первая строка — платёж до отгрузки (может быть 0), дальше 1–5 платежей по датам; одна строка после отгрузки = отсрочка. Сумма строк должна сойтись с суммой договора.';
+  if(schedOn() && !LEGS.length) initLegs();
+  vis('w_amount', legal); el('amtNote').textContent=retail?'сумма договора = итог позиций':'';
+  fillBuyerList(); renderHead(); itemsTot(); renderReady();
+}
+function paintSeg(id, v){ var bs=el(id).querySelectorAll('button'); for(var i=0;i<bs.length;i++) bs[i].className=bs[i].getAttribute('data-v')===v?'on':''; }
 
 /* ── клиент ── */
 function setBuyer(b){ BUYER=b; if(b) el('f_client').value=buyerName(b); KINDS_KEY=null; afterBuyer(); }
-function onClientInput(){ var b=findBuyerByName(val('f_client')); if(b===BUYER) return; BUYER=b; KINDS_KEY=null; afterBuyer(); }
-function afterBuyer(){
+function onClientInput(){ var b=findBuyerByName(val('f_client')); if(b===BUYER){ paintClient(); return; } BUYER=b; KINDS_KEY=null; afterBuyer(); }
+function afterBuyer(){ paintClient(); renderHead(); loadKinds(); fillDeals(); }
+function paintClient(){
   var b=BUYER, e=el('clientInfo');
-  if(!b){ e.innerHTML=val('f_client').trim()?'<span class="err">Такого клиента нет в справочнике — выберите из списка или сначала добавьте его в «Клиентах».</span>':'выберите клиента из справочника — от его рынка зависят тип договора, валюта и серия номера'; }
+  if(!b){ e.innerHTML=val('f_client').trim()?'<span class="err">Такого клиента нет в справочнике — выберите из списка или создайте.</span>':'выберите клиента из справочника — от него зависят тип договора, валюта и серия номера'; }
   else { var m=marketOf(b); e.innerHTML=(isPerson(b)?'физлицо':(String(b['Тип']||'')==='ИП'?'ИП':'юрлицо'))+(buyerKey(b)?(' · '+esc(buyerKey(b))):'')+' · рынок '+(m?('<b>'+esc(MARKET_RU[m]||m)+'</b> ('+esc(CUR[m])+')'):'<span class="warn">не задан — считаем Беларусь (BYN); задаётся в карточке клиента</span>')
-      +(buyerKey(b)?(' · <a href="'+esc(pageUrl('clients.html',{client:buyerKey(b)}))+'">карточка →</a>'):''); }
-  renderHead(); loadKinds(); fillDeals();
+      +(buyerKey(b)?(' · <a href="#" onclick="openClientCard();return false">карточка →</a>'):''); }
+  el('newClientBtn').style.display=b?'none':'';
 }
-/* ── типы по рынку клиента ── */
+/* ── типы по клиенту: сначала клиент, потом тип ── */
 function loadKinds(){
   var key=BUYER?buyerKey(BUYER):'';
   if(KINDS_KEY===key) { fillKinds(); return; }
-  KINDS_KEY=key; KINDS=localKinds(BUYER||{}); fillKinds();
+  KINDS_KEY=key; KINDS=BUYER?localKinds(BUYER):[]; fillKinds();
+  if(!BUYER) return;
   get({vapi:'contractkinds', key:key}).then(function(r){
     if(KINDS_KEY!==key) return;
     if(!r||!r.ok||!r.kinds||!r.kinds.length){ el('kindHint').innerHTML='<span class="warn">Список типов с сервера не пришёл'+(r&&r.error?(': '+esc(r.error)):'')+' — показан стандартный набор.</span>'; return; }
-    KINDS=r.kinds; fillKinds();
+    el('kindHint').textContent=''; KINDS=r.kinds; fillKinds();
   }).catch(function(){ el('kindHint').innerHTML='<span class="warn">Нет связи — показан стандартный набор типов.</span>'; });
 }
+/** в списке — обычные типы; рамочный — галочка у типа, у которого есть рамочный вариант */
 function fillKinds(){
-  var sel=el('f_kind'), cur=(C&&C.kind)||sel.value, fw=isFw();
-  var list=KINDS.filter(function(k){ return !!k.framework===fw; });
-  sel.innerHTML=list.map(function(k){ return '<option value="'+esc(k.kind)+'">'+esc(k.label||k.kind)+'</option>'; }).join('');
-  if(!list.length) sel.innerHTML='<option value="">— нет типов для '+(fw?'рамочного':'обычного')+' договора на этом рынке —</option>';
-  var ok=false; for(var i=0;i<sel.options.length;i++) if(sel.options[i].value===cur){ sel.value=cur; ok=true; }
-  if(!ok && C && C.kind && list.length){ var o=document.createElement('option'); o.value=C.kind; o.text=C.kindRu||C.kind; sel.add(o); sel.value=C.kind; }
-  onKind(true);
+  var sel=el('f_kind'), cur=WANT_KIND||sel.value, seen={};
+  var list=KINDS.filter(function(k){ if(k.framework||seen[k.kind]) return false; seen[k.kind]=1; return true; });
+  if(!list.length) KINDS.forEach(function(k){ if(!seen[k.kind]){ seen[k.kind]=1; list.push(k); } });
+  sel.innerHTML='<option value="">'+(BUYER?'— выберите тип договора —':'— сначала выберите клиента —')+'</option>'+list.map(function(k){ return '<option value="'+esc(k.kind)+'">'+esc(k.label||k.kind)+'</option>'; }).join('');
+  if(!cur && el('f_fw').checked){ var f=KINDS.filter(function(k){ return k.framework; })[0]; if(f) cur=f.kind; }
+  var ok=false; for(var i=0;i<sel.options.length;i++) if(cur && sel.options[i].value===cur){ sel.value=cur; ok=true; }
+  if(!ok && C && C.kind){ var o=document.createElement('option'); o.value=C.kind; o.text=C.kindRu||C.kind; sel.add(o); sel.value=C.kind; ok=true; }
+  if(ok && KINDS.length) WANT_KIND='';
+  applyMode();
 }
 var BASE_VALUE=42;   // базовая величина РБ, BYN — с сервера (contractget.baseValue, настройка finance.baseValue)
 /** срок доплаты в днях задан → условие остатка строится сервером само («в течение N дней с даты отгрузки»), список гасится */
 function onBalanceDays(){
-  var n=Number(val('f_bdays'))||0; el('f_balance').disabled=n>0;
+  var n=Number(val('f_bdays'))||0; el('f_balance').disabled=n>0||!EDIT;
   el('bdaysHint').textContent=n>0?('условие: «в течение '+n+' дн. с даты отгрузки»'):'';
 }
+function onBalance(){ applyMode(); }
 /** валютный договор (ru/eu): поля регистрации + подсказка о пороге 4000 БВ */
 function onMarketFields(){
-  var k=curKind(), m=(k&&k.market)||(C&&C.market)||marketOf(BUYER)||'by', fx=(m==='ru'||m==='eu'||m==='other');
+  var k=curKind(), m=(k&&k.market)||(C&&C.market)||marketOf(BUYER)||'by', fx=mode()==='legal'&&(m==='ru'||m==='eu'||m==='other');
   el('w_creg').className=fx?'':'hide'; if(!fx) return;
   var thr=4000*BASE_VALUE, a=amountVal();
   el('cregHint').innerHTML='Валютный договор на сумму от <b>4000 БВ</b> ('+money(thr)+' BYN при БВ '+BASE_VALUE+' — уточнить) регистрируется в банке до первого платежа/отгрузки; срок доплаты — по Указу № 178.'
     +((a!=null&&a>0)?(' Сумма договора '+money(a)+' '+esc(curOf())+' — сравните с порогом по курсу на дату.'):'');
 }
-function onKind(silent){
-  var k=curKind(), lbl=k?(k.label||''):'', svc=/услуг/i.test(lbl), coop=/сотрудничеств/i.test(lbl), inst=/рассрочк/i.test(lbl);
-  el('w_bdays').className=(coop||isFw())?'fl hide':'fl';
-  onMarketFields();
-  el('w_freight').className=svc?'fl hide':'fl'; el('w_warranty').className=(svc||coop||isFw())?'fl hide':'fl';
-  el('w_prod').className=(svc||coop)?'fl hide':'fl';
-  el('w_prepay').className=(coop||isFw())?'fl hide':'fl'; el('w_balance').className=(coop||isFw())?'fl hide':'fl';
-  if(inst && !silent && !el('f_schedOn').checked){ el('f_schedOn').checked=true; onSchedOn(); }
-  if(!silent) renderReady();
-}
-/* ── рамочный ── */
-function onFw(silent){
-  var fw=isFw();
-  el('dealK').className=fw?'k hide':'k'; el('dealV').className=fw?'v hide':'v';
-  el('s_items').className=fw?'blk hide':'blk'; el('s_sched').className=fw?'blk hide':'blk'; el('s_deliv').className=fw?'blk hide':'blk';
-  if(fw){ el('f_noamount').checked=true; onNoAmount(); }
-  if(!el('f_valid').value || el('f_valid').value===(fw?(todayIso().slice(0,4)+'-12-31'):addDays(todayIso(),365))) el('f_valid').value=defaultValid();
-  el('validHint').textContent=fw?'рамочный — 365 дней':'обычный — до 31 декабря текущего года; можно изменить';
-  if(!silent){ fillKinds(); renderHead(); }
-  else onKind(true);
-}
+function onKind(){ WANT_KIND=''; applyMode(); fillDeals(); }
+function onFw(){ WANT_KIND=WANT_KIND||val('f_kind'); applyMode(); fillDeals(); }
 /* ── сделка клиента ── */
 function fillDeals(){
   var sel=el('f_deal'), hint=el('dealHint');
@@ -484,7 +570,7 @@ function fillDeals(){
     var cur=sel.value||(PRESEL_DEAL?PRESEL_DEAL.id:''), seen={};
     var opts=list.map(function(d){ seen[String(d.id)]=1; return '<option value="'+esc(d.id)+'">'+esc(d.num||d.inquiryNum||d.id)+' · '+esc(d.stageRu||d.stage||d.status||'')+(d.sum?(' · '+money(d.sum)):'')+'</option>'; });
     if(PRESEL_DEAL && !seen[PRESEL_DEAL.id]) opts.unshift('<option value="'+esc(PRESEL_DEAL.id)+'">'+esc(PRESEL_DEAL.num||PRESEL_DEAL.id)+(PRESEL_DEAL.stageRu?(' · '+esc(PRESEL_DEAL.stageRu)):'')+'</option>');
-    sel.innerHTML='<option value="">— без сделки: заявка создастся автоматически при сохранении —</option>'+opts.join('');
+    sel.innerHTML='<option value="">— без сделки: заявка создастся при сохранении —</option>'+opts.join('');
     if(cur) sel.value=cur;
     onDeal();
   }
@@ -495,95 +581,140 @@ function fillDeals(){
     return open && ((key && d.buyerKey && String(d.buyerKey)===key) || (!d.buyerKey && String(d.client||'').trim().toLowerCase()===nm)); });
   draw(list); hint.textContent=list.length?'открытые сделки клиента (заявки и заказы)':'открытых сделок у клиента нет';
 }
-function onDeal(){ var v=val('f_deal'); el('dealHint').className=v?'sm':'sm'; if(!v && !isFw()) el('dealHint').innerHTML='без сделки: при сохранении сервер создаст <b>заявку З-…</b> и привяжет договор к ней'; }
-/* ── сумма ── */
-function onNoAmount(){ var no=el('f_noamount').checked; el('f_amount').disabled=no||!EDIT; if(no){ el('f_amount').value=''; el('f_amtItems').checked=false; } checkLegs(); }
-function onAmount(){ el('f_amtItems').checked=false; checkLegs(); onMarketFields(); }
-function amountVal(){ return el('f_noamount').checked?null:(Number(val('f_amount'))||0); }
+function onDeal(){ var v=val('f_deal'); if(!v && !isFw()) el('dealHint').innerHTML='без сделки: при сохранении сервер создаст <b>заявку З-…</b> и привяжет договор к ней'; }
+/* ── сумма: розница — итог позиций; ЮЛ — итог позиций (без позиций — вручную); рамочный — без суммы ── */
+function onAmount(){ checkLegs(); onMarketFields(); renderReady(); }
+function amountVal(){ var m=mode(); if(m==='retail') return posTotalValue(); if(isFw()) return null; return Number(val('f_amount'))||0; }
 
 /* ── позиции: редактор tw-items.js (POS, renderPos, addPos, cleanPos, checkPos); здесь — связь с суммой договора ── */
-function onPosTotal(){ itemsTot(); }
+function onPosTotal(){ itemsTot(); renderReady(); }
 function itemsTot(){
-  var t=posTotalValue();
-  if(el('f_amtItems').checked && t>0){ el('f_noamount').checked=false; el('f_amount').disabled=!EDIT; el('f_amount').value=t; }
-  var hint=el('posHint'); if(hint) hint.textContent=POS.length?'':'для документа нужны позиции или сумма';
+  var t=posTotalValue(), fw=isFw(), a=el('f_amount');
+  if(fw){ a.value=''; a.readOnly=true; el('amtHint').textContent='рамочный — без суммы: стоимость по счетам и накладным'; }
+  else if(t>0){ a.value=t; a.readOnly=true; el('amtHint').textContent='= итог позиций'; }
+  else { a.readOnly=!EDIT; el('amtHint').textContent=POS.length?'':'позиций нет — сумма вручную'; }
+  var hint=el('posHint'); if(hint) hint.textContent=POS.length?'':'для документа нужны позиции';
   checkLegs();
 }
-/* ── условия передачи (колонки сделки) ── */
+/* ── передача и доставка (колонки сделки) ── */
 function fillDeliv(d){
-  d=d||{}; var nz=function(v){ return (v==null)?'':String(v); }, tri=function(v){ return v===true?'1':(v===false?'0':''); };
-  el('d_transfer').value=nz(d.transferDays); el('d_warranty').value=nz(d.warrantyMonths); el('d_way').value=d.deliveryMethod||'';
-  el('d_delivInc').value=tri(d.deliveryIncluded); el('d_delivCost').value=nz(d.deliveryCost); el('d_asmInc').value=tri(d.assemblyIncluded); el('d_asmCost').value=nz(d.assemblyCost);
-  el('d_country').value=d.country||''; el('d_region').value=d.region||''; el('d_district').value=d.district||''; el('d_city').value=d.city||''; el('d_addr').value=d.deliveryAddress||'';
+  d=d||{}; var nz=function(v){ return (v==null)?'':String(v); };
+  WAY0=d.deliveryMethod||'';
+  el('d_transfer').value=nz(d.transferDays); el('d_warranty').value=nz(d.warrantyMonths);
+  el('d_wayMode').value=/самовывоз/i.test(WAY0)?'pick':((WAY0||d.deliveryAddress||d.city)?'del':'');
+  el('d_delivInc').value=d.deliveryIncluded===true?'1':((d.deliveryIncluded===false||Number(d.deliveryCost)>0)?'0':'');
+  el('d_delivCost').value=nz(d.deliveryCost);
+  el('d_region').value=d.region||''; el('d_city').value=d.city||''; el('d_addr').value=d.deliveryAddress||'';
   el('delivHint').innerHTML=(d.pickupDate||d.deliveryDate)?('Из amoCRM: дата забора со склада '+esc(d.pickupDate||'—')+', дата доставки клиенту '+esc(d.deliveryDate||'—')+' — подставятся датой накладной.'):'';
-  onIncluded();
 }
-// «включена в стоимость» — стоимость не нужна (поле гасится, значение стирается при сохранении)
-function onIncluded(){ el('d_delivCost').disabled=!EDIT||(val('d_delivInc')==='1'); el('d_asmCost').disabled=!EDIT||(val('d_asmInc')==='1'); }
+function setWay(v){ if(!EDIT) return; el('d_wayMode').value=v; applyMode(); }
+function setInc(v){ if(!EDIT) return; el('d_delivInc').value=v; applyMode(); if(v==='0') el('d_delivCost').focus(); }
+/** только видимые поля: скрытые (смена типа, самовывоз) не уходят — данные сделки не затираются */
 function collectDeliv(){
-  return { transferDays:val('d_transfer'), warrantyMonths:val('d_warranty'), deliveryMethod:val('d_way').trim(),
-    deliveryIncluded:val('d_delivInc'), deliveryCost:val('d_delivInc')==='1'?'':val('d_delivCost'), assemblyIncluded:val('d_asmInc'), assemblyCost:val('d_asmInc')==='1'?'':val('d_asmCost'),
-    country:val('d_country').trim(), region:val('d_region').trim(), district:val('d_district').trim(), city:val('d_city').trim(), deliveryAddress:val('d_addr').trim() };
+  var m=mode(), way=val('d_wayMode'), o={};
+  if(m==='retail'){ o.transferDays=val('d_transfer'); o.warrantyMonths=val('d_warranty'); }
+  if(way==='pick') o.deliveryMethod='самовывоз';
+  if(way==='del'){
+    o.deliveryMethod=(WAY0 && !/самовывоз/i.test(WAY0))?WAY0:'доставка';   // «курьер» / «транспортная компания» из amoCRM не затираем
+    if(val('d_delivInc')){ o.deliveryIncluded=val('d_delivInc'); o.deliveryCost=val('d_delivInc')==='1'?'':val('d_delivCost'); }
+    if(m==='retail') o.region=val('d_region').trim();
+    o.city=val('d_city').trim(); o.deliveryAddress=val('d_addr').trim();
+  }
+  return o;
 }
-/* ── готовность: «Не хватает: …» до формирования (contractget.readiness; у несохранённого договора сделки — readiness(deal) по типу) ── */
-var READY_SEQ=0;
+/* ── готовность «Не хватает: …» сверху: розница — поля формы считаются здесь (живьём), данные клиента — с сервера (contractget.readiness / readiness(deal)) ── */
+var READY_SEQ=0, READY_SRV=[], READY_FOR='';
+var FORM_KEYS=/адрес доставки|срок передачи|доставка в договоре|стоимость доставки|график|у позици|позиции товара|^Сумма$|^клиент$/i;
+var READY_GO=[[/клиент$/i,'f_client'],[/позици|сумм/i,'s_items'],[/срок передачи/i,'d_transfer'],[/способ/i,'w_way'],[/стоимость доставки|доставка в договоре/i,'w_cost'],
+  [/адрес доставки/i,'d_city'],[/график/i,'s_sched'],[/телефон|паспорт|кем выдан|дата выдачи|личный номер|адрес регистрации|имя|ФИО|Наименование|УНП|ИНН|Юридический адрес/i,'@client']];
+function goField(id){
+  if(id==='@client'){ openClientCard(); return; }
+  var e=el(id); if(!e) return; try{ e.scrollIntoView({block:'center'}); }catch(x){ e.scrollIntoView(); }
+  var f=/^(INPUT|SELECT|BUTTON)$/.test(e.tagName)?e:e.querySelector('input:not([type=hidden]):not([disabled]), select, button:not([disabled])'); if(f) f.focus();
+}
+function readyLink(t){ var to=''; READY_GO.forEach(function(g){ if(!to && g[0].test(t)) to=g[1]; });
+  return to?('<a href="#" onclick="goField(\''+to+'\');return false">'+esc(t)+(to==='@client'?' (в карточке клиента)':'')+'</a>'):esc(t); }
+function localMissing(){
+  var m=mode(), l=[]; if(!BUYER) l.push('клиент');
+  if(!m||isFw()) return l;
+  var kept=POS.filter(keepPos);
+  if(m==='retail' && !kept.length) l.push('позиции товара');
+  if(m==='legal' && !kept.length && !(amountVal()>0)) l.push('сумма или позиции');
+  kept.forEach(function(p,j){ var x=optMiss(p); if(x.length) l.push('у позиции '+(j+1)+' не выбран '+x.join(', ')); });
+  if(m!=='retail') return l;
+  var way=val('d_wayMode'), inc=val('d_delivInc');
+  if(!val('d_transfer')) l.push('срок передачи');
+  if(!way) l.push('способ: доставка или самовывоз');
+  if(way==='del'){
+    if(!val('d_city').trim() && !val('d_addr').trim()) l.push('адрес доставки (город/адрес)');
+    if(!inc) l.push('стоимость доставки: включена в цену или отдельно');
+    else if(inc==='0' && !(Number(val('d_delivCost'))>0)) l.push('стоимость доставки, руб.');
+  }
+  if(isInst()){ var s=0; LEGS.forEach(function(x){ s+=Number(x.amount)||0; }); if(LEGS.length<2 || Math.abs(s-amountVal())>0.01) l.push('график платежей (сумма = итог позиций)'); }
+  return l;
+}
 function renderReady(){
-  var e=el('ready'), paint=function(l){ e.innerHTML=l.length?('⚠️ Не хватает для документа: '+l.map(esc).join(', ')):'✓ данные для документа готовы'; e.className=l.length?'sm err':'sm ok'; };
-  if(C){ paint((C.readiness&&C.readiness.missing)||[]); return; }
-  var k=curKind(), lbl=k?(k.label||''):'', my=++READY_SEQ;
-  var loc=[]; if(!BUYER) loc.push('клиент'); if(!isFw() && !(amountVal()>0) && !posTotalValue()) loc.push('сумма или позиции');
-  loc=loc.concat(POS.filter(keepPos).flatMap(function(p,j){ var m=optMiss(p); return m.length?['у позиции '+(j+1)+' не выбран '+m.join(', ')]:[]; }));
-  paint(loc);
-  if(!PRESEL_DEAL || !/рассрочк|100/.test(lbl)) return;
+  var e=el('ready'), m=mode();
+  if(!m){ e.className='note hide'; return; }
+  var srv=C?((C.readiness&&C.readiness.missing)||[]):READY_SRV;
+  if(m==='retail') srv=srv.filter(function(t){ return !FORM_KEYS.test(t) || (/срок передачи/i.test(t) && !val('d_transfer')); });
+  else srv=srv.filter(function(t){ return !/у позици|позиции товара/i.test(t); });   // опции позиций — по форме (живьём), не по сохранённому
+  var l=localMissing(); srv.forEach(function(t){ if(l.indexOf(t)<0 && !(/срок передачи/i.test(t) && l.some(function(x){ return /срок передачи/i.test(x); }))) l.push(t); });
+  e.className='note '+(l.length?'warn':'ok');
+  e.innerHTML='<div>'+(l.length?('⚠️ Не хватает для документа: '+l.map(readyLink).join(', ')):'✓ данные для документа готовы')+'</div>';
+  // несохранённый розничный договор по сделке — данные клиента (телефон, паспорт) берём из readiness(deal)
+  var k=curKind(), lbl=k?(k.label||''):'', key=(PRESEL_DEAL?PRESEL_DEAL.id:'')+'|'+lbl;
+  if(C || m!=='retail' || !PRESEL_DEAL || READY_FOR===key) return;
+  READY_FOR=key; var my=++READY_SEQ;
   get({vapi:'readiness', deal:PRESEL_DEAL.id}).then(function(r){ if(my!==READY_SEQ) return;
-    var c=((r&&r.checks)||[]).filter(function(x){ return x.doc===lbl; })[0]; if(c) paint(loc.concat(c.missing||[])); }).catch(function(){});
+    var c=((r&&r.checks)||[]).filter(function(x){ return x.doc===lbl; })[0]; READY_SRV=(c&&c.missing)||[]; renderReady(); }).catch(function(){});
 }
 
 /* ── график ── */
-function onSchedOn(){
-  var on=el('f_schedOn').checked; el('schedBody').className=on?'':'hide';
-  if(on){ setSel('f_balance','по графику (рассрочка / отсрочка)');
-    if(!LEGS.length){ var a=amountVal()||0, pp=Number(val('f_prepay'))||0, first=Math.round(a*pp)/100;
-      LEGS=[{legNo:1, amount:first, dueDate:val('f_date')||todayIso(), beforeShip:true},{legNo:2, amount:Math.round((a-first)*100)/100, dueDate:'', beforeShip:false}]; renderLegs(); }
-  } else checkLegs();
+function initLegs(){
+  var a=amountVal()||0, d1=val('f_date')||todayIso();
+  if(mode()==='retail'){ LEGS=[{legNo:1, amount:0, dueDate:d1, beforeShip:true},{legNo:2, amount:a, dueDate:addDays(d1,30), beforeShip:false}]; }   // аванс 0 в дату договора + остаток
+  else { var pp=Number(val('f_prepay'))||0, first=Math.round(a*pp)/100;
+    LEGS=[{legNo:1, amount:first, dueDate:d1, beforeShip:true},{legNo:2, amount:Math.round((a-first)*100)/100, dueDate:'', beforeShip:false}]; }
+  renderLegs();
 }
 function renderLegs(){
   el('legRows').innerHTML=LEGS.map(function(l,i){
-    return '<tr><td data-l="№">'+(i+1)+'</td><td class="num" data-l="Сумма"><input type="number" inputmode="decimal" min="0" step="0.01" value="'+esc(l.amount==null?'':l.amount)+'" oninput="LEGS['+i+'].amount=this.value;checkLegs()" autocomplete="off"></td>'
-      +'<td data-l="Дата"><input type="date" value="'+esc(l.dueDate||'')+'" onchange="LEGS['+i+'].dueDate=this.value;checkLegs()" autocomplete="off"></td>'
-      +'<td data-l="До отгрузки"><input type="checkbox" '+(l.beforeShip?'checked':'')+' onchange="LEGS['+i+'].beforeShip=this.checked;checkLegs()"></td>'
-      +'<td><button class="gho sm" title="убрать строку" onclick="LEGS.splice('+i+',1);renderLegs()">✕</button></td></tr>'; }).join('')
+    return '<tr><td data-l="№">'+(i+1)+'</td><td class="num" data-l="Сумма"><input type="number" inputmode="decimal" min="0" step="0.01" value="'+esc(l.amount==null?'':l.amount)+'" oninput="LEGS['+i+'].amount=this.value;checkLegs();renderReady()" autocomplete="off"'+(EDIT?'':' disabled')+'></td>'
+      +'<td data-l="Дата"><input type="date" value="'+esc(l.dueDate||'')+'" onchange="LEGS['+i+'].dueDate=this.value;checkLegs()" autocomplete="off"'+(EDIT?'':' disabled')+'></td>'
+      +'<td data-l="'+esc(el('thPre').textContent)+'"><input type="checkbox" '+(l.beforeShip?'checked':'')+' onchange="LEGS['+i+'].beforeShip=this.checked;checkLegs()"'+(EDIT?'':' disabled')+'></td>'
+      +'<td><button class="gho sm" title="убрать строку" onclick="LEGS.splice('+i+',1);renderLegs();renderReady()"'+(EDIT?'':' disabled')+'>✕</button></td></tr>'; }).join('')
     ||'<tr><td colspan="5" class="sm">Строк нет — «+ строка» или «Разбить остаток помесячно».</td></tr>';
   LEGS.forEach(function(l,i){ l.legNo=i+1; });
-  checkLegs(); setEditable();
+  checkLegs();
 }
-function addLeg(){ if(LEGS.length>=6){ setm('schedMsg','err','Не больше 6 строк: платёж до отгрузки + до 5 после'); return; } LEGS.push({legNo:LEGS.length+1, amount:'', dueDate:'', beforeShip:!LEGS.length}); renderLegs(); }
+function addLeg(){ if(LEGS.length>=6){ setm('schedMsg','err','Не больше 6 строк: платёж до '+(mode()==='retail'?'передачи':'отгрузки')+' + до 5 после'); return; } LEGS.push({legNo:LEGS.length+1, amount:'', dueDate:'', beforeShip:!LEGS.length}); renderLegs(); }
 /** проверка на экране (сервер проверит ещё раз): Σ = сумма договора, предоплата 0 — предупреждение */
 function checkLegs(){
-  if(!el('f_schedOn').checked||isFw()){ return; }
-  var a=amountVal(), s=0, warn=[], bad=[];
+  if(!schedOn()){ return; }
+  var a=amountVal(), s=0, warn=[], bad=[], ev=mode()==='retail'?'передачи':'отгрузки';
   LEGS.forEach(function(l){ s+=Number(l.amount)||0; }); s=Math.round(s*100)/100;
   el('legsTot').textContent=money(s);
   if(a==null) bad.push('у договора «без суммы» график не нужен');
-  else if(Math.abs(s-a)>0.01) bad.push('сумма строк '+money(s)+' ≠ сумма договора '+money(a)+' (разница '+money(s-a)+')');
-  if(LEGS.length&&LEGS.length<2) bad.push('нужно не меньше 2 строк (до отгрузки + после); одна строка после отгрузки = отсрочка');
+  else if(Math.abs(s-a)>0.01) bad.push('сумма строк '+money(s)+' ≠ '+(mode()==='retail'?'итог позиций ':'сумма договора ')+money(a)+' (разница '+money(s-a)+')');
+  if(LEGS.length&&LEGS.length<2) bad.push('нужно не меньше 2 строк (до '+ev+' + после)');
   if(LEGS.length>6) bad.push('не больше 6 строк');
   var pre=LEGS.filter(function(l){ return l.beforeShip; });
-  if(LEGS.length&&!pre.length) warn.push('нет платежа до отгрузки — весь товар уходит без предоплаты');
-  else if(pre.length&&pre.every(function(l){ return !(Number(l.amount)>0); })) warn.push('предоплата 0 — отгружаем без денег; убедитесь, что так и задумано');
+  if(LEGS.length&&!pre.length) warn.push('нет платежа до '+ev+' — весь товар уходит без предоплаты');
+  else if(mode()!=='retail' && pre.length&&pre.every(function(l){ return !(Number(l.amount)>0); })) warn.push('предоплата 0 — отгружаем без денег; убедитесь, что так и задумано');
   var prev=''; LEGS.forEach(function(l){ if(l.dueDate&&prev&&l.dueDate<prev) bad.push('даты должны идти по возрастанию'); if(l.dueDate) prev=l.dueDate; });
   el('legsChk').innerHTML=bad.length?'<span class="err">⚠ '+esc(bad[0])+'</span>':(LEGS.length?'<span class="ok">✓ сходится</span>':'');
   setm('schedMsg', warn.length?'warn':'', warn.length?('⚠️ '+esc(warn.join('; '))):'');
 }
-/** остаток после платежа до отгрузки → n платежей помесячно (schedulecalc; последний закрывает округление) */
+/** остаток после платежа до отгрузки/передачи → n платежей помесячно (schedulecalc; последний закрывает округление) */
 function splitRest(){
-  var a=amountVal(); if(a==null||a<=0){ setm('schedMsg','err','Сначала укажите сумму договора'); return; }
+  var a=amountVal(); if(a==null||a<=0){ setm('schedMsg','err',mode()==='retail'?'Сначала добавьте позиции — сумма = их итог':'Сначала укажите сумму договора'); return; }
   var first=LEGS.length&&LEGS[0].beforeShip?(Number(LEGS[0].amount)||0):0, n=Number(val('f_n'))||1, d1=(LEGS[0]&&LEGS[0].dueDate)||val('f_date')||todayIso();
   var d2=val('f_second')||(LEGS[1]&&LEGS[1].dueDate)||addDays(d1,30);
   post({vapi:'schedulecalc', total:a, first:first, n:n, firstDate:ruDate(d1), secondDate:ruDate(d2)}).then(function(r){
     if(!r||!r.ok){ setm('schedMsg','err','⚠️ Не посчитал: '+esc(errText(r))); return; }
     LEGS=(r.legs||[]).map(function(l,i){ return { legNo:l.legNo||(i+1), amount:l.amount, dueDate:isoDate(l.dueDate), beforeShip:!!l.beforeShip }; });
-    renderLegs(); if(r.warning) setm('schedMsg','warn','⚠️ '+esc(r.warning));
+    renderLegs(); renderReady(); if(r.warning) setm('schedMsg','warn','⚠️ '+esc(r.warning));
   }).catch(function(e){ setm('schedMsg','err',esc(netText(e))); });
 }
 function cleanLegs(){ return LEGS.map(function(l,i){ return { legNo:i+1, amount:Number(l.amount)||0, dueDate:ruDate(l.dueDate||''), beforeShip:!!l.beforeShip }; }); }
@@ -609,21 +740,31 @@ function renderDocs(){
 }
 
 /* ══════════ действия ══════════ */
+/** на сервер — только поля, видимые для этого типа: смена типа не затирает данные сделки (решение владельца 01.10.2026) */
 function collect(){
-  var k=curKind();
-  return { kind:val('f_kind'), kindLabel:k?k.label:'', isFramework:isFw(), client:BUYER?buyerKey(BUYER):'', clientName:val('f_client').trim(), deal:isFw()?'':val('f_deal'),
-    contractDate:ruDate(val('f_date')), validUntil:ruDate(val('f_valid')), amount:amountVal(), currency:curOf(),
-    prepayPercent:Number(val('f_prepay'))||0, balanceCondition:val('f_balance'), balanceDays:val('f_bdays'), freightPayer:val('f_freight'), terms:{ prodDays:Number(val('f_prod'))||0 },
-    currencyRegNo:val('f_regNo').trim(), currencyRegDate:ruDate(val('f_regDate')),
-    items:isFw()?[]:cleanPos(), delivery:isFw()?{}:collectDeliv(), legs:(isFw()||!el('f_schedOn').checked)?[]:cleanLegs() };
+  var k=curKind(), m=mode(), fw=isFw(), retail=m==='retail';
+  var d={ kind:val('f_kind'), kindLabel:k?k.label:'', isFramework:fw, client:BUYER?buyerKey(BUYER):'', clientName:val('f_client').trim(), deal:fw?'':val('f_deal'),
+    contractDate:ruDate(val('f_date')), currency:retail?'BYN':curOf(),
+    items:fw?[]:cleanPos(), delivery:fw?{}:collectDeliv(), legs:schedOn()?cleanLegs():[] };
+  if(retail){ d.amount=posTotalValue(); return d; }   // розница: сумма = итог позиций, рынок BYN, «Действует до» — до исполнения (сервер)
+  d.validUntil=ruDate(val('f_valid')); d.amount=fw?null:amountVal();
+  var lbl=k?(k.label||''):'', svc=/услуг/i.test(lbl), coop=/сотрудничеств/i.test(lbl);
+  if(!(coop||fw)){ d.prepayPercent=Number(val('f_prepay'))||0; d.balanceCondition=val('f_balance'); d.balanceDays=val('f_bdays'); }
+  if(!svc) d.freightPayer=val('f_freight');
+  if(!(svc||coop)) d.terms={ prodDays:Number(val('f_prod'))||0 };
+  if(!el('w_creg').classList.contains('hide')){ d.currencyRegNo=val('f_regNo').trim(); d.currencyRegDate=ruDate(val('f_regDate')); }
+  return d;
 }
 function validate(d){
-  if(!BUYER) return 'Выберите клиента из справочника';
+  if(!BUYER) return 'Выберите клиента из справочника (или создайте его кнопкой «+ Создать клиента»)';
   if(!d.kind) return 'Выберите тип договора';
-  if(!d.validUntil) return 'Укажите срок действия';
-  if(!d.isFramework && d.amount!=null && d.amount<=0 && !d.items.length) return 'Укажите сумму или позиции — либо отметьте «без суммы»';
+  var retail=mode()==='retail';
+  if(!retail && !d.validUntil) return 'Укажите срок действия';
+  if(retail && !d.items.length) return 'Добавьте позиции — сумма розничного договора = итог позиций';
+  if(!retail && !d.isFramework && !(d.amount>0) && !d.items.length) return 'Укажите позиции или сумму договора';
   if(!d.isFramework && !checkPos('posMsg')) return posMissMsg();   // обязательные опции (канат, зацепы горки) — как в сделке
-  if(d.legs.length){ var s=0; d.legs.forEach(function(l){ s+=l.amount; }); if(d.amount==null) return 'График оплаты требует суммы договора'; if(Math.abs(s-d.amount)>0.01) return 'Сумма строк графика не сходится с суммой договора'; if(d.legs.length<2||d.legs.length>6) return 'В графике от 2 до 6 строк'; }
+  var dv=d.delivery||{}; if(dv.deliveryIncluded==='0' && dv.deliveryCost!=null && dv.deliveryCost!=='' && !(Number(dv.deliveryCost)>=0)) return 'Стоимость доставки — сумма в рублях';
+  if(d.legs.length){ var s=0; d.legs.forEach(function(l){ s+=l.amount; }); if(d.amount==null) return 'График оплаты требует суммы договора'; if(Math.abs(s-d.amount)>0.01) return 'Сумма строк графика не сходится с '+(retail?'итогом позиций':'суммой договора'); if(d.legs.length<2||d.legs.length>6) return 'В графике от 2 до 6 строк'; }
   return '';
 }
 function setId(id){ ID=String(id); var sp=new URLSearchParams(location.search); sp.set('contract', ID); try{ history.replaceState(null,'',location.pathname+'?'+sp.toString()); }catch(e){} }
@@ -631,14 +772,16 @@ function save(){
   var d=collect(), e=validate(d); if(e){ setm('msg','err','⚠️ '+esc(e)); oops(e); return Promise.resolve(null); }
   return run({vapi:'contractsave', id:isNew()?'':ID, data:JSON.stringify(d)}, 'Сохраняю договор…', 'msg').then(function(r){ if(!r) return null;
     if(r.id) setId(r.id);
-    setm('msg','ok','✅ Сохранено'+(r.inquiryNum?(' · создана заявка <b>'+esc(r.inquiryNum)+'</b>'):''));
+    setm('msg','ok','✅ Сохранено'+(r.inquiryNum&&r.dealCreated?(' · создана заявка <b>'+esc(r.inquiryNum)+'</b>'):''));
     pushAmoDelivery(d.delivery);
     loadContract(); return r; });
 }
-/** сделка из amoCRM — адрес/город/область/район/способ доставки обратно в лид (как раньше из карточки сделки; «Страна» и «Оплата» правит только amoCRM) */
+/** сделка из amoCRM — переданные поля доставки обратно в лид (город/область/адрес/способ; «Страна» и «Оплата» правит только amoCRM) */
 function pushAmoDelivery(dv){
   var lead=(C&&C.deal&&C.deal.leadId)||(PRESEL_DEAL&&PRESEL_DEAL.leadId)||''; if(!/^\d+$/.test(String(lead))||!dv) return;
-  post({vapi:'amodelivery', lead:lead, data:JSON.stringify({ 'Адрес доставки':dv.deliveryAddress,'Город':dv.city,'Область':dv.region,'Район':dv.district,'Способ доставки':dv.deliveryMethod })})
+  var map={ deliveryAddress:'Адрес доставки', city:'Город', region:'Область', deliveryMethod:'Способ доставки' }, o={}, n=0;
+  Object.keys(map).forEach(function(k){ if(dv[k]!==undefined){ o[map[k]]=dv[k]; n++; } }); if(!n) return;
+  post({vapi:'amodelivery', lead:lead, data:JSON.stringify(o)})
     .then(function(a){ if(!(a&&a.ok)) setm('msg','ok','✅ Сохранено (в amoCRM поля доставки записать не удалось'+((a&&a.error)?': '+esc(a.error):'')+')'); }).catch(function(){});
 }
 function renderDoc(){
@@ -697,6 +840,7 @@ function deleteDlg(){
 }
 /** «Назад» ничего не пишет: несохранённые правки пропадают (так просил владелец — «Отмена» без записи) */
 function goBack(){ if(history.length>1 && document.referrer) history.back(); else location.href=pageUrl('salesdocs.html',{tab:'contracts'}); }
+
 
 start();
 // авто-обновление: оболочка шлёт «refresh» при возврате на раздел

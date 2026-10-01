@@ -9,6 +9,8 @@
 <!-- Замена GAS-панели хаба ClientsPanel (?page=clients): справочник контрагентов (юрлица, ИП, физлица), распознавание реквизитов, правка, удаление.
      С 28.09.2026: ?client=<УНП|ИНН|ID> — карточка клиента (clientcard): реквизиты, рынок (by/ru/eu/other — savebuyer market),
      сделки по стадиям (→ sales.html?deal=), договоры (рамочный, срок, «Подписан» — contractsign), счета, итоги.
+     С 01.10.2026: возврат в карточку договора — ?back=contract.html?… (+ ?new=1&type=физлицо|юрлицо&name=… — форма нового клиента с ФИО/названием);
+     после «Сохранить» — назад в договор с &client=<ключ>, кнопка «← Вернуться в договор» — без записи.
      С 30.09.2026: «Рамочный договор» ведёт в карточку договора contract.html?contract=new&client=<ключ>&framework=1 (диалог contractframework убран);
      строки договоров клиента — ссылки в карточку договора. -->
 <style>
@@ -36,6 +38,7 @@
 <div class="hi" id="ttl">👤 Клиенты</div>
 <div class="sub">Справочник покупателей: реквизиты юрлиц и ИП, данные физлиц для договоров. Нажмите на клиента — откроется его карточка.</div>
 <div id="noacc" class="note warn hide"></div>
+<div class="toolbar hide" id="backBar"><button class="sec sm" onclick="goBackTo('')">← Вернуться в договор</button><span class="sm muted">введённое в договоре сохранено</span></div>
 
 <!-- ═══ СПРАВОЧНИК ═══ -->
 <div id="vList">
@@ -154,7 +157,7 @@ function money(n){ n=Number(n)||0; return n.toFixed(2).replace(/\B(?=(\d{3})+(?!
 function ruDate(s){ if(!s) return ''; var p=String(s).split('-'); return p.length===3 ? (p[2]+'.'+p[1]+'.'+p[0]) : s; }
 function todayIso(){ var d=new Date(); return new Date(d.getTime()-d.getTimezoneOffset()*6e4).toISOString().slice(0,10); }
 /** Ссылка на соседний экран с теми же параметрами (embed=1, twsec — оболочка app.html). */
-function pageUrl(page, k, v){ var sp=new URLSearchParams(location.search); ['deal','lead','client','contract','framework'].forEach(function(x){ sp.delete(x); }); sp.set(k, v); return page+'?'+sp.toString(); }
+function pageUrl(page, k, v){ var sp=new URLSearchParams(location.search); ['deal','lead','client','contract','framework','back','new','type','name'].forEach(function(x){ sp.delete(x); }); sp.set(k, v); return page+'?'+sp.toString(); }
 /** Карточка договора: contract.html?contract=<id|номер|new>[&client=<ключ клиента>&framework=1] */
 function contractUrl(key, fw){ var u=pageUrl('contract.html','contract',key||'new'); if(key==='new'&&CKEY) u+='&client='+encodeURIComponent(CKEY); if(fw) u+='&framework=1'; return u; }
 
@@ -267,7 +270,7 @@ function save(){
   var o=collect(), nm=o['Наименование ЮЛ (полное)']||o['Полное ФИО'];
   if(!String(nm||'').trim()){ setm('saveMsg','err', CTYPE==='физлицо'?'Укажите ФИО':'Укажите наименование'); return; }
   run({vapi:'savebuyer', data:JSON.stringify(o)}, 'Сохраняю клиента…', 'saveMsg').then(function(r){ if(!r) return;
-    setm('saveMsg','ok','✅ Сохранено'); setTimeout(function(){ closeForm(); load(); }, 500); });
+    setm('saveMsg','ok','✅ Сохранено'); if(BACK){ goBackTo(r.key||r.unp||r.id||''); return; } setTimeout(function(){ closeForm(); load(); }, 500); });
 }
 // в Прохабе удаление мягкое: клиента со сделками, договорами или счетами сервер не удалит и объяснит почему
 function del(k){
@@ -277,9 +280,15 @@ function del(k){
 }
 
 /* ══════════ маршрут: справочник ↔ карточка (?client=<ключ>) ══════════ */
-var CKEY='', CC=null, CC_ST='';
+var CKEY='', CC=null, CC_ST='', NEW_DONE=false;
+/** куда вернуться: только соседняя страница фронта (contract.html?…), не чужой адрес */
+var BACK=(function(b){ return /^[a-z]+\.html(\?[^#]*)?$/.test(b)?b:''; })(new URLSearchParams(location.search).get('back')||'');
+function goBackTo(key){ var p=BACK.split('?'), sp=new URLSearchParams(p[1]||''); if(key) sp.set('client', key); location.replace(p[0]+'?'+sp.toString()); }
 function route(){
-  CKEY=qp('client');
+  CKEY=qp('client'); el('backBar').className=BACK?'toolbar':'toolbar hide';
+  if(qp('new')==='1' && !NEW_DONE && !CKEY){ NEW_DONE=true;   // «+ Создать клиента» из договора: тип и ФИО/название уже введены там
+    openAdd(); var t=qp('type'); if(t==='физлицо'||t==='юрлицо'||t==='ИП') setType(t);
+    var nm=new URLSearchParams(location.search).get('name')||''; if(nm){ var cur=collectRaw(); cur[CTYPE==='физлицо'?'Полное ФИО':'Наименование ЮЛ (полное)']=nm; renderFields(cur); } }
   if(CKEY){ el('vList').className='hide'; el('vCard').className=''; openClient(); }
   else { el('vCard').className='hide'; el('vList').className=''; el('ttl').textContent='👤 Клиенты'; load(); }
 }
