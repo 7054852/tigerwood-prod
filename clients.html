@@ -17,6 +17,10 @@
   .hide{ display:none !important; }
   td.num, td[data-l="№"]{ white-space:nowrap; }   /* сумма и номер не рвём на две строки */
   input,textarea,select{ width:100%; }
+  .fl.got input{ border-color:var(--green); background:var(--green-bg); }   /* поле заполнено «Распознать» */
+  .fl.got > span::after{ content:' ✓'; color:var(--green); font-weight:600; }
+  .fl.miss input{ border-color:var(--amber); }   /* важное поле не найдено в реквизитах */
+  .fl.miss > span::after{ content:' — не найдено'; color:var(--amber); }
   td{ vertical-align:top; }
   .sm:not(button){ font:var(--t-small); }
   .grid{ display:grid; grid-template-columns:1fr 1fr; gap:var(--s-2) var(--s-3); margin-top:var(--s-3); }
@@ -210,7 +214,15 @@ var UL_TAIL=[['В лице',''],['Полное ФИО',''],['И. О. Фамил�
 /** реквизиты юрлица/ИП по рынку: Беларусь — УНП; Россия — ИНН/КПП/ОГРН + корр. счёт; Европа — VAT (в поле «УНП»), страна, IBAN, BIC/SWIFT */
 var UL_BY=[['Наименование ЮЛ (полное)','full'],['УНП',''],['Юридический адрес','full'],['р/с',''],['р/с в',''],['Код банка (БИК)','']].concat(UL_TAIL);
 var UL_RU=[['Наименование ЮЛ (полное)','full'],['ИНН',''],['КПП',''],['ОГРН',''],['Юридический адрес','full'],['р/с',''],['р/с в',''],['Код банка (БИК)',''],['Корр. счёт','']].concat(UL_TAIL);
-var UL_EU=[['Наименование ЮЛ (полное)','full'],['УНП',''],['Страна',''],['Юридический адрес','full'],['р/с',''],['р/с в',''],['Код банка (БИК)','']].concat(UL_TAIL);
+var UL_EU=[['Наименование ЮЛ (полное)','full'],['УНП',''],['Страна',''],['Юридический адрес','full'],['р/с',''],['р/с в',''],['Код банка (БИК)',''],['Полное ФИО',''],['тел',''],['e-mail','']];   // в контракте должность — Director, основание — the constituent documents; подпись «D. Zborovsky» — из ФИО
+/** важные поля по рынку: после «Распознать» ненайденные подсвечиваются */
+var NEED={ by:['Наименование ЮЛ (полное)','УНП','Юридический адрес','р/с','р/с в','Код банка (БИК)','Полное ФИО'], ru:['Наименование ЮЛ (полное)','ИНН','КПП','ОГРН','Юридический адрес','р/с','р/с в','Код банка (БИК)','Корр. счёт','Полное ФИО'],
+  eu:['Наименование ЮЛ (полное)','УНП','Страна','Юридический адрес','р/с','р/с в','Код банка (БИК)','Полное ФИО','e-mail'] };
+var GOT=null;   // поля, найденные «Распознать» (подсветка до следующей правки формы)
+/** подпись «И.О. Фамилия» из полного ФИО: «Иванов Иван Иванович» → «И.И. Иванов», «Dmitry Zborovsky» → «D. Zborovsky» */
+function shortFio(f){ var w=String(f||'').trim().split(/\s+/); if(w.length<2) return '';
+  if(/[А-Яа-яЁё]/.test(w[0]) && w.length===3) return w[1].charAt(0)+'.'+w[2].charAt(0)+'. '+w[0];
+  return w.slice(0,-1).map(function(x){ return x.charAt(0)+'.'; }).join(' ')+' '+w[w.length-1]; }
 function ulFields(){ var f=CMKT==='ru'?UL_RU:CMKT==='eu'?UL_EU:UL_BY; return CTYPE==='ИП'?f.filter(function(x){ return x[0]!=='КПП' && x[0]!=='В лице'; }):f; }
 var LABELS_MKT={ ru:{'Код банка (БИК)':'БИК','ОГРН':'ОГРН / ОГРНИП','р/с':'Расчётный счёт (20 цифр)'},
   eu:{'УНП':'VAT / DIČ / NIP','р/с':'IBAN','р/с в':'Bank','Код банка (БИК)':'BIC / SWIFT','Полное ФИО':'Директор (можно латиницей)','И. О. Фамилия':'Подпись (И. Фамилия)','Юридический адрес':'Legal address'} };
@@ -259,26 +271,29 @@ function setMkt(m, cur){ CMKT=(m==='ru'||m==='eu')?m:(m==='other'?'eu':'by'); va
 function renderFields(cur){
   cur=cur||{};
   var fs=(CTYPE==='физлицо')?FL_FIELDS:ulFields();
+  var need=(CTYPE!=='физлицо'&&GOT)?(NEED[CMKT]||[]):[];
   el('fields').innerHTML=fs.map(function(f){
-    return '<label class="fl '+(f[1]==='full'?'full':'')+'"><span>'+esc(label(f[0]))+'</span><input data-f="'+esc(f[0])+'" value="'+esc(cur[f[0]]||'')+'" autocomplete="off"'+(f[0]==='Страна'?' list="euCountries"':'')+'></label>';
+    var mark=GOT&&GOT[f[0]]?' got':(need.indexOf(f[0])>=0&&!cur[f[0]]?' miss':'');
+    return '<label class="fl '+(f[1]==='full'?'full':'')+mark+'"><span>'+esc(label(f[0]))+'</span><input data-f="'+esc(f[0])+'" value="'+esc(cur[f[0]]||'')+'" autocomplete="off"'+(f[0]==='Страна'?' list="euCountries"':'')+'></label>';
   }).join('');
 }
 function collectRaw(){ var o={}, ins=el('fields').querySelectorAll('input'); for(var i=0;i<ins.length;i++) o[ins[i].getAttribute('data-f')]=ins[i].value.trim(); return o; }
 function collect(){
   var o=collectRaw(); o['Тип']=CTYPE;
   if(EDIT){ if(EDIT['УНП']) o['УНП']=o['УНП']||EDIT['УНП']; if(EDIT['ИНН']) o['ИНН']=EDIT['ИНН']; if(EDIT['ID']) o['ID']=EDIT['ID']; }
+  if(CTYPE!=='физлицо' && !o['И. О. Фамилия'] && o['Полное ФИО']) o['И. О. Фамилия']=shortFio(o['Полное ФИО']);   // подпись в реквизитах договора
   if(CTYPE!=='физлицо'){   // страна и валюта — по рынку формы; рынок шлём, если новый клиент или его сменили
     if(CMKT==='by') o['Страна']='Беларусь'; else if(CMKT==='ru') o['Страна']='Россия';
     o['Валюта']=CUR[CMKT]; if(!EDIT || CMKT!==MKT0) o.market=CMKT;
   } else if(!o['Валюта']) o['Валюта']='BYN';
   return o;
 }
-function openAdd(){ EDIT=null; MKT0=''; el('formTitle').textContent='Новый клиент'; el('form').className='card'; el('raw').value=''; setm('reqMsg','',''); setm('saveMsg','','');
+function openAdd(){ EDIT=null; MKT0=''; GOT=null; el('formTitle').textContent='Новый клиент'; el('form').className='card'; el('raw').value=''; setm('reqMsg','',''); setm('saveMsg','','');
   el('fields').innerHTML=''; CMKT='by'; setType('юрлицо'); setMkt('by'); }
 function edit(k){ var b=BUYERS.filter(function(x){ return key(x)===k; })[0]; if(b) editB(b); }
 function editB(b){
   EDIT=b; el('formTitle').textContent='Правка: '+name_(b); el('form').className='card'; setm('saveMsg','',''); setm('reqMsg','','');
-  el('fields').innerHTML=''; MKT0=(b.market==='ru'||b.market==='eu')?b.market:(b.market==='other'?'eu':'by'); CMKT=MKT0; setType(typeOf(b)); setMkt(MKT0, b); window.scrollTo(0,0);
+  el('fields').innerHTML=''; GOT=null; MKT0=(b.market==='ru'||b.market==='eu')?b.market:(b.market==='other'?'eu':'by'); CMKT=MKT0; setType(typeOf(b)); setMkt(MKT0, b); window.scrollTo(0,0);
 }
 function closeForm(){ el('form').className='card hide'; EDIT=null; }
 function parseReq(){
@@ -286,11 +301,13 @@ function parseReq(){
   setm('reqMsg','','Распознаю…');
   post({vapi:'parsereq', text:t}).then(function(r){
     if(!r||!r.ok||!(r.count>0)){ setm('reqMsg','err','⚠️ '+esc((r&&r.error)||'Не удалось распознать — впишите поля вручную.')); return; }
-    setm('reqMsg','ok','✓ Распознано полей: '+r.count);
     var f=r.fields||{}; if(f['Тип']==='ИП'||f['Тип']==='юрлицо'){ CTYPE=f['Тип']; var bs=document.querySelectorAll('#segType button'); for(var i=0;i<bs.length;i++) bs[i].className=bs[i].getAttribute('data-v')===CTYPE?'on':''; }
     var cur=collectRaw(); for(var k in f){ if(f[k]!=null&&f[k]!=='') cur[k]=f[k]; }
     var st=String(f['Страна']||''), mk=(f['ИНН']||/росси/i.test(st))?'ru':(st&&!/беларус/i.test(st))?'eu':(f['УНП']?'by':CMKT);   // рынок — по распознанному
-    if(mk!=='eu') delete cur['Страна']; setMkt(mk, cur);
+    if(mk!=='eu') delete cur['Страна'];
+    GOT={}; for(var g in f){ if(f[g]!=null&&f[g]!=='') GOT[g]=1; } setMkt(mk, cur);
+    var miss=(NEED[CMKT]||[]).filter(function(k){ return !cur[k]; }).map(label);
+    setm('reqMsg', miss.length?'warn':'ok', (miss.length?'⚠️ ':'✅ ')+'Распознано полей: '+r.count+' — подсвечены зелёным'+(miss.length?('. Не найдено: '+esc(miss.join(', '))+' — впишите вручную'):'. Проверьте и сохраните'));
   }).catch(function(e){ setm('reqMsg','err',esc(netText(e))); });
 }
 function save(){
