@@ -141,15 +141,16 @@
       <label class="fl" id="w_amount"><span class="sm">Сумма, <span id="curLbl">BYN</span></span><input id="f_amount" type="number" inputmode="decimal" min="0" step="0.01" oninput="onAmount()" autocomplete="off">
         <span class="sm" id="amtHint"></span></label>
       <label class="fl" id="w_prepay"><span class="sm">Предоплата, %</span><input id="f_prepay" type="number" inputmode="numeric" min="0" max="100" value="80" oninput="checkLegs()" autocomplete="off"></label>
-      <label class="fl" id="w_balance"><span class="sm">Остаток (доплата) — условие</span>
+      <label class="fl" id="w_pdays"><span class="sm">Срок предоплаты, банковских дней со дня счёта</span><input id="f_pdays" type="number" inputmode="numeric" min="1" value="5" autocomplete="off"></label>
+      <!-- v3 ЮЛ (решение владельца 01.10.2026): остаток — один из трёх вариантов (текст строит сервер, contractsave{balanceMode}); «по графику» — строки графика -->
+      <label class="fl" id="w_balance"><span class="sm">Остаток — условие</span>
         <select id="f_balance" onchange="onBalance()">
-          <option>по готовности товара к отгрузке</option>
-          <option>после отгрузки товара</option>
-          <option>в течение 5 банковских дней после отгрузки</option>
-          <option>100% предоплатой (без остатка)</option>
+          <option value="shipped">в течение N дней с даты отгрузки</option>
+          <option value="ready">до отгрузки — после уведомления о готовности товара</option>
+          <option value="accepted">в течение N дней со дня подписания накладной</option>
           <option>по графику (рассрочка / отсрочка)</option>
         </select></label>
-      <label class="fl" id="w_bdays"><span class="sm">или срок доплаты, дней от отгрузки</span><input id="f_bdays" type="number" inputmode="numeric" min="0" placeholder="пусто — условие из списка" oninput="onBalanceDays()" autocomplete="off"><span class="sm" id="bdaysHint"></span></label>
+      <label class="fl" id="w_bdays"><span class="sm" id="lblBdays">Срок остатка, дней</span><input id="f_bdays" type="number" inputmode="numeric" min="1" placeholder="например, 10" oninput="onBalanceDays()" autocomplete="off"><span class="sm" id="bdaysHint"></span></label>
       <label class="fl" id="w_prod"><span class="sm">Срок производства, раб. дней</span><input id="f_prod" type="number" inputmode="numeric" min="1" value="14" autocomplete="off"></label>
       <label class="fl" id="w_freight"><span class="sm">Заказчик перевозки (для ТН/ТТН; на текст договора не влияет)</span><select id="f_freight"><option value="Мы">Мы (Тигервуд)</option><option value="Клиент">Клиент</option></select></label>
     </div>
@@ -172,9 +173,10 @@
       <label class="fl" id="w_warranty"><span class="sm">Гарантия, мес.</span><input id="d_warranty" type="number" inputmode="numeric" min="0" placeholder="36 — как у продавца" autocomplete="off"></label>
       <div class="fl full" id="w_way"><span class="sm">Способ</span>
         <span class="seg" id="segWay"><button type="button" data-v="pick" onclick="setWay('pick')">Самовывоз</button><button type="button" data-v="del" id="btnWayDel" onclick="setWay('del')">Доставка</button></span><span class="sm" id="wayHint"></span></div>
-      <div class="fl full" id="w_cost"><span class="sm">Стоимость доставки</span>
-        <div class="row"><span class="seg" id="segInc"><button type="button" data-v="1" onclick="setInc('1')">включена в цену</button><button type="button" data-v="0" onclick="setInc('0')">оплачивается отдельно</button></span>
-        <label class="fl" id="w_costSum"><input id="d_delivCost" type="number" inputmode="decimal" min="0" step="0.01" placeholder="сумма, руб." autocomplete="off" oninput="renderReady()"></label></div></div>
+      <div class="fl full" id="w_cost"><span class="sm" id="lblCost">Стоимость доставки</span>
+        <div class="row"><span class="seg" id="segInc"><button type="button" data-v="1" onclick="setInc('1')">включена в цену</button><button type="button" data-v="0" id="btnIncNo" onclick="setInc('0')">оплачивается отдельно</button></span>
+        <label class="fl" id="w_costSum"><input id="d_delivCost" type="number" inputmode="decimal" min="0" step="0.01" placeholder="сумма, руб." autocomplete="off" oninput="renderReady()"></label></div>
+        <span class="sm" id="costHint"></span></div>
       <label class="fl" id="w_region"><span class="sm">Область</span><input id="d_region" autocomplete="off"></label>
       <label class="fl" id="w_city"><span class="sm">Город / населённый пункт</span><input id="d_city" autocomplete="off" oninput="renderReady()"></label>
       <label class="fl full" id="w_addr"><span class="sm" id="lblAddr">Адрес доставки</span><input id="d_addr" autocomplete="off" oninput="renderReady()"></label>
@@ -381,13 +383,12 @@ function fillForm(){
   el('f_valid').value=isoDate(c.validUntil);
   el('f_amount').value=(c.amount==null||c.amount==='')?'':c.amount;
   if(c.prepayPercent!=null&&c.prepayPercent!=='') el('f_prepay').value=c.prepayPercent;
-  if(c.balanceCondition) setSel('f_balance', c.balanceCondition);
+  var tm=c.terms||{}; setSel('f_balance', balanceModeOf(tm.balanceMode, c.balanceCondition, c.balanceDays)); if(tm.prepayDays>0) el('f_pdays').value=tm.prepayDays;
   if(c.freightPayer) el('f_freight').value=/клиент/i.test(String(c.freightPayer))?'Клиент':'Мы';
   var t=c.terms||{}; if(t.prodDays) el('f_prod').value=t.prodDays;
   el('f_bdays').value=(c.balanceDays==null)?'':c.balanceDays; el('f_regNo').value=c.currencyRegNo||''; el('f_regDate').value=isoDate(c.currencyRegDate);
   if(c.baseValue>0) BASE_VALUE=Number(c.baseValue);
   if(c.warrantyDefault>0) el('d_warranty').placeholder=c.warrantyDefault+' — как у продавца';
-  onBalanceDays();
   POS=posFromItems(c.items); TWI_CUR=c.currency||'руб'; POSCHK=false;
   fillDeliv(c.deal||{});
   LEGS=(c.legs||[]).map(function(l,i){ return { legNo:l.legNo||(i+1), amount:l.amount, dueDate:isoDate(l.dueDate), beforeShip:!!l.beforeShip }; });
@@ -487,20 +488,26 @@ function applyMode(){
   vis('s_body', !!m);
   vis('s_items', !!m && !fw); vis('s_terms', legal); vis('s_deliv', !!m && !fw); vis('s_sched', retail || schedOn());
   // ЮЛ: условия оплаты
-  vis('w_bdays', legal && !(coop||fw)); vis('w_freight', legal && !svc); vis('w_prod', legal && !(svc||coop));
-  vis('w_prepay', legal && !(coop||fw)); vis('w_balance', legal && !(coop||fw));
+  var bm=val('f_balance'), pay=legal && !(coop||fw);
+  vis('w_bdays', pay && (bm==='shipped'||bm==='accepted')); vis('w_freight', legal && !svc); vis('w_prod', legal && !(svc||coop));
+  vis('w_prepay', pay); vis('w_pdays', pay); vis('w_balance', pay);
+  el('lblBdays').textContent=bm==='accepted'?'Срок остатка, дней со дня подписания накладной':'Срок остатка, дней с даты отгрузки';
+  el('f_balance').disabled=!EDIT; onBalanceDays();
   onMarketFields();
   if(!el('f_valid').value || el('f_valid').value===(fw?(todayIso().slice(0,4)+'-12-31'):addDays(todayIso(),365))) el('f_valid').value=defaultValid();
   el('validHint').textContent=fw?'рамочный — 365 дней':'до 31 декабря текущего года; можно изменить';
   // передача и доставка: розница — срок, гарантия, область/город/адрес; ЮЛ — способ, стоимость, город/адрес (для накладной)
-  var way=val('d_wayMode'), del=way==='del';
-  vis('w_transfer', retail); vis('w_warranty', retail); vis('w_region', retail && del);
-  vis('w_cost', del); vis('w_costSum', del && val('d_delivInc')==='0');
-  vis('w_city', del); vis('w_addr', del);
-  el('lblAddr').textContent=legal?'Адрес доставки (для накладной)':'Адрес доставки';
-  // ЮЛ (решение владельца 01.10.2026): в договоре два способа получения — самовывоз (своим транспортом или своим перевозчиком) / доставка Поставщиком; «Заказчик перевозки» — только для накладной
-  el('btnWayDel').textContent=legal?'Доставка Поставщиком':'Доставка';
-  el('wayHint').textContent=legal?(way==='pick'?'Покупатель забирает со склада сам — своим транспортом или своим перевозчиком':(del?'до адреса Покупателя; стоимость — в счёте':'в договор: самовывоз или доставка Поставщиком')):'';
+  var way=val('d_wayMode'), del=way==='del', inc=val('d_delivInc');
+  // ЮЛ v3 (решение владельца 01.10.2026): способа и стоимости нет — только «доставка включена в цену» (адрес Покупателя) / «не включена» (франко-склад, вывоз за счёт Покупателя);
+  // способ доставки сделки (для накладной) с экрана не трогаем. Гарантия ЮЛ — поле сделки, по умолчанию 12 (подсказка с сервера)
+  vis('w_transfer', retail); vis('w_warranty', retail || legal); vis('w_region', retail && del);
+  vis('w_way', !legal); vis('w_cost', legal || del); vis('w_costSum', !legal && del && inc==='0');
+  vis('w_city', legal ? inc==='1' : del); vis('w_addr', legal ? inc==='1' : del);
+  el('lblAddr').textContent='Адрес доставки'; el('lblCost').textContent=legal?'Доставка':'Стоимость доставки';
+  el('btnIncNo').textContent=legal?'не включена (франко-склад)':'оплачивается отдельно';
+  el('costHint').textContent=legal?(inc==='1'?'Поставщик доставляет по адресу Покупателя, стоимость в цене Товара; разгрузка — Покупатель':(inc==='0'?'франко-склад Поставщика: вывоз Товара силами и за счёт Покупателя':'в договор: доставка включена в цену или франко-склад')):'';
+  el('wayHint').textContent='';
+  if(!C) el('d_warranty').placeholder=(legal?12:36)+' — как у продавца';
   el('lblTransfer').textContent='Срок передачи, раб. дней '+(inst?'от поступления аванса':'от оплаты');
   paintSeg('segWay', way); paintSeg('segInc', val('d_delivInc'));
   // оплата
@@ -554,10 +561,17 @@ function fillKinds(){
 var BASE_VALUE=42;   // базовая величина РБ, BYN — с сервера (contractget.baseValue, настройка finance.baseValue)
 /** срок доплаты в днях задан → условие остатка строится сервером само («в течение N дней с даты отгрузки»), список гасится */
 function onBalanceDays(){
-  var n=Number(val('f_bdays'))||0; el('f_balance').disabled=n>0||!EDIT;
-  el('bdaysHint').textContent=n>0?('условие: «в течение '+n+' дн. с даты отгрузки»'):'';
+  var n=Number(val('f_bdays'))||0, bm=val('f_balance');
+  el('bdaysHint').textContent=(bm==='shipped'||bm==='accepted')?(n>0?('в договор: «в течение '+n+' дн. '+(bm==='accepted'?'со дня подписания накладной':'с даты отгрузки')+'»'):'укажите срок в днях'):'';
 }
 function onBalance(){ applyMode(); }
+/** режим остатка из договора: terms.balanceMode (v3) или старые тексты/дни (shipped — дни от отгрузки; «готовност»/«до отгрузки» — ready; «накладн» — accepted; график — как есть) */
+function balanceModeOf(mode, cond, days){
+  if(mode==='shipped'||mode==='ready'||mode==='accepted') return mode;
+  cond=String(cond||''); if(cond===SCHED_TXT) return SCHED_TXT;
+  if(/накладн/i.test(cond)) return 'accepted'; if(/готовност|до отгрузки/i.test(cond)) return 'ready';
+  return 'shipped';
+}
 /** валютный договор (ru/eu): поля регистрации + подсказка о пороге 4000 БВ */
 function onMarketFields(){
   var k=curKind(), m=(k&&k.market)||(C&&C.market)||marketOf(BUYER)||'by', fx=mode()==='legal'&&(m==='ru'||m==='eu'||m==='other');
@@ -618,6 +632,11 @@ function setInc(v){ if(!EDIT) return; el('d_delivInc').value=v; applyMode(); if(
 function collectDeliv(){
   var m=mode(), way=val('d_wayMode'), o={};
   if(m==='retail'){ o.transferDays=val('d_transfer'); o.warrantyMonths=val('d_warranty'); }
+  if(m==='legal'){   // ЮЛ v3: гарантия + «включена / франко-склад» (+ адрес при доставке); способ доставки сделки не трогаем
+    o.warrantyMonths=val('d_warranty'); var inc=val('d_delivInc');
+    if(inc){ o.deliveryIncluded=inc; if(inc==='1'){ o.deliveryCost=''; o.city=val('d_city').trim(); o.deliveryAddress=val('d_addr').trim(); } }
+    return o;
+  }
   if(way==='pick') o.deliveryMethod='самовывоз';
   if(way==='del'){
     o.deliveryMethod=(WAY0 && !/самовывоз/i.test(WAY0))?WAY0:'доставка';   // «курьер» / «транспортная компания» из amoCRM не затираем
@@ -630,7 +649,7 @@ function collectDeliv(){
 /* ── готовность «Не хватает: …» сверху: розница — поля формы считаются здесь (живьём), данные клиента — с сервера (contractget.readiness / readiness(deal)) ── */
 var READY_SEQ=0, READY_SRV=[], READY_FOR='';
 var FORM_KEYS=/адрес доставки|срок передачи|доставка в договоре|стоимость доставки|график|у позици|позиции товара|^Сумма$|^клиент$/i;
-var READY_GO=[[/клиент$/i,'f_client'],[/позици|сумм/i,'s_items'],[/срок передачи/i,'d_transfer'],[/способ/i,'w_way'],[/стоимость доставки|доставка в договоре/i,'w_cost'],
+var READY_GO=[[/клиент$/i,'f_client'],[/срок остатка/i,'f_bdays'],[/позици|сумм/i,'s_items'],[/срок передачи/i,'d_transfer'],[/способ/i,'w_way'],[/стоимость доставки|доставка в договоре/i,'w_cost'],
   [/адрес доставки/i,'d_city'],[/график/i,'s_sched'],[/телефон|паспорт|кем выдан|дата выдачи|личный номер|адрес регистрации|имя|ФИО|Наименование|УНП|ИНН|Юридический адрес/i,'@client']];
 function goField(id){
   if(id==='@client'){ openClientCard(); return; }
@@ -646,6 +665,13 @@ function localMissing(){
   if(m==='retail' && !kept.length) l.push('позиции товара');
   if(m==='legal' && !kept.length && !(amountVal()>0)) l.push('сумма или позиции');
   kept.forEach(function(p,j){ var x=optMiss(p); if(x.length) l.push('у позиции '+(j+1)+' не выбран '+x.join(', ')); });
+  if(m==='legal'){
+    var bm=val('f_balance'), lbl=(curKind()||{}).label||'';
+    if(!/услуг|сотрудничеств/i.test(lbl) && (bm==='shipped'||bm==='accepted') && !(Number(val('f_bdays'))>0)) l.push('срок остатка, дней');
+    var inc0=val('d_delivInc'); if(!inc0) l.push('доставка в договоре: включена в цену или франко-склад');
+    else if(inc0==='1' && !val('d_city').trim() && !val('d_addr').trim()) l.push('адрес доставки (город/адрес)');
+    return l;
+  }
   if(m!=='retail') return l;
   var way=val('d_wayMode'), inc=val('d_delivInc');
   if(!val('d_transfer')) l.push('срок передачи');
@@ -663,6 +689,7 @@ function renderReady(){
   if(!m){ e.className='note hide'; return; }
   var srv=C?((C.readiness&&C.readiness.missing)||[]):READY_SRV;
   if(m==='retail') srv=srv.filter(function(t){ return !FORM_KEYS.test(t) || (/срок передачи/i.test(t) && !val('d_transfer')); });
+  if(m==='legal') srv=srv.filter(function(t){ return !/доставка в договоре|стоимость доставки|адрес доставки/i.test(t); });
   else srv=srv.filter(function(t){ return !/у позици|позиции товара/i.test(t); });   // опции позиций — по форме (живьём), не по сохранённому
   var l=localMissing(); srv.forEach(function(t){ if(l.indexOf(t)<0 && !(/срок передачи/i.test(t) && l.some(function(x){ return /срок передачи/i.test(x); }))) l.push(t); });
   e.className='note '+(l.length?'warn':'ok');
@@ -754,7 +781,8 @@ function collect(){
   if(retail){ d.amount=posTotalValue(); return d; }   // розница: сумма = итог позиций, рынок BYN, «Действует до» — до исполнения (сервер)
   d.validUntil=ruDate(val('f_valid')); d.amount=fw?null:amountVal();
   var lbl=k?(k.label||''):'', svc=/услуг/i.test(lbl), coop=/сотрудничеств/i.test(lbl);
-  if(!(coop||fw)){ d.prepayPercent=Number(val('f_prepay'))||0; d.balanceCondition=val('f_balance'); d.balanceDays=val('f_bdays'); }
+  if(!(coop||fw)){ var bm=val('f_balance'), m3=(bm==='shipped'||bm==='ready'||bm==='accepted');
+    d.prepayPercent=Number(val('f_prepay'))||0; d.prepayDays=val('f_pdays'); d.balanceMode=m3?bm:''; d.balanceCondition=m3?'':bm; d.balanceDays=(bm==='shipped'||bm==='accepted')?val('f_bdays'):''; }
   if(!svc) d.freightPayer=val('f_freight');
   if(!(svc||coop)) d.terms={ prodDays:Number(val('f_prod'))||0 };
   if(!el('w_creg').classList.contains('hide')){ d.currencyRegNo=val('f_regNo').trim(); d.currencyRegDate=ruDate(val('f_regDate')); }
@@ -767,6 +795,8 @@ function validate(d){
   if(!retail && !d.validUntil) return 'Укажите срок действия';
   if(retail && !d.items.length) return 'Добавьте позиции — сумма розничного договора = итог позиций';
   if(!retail && !d.isFramework && !(d.amount>0) && !d.items.length) return 'Укажите позиции или сумму договора';
+  if((d.balanceMode==='shipped'||d.balanceMode==='accepted') && !(Number(d.balanceDays)>0)) return 'Укажите срок остатка в днях';
+  if(d.prepayDays!==undefined && !(Number(d.prepayDays)>=1)) return 'Срок предоплаты — целое число дней от 1';
   if(!d.isFramework && !checkPos('posMsg')) return posMissMsg();   // обязательные опции (канат, зацепы горки) — как в сделке
   var dv=d.delivery||{}; if(dv.deliveryIncluded==='0' && dv.deliveryCost!=null && dv.deliveryCost!=='' && !(Number(dv.deliveryCost)>=0)) return 'Стоимость доставки — сумма в рублях';
   if(d.legs.length){ var s=0; d.legs.forEach(function(l){ s+=l.amount; }); if(d.amount==null) return 'График оплаты требует суммы договора'; if(Math.abs(s-d.amount)>0.01) return 'Сумма строк графика не сходится с '+(retail?'итогом позиций':'суммой договора'); if(d.legs.length<2||d.legs.length>6) return 'В графике от 2 до 6 строк'; }
