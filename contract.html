@@ -151,7 +151,7 @@
         </select></label>
       <label class="fl" id="w_bdays"><span class="sm">или срок доплаты, дней от отгрузки</span><input id="f_bdays" type="number" inputmode="numeric" min="0" placeholder="пусто — условие из списка" oninput="onBalanceDays()" autocomplete="off"><span class="sm" id="bdaysHint"></span></label>
       <label class="fl" id="w_prod"><span class="sm">Срок производства, раб. дней</span><input id="f_prod" type="number" inputmode="numeric" min="1" value="14" autocomplete="off"></label>
-      <label class="fl" id="w_freight"><span class="sm">Заказчик перевозки (для ТН/ТТН)</span><select id="f_freight"><option value="Мы">Мы (Тигервуд)</option><option value="Клиент">Клиент</option></select></label>
+      <label class="fl" id="w_freight"><span class="sm">Заказчик перевозки (для ТН/ТТН; на текст договора не влияет)</span><select id="f_freight"><option value="Мы">Мы (Тигервуд)</option><option value="Клиент">Клиент</option></select></label>
     </div>
     <!-- валютный договор (рынки Россия / Европа): регистрация в банке при сумме от 4000 БВ -->
     <div id="w_creg" class="hide" style="margin-top:var(--s-3)">
@@ -171,7 +171,7 @@
       <label class="fl" id="w_transfer"><span class="sm" id="lblTransfer">Срок передачи, раб. дней от оплаты</span><input id="d_transfer" type="number" inputmode="numeric" min="0" autocomplete="off" oninput="renderReady()"></label>
       <label class="fl" id="w_warranty"><span class="sm">Гарантия, мес.</span><input id="d_warranty" type="number" inputmode="numeric" min="0" placeholder="36 — как у продавца" autocomplete="off"></label>
       <div class="fl full" id="w_way"><span class="sm">Способ</span>
-        <span class="seg" id="segWay"><button type="button" data-v="del" onclick="setWay('del')">Доставка</button><button type="button" data-v="pick" onclick="setWay('pick')">Самовывоз</button></span></div>
+        <span class="seg" id="segWay"><button type="button" data-v="pick" onclick="setWay('pick')">Самовывоз</button><button type="button" data-v="del" id="btnWayDel" onclick="setWay('del')">Доставка</button></span><span class="sm" id="wayHint"></span></div>
       <div class="fl full" id="w_cost"><span class="sm">Стоимость доставки</span>
         <div class="row"><span class="seg" id="segInc"><button type="button" data-v="1" onclick="setInc('1')">включена в цену</button><button type="button" data-v="0" onclick="setInc('0')">оплачивается отдельно</button></span>
         <label class="fl" id="w_costSum"><input id="d_delivCost" type="number" inputmode="decimal" min="0" step="0.01" placeholder="сумма, руб." autocomplete="off" oninput="renderReady()"></label></div></div>
@@ -498,6 +498,9 @@ function applyMode(){
   vis('w_cost', del); vis('w_costSum', del && val('d_delivInc')==='0');
   vis('w_city', del); vis('w_addr', del);
   el('lblAddr').textContent=legal?'Адрес доставки (для накладной)':'Адрес доставки';
+  // ЮЛ (решение владельца 01.10.2026): в договоре два способа получения — самовывоз (своим транспортом или своим перевозчиком) / доставка Поставщиком; «Заказчик перевозки» — только для накладной
+  el('btnWayDel').textContent=legal?'Доставка Поставщиком':'Доставка';
+  el('wayHint').textContent=legal?(way==='pick'?'Покупатель забирает со склада сам — своим транспортом или своим перевозчиком':(del?'до адреса Покупателя; стоимость — в счёте':'в договор: самовывоз или доставка Поставщиком')):'';
   el('lblTransfer').textContent='Срок передачи, раб. дней '+(inst?'от поступления аванса':'от оплаты');
   paintSeg('segWay', way); paintSeg('segInc', val('d_delivInc'));
   // оплата
