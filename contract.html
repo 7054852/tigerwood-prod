@@ -317,11 +317,13 @@ function isPerson(b){ if(!b) return false; var t=String(b['Тип']||b.type||'')
 function marketOf(b){ return (b&&b.market)||''; }
 function curOf(){ return (C&&C.currency)||CUR[marketOf(BUYER)]||'BYN'; }
 /** режим карточки по типу: '' — тип не выбран (видны только клиент и тип), retail — 100 % / рассрочка (физлицо), legal — ЮЛ/ИП */
-function mode(){ var k=val('f_kind'); if(!k) return ''; return (k==='installment'||k==='full_payment')?'retail':'legal'; }
-function isInst(){ return val('f_kind')==='installment'; }
-function fwAvail(){ var k=val('f_kind'); return KINDS.some(function(x){ return x.framework && x.kind===k; }) || !!(C&&C.isFramework); }
+/** вид договора без признака рамочного: в списке рамочный — отдельный пункт «<kind>#fw» (01.10.2026, владелец не нашёл галочку) */
+function kindVal(){ return val('f_kind').split('#')[0]; }
+function mode(){ var k=kindVal(); if(!k) return ''; return (k==='installment'||k==='full_payment')?'retail':'legal'; }
+function isInst(){ return kindVal()==='installment'; }
+function fwAvail(){ var k=kindVal(); return KINDS.some(function(x){ return x.framework && x.kind===k; }) || !!(C&&C.isFramework); }
 function isFw(){ return mode()==='legal' && fwAvail() && el('f_fw').checked; }
-function curKind(){ var k=val('f_kind'), fw=isFw(), hit=null; KINDS.forEach(function(x){ if(x.kind===k && !!x.framework===fw && !hit) hit=x; }); if(!hit) KINDS.forEach(function(x){ if(x.kind===k && !hit) hit=x; }); return hit; }
+function curKind(){ var k=kindVal(), fw=isFw(), hit=null; KINDS.forEach(function(x){ if(x.kind===k && !!x.framework===fw && !hit) hit=x; }); if(!hit) KINDS.forEach(function(x){ if(x.kind===k && !hit) hit=x; }); return hit; }
 function schedOn(){ var m=mode(); return m==='retail' ? isInst() : (m==='legal' && !isFw() && val('f_balance')===SCHED_TXT); }
 function defaultValid(){ return isFw()?addDays(todayIso(),365):(todayIso().slice(0,4)+'-12-31'); }
 function vis(id, on){ var e=el(id); if(e) e.classList.toggle('hide', !on); }
@@ -482,7 +484,7 @@ function renderBtns(){
 function applyMode(){
   var m=mode(), fw=isFw(), retail=m==='retail', legal=m==='legal', inst=isInst(), k=curKind(), lbl=k?(k.label||''):'';
   var svc=/услуг/i.test(lbl), coop=/сотрудничеств/i.test(lbl);
-  vis('fwK', legal && fwAvail()); vis('fwV', legal && fwAvail());
+  vis('fwK', false); vis('fwV', false);   // рамочный выбирается в списке типов
   vis('dealK', !!m && !fw); vis('dealV', !!m && !fw);
   vis('dateK', !!m); vis('dateV', !!m);
   vis('validK', legal); vis('validV', legal);
@@ -547,15 +549,15 @@ function loadKinds(){
     el('kindHint').textContent=''; KINDS=r.kinds; fillKinds();
   }).catch(function(){ el('kindHint').innerHTML='<span class="warn">Нет связи — показан стандартный набор типов.</span>'; });
 }
-/** в списке — обычные типы; рамочный — галочка у типа, у которого есть рамочный вариант */
+/** в списке — обычные типы и рамочные отдельными пунктами (значение «<kind>#fw»); галочка f_fw скрыта и следует за выбором */
+function kindOpt(k){ return k.kind+(k.framework?'#fw':''); }
 function fillKinds(){
   var sel=el('f_kind'), cur=WANT_KIND||sel.value, seen={};
-  var list=KINDS.filter(function(k){ if(k.framework||seen[k.kind]) return false; seen[k.kind]=1; return true; });
-  if(!list.length) KINDS.forEach(function(k){ if(!seen[k.kind]){ seen[k.kind]=1; list.push(k); } });
-  sel.innerHTML='<option value="">'+(BUYER?'— выберите тип договора —':'— сначала выберите клиента —')+'</option>'+list.map(function(k){ return '<option value="'+esc(k.kind)+'">'+esc(k.label||k.kind)+'</option>'; }).join('');
-  if(!cur && el('f_fw').checked){ var f=KINDS.filter(function(k){ return k.framework; })[0]; if(f) cur=f.kind; }
+  var list=KINDS.filter(function(k){ var v=kindOpt(k); if(seen[v]) return false; seen[v]=1; return true; });
+  sel.innerHTML='<option value="">'+(BUYER?'— выберите тип договора —':'— сначала выберите клиента —')+'</option>'+list.map(function(k){ return '<option value="'+esc(kindOpt(k))+'">'+esc(k.label||k.kind)+'</option>'; }).join('');
+  if(el('f_fw').checked){ if(!cur){ var f=KINDS.filter(function(k){ return k.framework; })[0]; if(f) cur=f.kind; } if(cur && !/#fw$/.test(cur)) cur+='#fw'; }
   var ok=false; for(var i=0;i<sel.options.length;i++) if(cur && sel.options[i].value===cur){ sel.value=cur; ok=true; }
-  if(!ok && C && C.kind){ var o=document.createElement('option'); o.value=C.kind; o.text=C.kindRu||C.kind; sel.add(o); sel.value=C.kind; ok=true; }
+  if(!ok && C && C.kind){ var o=document.createElement('option'); o.value=C.kind+(C.isFramework?'#fw':''); o.text=C.kindRu||C.kind; sel.add(o); sel.value=C.kind; ok=true; }
   if(ok && KINDS.length) WANT_KIND='';
   applyMode();
 }
@@ -581,7 +583,7 @@ function onMarketFields(){
   el('cregHint').innerHTML='Валютный договор на сумму от <b>4000 БВ</b> ('+money(thr)+' BYN при БВ '+BASE_VALUE+' — уточнить) регистрируется в банке до первого платежа/отгрузки; срок доплаты — по Указу № 178.'
     +((a!=null&&a>0)?(' Сумма договора '+money(a)+' '+esc(curOf())+' — сравните с порогом по курсу на дату.'):'');
 }
-function onKind(){ WANT_KIND=''; applyMode(); fillDeals(); }
+function onKind(){ WANT_KIND=''; el('f_fw').checked=/#fw$/.test(val('f_kind')); applyMode(); fillDeals(); }
 function onFw(){ WANT_KIND=WANT_KIND||val('f_kind'); applyMode(); fillDeals(); }
 /* ── сделка клиента ── */
 function fillDeals(){
@@ -792,7 +794,7 @@ function renderDocs(){
 /** на сервер — только поля, видимые для этого типа: смена типа не затирает данные сделки (решение владельца 01.10.2026) */
 function collect(){
   var k=curKind(), m=mode(), fw=isFw(), retail=m==='retail';
-  var d={ kind:val('f_kind'), kindLabel:k?k.label:'', isFramework:fw, client:BUYER?buyerKey(BUYER):'', clientName:val('f_client').trim(), deal:fw?'':val('f_deal'),
+  var d={ kind:kindVal(), kindLabel:k?k.label:'', isFramework:fw, client:BUYER?buyerKey(BUYER):'', clientName:val('f_client').trim(), deal:fw?'':val('f_deal'),
     contractDate:ruDate(val('f_date')), currency:retail?'BYN':curOf(),
     items:fw?[]:cleanPos(), delivery:fw?{}:collectDeliv(), legs:schedOn()?cleanLegs():[] };
   if(retail){ d.amount=posTotalValue(); return d; }   // розница: сумма = итог позиций, рынок BYN, «Действует до» — до исполнения (сервер)
@@ -857,7 +859,7 @@ function signDlg(){
 function uploadDlg(){
   var c=C, kinds=KINDS.filter(function(k){ return !!k.framework===isFw(); });
   ask('Загрузить подписанный договор', '<div class="sm">Загруженный файл = подписанный документ: договор станет «подписан», номер берётся <b>с бумаги</b> (серии не тратятся). Если по договору есть заявка — она станет заказом.</div>'
-    +(c?'':'<label class="fl" style="margin-top:var(--s-3)"><span class="sm">Тип договора</span><select id="upKind">'+kinds.map(function(k){ return '<option value="'+esc(k.kind)+'"'+(k.kind===val('f_kind')?' selected':'')+'>'+esc(k.label)+'</option>'; }).join('')+'</select></label>')
+    +(c?'':'<label class="fl" style="margin-top:var(--s-3)"><span class="sm">Тип договора</span><select id="upKind">'+kinds.map(function(k){ return '<option value="'+esc(k.kind)+'"'+(k.kind===kindVal()?' selected':'')+'>'+esc(k.label)+'</option>'; }).join('')+'</select></label>')
     +'<label class="fl" style="margin-top:var(--s-3)"><span class="sm">Номер договора (как на бумаге)</span><input id="upNum" value="'+esc((c&&c.number)||'')+'" placeholder="например 12/2026" autocomplete="off"></label>'
     +'<label class="fl" style="margin-top:var(--s-2)"><span class="sm">Дата подписи</span><input type="date" id="upDate" value="'+todayIso()+'" autocomplete="off"></label>'
     +'<label class="fl" style="margin-top:var(--s-2)"><span class="sm">Файл (PDF или фото, до 15 МБ)</span><input type="file" id="upFile" accept="application/pdf,image/*,.doc,.docx"></label>'
