@@ -66,7 +66,14 @@
       <button data-v="ИП" onclick="setType('ИП')">ИП</button>
       <button data-v="физлицо" onclick="setType('физлицо')">Физлицо</button>
     </span>
+    <span class="sm muted" id="mktLbl">Рынок:</span>
+    <span class="seg" id="segMkt">
+      <button data-v="by" onclick="setMkt('by')">Беларусь</button>
+      <button data-v="ru" onclick="setMkt('ru')">Россия</button>
+      <button data-v="eu" onclick="setMkt('eu')">Европа</button>
+    </span>
   </div>
+  <datalist id="euCountries"><option>Чехия</option><option>Польша</option><option>Германия</option><option>Словакия</option><option>Литва</option><option>Латвия</option><option>Эстония</option><option>Австрия</option><option>Венгрия</option><option>Нидерланды</option></datalist>
   <div id="ulReq" class="hide" style="margin-top:var(--s-3)">
     <label class="fl"><span>Вставьте реквизиты — распознаю и заполню поля</span>
       <textarea id="raw" placeholder="ООО «...», УНП…, р/с…, банк, БИК, адрес, тел, e-mail" autocomplete="off"></textarea></label>
@@ -193,15 +200,23 @@ function signContract(number, after){
 }
 
 /* ══════════ справочник ══════════ */
-var BUYERS=[], CTYPE='юрлицо', EDIT=null;
+var BUYERS=[], CTYPE='юрлицо', EDIT=null, CMKT='by', MKT0='';   // CMKT — рынок формы юрлица/ИП (02.10.2026): свой набор полей; MKT0 — рынок при открытии (не менялся — не шлём)
 function key(b){ return String(b['УНП']||'').trim() || String(b['ID']||'').trim(); }
 function cardKey(b){ return String(b['УНП']||'').trim() || String(b['ИНН']||'').trim() || String(b['ID']||'').trim(); }
 function name_(b){ return String(b['Наименование ЮЛ (полное)']||'').trim() || String(b['Полное ФИО']||'').trim() || '—'; }
 function typeOf(b){ var t=String(b['Тип']||''); if(t==='ИП') return 'ИП'; return (t.toLowerCase().indexOf('юр')>=0 || String(b['УНП']||'').trim() || String(b['ИНН']||'').trim())?'юрлицо':'физлицо'; }
 function marketPill(m){ return m?('<span class="pill'+(m==='by'?'':' info')+'">'+esc(MARKET_RU[m]||m)+'</span>'):'<span class="muted">—</span>'; }
-var UL_FIELDS=[['Наименование ЮЛ (полное)','full'],['УНП',''],['Юридический адрес','full'],['р/с',''],['р/с в',''],['Код банка (БИК)',''],['В лице',''],['Полное ФИО',''],['И. О. Фамилия',''],['Действует на основании',''],['тел',''],['e-mail',''],['Страна',''],['Валюта','']];
+var UL_TAIL=[['В лице',''],['Полное ФИО',''],['И. О. Фамилия',''],['Действует на основании',''],['тел',''],['e-mail','']];
+/** реквизиты юрлица/ИП по рынку: Беларусь — УНП; Россия — ИНН/КПП/ОГРН + корр. счёт; Европа — VAT (в поле «УНП»), страна, IBAN, BIC/SWIFT */
+var UL_BY=[['Наименование ЮЛ (полное)','full'],['УНП',''],['Юридический адрес','full'],['р/с',''],['р/с в',''],['Код банка (БИК)','']].concat(UL_TAIL);
+var UL_RU=[['Наименование ЮЛ (полное)','full'],['ИНН',''],['КПП',''],['ОГРН',''],['Юридический адрес','full'],['р/с',''],['р/с в',''],['Код банка (БИК)',''],['Корр. счёт','']].concat(UL_TAIL);
+var UL_EU=[['Наименование ЮЛ (полное)','full'],['УНП',''],['Страна',''],['Юридический адрес','full'],['р/с',''],['р/с в',''],['Код банка (БИК)','']].concat(UL_TAIL);
+function ulFields(){ var f=CMKT==='ru'?UL_RU:CMKT==='eu'?UL_EU:UL_BY; return CTYPE==='ИП'?f.filter(function(x){ return x[0]!=='КПП' && x[0]!=='В лице'; }):f; }
+var LABELS_MKT={ ru:{'Код банка (БИК)':'БИК','ОГРН':'ОГРН / ОГРНИП','р/с':'Расчётный счёт (20 цифр)'},
+  eu:{'УНП':'VAT / DIČ / NIP','р/с':'IBAN','р/с в':'Bank','Код банка (БИК)':'BIC / SWIFT','Полное ФИО':'Директор (можно латиницей)','И. О. Фамилия':'Подпись (И. Фамилия)','Юридический адрес':'Legal address'} };
 var FL_FIELDS=[['Полное ФИО','full'],['Паспорт',''],['Кем выдан','full'],['Дата выдачи',''],['Личный номер',''],['Адрес регистрации','full'],['Адрес доставки','full'],['тел',''],['e-mail','']];
-var LABELS={'Наименование ЮЛ (полное)':'Наименование (полное)','р/с':'Расчётный счёт','р/с в':'Банк','Код банка (БИК)':'БИК','тел':'Телефон','И. О. Фамилия':'И.О. Фамилия'};
+var LABELS={'Наименование ЮЛ (полное)':'Наименование (полное)','р/с':'Расчётный счёт','р/с в':'Банк','Код банка (БИК)':'БИК','тел':'Телефон','И. О. Фамилия':'И.О. Фамилия','Корр. счёт':'Корр. счёт банка'};
+function label(k){ var m=CTYPE!=='физлицо'&&LABELS_MKT[CMKT]; return (m&&m[k])||LABELS[k]||k; }
 
 function load(){
   get({vapi:'buyers'}).then(function(r){
@@ -233,27 +248,37 @@ function renderList(){
       +'</tr>';
   }).join('');
 }
-function setType(t){ CTYPE=t; var bs=document.querySelectorAll('#segType button'); for(var i=0;i<bs.length;i++) bs[i].className=bs[i].getAttribute('data-v')===t?'on':''; el('ulReq').className=(t!=='физлицо')?'':'hide'; renderFields(collectRaw()); }
+function setType(t){ CTYPE=t; var bs=document.querySelectorAll('#segType button'); for(var i=0;i<bs.length;i++) bs[i].className=bs[i].getAttribute('data-v')===t?'on':''; el('ulReq').className=(t!=='физлицо')?'':'hide';
+  el('segMkt').style.display=el('mktLbl').style.display=(t!=='физлицо')?'':'none'; renderFields(collectRaw()); }
+/** рынок формы: меняет набор полей; введённое в общих полях сохраняется */
+function setMkt(m, cur){ CMKT=(m==='ru'||m==='eu')?m:(m==='other'?'eu':'by'); var bs=document.querySelectorAll('#segMkt button'); for(var i=0;i<bs.length;i++) bs[i].className=bs[i].getAttribute('data-v')===CMKT?'on':'';
+  if(CMKT==='eu') el('raw').placeholder='BusyKids Europe s.r.o., DIČ/VAT…, Legal address…, IBAN…, Bank…, BIC…, Director…, e-mail';
+  else if(CMKT==='ru') el('raw').placeholder='ООО «...», ИНН…, КПП…, ОГРН…, р/с…, банк, БИК, корр. счёт, адрес, тел, e-mail';
+  else el('raw').placeholder='ООО «...», УНП…, р/с…, банк, БИК, адрес, тел, e-mail';
+  renderFields(cur||collectRaw()); }
 function renderFields(cur){
   cur=cur||{};
-  var fs=(CTYPE==='физлицо')?FL_FIELDS:UL_FIELDS;
+  var fs=(CTYPE==='физлицо')?FL_FIELDS:ulFields();
   el('fields').innerHTML=fs.map(function(f){
-    return '<label class="fl '+(f[1]==='full'?'full':'')+'"><span>'+esc(LABELS[f[0]]||f[0])+'</span><input data-f="'+esc(f[0])+'" value="'+esc(cur[f[0]]||'')+'" autocomplete="off"></label>';
+    return '<label class="fl '+(f[1]==='full'?'full':'')+'"><span>'+esc(label(f[0]))+'</span><input data-f="'+esc(f[0])+'" value="'+esc(cur[f[0]]||'')+'" autocomplete="off"'+(f[0]==='Страна'?' list="euCountries"':'')+'></label>';
   }).join('');
 }
 function collectRaw(){ var o={}, ins=el('fields').querySelectorAll('input'); for(var i=0;i<ins.length;i++) o[ins[i].getAttribute('data-f')]=ins[i].value.trim(); return o; }
 function collect(){
   var o=collectRaw(); o['Тип']=CTYPE;
   if(EDIT){ if(EDIT['УНП']) o['УНП']=o['УНП']||EDIT['УНП']; if(EDIT['ИНН']) o['ИНН']=EDIT['ИНН']; if(EDIT['ID']) o['ID']=EDIT['ID']; }
-  if(!o['Валюта']) o['Валюта']=(o['Страна']==='Россия')?'RUB':'BYN';
+  if(CTYPE!=='физлицо'){   // страна и валюта — по рынку формы; рынок шлём, если новый клиент или его сменили
+    if(CMKT==='by') o['Страна']='Беларусь'; else if(CMKT==='ru') o['Страна']='Россия';
+    o['Валюта']=CUR[CMKT]; if(!EDIT || CMKT!==MKT0) o.market=CMKT;
+  } else if(!o['Валюта']) o['Валюта']='BYN';
   return o;
 }
-function openAdd(){ EDIT=null; el('formTitle').textContent='Новый клиент'; el('form').className='card'; el('raw').value=''; setm('reqMsg','',''); setm('saveMsg','','');
-  el('fields').innerHTML=''; setType('юрлицо'); }
+function openAdd(){ EDIT=null; MKT0=''; el('formTitle').textContent='Новый клиент'; el('form').className='card'; el('raw').value=''; setm('reqMsg','',''); setm('saveMsg','','');
+  el('fields').innerHTML=''; CMKT='by'; setType('юрлицо'); setMkt('by'); }
 function edit(k){ var b=BUYERS.filter(function(x){ return key(x)===k; })[0]; if(b) editB(b); }
 function editB(b){
   EDIT=b; el('formTitle').textContent='Правка: '+name_(b); el('form').className='card'; setm('saveMsg','',''); setm('reqMsg','','');
-  el('fields').innerHTML=''; setType(typeOf(b)); renderFields(b); window.scrollTo(0,0);
+  el('fields').innerHTML=''; MKT0=(b.market==='ru'||b.market==='eu')?b.market:(b.market==='other'?'eu':'by'); CMKT=MKT0; setType(typeOf(b)); setMkt(MKT0, b); window.scrollTo(0,0);
 }
 function closeForm(){ el('form').className='card hide'; EDIT=null; }
 function parseReq(){
@@ -263,12 +288,15 @@ function parseReq(){
     if(!r||!r.ok||!(r.count>0)){ setm('reqMsg','err','⚠️ '+esc((r&&r.error)||'Не удалось распознать — впишите поля вручную.')); return; }
     setm('reqMsg','ok','✓ Распознано полей: '+r.count);
     var f=r.fields||{}; if(f['Тип']==='ИП'||f['Тип']==='юрлицо'){ CTYPE=f['Тип']; var bs=document.querySelectorAll('#segType button'); for(var i=0;i<bs.length;i++) bs[i].className=bs[i].getAttribute('data-v')===CTYPE?'on':''; }
-    var cur=collectRaw(); for(var k in f){ if(f[k]!=null&&f[k]!=='') cur[k]=f[k]; } renderFields(cur);
+    var cur=collectRaw(); for(var k in f){ if(f[k]!=null&&f[k]!=='') cur[k]=f[k]; }
+    var st=String(f['Страна']||''), mk=(f['ИНН']||/росси/i.test(st))?'ru':(st&&!/беларус/i.test(st))?'eu':(f['УНП']?'by':CMKT);   // рынок — по распознанному
+    if(mk!=='eu') delete cur['Страна']; setMkt(mk, cur);
   }).catch(function(e){ setm('reqMsg','err',esc(netText(e))); });
 }
 function save(){
   var o=collect(), nm=o['Наименование ЮЛ (полное)']||o['Полное ФИО'];
   if(!String(nm||'').trim()){ setm('saveMsg','err', CTYPE==='физлицо'?'Укажите ФИО':'Укажите наименование'); return; }
+  if(CTYPE!=='физлицо' && CMKT==='eu' && !String(o['Страна']||'').trim()){ setm('saveMsg','err','Укажите страну клиента (Европа)'); return; }
   run({vapi:'savebuyer', data:JSON.stringify(o)}, 'Сохраняю клиента…', 'saveMsg').then(function(r){ if(!r) return;
     setm('saveMsg','ok','✅ Сохранено'); if(BACK){ goBackTo(r.key||r.unp||r.id||''); return; } setTimeout(function(){ closeForm(); load(); }, 500); });
 }
