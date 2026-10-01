@@ -17,6 +17,7 @@
   .hide{ display:none !important; }
   td.num, td[data-l="№"]{ white-space:nowrap; }   /* сумма и номер не рвём на две строки */
   input,textarea,select{ width:100%; }
+  tr.fresh td{ background:var(--green-bg); transition:background 1.2s; }   /* только что добавленный/сохранённый клиент */
   .fl.got input{ border-color:var(--green); background:var(--green-bg); }   /* поле заполнено «Распознать» */
   .fl.got > span::after{ content:' ✓'; color:var(--green); font-weight:600; }
   .fl.miss input{ border-color:var(--amber); }   /* важное поле не найдено в реквизитах */
@@ -58,6 +59,7 @@
 </div>
 
 <!-- форма добавления/правки -->
+<div id="doneNote" class="note hide" style="margin-bottom:var(--s-3)"></div>
 <div id="form" class="card hide">
   <div class="row" style="justify-content:space-between">
     <b id="formTitle">Новый клиент</b>
@@ -218,7 +220,7 @@ var UL_EU=[['Наименование ЮЛ (полное)','full'],['УНП','']
 /** важные поля по рынку: после «Распознать» ненайденные подсвечиваются */
 var NEED={ by:['Наименование ЮЛ (полное)','УНП','Юридический адрес','р/с','р/с в','Код банка (БИК)','Полное ФИО'], ru:['Наименование ЮЛ (полное)','ИНН','КПП','ОГРН','Юридический адрес','р/с','р/с в','Код банка (БИК)','Корр. счёт','Полное ФИО'],
   eu:['Наименование ЮЛ (полное)','УНП','Страна','Юридический адрес','р/с','р/с в','Код банка (БИК)','Полное ФИО','e-mail'] };
-var GOT=null;   // поля, найденные «Распознать» (подсветка до следующей правки формы)
+var GOT=null, FRESH='';   // FRESH — ключ клиента, сохранённого только что: строка первой и подсвечена   // поля, найденные «Распознать» (подсветка до следующей правки формы)
 /** подпись «И.О. Фамилия» из полного ФИО: «Иванов Иван Иванович» → «И.И. Иванов», «Dmitry Zborovsky» → «D. Zborovsky» */
 function shortFio(f){ var w=String(f||'').trim().split(/\s+/); if(w.length<2) return '';
   if(/[А-Яа-яЁё]/.test(w[0]) && w.length===3) return w[1].charAt(0)+'.'+w[2].charAt(0)+'. '+w[0];
@@ -245,11 +247,12 @@ function renderList(){
   });
   el('cnt').textContent='всего: '+BUYERS.length+(rows.length!==BUYERS.length?(' · показано: '+rows.length):'');
   if(!rows.length){ el('list').innerHTML='<tr><td colspan="7" class="muted">Нет клиентов'+((q||ft||fm)?' по запросу':'')+'</td></tr>'; return; }
+  if(FRESH) rows.sort(function(a,b){ return (key(b)===FRESH)-(key(a)===FRESH); });
   el('list').innerHTML=rows.map(function(b){
     var t=typeOf(b), ul=(t!=='физлицо');
-    var iddoc=ul?((b['УНП']?'УНП ':(b['ИНН']?'ИНН ':''))+esc(b['УНП']||b['ИНН']||'—')):(b['Паспорт']?('пасп. '+esc(b['Паспорт'])):'—');
+    var iddoc=ul?((b['УНП']?((b.market==='eu'||b.market==='other')?'VAT ':'УНП '):(b['ИНН']?'ИНН ':''))+esc(b['УНП']||b['ИНН']||'—')):(b['Паспорт']?('пасп. '+esc(b['Паспорт'])):'—');
     var k=jq(key(b)), ck=jq(cardKey(b)), adr=b['Юридический адрес']||b['Адрес регистрации'];
-    return '<tr onclick="goClient('+ck+')" title="открыть карточку клиента">'
+    return '<tr onclick="goClient('+ck+')" title="открыть карточку клиента"'+(FRESH&&key(b)===FRESH?' class="fresh" id="freshRow"':'')+'>'
       +'<td data-l="Клиент"><b>'+esc(name_(b))+'</b>'+(adr?('<div class="sm muted">'+esc(adr)+'</div>'):'')+'</td>'
       +'<td data-l="Тип">'+(ul?'<span class="pill info">'+esc(t)+'</span>':'<span class="pill">физлицо</span>')+'</td>'
       +'<td data-l="Рынок">'+marketPill(b.market)+'</td>'
@@ -315,7 +318,12 @@ function save(){
   if(!String(nm||'').trim()){ setm('saveMsg','err', CTYPE==='физлицо'?'Укажите ФИО':'Укажите наименование'); return; }
   if(CTYPE!=='физлицо' && CMKT==='eu' && !String(o['Страна']||'').trim()){ setm('saveMsg','err','Укажите страну клиента (Европа)'); return; }
   run({vapi:'savebuyer', data:JSON.stringify(o)}, 'Сохраняю клиента…', 'saveMsg').then(function(r){ if(!r) return;
-    setm('saveMsg','ok','✅ Сохранено'); if(BACK){ goBackTo(r.key||r.unp||r.id||''); return; } setTimeout(function(){ closeForm(); load(); }, 500); });
+    setm('saveMsg','ok','✅ Сохранено'); if(BACK){ goBackTo(r.key||r.unp||r.id||''); return; }
+    var added=!EDIT, nm2=String(nm).trim(); FRESH=String(r.unp||r.key||r.id||'').trim();
+    setTimeout(function(){ closeForm(); el('q').value=''; el('ft').value=''; el('fm').value='';   // фильтры сбрасываем — новый клиент точно виден
+      var n=el('doneNote'); n.className='note ok'; n.innerHTML='<div>✅ <b>'+esc(nm2)+'</b> — '+(added?'клиент добавлен, он первый в списке':'изменения сохранены')+'</div>';
+      clearTimeout(window.__doneT); window.__doneT=setTimeout(function(){ n.className='note hide'; FRESH=''; var tr=el('freshRow'); if(tr) tr.className=''; }, 10000);
+      window.scrollTo(0,0); load(); }, 400); });
 }
 // в Прохабе удаление мягкое: клиента со сделками, договорами или счетами сервер не удалит и объяснит почему
 function del(k){
