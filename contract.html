@@ -145,9 +145,9 @@
       <!-- v3 ЮЛ (решение владельца 01.10.2026): остаток — один из трёх вариантов (текст строит сервер, contractsave{balanceMode}); «по графику» — строки графика -->
       <label class="fl" id="w_balance"><span class="sm">Остаток — условие</span>
         <select id="f_balance" onchange="onBalance()">
-          <option value="shipped">в течение N дней с даты отгрузки</option>
+          <option value="shipped">в течение N календарных дней с даты отгрузки</option>
           <option value="ready">до отгрузки — после уведомления о готовности товара</option>
-          <option value="accepted">в течение N дней со дня подписания накладной</option>
+          <option value="accepted">в течение N календарных дней со дня подписания накладной</option>
           <option>по графику (рассрочка / отсрочка)</option>
         </select></label>
       <label class="fl" id="w_bdays"><span class="sm" id="lblBdays">Срок остатка, дней</span><input id="f_bdays" type="number" inputmode="numeric" min="1" placeholder="например, 10" oninput="onBalanceDays()" autocomplete="off"><span class="sm" id="bdaysHint"></span></label>
@@ -491,7 +491,7 @@ function applyMode(){
   var bm=val('f_balance'), pay=legal && !(coop||fw);
   vis('w_bdays', pay && (bm==='shipped'||bm==='accepted')); vis('w_freight', legal && !svc); vis('w_prod', legal && !(svc||coop));
   vis('w_prepay', pay); vis('w_pdays', pay); vis('w_balance', pay);
-  el('lblBdays').textContent=bm==='accepted'?'Срок остатка, дней со дня подписания накладной':'Срок остатка, дней с даты отгрузки';
+  el('lblBdays').textContent=bm==='accepted'?'Срок остатка, календарных дней со дня подписания накладной':'Срок остатка, календарных дней с даты отгрузки';
   el('f_balance').disabled=!EDIT; onBalanceDays();
   onMarketFields();
   if(!el('f_valid').value || el('f_valid').value===(fw?(todayIso().slice(0,4)+'-12-31'):addDays(todayIso(),365))) el('f_valid').value=defaultValid();
@@ -562,7 +562,7 @@ var BASE_VALUE=42;   // базовая величина РБ, BYN — с сер�
 /** срок доплаты в днях задан → условие остатка строится сервером само («в течение N дней с даты отгрузки»), список гасится */
 function onBalanceDays(){
   var n=Number(val('f_bdays'))||0, bm=val('f_balance');
-  el('bdaysHint').textContent=(bm==='shipped'||bm==='accepted')?(n>0?('в договор: «в течение '+n+' дн. '+(bm==='accepted'?'со дня подписания накладной':'с даты отгрузки')+'»'):'укажите срок в днях'):'';
+  el('bdaysHint').textContent=(bm==='shipped'||bm==='accepted')?(n>0?('в договор: «в течение '+n+' календ. дн. '+(bm==='accepted'?'со дня подписания накладной':'с даты отгрузки')+'»'):'укажите срок в днях'):'';
 }
 function onBalance(){ applyMode(); }
 /** режим остатка из договора: terms.balanceMode (v3) или старые тексты/дни (shipped — дни от отгрузки; «готовност»/«до отгрузки» — ready; «накладн» — accepted; график — как есть) */
