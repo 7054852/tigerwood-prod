@@ -304,8 +304,7 @@ function localKinds(b){
   if(fl) return [{kind:'installment',label:'Договор рассрочки',framework:false,market:'by'},{kind:'full_payment',label:'Договор 100%',framework:false,market:'by'}];
   if(m==='eu'||m==='other') return [{kind:'supply_eu',label:'Договор поставки (Европа)',framework:false,market:'eu'},{kind:'supply_eu',label:'Рамочный контракт (Европа)',framework:true,market:'eu'}];
   if(m==='ru') return [{kind:'supply_rf',label:'Договор поставки РФ',framework:false,market:'ru'},{kind:'supply_rf',label:'Рамочный договор РФ',framework:true,market:'ru'}];
-  return [{kind:'supply',label:'Договор поставки',framework:false,market:'by'},{kind:'services',label:'Договор услуг',framework:false,market:'by'},
-    {kind:'cooperation',label:'Договор сотрудничества',framework:false,market:'by'},{kind:'supply',label:'Рамочный договор',framework:true,market:'by'}];
+  return [{kind:'supply',label:'Договор поставки',framework:false,market:'by'},{kind:'supply',label:'Рамочный договор',framework:true,market:'by'}];   // услуги/сотрудничество убраны 01.10.2026
 }
 
 /* ══════════ состояние ══════════ */
@@ -323,6 +322,8 @@ function mode(){ var k=kindVal(); if(!k) return ''; return (k==='installment'||k
 function isInst(){ return kindVal()==='installment'; }
 function fwAvail(){ var k=kindVal(); return KINDS.some(function(x){ return x.framework && x.kind===k; }) || !!(C&&C.isFramework); }
 function isFw(){ return mode()==='legal' && fwAvail() && el('f_fw').checked; }
+/** рамочный РБ — без суммы (стоимость по счетам); РФ/Европа — валютный, сумма обязательна (владелец 01.10.2026) */
+function fwNoSum(){ var k=curKind(); return isFw() && (!k || !k.market || k.market==='by'); }
 function curKind(){ var k=kindVal(), fw=isFw(), hit=null; KINDS.forEach(function(x){ if(x.kind===k && !!x.framework===fw && !hit) hit=x; }); if(!hit) KINDS.forEach(function(x){ if(x.kind===k && !hit) hit=x; }); return hit; }
 function schedOn(){ var m=mode(); return m==='retail' ? isInst() : (m==='legal' && !isFw() && val('f_balance')===SCHED_TXT); }
 function defaultValid(){ return isFw()?addDays(todayIso(),365):(todayIso().slice(0,4)+'-12-31'); }
@@ -489,10 +490,10 @@ function applyMode(){
   vis('dateK', !!m); vis('dateV', !!m);
   vis('validK', legal); vis('validV', legal);
   vis('s_body', !!m);
-  vis('s_items', !!m && !fw); vis('s_terms', legal); vis('s_deliv', !!m && !fw); vis('s_sched', retail || schedOn());
+  vis('s_items', !!m && !fw); vis('s_terms', legal && !fwNoSum()); vis('s_deliv', !!m && !fw); vis('s_sched', retail || schedOn());
   // ЮЛ: условия оплаты
   var bm=val('f_balance'), pay=legal && !(coop||fw);
-  vis('w_bdays', pay && (bm==='shipped'||bm==='accepted')); vis('w_freight', legal && !svc); vis('w_prod', legal && !(svc||coop));
+  vis('w_bdays', pay && (bm==='shipped'||bm==='accepted')); vis('w_freight', legal && !svc && !fw); vis('w_prod', legal && !(svc||coop) && !fwNoSum());   // рамочный: перевозка — по накладным сделок; срок РБ — 20 раб. дней в тексте
   vis('w_prepay', pay); vis('w_pdays', pay); vis('w_balance', pay);
   el('lblBdays').textContent=bm==='accepted'?'Срок остатка, календарных дней со дня подписания накладной':'Срок остатка, календарных дней с даты отгрузки';
   el('f_balance').disabled=!EDIT; onBalanceDays();
@@ -521,7 +522,7 @@ function applyMode(){
   el('schedNote').textContent=retail?'Первая строка — аванс до передачи товара (может быть 0), дальше 1–5 платежей по датам. Сумма строк = итог позиций.'
     :'Первая строка — платёж до отгрузки (может быть 0), дальше 1–5 платежей по датам; одна строка после отгрузки = отсрочка. Сумма строк должна сойтись с суммой договора.';
   if(schedOn() && !LEGS.length) initLegs();
-  vis('w_amount', legal); el('amtNote').textContent=retail?'сумма договора = итог позиций':'';
+  vis('w_amount', legal && !fwNoSum()); el('amtNote').textContent=retail?'сумма договора = итог позиций':'';
   fillBuyerList(); renderHead(); itemsTot(); renderReady();
 }
 function paintSeg(id, v){ var bs=el(id).querySelectorAll('button'); for(var i=0;i<bs.length;i++) bs[i].className=bs[i].getAttribute('data-v')===v?'on':''; }
@@ -606,7 +607,7 @@ function fillDeals(){
 function onDeal(){ var v=val('f_deal'); if(!v && !isFw()) el('dealHint').innerHTML='без сделки: при сохранении сервер создаст <b>заявку З-…</b> и привяжет договор к ней'; }
 /* ── сумма: розница — итог позиций; ЮЛ — итог позиций (без позиций — вручную); рамочный — без суммы ── */
 function onAmount(){ checkLegs(); onMarketFields(); renderReady(); }
-function amountVal(){ var m=mode(); if(m==='retail') return posTotalValue(); if(isFw()) return null; return Number(val('f_amount'))||0; }
+function amountVal(){ var m=mode(); if(m==='retail') return posTotalValue(); if(fwNoSum()) return null; return Number(val('f_amount'))||0; }
 
 /* ── позиции: редактор tw-items.js (POS, renderPos, addPos, cleanPos, checkPos); здесь — связь с суммой договора ── */
 function onPosTotal(){ itemsTot(); renderReady(); renderVatFit(); }
@@ -628,7 +629,8 @@ function fitVatPrice(k){ var h=(C&&C.priceHints||[])[k], p=h&&vatFitRow(h); if(!
   p.price=h.newPrice; renderPos(); posTot(); save(); }
 function itemsTot(){
   var t=posTotalValue(), fw=isFw(), a=el('f_amount');
-  if(fw){ a.value=''; a.readOnly=true; el('amtHint').textContent='рамочный — без суммы: стоимость по счетам и накладным'; }
+  if(fwNoSum()){ a.value=''; a.readOnly=true; el('amtHint').textContent=''; }
+  else if(fw){ a.readOnly=!EDIT; el('amtHint').textContent='рамочный валютный договор — сумма обязательна'; }
   else if(t>0){ a.value=t; a.readOnly=true; el('amtHint').textContent='= итог позиций'; }
   else { a.readOnly=!EDIT; el('amtHint').textContent=POS.length?'':'позиций нет — сумма вручную'; }
   var hint=el('posHint'); if(hint) hint.textContent=POS.length?'':'для документа нужны позиции';
@@ -798,7 +800,7 @@ function collect(){
     contractDate:ruDate(val('f_date')), currency:retail?'BYN':curOf(),
     items:fw?[]:cleanPos(), delivery:fw?{}:collectDeliv(), legs:schedOn()?cleanLegs():[] };
   if(retail){ d.amount=posTotalValue(); return d; }   // розница: сумма = итог позиций, рынок BYN, «Действует до» — до исполнения (сервер)
-  d.validUntil=ruDate(val('f_valid')); d.amount=fw?null:amountVal();
+  d.validUntil=ruDate(val('f_valid')); d.amount=amountVal();   // рамочный РБ — null внутри amountVal (fwNoSum); РФ/Европа — сумма
   var lbl=k?(k.label||''):'', svc=/услуг/i.test(lbl), coop=/сотрудничеств/i.test(lbl);
   if(!(coop||fw)){ var bm=val('f_balance'), m3=(bm==='shipped'||bm==='ready'||bm==='accepted');
     d.prepayPercent=Number(val('f_prepay'))||0; d.prepayDays=val('f_pdays'); d.balanceMode=m3?bm:''; d.balanceCondition=m3?'':bm; d.balanceDays=(bm==='shipped'||bm==='accepted')?val('f_bdays'):''; }
@@ -814,6 +816,7 @@ function validate(d){
   if(!retail && !d.validUntil) return 'Укажите срок действия';
   if(retail && !d.items.length) return 'Добавьте позиции — сумма розничного договора = итог позиций';
   if(!retail && !d.isFramework && !(d.amount>0) && !d.items.length) return 'Укажите позиции или сумму договора';
+  if(d.isFramework && !fwNoSum() && !(d.amount>0)) return 'Рамочный договор с клиентом из РФ или Европы — валютный: укажите сумму договора';
   if((d.balanceMode==='shipped'||d.balanceMode==='accepted') && !(Number(d.balanceDays)>0)) return 'Укажите срок остатка в днях';
   if(d.prepayDays!==undefined && !(Number(d.prepayDays)>=1)) return 'Срок предоплаты — целое число дней от 1';
   if(!d.isFramework && !checkPos('posMsg')) return posMissMsg();   // обязательные опции (канат, зацепы горки) — как в сделке
