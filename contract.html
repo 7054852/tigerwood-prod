@@ -142,13 +142,13 @@
       <label class="fl" id="w_amount"><span class="sm">Сумма, <span id="curLbl">BYN</span></span><input id="f_amount" type="number" inputmode="decimal" min="0" step="0.01" oninput="onAmount()" autocomplete="off">
         <span class="sm" id="amtHint"></span></label>
       <label class="fl" id="w_prepay"><span class="sm">Предоплата, %</span><input id="f_prepay" type="number" inputmode="numeric" min="0" max="100" value="80" oninput="checkLegs()" autocomplete="off"></label>
-      <label class="fl" id="w_pdays"><span class="sm">Срок предоплаты, банковских дней со дня счёта</span><input id="f_pdays" type="number" inputmode="numeric" min="1" value="5" autocomplete="off"></label>
+      <label class="fl" id="w_pdays"><span class="sm" id="lblPdays">Срок предоплаты, банковских дней со дня счёта</span><input id="f_pdays" type="number" inputmode="numeric" min="1" value="5" autocomplete="off"></label>
       <!-- v3 ЮЛ (решение владельца 01.10.2026): остаток — один из трёх вариантов (текст строит сервер, contractsave{balanceMode}); «по графику» — строки графика -->
       <label class="fl" id="w_balance"><span class="sm">Остаток — условие</span>
         <select id="f_balance" onchange="onBalance()">
-          <option value="shipped">в течение N календарных дней с даты отгрузки</option>
+          <option value="shipped" id="optShipped">в течение N календарных дней с даты отгрузки</option>
           <option value="ready">до отгрузки — после уведомления о готовности товара</option>
-          <option value="accepted">в течение N календарных дней со дня подписания накладной</option>
+          <option value="accepted" id="optAccepted">в течение N календарных дней со дня подписания накладной</option>
           <option>по графику (рассрочка / отсрочка)</option>
         </select></label>
       <label class="fl" id="w_bdays"><span class="sm" id="lblBdays">Срок остатка, дней</span><input id="f_bdays" type="number" inputmode="numeric" min="1" placeholder="например, 10" oninput="onBalanceDays()" autocomplete="off"><span class="sm" id="bdaysHint"></span></label>
@@ -325,12 +325,15 @@ function isFw(){ return mode()==='legal' && fwAvail() && el('f_fw').checked; }
 /** рамочный РБ — без суммы (стоимость по счетам); РФ/Европа — валютный, сумма обязательна (владелец 01.10.2026) */
 function fwNoSum(){ var k=curKind(); return isFw() && (!k || !k.market || k.market==='by'); }
 function curKind(){ var k=kindVal(), fw=isFw(), hit=null; KINDS.forEach(function(x){ if(x.kind===k && !!x.framework===fw && !hit) hit=x; }); if(!hit) KINDS.forEach(function(x){ if(x.kind===k && !hit) hit=x; }); return hit; }
-/** РФ v3 (владелец 01.10.2026): поставка всегда FCA склад Поставщика — доставку в карточке не спрашиваем */
-function isFca(){ var k=curKind(); return mode()==='legal' && !!k && k.market==='ru'; }
-/** новый договор, смена рынка типа: умолчания — РФ 60 % / остаток по готовности / 15 раб. дней, иначе 80 % / с даты отгрузки / 14 */
+/** РФ v3 / EU v3 (владелец 01.10.2026): поставка всегда FCA склад — доставку в карточке не спрашиваем */
+function isFca(){ var k=curKind(); return mode()==='legal' && !!k && (k.market==='ru'||isEu()); }
+/** EU v3: контракт Европа — остаток с даты поставки (штамп на CMR), сроки в календарных днях, срок изготовления — в Счёте (Invoice) */
+function isEu(){ var k=curKind(); return mode()==='legal' && !!k && (k.market==='eu'||k.market==='other'); }
+/** новый договор, смена рынка типа: умолчания — РФ 60 % / остаток по готовности / 15 раб. дней; Европа 70 % за 3 календ. дня / 7 календ. дней с даты поставки; иначе 80 % / с даты отгрузки / 14 */
 var KIND_MKT='';
 function kindDefaults(){ var k=curKind(), m=(k&&k.market)||''; if(m===KIND_MKT) return; KIND_MKT=m;
-  var ru=isFca(); el('f_prepay').value=ru?60:80; setSel('f_balance', ru?'ready':'shipped'); el('f_prod').value=ru?15:14; }
+  var eu=isEu(), ru=isFca()&&!eu; el('f_prepay').value=ru?60:eu?70:80; setSel('f_balance', ru?'ready':'shipped'); el('f_prod').value=ru?15:14;
+  el('f_pdays').value=eu?3:5; if(eu) el('f_bdays').value=7; }
 function schedOn(){ var m=mode(); return m==='retail' ? isInst() : (m==='legal' && !isFw() && val('f_balance')===SCHED_TXT); }
 function defaultValid(){ return isFw()?addDays(todayIso(),365):(todayIso().slice(0,4)+'-12-31'); }
 function vis(id, on){ var e=el(id); if(e) e.classList.toggle('hide', !on); }
@@ -499,9 +502,12 @@ function applyMode(){
   vis('s_items', !!m && !fw); vis('s_terms', legal && !fwNoSum()); vis('s_deliv', !!m && !fw); vis('s_sched', retail || schedOn());
   // ЮЛ: условия оплаты
   var bm=val('f_balance'), pay=legal && !(coop||fw);
-  vis('w_bdays', pay && (bm==='shipped'||bm==='accepted')); vis('w_freight', legal && !svc && !fw); vis('w_prod', legal && !(svc||coop) && !fwNoSum());   // рамочный: перевозка — по накладным сделок; срок РБ — 20 раб. дней в тексте
+  var eu=isEu();   // EU v3: срок изготовления — в Счёте, «со дня подписания накладной» нет (CMR)
+  vis('w_bdays', pay && (bm==='shipped'||bm==='accepted')); vis('w_freight', legal && !svc && !fw); vis('w_prod', legal && !(svc||coop) && !fwNoSum() && !eu);
+  el('lblPdays').textContent='Срок предоплаты, '+(eu?'календарных':'банковских')+' дней со дня счёта';
+  el('optShipped').textContent='в течение N календарных дней с даты '+(eu?'поставки (штамп на CMR)':'отгрузки'); el('optAccepted').disabled=eu;   // рамочный: перевозка — по накладным сделок; срок РБ — 20 раб. дней в тексте
   vis('w_prepay', pay); vis('w_pdays', pay); vis('w_balance', pay);
-  el('lblBdays').textContent=bm==='accepted'?'Срок остатка, календарных дней со дня подписания накладной':'Срок остатка, календарных дней с даты отгрузки';
+  el('lblBdays').textContent=bm==='accepted'?'Срок остатка, календарных дней со дня подписания накладной':'Срок остатка, календарных дней с даты '+(eu?'поставки (CMR)':'отгрузки');
   el('f_balance').disabled=!EDIT; onBalanceDays();
   onMarketFields();
   if(!el('f_valid').value || el('f_valid').value===(fw?(todayIso().slice(0,4)+'-12-31'):addDays(todayIso(),365))) el('f_valid').value=defaultValid();
@@ -573,7 +579,8 @@ var BASE_VALUE=42;   // базовая величина РБ, BYN — с сер�
 /** срок доплаты в днях задан → условие остатка строится сервером само («в течение N дней с даты отгрузки»), список гасится */
 function onBalanceDays(){
   var n=Number(val('f_bdays'))||0, bm=val('f_balance');
-  el('bdaysHint').textContent=(bm==='shipped'||bm==='accepted')?(n>0?('в договор: «в течение '+n+' календ. дн. '+(bm==='accepted'?'со дня подписания накладной':'с даты отгрузки')+'»'):'укажите срок в днях'):'';
+  var eu=isEu(), wh=bm==='accepted'?'со дня подписания накладной':(eu?'с даты поставки (штамп первого перевозчика на CMR)':'с даты отгрузки');
+  el('bdaysHint').textContent=(bm==='shipped'||bm==='accepted')?(n>0?('в договор: «'+(eu?'не позднее ':'в течение ')+n+' календ. дн. '+wh+'»'):'укажите срок в днях'):'';
 }
 function onBalance(){ applyMode(); }
 /** режим остатка из договора: terms.balanceMode (v3) или старые тексты/дни (shipped — дни от отгрузки; «готовност»/«до отгрузки» — ready; «накладн» — accepted; график — как есть) */
