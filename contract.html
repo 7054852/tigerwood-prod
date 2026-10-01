@@ -132,6 +132,7 @@
       <span class="sm" id="amtNote">сумма договора = итог позиций</span>
     </div>
     <div class="msg" id="posMsg"></div>
+    <div class="note warn hide" id="vatFit"></div>
   </div>
 
   <!-- условия оплаты ЮЛ (поставка BY/РФ/Европа, рамочные, услуги/сотрудничество) -->
@@ -342,7 +343,7 @@ function loadErr(m){ el('loaderr').className='note bad'; el('loaderr').innerHTML
 function loadContract(){
   get({vapi:'contractget', id:ID}).then(function(r){
     if(!r||!r.ok||!r.contract){ loadErr('Договор не загрузился: '+errText(r)+(r&&/unknown|неизвест|нет такого маршрута|not found/i.test(String(r.error||''))?' Маршрут contractget ещё не выложен на сервер.':'')); return; }
-    C=r.contract; fillForm(); afterLoad();
+    C=r.contract; fillForm(); afterLoad(); renderVatFit();
   }).catch(function(e){ loadErr(netText(e)); });
 }
 /** Новый договор из ссылки: ?client= (карточка клиента), ?deal= (карточка сделки), &framework=1 */
@@ -606,7 +607,23 @@ function onAmount(){ checkLegs(); onMarketFields(); renderReady(); }
 function amountVal(){ var m=mode(); if(m==='retail') return posTotalValue(); if(isFw()) return null; return Number(val('f_amount'))||0; }
 
 /* ── позиции: редактор tw-items.js (POS, renderPos, addPos, cleanPos, checkPos); здесь — связь с суммой договора ── */
-function onPosTotal(){ itemsTot(); renderReady(); }
+function onPosTotal(){ itemsTot(); renderReady(); renderVatFit(); }
+/* ЮЛ с НДС (01.10.2026, владелец): документы считают от цены без НДС — где итог ≠ кол-во × цена, сервер (contractget.priceHints) предлагает цену, кратную 0,06.
+   Цену не подменяем молча: кнопка ставит её в строку и сохраняет договор, как обычная правка позиции. Строку, цену которой уже поменяли на экране, не показываем. */
+function rub(x){ return money(x).replace('.',','); }
+function vatFitRow(h){ var p=POS.filter(function(x){ return String(x.id)===String(h.id); })[0]; return p && Math.abs((Number(p.price)||0)+extraOf(p)-h.price)<0.005 ? p : null; }
+function renderVatFit(){
+  var e=el('vatFit'); if(!e) return;
+  var l=((C&&C.priceHints)||[]).filter(vatFitRow);
+  if(!l.length || mode()!=='legal' || isFw()){ e.className='note warn hide'; e.innerHTML=''; return; }
+  e.className='note warn';
+  e.innerHTML=l.map(function(h){ var k=C.priceHints.indexOf(h);
+    return '<div>⚠️ Позиция '+h.line+' ('+esc(h.name||'')+'): цена '+rub(h.price)+' даёт в документах '+rub(h.docTotal)+' вместо '+rub(h.total)
+      +(h.fit!=null&&h.newPrice!=null?(' — подобрать '+rub(h.fit)+'? '+(EDIT?'<button class="sec sm" onclick="fitVatPrice('+k+')">Поставить '+rub(h.fit)+'</button>':'')):'')+'</div>'; }).join('')
+    +'<div class="sm">Для юрлица цена без НДС × кол-во = стоимость; копейка расхождения убирается подбором розничной цены.</div>';
+}
+function fitVatPrice(k){ var h=(C&&C.priceHints||[])[k], p=h&&vatFitRow(h); if(!p||h.newPrice==null) return;
+  p.price=h.newPrice; renderPos(); posTot(); save(); }
 function itemsTot(){
   var t=posTotalValue(), fw=isFw(), a=el('f_amount');
   if(fw){ a.value=''; a.readOnly=true; el('amtHint').textContent='рамочный — без суммы: стоимость по счетам и накладным'; }
