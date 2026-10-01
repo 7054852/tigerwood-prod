@@ -325,6 +325,12 @@ function isFw(){ return mode()==='legal' && fwAvail() && el('f_fw').checked; }
 /** рамочный РБ — без суммы (стоимость по счетам); РФ/Европа — валютный, сумма обязательна (владелец 01.10.2026) */
 function fwNoSum(){ var k=curKind(); return isFw() && (!k || !k.market || k.market==='by'); }
 function curKind(){ var k=kindVal(), fw=isFw(), hit=null; KINDS.forEach(function(x){ if(x.kind===k && !!x.framework===fw && !hit) hit=x; }); if(!hit) KINDS.forEach(function(x){ if(x.kind===k && !hit) hit=x; }); return hit; }
+/** РФ v3 (владелец 01.10.2026): поставка всегда FCA склад Поставщика — доставку в карточке не спрашиваем */
+function isFca(){ var k=curKind(); return mode()==='legal' && !!k && k.market==='ru'; }
+/** новый договор, смена рынка типа: умолчания — РФ 60 % / остаток по готовности / 15 раб. дней, иначе 80 % / с даты отгрузки / 14 */
+var KIND_MKT='';
+function kindDefaults(){ var k=curKind(), m=(k&&k.market)||''; if(m===KIND_MKT) return; KIND_MKT=m;
+  var ru=isFca(); el('f_prepay').value=ru?60:80; setSel('f_balance', ru?'ready':'shipped'); el('f_prod').value=ru?15:14; }
 function schedOn(){ var m=mode(); return m==='retail' ? isInst() : (m==='legal' && !isFw() && val('f_balance')===SCHED_TXT); }
 function defaultValid(){ return isFw()?addDays(todayIso(),365):(todayIso().slice(0,4)+'-12-31'); }
 function vis(id, on){ var e=el(id); if(e) e.classList.toggle('hide', !on); }
@@ -505,8 +511,9 @@ function applyMode(){
   // ЮЛ v3 (решение владельца 01.10.2026): способа и стоимости нет — только «доставка включена в цену» (адрес Покупателя) / «не включена» (франко-склад, вывоз за счёт Покупателя);
   // способ доставки сделки (для накладной) с экрана не трогаем. Гарантия ЮЛ — поле сделки, по умолчанию 12 (подсказка с сервера)
   vis('w_transfer', retail); vis('w_warranty', retail || legal); vis('w_region', retail && del);
-  vis('w_way', !legal); vis('w_cost', legal || del); vis('w_costSum', !legal && del && inc==='0');
-  vis('w_city', legal ? inc==='1' : del); vis('w_addr', legal ? inc==='1' : del);
+  var fca=isFca();   // РФ: FCA всегда — блока «Доставка» нет, остаётся гарантия
+  vis('w_way', !legal); vis('w_cost', (legal && !fca) || del); vis('w_costSum', !legal && del && inc==='0');
+  vis('w_city', legal ? !fca && inc==='1' : del); vis('w_addr', legal ? !fca && inc==='1' : del);
   el('lblAddr').textContent='Адрес доставки'; el('lblCost').textContent=legal?'Доставка':'Стоимость доставки';
   el('btnIncNo').textContent=legal?'не включена (франко-склад)':'оплачивается отдельно';
   el('costHint').textContent=legal?(inc==='1'?'Поставщик доставляет по адресу Покупателя, стоимость в цене Товара; разгрузка — Покупатель':(inc==='0'?'франко-склад Поставщика: вывоз Товара силами и за счёт Покупателя':'в договор: доставка включена в цену или франко-склад')):'';
@@ -584,7 +591,7 @@ function onMarketFields(){
   el('cregHint').innerHTML='Валютный договор на сумму от <b>4000 БВ</b> ('+money(thr)+' BYN при БВ '+BASE_VALUE+' — уточнить) регистрируется в банке до первого платежа/отгрузки; срок доплаты — по Указу № 178.'
     +((a!=null&&a>0)?(' Сумма договора '+money(a)+' '+esc(curOf())+' — сравните с порогом по курсу на дату.'):'');
 }
-function onKind(){ WANT_KIND=''; el('f_fw').checked=/#fw$/.test(val('f_kind')); applyMode(); fillDeals(); }
+function onKind(){ WANT_KIND=''; el('f_fw').checked=/#fw$/.test(val('f_kind')); if(!C) kindDefaults(); applyMode(); fillDeals(); }
 function onFw(){ WANT_KIND=WANT_KIND||val('f_kind'); applyMode(); fillDeals(); }
 /* ── сделка клиента ── */
 function fillDeals(){
@@ -655,7 +662,7 @@ function collectDeliv(){
   if(m==='retail'){ o.transferDays=val('d_transfer'); o.warrantyMonths=val('d_warranty'); }
   if(m==='legal'){   // ЮЛ v3: гарантия + «включена / франко-склад» (+ адрес при доставке); способ доставки сделки не трогаем
     o.warrantyMonths=val('d_warranty'); var inc=val('d_delivInc');
-    if(inc){ o.deliveryIncluded=inc; if(inc==='1'){ o.deliveryCost=''; o.city=val('d_city').trim(); o.deliveryAddress=val('d_addr').trim(); } }
+    if(inc && !isFca()){ o.deliveryIncluded=inc; if(inc==='1'){ o.deliveryCost=''; o.city=val('d_city').trim(); o.deliveryAddress=val('d_addr').trim(); } }
     return o;
   }
   if(way==='pick') o.deliveryMethod='самовывоз';
@@ -689,7 +696,8 @@ function localMissing(){
   if(m==='legal'){
     var bm=val('f_balance'), lbl=(curKind()||{}).label||'';
     if(!/услуг|сотрудничеств/i.test(lbl) && (bm==='shipped'||bm==='accepted') && !(Number(val('f_bdays'))>0)) l.push('срок остатка, дней');
-    var inc0=val('d_delivInc'); if(!inc0) l.push('доставка в договоре: включена в цену или франко-склад');
+    var inc0=val('d_delivInc'); if(isFca()) return l;   // РФ — FCA, доставку не спрашиваем
+    if(!inc0) l.push('доставка в договоре: включена в цену или франко-склад');
     else if(inc0==='1' && !val('d_city').trim() && !val('d_addr').trim()) l.push('адрес доставки (город/адрес)');
     return l;
   }
