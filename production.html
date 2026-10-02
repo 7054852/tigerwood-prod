@@ -364,7 +364,16 @@ function subNote(pend,qc){ pend=Number(pend)||0; qc=Number(qc)||0; if(!pend&&!qc
   return '<span class="subn" title="подано, ещё не принято: на проверке у мастера / ждёт ОТК">'+(pend?'+'+r1(pend)+' пров.':'')+(pend&&qc?' · ':'')+(qc?'+'+r1(qc)+' ОТК':'')+'</span>'; }
 function subRub(x){ var p=Number(x.pendRub)||0, q=Number(x.qcRub)||0; if(!p&&!q) return '';
   return ' · <span title="подано, ещё не принято">на проверке '+money(p)+' ₽ · ждёт ОТК '+money(q)+' ₽</span>'; }
-function doneCell(o){ return o.done+subNote(o.pend,o.qc); }
+// подряд: у подрядчика — отдано, ещё не привезли (сделает он); предварительно — привезли, наш рабочий доделывает (входит в «нам осталось»)
+var OUT_T='подряд: у подрядчика — отдано и ещё не привезли, сделает он; предварительно — привезли, наш рабочий доделывает (входит в «нам осталось»)';
+var OUR_T='нам осталось = нужно − принято − на проверке − ждёт ОТК − у подрядчика';
+function outNote(out,pre){ out=Number(out)||0; pre=Number(pre)||0; if(!out&&!pre) return '';
+  return '<span class="subn" title="'+OUT_T+'">'+(out?'подр. '+r1(out):'')+(out&&pre?' / ':'')+(pre?'предв. '+r1(pre):'')+'</span>'; }
+function subOut(x){ var o=Number(x.outRub)||0, p=Number(x.preRub)||0; if(!o&&!p) return '';
+  return ' · <span title="'+OUT_T+'">у подрядчика '+money(o)+' ₽'+(p?' · предв. '+money(p)+' ₽':'')+'</span>'; }
+function ourNote(x){ if(x.ourRub==null || !((Number(x.outRub)||0)||(Number(x.pendRub)||0)||(Number(x.qcRub)||0))) return '';
+  return ' · <b title="'+OUR_T+'">нам осталось '+money(x.ourRub||0)+' ₽</b>'; }
+function doneCell(o){ return o.done+subNote(o.pend,o.qc)+outNote(o.out,o.pre); }
 function riskBadge(b){
   var r=b.risk;
   if(r==='late') return '<span class="pill bad" title="прогноз позже дедлайна">🔴 не успеваем'+(b.slack!=null?(' на '+Math.abs(b.slack)+' дн'):'')+'</span>';
@@ -418,6 +427,7 @@ function renderList(){
       +'<span style="flex:1"></span>'
       +'<span class="pill">'+(b.pctLabor||0)+'% по труду</span>'
       +(subPct(b)>0?'<span class="pill mute" title="'+esc('подано, ещё не принято: на проверке '+money(b.pendRub||0)+' ₽, ждёт ОТК '+money(b.qcRub||0)+' ₽ — с учётом поданного '+b.pctLaborSub+'%')+'">+'+subPct(b)+'% подано</span>':'')
+      +(b.outRub?'<span class="pill mute" title="'+OUT_T+'">у подрядчика '+money(b.outRub)+' ₽</span>':'')
       +(b.overflow?'<span class="pill bad">⚠ перевыполнено</span>':'')
       +'<span id="aud_'+b.id+'"></span>'
       +'</div>'
@@ -428,6 +438,7 @@ function renderList(){
         +'<span class="muted">темп: <b>'+(b.velocity?money(b.velocity)+' ₽/дн':'—')+'</b></span>'
         +'<span class="muted">осталось: <b>'+money(b.leftRub||0)+' ₽</b> труда</span>'
         +(b.forecastSub&&b.forecastSub!==b.forecast?'<span class="muted" title="если всё поданное примут без замечаний">с учётом поданного — к <b>'+esc(b.forecastSub)+'</b></span>':'')
+        +(b.forecastOur&&b.forecastOur!==b.forecastSub&&b.forecastOur!==b.forecast?'<span class="muted" title="'+OUR_T+' — по нашему темпу, без работы подрядчика">нам осталось <b>'+money(b.ourRub||0)+' ₽</b> — к <b>'+esc(b.forecastOur)+'</b></span>':'')
       +'</div>'
       +models
       +'<div class="muted" style="margin-top:var(--s-2);font:var(--t-small);text-align:right">открыть заказ →</div>'
@@ -512,7 +523,7 @@ function renderDetail(){
       +'<select onchange="setStatus(\''+b.id+'\',this.value)">'+opts+'</select>'
       +'<span class="pill prio '+(prio?'bad':'mute')+'" onclick="togglePrio(\''+b.id+'\','+(prio?0:1)+')">'+(prio?'🔥 срочно':'обычный')+'</span>'
       +'<span class="pill '+costCol+'">'+(costCol==='ok'?'✓ ':(costCol==='warn'?'⏳ ':'✕ '))+'собрано '+costSum+' · труд '+money(b.labor||0)+' р</span>'
-      +(b.opsCount?'<span class="pill">по труду '+(b.pctLabor||0)+'%'+(subPct(b)>0?' · с учётом поданного '+b.pctLaborSub+'%':'')+'</span>':'')
+      +(b.opsCount?'<span class="pill" style="white-space:normal;height:auto">по труду '+(b.pctLabor||0)+'%'+(subPct(b)>0?' · с учётом поданного '+b.pctLaborSub+'%':'')+(b.ourRub!=null?' · <span title="'+OUR_T+'">нам осталось '+money(b.ourRub||0)+' р</span>':'')+'</span>':'')
       +(b.overflow?'<span class="pill bad" title="есть перевыполненные операции">⚠ перевыполнено</span>':'')
       +'<span class="muted">срок отгрузки: '+(b.plan?('<b>'+esc(b.plan)+'</b>'):'—')
         +' <a href="javascript:void(0)" onclick="setDeadline(\''+b.id+'\',\''+esc(b.plan||'')+'\')" title="изменить срок" style="text-decoration:none">✎</a>'
@@ -671,7 +682,7 @@ function opsByOpHtml(id,dash){
       return '<tr title="'+esc(dd.detail+' · нужно '+dd.need+' · начальные остатки '+dd.stock+' · осталось на '+money(dd.leftRub)+' ₽')+'"><td>'+esc(dd.detail)+' '+shared+'</td>'
         +'<td class="num c-hide">'+dd.need+'</td>'
         +'<td class="num c-hide">'+dd.stock+'</td>'
-        +'<td class="num">'+dd.done+subNote(dd.pendQty,dd.qcQty)+'</td>'
+        +'<td class="num">'+dd.done+subNote(dd.pendQty,dd.qcQty)+outNote(dd.outQty,dd.preQty)+'</td>'
         +'<td class="num" title="прошли эту операцию, но ещё не ушли на следующую'+(dd.nextOp?(' («'+esc(dd.nextOp)+'»)'):'')+'"><b>'+r1(dd.fact)+'</b>'+fpen+'</td>'
         +'<td class="num" style="'+(dd.left>0?'color:var(--red)':'color:var(--green)')+'">'+dd.left
           +(dd.over>0?' <span class="pill bad">✕ +'+dd.over+'</span>':'')+'</td>'
@@ -687,7 +698,7 @@ function opsByOpHtml(id,dash){
         +'<span class="bar"><i style="width:'+pct+'%'+(pct>=100?';background:var(--green)':'')+'"></i></span>'
         +'<span class="gpct">'+(t.pct||0)+'%</span>'
         +'<span class="gsum">сделано '+t.doneQty+' из '+t.needQty+' · лежит '+r1(t.factQty)+' · осталось '+t.leftQty+' шт · '
-          +'<b title="сколько ещё труда осталось по этой операции">'+money(t.leftRub||0)+' ₽</b>'+subRub(t)+'</span>'
+          +'<b title="сколько ещё труда осталось по этой операции">'+money(t.leftRub||0)+' ₽</b>'+subRub(t)+subOut(t)+ourNote(t)+'</span>'
       +'</div>'
       +'<div class="gbody"><table class="tbl"><thead><tr><th>Деталь</th><th class="num c-hide">Нужно</th><th class="num c-hide">Нач. остатки</th><th class="num">Сделано</th>'
         +'<th class="num" title="сколько деталей прошли эту операцию и ещё не ушли на следующую">Лежит</th>'
@@ -713,7 +724,7 @@ function opsDashHtml(id,dash){
     var opRows=(g.ops||[]).map(function(t){
       var tp=Math.min(100,t.pct||0);
       return '<tr title="'+esc(t.op+' · нужно '+t.needQty+' · труд '+money(t.needRub)+' ₽')+'"><td>'+esc(t.op)+'</td>'
-        +'<td class="num c-hide">'+t.needQty+'</td><td class="num">'+t.doneQty+subNote(t.pendQty,t.qcQty)+'</td>'
+        +'<td class="num c-hide">'+t.needQty+'</td><td class="num">'+t.doneQty+subNote(t.pendQty,t.qcQty)+outNote(t.outQty,t.preQty)+'</td>'
         +'<td class="num" title="лежит сейчас — прошли эту операцию и ещё не ушли на следующую"><b>'+r1(t.factQty)+'</b></td>'
         +'<td class="num" style="'+(t.leftQty>0?'color:var(--red)':'color:var(--green)')+'">'+t.leftQty+'</td>'
         +'<td class="num c-hide">'+money(t.needRub)+'</td>'
@@ -727,7 +738,7 @@ function opsDashHtml(id,dash){
         +'<span class="pill" title="доля труда участка от всего труда заказа">'+(g.share||0)+'% труда</span>'
         +'<span class="bar"><i style="width:'+pct+'%'+(pct>=100?';background:var(--green)':'')+'"></i></span>'
         +'<span class="gpct">'+(g.pct||0)+'%</span>'
-        +'<span class="gsum">сделано '+g.doneQty+' из '+g.needQty+' · лежит '+r1(g.factQty)+' · осталось '+money(g.leftRub)+' ₽'+subRub(g)+'</span>'
+        +'<span class="gsum">сделано '+g.doneQty+' из '+g.needQty+' · лежит '+r1(g.factQty)+' · осталось '+money(g.leftRub)+' ₽'+subRub(g)+subOut(g)+ourNote(g)+'</span>'
       +'</div>'
       +'<div class="gbody"><table class="tbl"><thead><tr><th>Тип операции</th><th class="num c-hide">Нужно</th><th class="num">Сделано</th><th class="num" title="сколько лежит на этой операции сейчас">Лежит</th><th class="num">Остаток</th><th class="num c-hide">Нужно ₽</th><th class="num c-hide">% труда</th><th class="num">Остаток ₽</th><th class="num">% вып.</th></tr></thead><tbody>'+opRows+'</tbody></table></div>'
     +'</div>';
@@ -832,11 +843,12 @@ function floorBlocks(dash){
   FLOOR_BLOCKS.forEach(function(b){
     var gs=[]; b[1].forEach(function(n){ if(byG[n]) gs.push(byG[n]); });
     if(!gs.length) return;
-    var blk={ title:(gs.length>1?b[0]:gs[0].group), ops:[], needQty:0, doneQty:0, leftQty:0, factQty:0, leftRub:0, pendRub:0, qcRub:0, color:'var(--line2)' };
+    var blk={ title:(gs.length>1?b[0]:gs[0].group), ops:[], needQty:0, doneQty:0, leftQty:0, factQty:0, leftRub:0, pendRub:0, qcRub:0, outRub:0, preRub:0, ourRub:null, color:'var(--line2)' };
     gs.forEach(function(g){
       blk.ops=blk.ops.concat(g.ops||[]);
       blk.needQty+=g.needQty; blk.doneQty+=g.doneQty; blk.leftQty+=g.leftQty;
       blk.factQty+=(g.factQty||0); blk.leftRub+=g.leftRub; blk.pendRub+=(g.pendRub||0); blk.qcRub+=(g.qcRub||0);
+      blk.outRub+=(g.outRub||0); blk.preRub+=(g.preRub||0); if(g.ourRub!=null) blk.ourRub=(blk.ourRub||0)+g.ourRub;
     });
     if(blk.ops[0]&&blk.ops[0].color) blk.color=blk.ops[0].color;
     var rank={base:0,nat:1,col:2};
@@ -905,7 +917,7 @@ function opsFloorHtml(id,dash){
         +'<span class="gcar">▸</span><span class="dot" style="background:'+g.color+'"></span>'
         +'<span class="gname">'+esc(g.title)+'</span>'
         +'<span class="pill" title="сколько деталей физически лежит на операциях участка (штуко-операции)">лежит '+r1(g.factQty)+'</span>'
-        +'<span class="gsum">сделано '+g.doneQty+' из '+g.needQty+' · осталось '+money(g.leftRub)+' ₽ · '+plural(m.dets.length,'деталь','детали','деталей')+subRub(g)+'</span>'
+        +'<span class="gsum">сделано '+g.doneQty+' из '+g.needQty+' · осталось '+money(g.leftRub)+' ₽ · '+plural(m.dets.length,'деталь','детали','деталей')+subRub(g)+subOut(g)+ourNote(g)+'</span>'
       +'</div>'
       +'<div class="gbody">'+chips
         +'<span class="flhint">⟷ таблица листается вбок'+(chips?'; чтобы влезла целиком — выберите ветку выше':'')+'</span>'
@@ -1114,7 +1126,8 @@ function opLeftHtml(o){
   // показываем его один раз, на уровне детали, а не разбрасываем по вариантам.
   var ov=(o.over>0)?' <span class="pill bad">✕ +'+o.over+'</span>':'';
   var sh=(o.sharedOver>0)?' <span class="pill bad" title="сделано сверх потребности по этой детали целиком, во всех цветах">✕ +'+o.sharedOver+' по детали</span>':'';
-  return o.left+ov+sh;
+  var our=(o.our!=null&&(o.out||o.pend||o.qc))?'<span class="subn" title="'+OUR_T+'">нам '+r1(o.our)+'</span>':'';
+  return o.left+ov+sh+our;
 }
 // ── перенос перевыполненных деталей на другое изделие (наряды детали+операции + цели) ──
 var MOVEMAP={};   // id заказа → { opId: {detail,op} }
@@ -1182,6 +1195,7 @@ function opProdStat(p){
   (p.ops||[]).forEach(function(o){ var l=Number(o.left)||0; if(l>0){ nOp++; qty+=l; } });
   return (p.pct||0)+'% · осталось '+money(p.leftRub)+' р'
     +((p.pendRub||p.qcRub)?' · на проверке '+money(p.pendRub||0)+' р · ждёт ОТК '+money(p.qcRub||0)+' р · <b title="если всё поданное примут">с учётом поданного '+(p.pctSub||0)+'%</b>':'')
+    +subOut(p).replace(/₽/g,'р')+ourNote(p).replace(/₽/g,'р')
     +(nOp?(' · <b class="warn">не закрыто '+plural(nOp,'операция','операции','операций')
            +' на '+Math.round(qty)+' шт</b>'):' · <b class="ok">все операции закрыты</b>');
 }
@@ -1190,6 +1204,8 @@ function opsKpiHtml(k){
     +'<span>Готовность по труду: <span style="color:var(--accent-text)">'+(k.pct||0)+'%</span></span>'
     +'<span class="muted" style="font-weight:400">нужно '+money(k.needRub)+' р · сделано '+money(k.doneRub)+' р · осталось '+money(k.leftRub)+' р</span>'
     +((k.pendRub||k.qcRub)?'<span class="muted" style="font-weight:400" title="подано, но ещё не принято: на проверке у мастера / ждёт ОТК. Прогноз — если примут всё">на проверке '+money(k.pendRub||0)+' р · ждёт ОТК '+money(k.qcRub||0)+' р · <b>прогноз '+(k.pctSub||0)+'%</b></span>':'')
+    +((k.outRub||k.preRub)?'<span class="muted" style="font-weight:400" title="'+OUT_T+'">у подрядчика '+money(k.outRub||0)+' р · привезено предварительно '+money(k.preRub||0)+' р</span>':'')
+    +(k.ourRub!=null?'<span title="'+OUR_T+'">нам осталось <span style="color:var(--accent-text)">'+money(k.ourRub||0)+' р ('+(k.ourPct||0)+'%)</span></span>':'')
     +(k.overflow?'<span class="pill bad" title="лишние операции сверх плана: в штуках и в деньгах (расценка × лишние штуки)">⚠ перевыполнение +'+Math.round(k.over)+' шт · +'+money(k.overRub||0)+' р</span>':'')+'</div>';
 }
 // точечное обновление цифр без пересборки таблицы (не трогаем поля, в которых работает пользователь)
