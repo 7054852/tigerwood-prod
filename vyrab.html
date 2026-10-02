@@ -192,12 +192,14 @@ function CARD(e){ return '<div style="padding:var(--s-4);line-height:1.5">'
     <button class="sec sm" onclick="otkAddToggle()">➕ Внести работу за рабочего</button>
     <button class="sec sm" onclick="otkLogToggle()">🧾 Мои приёмки</button>
     <button class="sec sm" onclick="otkStatsToggle()">📊 Качество за месяц</button>
+    <button class="sec sm" onclick="rwToggle()">🔁 Переделка покрашенных</button>
   </div></div>
   <div class="note">Зона сдачи: что рабочие сдали и ждёт вашей проверки. Принимаете — работа засчитывается и оплачивается.</div>
   <div id="ostat"></div>
   <div id="oadd" style="display:none"></div>
   <div id="olog" style="display:none;margin-top:var(--s-2)"></div>
   <div id="oqual" style="display:none;margin-top:var(--s-2)"></div>
+  <div id="orw" style="display:none;margin-top:var(--s-2)"></div>
   <div class="sect">Приёмка по качеству</div>
   <div id="olist">Загрузка…</div>
 </div>
@@ -1668,9 +1670,8 @@ function otkDestHtml(id,canSand,canPaint,isCoat){
     +'<div class="muted" id="dn-'+esc(id)+'" style="font:var(--t-small);margin:var(--s-1) 0">'+otkDestText('',isCoat)+'</div>';
 }
 function otkDestText(v,isCoat){
-  return v==='paint' ? (isCoat ? 'Покраска засчитана и оплачена маляру. Перекрашивает бесплатно — детали лягут в «Переделка: малярка», ошибка запишется на маляра.'
-                               : 'Эти штуки не засчитаны — после перекраски их сдадут заново. Детали лягут в «Переделка: малярка», перекраска бесплатно.')
-    : v==='sand' ? 'Эти штуки не засчитаны. Детали лягут в «Переделка: шлифовка»: шлифовщику платим долю шлифовки, потом их красят заново.'
+  return v==='paint' ? 'Работа засчитана. Детали лягут в «Переделка: малярка», маляр перекрашивает бесплатно'+(isCoat?', ошибка запишется на него.':'.')
+    : v==='sand' ? 'Работа засчитана. Детали лягут в «Переделка: шлифовка»: шлифовщику платим долю шлифовки.'
     : 'Брак не оплачивается и возвращается рабочему на переделку. Оплата — за принятое.';
 }
 function otkDestNote(id){ var e=document.getElementById('dn-'+id), s=document.getElementById('dest-'+id); if(e&&s) e.textContent=otkDestText(s.value,OTKCOAT[id]); }
@@ -1919,6 +1920,73 @@ function otkReworkHtml(x){
         return row(esc(w.name),[w.sand>0?('шлифовка '+w.sand+' шт'):'',w.paint>0?('покраска '+w.paint+' шт'):''].filter(Boolean).join(' · ')+(w.rub>0?(' · '+w.rub+' р.'):''));
       }).join('')):'')
     +'</div>';
+}
+// ── ПЕРЕДЕЛКА ПОКРАШЕННЫХ (владелец 02.10.2026): уже покрашенные и принятые детали уходят на переделку —
+// на шлифовку (дефект материала) или маляру (его ошибка). Покраска остаётся засчитанной; здесь только «сколько лежит на переделке».
+var RWOPEN=0, RWCOMP={}, RWAREA='sand', RWBUSY=false;
+function rwToggle(){ RWOPEN=!RWOPEN; var b=document.getElementById('orw'); b.style.display=RWOPEN?'':'none'; if(RWOPEN) rwRender(); }
+function rwRender(){
+  var b=document.getElementById('orw');
+  var bs=(DATA.batches||[]).map(function(x){ return opt(x.id,x.num+' · '+x.name); }).join('');
+  var ws=actWorkers().map(function(w){ return opt(w.name); }).join('');
+  b.innerHTML='<div class="card"><b>🔁 Вернуть покрашенные детали на переделку</b>'
+    +'<div class="muted" style="font:var(--t-small);margin:var(--s-1) 0">Покраска по ним остаётся засчитанной. Шлифовщику переделку платим долей шлифовки детали, маляр перекрашивает бесплатно.</div>'
+    +'<label>Заказ<select id="rw_b" onchange="rwLoadComp()">'+bs+'</select></label>'
+    +'<label>Изделие<select id="rw_e" onchange="rwFillDet()"></select></label>'
+    +'<label>Деталь<select id="rw_d"></select></label>'
+    +'<label>Сколько штук<input id="rw_q" type="number" min="1" inputmode="numeric"></label>'
+    +'<div class="row" style="margin:var(--s-2) 0;justify-content:flex-start"><div class="seg">'
+    +'<button id="rw_as" onclick="rwArea(\'sand\')">на шлифовку — материал</button>'
+    +'<button id="rw_ap" onclick="rwArea(\'paint\')">маляру — его ошибка</button></div></div>'
+    +'<label id="rw_pl">Чья ошибка (маляр)<select id="rw_p">'+opt('','не знаю')+ws+'</select></label>'
+    +'<label>Примечание<input id="rw_n" placeholder="что не так"></label>'
+    +'<div class="row"><button onclick="rwGo()">Вернуть на переделку</button><span class="msg" id="rw_m"></span></div></div>'
+    +'<div id="rw_list"><div class="card muted">Загрузка…</div></div>';
+  rwArea(RWAREA); rwLoadComp(); rwLoadList();
+}
+function rwArea(a){ RWAREA=a; var s=document.getElementById('rw_as'), p=document.getElementById('rw_ap'), pl=document.getElementById('rw_pl');
+  if(s) s.className=a==='sand'?'on':''; if(p) p.className=a==='paint'?'on':''; if(pl) pl.style.display=a==='paint'?'':'none'; }
+function rwLoadComp(){
+  var bid=(document.getElementById('rw_b')||{}).value; RWCOMP={}; rwFillEq();
+  if(!bid) return;
+  api({vapi:'ordercomp',batch:bid}).then(function(r){ RWCOMP=(r&&r.rework)||{}; rwFillEq(); }).catch(function(){});
+}
+function rwFillEq(){ var e=document.getElementById('rw_e'); if(!e) return;
+  e.innerHTML=Object.keys(RWCOMP).map(function(k){ return opt(k); }).join('')||opt('','в заказе нет крашеных деталей'); rwFillDet(); }
+function rwFillDet(){ var d=document.getElementById('rw_d'), e=(document.getElementById('rw_e')||{}).value; if(!d) return;
+  d.innerHTML=Object.keys(RWCOMP[e]||{}).map(function(k){ return opt(k); }).join('')||opt('','—'); }
+function rwGo(){
+  var q=Number((document.getElementById('rw_q')||{}).value)||0, det=(document.getElementById('rw_d')||{}).value;
+  if(!det){ otkMsg('rw_m','<span class="err">выберите деталь</span>'); return; }
+  if(!(q>0)){ otkMsg('rw_m','<span class="err">укажите, сколько штук</span>'); return; }
+  if(RWBUSY) return; RWBUSY=true; otkMsg('rw_m','записываю…');
+  var data={batch:document.getElementById('rw_b').value, detail:det, qty:q, area:RWAREA,
+    painter:RWAREA==='paint'?document.getElementById('rw_p').value:'', note:document.getElementById('rw_n').value};
+  apiPost({vapi:'reworkreturn',data:JSON.stringify(data)}).then(function(r){
+    RWBUSY=false;
+    if(!r||!r.ok){ otkMsg('rw_m','<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'); return; }
+    otkMsg('rw_m','<span class="ok">✅ вернули '+q+' шт · лежит на переделке '+(RWAREA==='sand'?'на шлифовке':'у маляра')+': '+r.lies+' шт</span>');
+    document.getElementById('rw_q').value=''; document.getElementById('rw_n').value=''; rwLoadList();
+  }).catch(function(){ RWBUSY=false; otkMsg('rw_m','<span class="err">ошибка сети</span>'); });
+}
+function rwLoadList(){
+  api({vapi:'reworklist',days:30}).then(function(r){
+    var b=document.getElementById('rw_list'); if(!b) return;
+    if(!r||!r.ok){ b.innerHTML='<div class="card err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
+    var lies=(r.lies||[]).map(function(x){ return '<div class="row"><span>'+esc(x.order)+' · '+esc(x.detail)+'</span><span>'
+      +[x.sand>0?('шлифовка '+x.sand):'',x.paint>0?('малярка '+x.paint):''].filter(Boolean).join(' · ')+' шт</span></div>'; }).join('');
+    var ret=(r.returns||[]).map(function(x){ return '<div class="row" style="border-top:1px solid var(--line);padding-top:var(--s-1)"><span>'
+      +esc(x.date)+' · '+esc(x.order)+' · '+esc(x.detail)+' · <b>'+x.qty+' шт</b> '+(x.area==='sand'?'на шлифовку':'маляру')
+      +(x.painter?(' · ошибка: '+esc(x.painter)):'')+(x.note?(' · <span class="muted">'+esc(x.note)+'</span>'):'')
+      +' <span class="muted" style="font:var(--t-tiny)">'+(x.fromOtk?'при приёмке ОТК':esc(x.by||''))+'</span></span>'
+      +(x.fromOtk?'':'<button class="sm sec" onclick="rwDel(\''+esc(x.id)+'\')">✕</button>')+'</div>'; }).join('');
+    b.innerHTML='<div class="card"><b>Лежит на переделке</b>'+(lies||'<div class="muted">ничего</div>')+'</div>'
+      +'<div class="card"><b>Возвраты за 30 дней</b>'+(ret||'<div class="muted">не было</div>')+'</div>';
+  }).catch(function(){});
+}
+function rwDel(id){
+  if(!confirm('Убрать этот возврат? Детали перестанут числиться на переделке.')) return;
+  api({vapi:'reworkdel',id:id}).then(function(r){ if(!r||!r.ok){ alert((r&&r.error)||'ошибка'); return; } rwLoadList(); }).catch(function(){ alert('ошибка сети'); });
 }
 // ═══════════ 🪚 РАСКРОЙ НА ЧПУ: лист → детали ═══════════
 // Рабочий указывает лист материала и что с него вышло. Платим и за лист, и за детали.
