@@ -11,6 +11,26 @@
   .left{ flex:0 0 320px; max-width:320px; }
   .right{ flex:1 1 auto; min-width:0; overflow:hidden; }
   @media (max-width:860px){ .cols{ display:block; } .left{ max-width:none; margin-bottom:var(--s-3); } }
+  /* ноутбук / окно Telegram (02.10.2026): список подрядчиков — лентой сверху, карточка на всю ширину, без пояснений-абзацев */
+  @media (max-width:1280px), (max-height:760px){
+    .cols{ display:block; }
+    .left{ max-width:none; display:flex; gap:var(--s-2); overflow-x:auto; padding-bottom:var(--s-1); margin-bottom:var(--s-2); }
+    .left .cl{ flex:0 0 auto; max-width:300px; margin-bottom:0; padding:var(--s-1) var(--s-2); }
+    .left .cl .ln.more{ display:none; }
+    .left .cl.new{ display:flex; align-items:center; }
+    .sums{ gap:var(--s-1); margin-bottom:var(--s-2); }
+    .sum{ padding:1px 7px; }
+    .hint.long{ display:none; }
+    .toolbar .end{ display:none; }   /* «＋ подрядчик» и «⟳» — в ленте подрядчиков, без лишней строки */
+    .left .cl.refresh{ display:flex; align-items:center; }
+    .sect{ margin-top:var(--s-2); }
+    .tw table.w .dt{ display:none; }   /* дата последней передачи — видна в истории */
+    .tw table.w{ min-width:100%; }
+    td.act .lbl{ display:none; }   /* кнопки строки — значками, подпись во всплывающей подсказке */
+    td.act{ white-space:nowrap; }
+    .tw table.w td .sep{ display:block; height:0; overflow:hidden; }   /* ₽/шт и сумма — в две строки */
+    .tw table.w td.wrap{ white-space:normal; min-width:150px; }
+  }
 
   .sums{ display:flex; flex-wrap:wrap; gap:var(--s-2); margin-bottom:var(--s-3); }
   .sum{ border:1px solid var(--line); border-radius:var(--r-ctl); padding:3px 9px; background:var(--card2); }
@@ -27,6 +47,7 @@
   .cl .dg{ color:var(--red); font-weight:600; }
   .cl .none{ color:var(--muted); }
   .cl.new{ border-style:dashed; text-align:center; color:var(--muted); }
+  .cl.refresh{ display:none; }
 
   table.w{ min-width:max-content; }
   table.w th,table.w td{ white-space:nowrap; }
@@ -48,6 +69,7 @@
   .mvbox label.chkrow.cur{ cursor:default; }
 
 
+  @media (max-width:1280px), (max-height:760px){ .left .cl .more{ display:none; } }
   @media print{ .noprint{ display:none !important; } .left{ display:none; } }
 </style>
 </head>
@@ -111,37 +133,38 @@ function render(){
 
   var left=(D.list||[]).map(function(x){ return cardLine(x); }).join('')
     +(D.unlisted||[]).map(function(x){ return cardLine(x); }).join('')
-    +'<div class="cl new noprint" onclick="openAdd()">＋ добавить подрядчика</div>';
+    +'<div class="cl new noprint" onclick="openAdd()">＋ добавить подрядчика</div>'
+    +'<div class="cl new noprint refresh" onclick="load()" title="обновить">⟳</div>';
 
   $('pane').innerHTML=sums
     +'<div class="cols"><div class="left noprint">'+left+'</div><div class="right">'+(D.card?cardHtml(D.card):
-      '<div class="box"><div class="muted">Выберите подрядчика слева — покажу контакты, цены и историю работ.</div></div>')+'</div></div>';
+      '<div class="box"><div class="muted">Выберите подрядчика — покажу контакты, цены и историю работ.</div></div>')+'</div></div>';
 }
 function sum(n,v,cls){ return '<div class="sum '+(cls||'')+'"><div class="n">'+esc(n)+'</div><div class="v">'+v+'</div></div>'; }
 function cardLine(x){
   var on=(x.name===SEL);
   return '<div class="cl'+(on?' on':'')+'" onclick="pick(\''+attr(x.name)+'\')">'
     +'<div class="nm">'+esc(x.name)+(x.unlisted?' <span class="pill warn">не в списке</span>':'')+'</div>'
-    +'<div class="ln">'+(x.rows?(plural(x.rows,'работа','работы','работ')+' · '+m0(x.qty)+' шт · платим '+money(x.sub)+' ₽'):'работ пока не было')+'</div>'
+    +'<div class="ln more">'+(x.rows?(plural(x.rows,'работа','работы','работ')+' · '+m0(x.qty)+' шт · платим '+money(x.sub)+' ₽'):'работ пока не было')+'</div>'
     +'<div class="ln">'+(x.debt>0?('<span class="dg">долг '+money(x.debt)+' ₽</span>'):'<span class="none">долга нет</span>')
-      +(x.phone?(' · '+esc(x.phone)):'')+(x.manager?(' · ведёт '+esc(x.manager)):'')+'</div></div>';
+      +'<span class="more">'+(x.phone?(' · '+esc(x.phone)):'')+(x.manager?(' · ведёт '+esc(x.manager)):'')+'</span></div></div>';
 }
 function cardHtml(c){
   var s=c.supplier||{}, sm=c.summary||{};
   var head='<div class="box"><div class="row"><b style="font:var(--t-heading)">'+esc(s.name)+'</b>'
-    +'<span class="muted">'+(s.unp?('УНП '+esc(s.unp)):'без УНП')+(s.type?(' · '+esc(s.type)):'')+'</span></div>'
+    +'<span class="muted">'+(s.unp?('УНП '+esc(s.unp)):'без УНП')+(s.type?(' · '+esc(s.type)):'')+'</span>'
+    +'<span class="row noprint" style="margin-left:auto"><button onclick="goLedger()">📋 Ведомость передачи</button>'
+    +'<button class="sec" onclick="openGive()">📤 Передать детали</button><span class="msg" id="fmsg"></span></span></div>'
     +'<div class="sums" style="margin-top:var(--s-2)">'
       +sum('работ', plural(m0(sm.rows),'запись','записи','записей'),'')
       +sum('сделано', m0(sm.qty)+' шт','')
       +sum('наша расценка', money(sm.labor)+' ₽','')
       +sum('заплатим', money(sm.sub)+' ₽','')
       +sum('оплачено', money(sm.paid)+' ₽','')
-      +sum('долг', money(sm.debt)+' ₽',sm.debt>0?'debt':'ok')
+      +sum('долг', money(sm.debt)+' ₽',(sm.debt>0?'debt':'ok')+'" title="Долг = привезённое по цене подрядчика минус оплаты ему в Фин.гении')
       +sum('разница', money(sm.margin)+' ₽',sm.margin>=0?'ok':'debt')
     +'</div>'
-    +'<div class="hint">Долг = всё, что подрядчик привёз (по его цене), минус оплаченные ему счета и акты в Фин.гении. Счета выставляет сам подрядчик; в Фин.гений ничего само не уходит.</div>'
-    +'<div class="row noprint" style="margin-top:var(--s-2)"><button onclick="goLedger()">📋 Ведомость передачи</button>'
-    +'<button class="sec" onclick="openGive()">📤 Передать детали</button><span class="msg" id="fmsg"></span></div>'
+    +'<div class="hint long">Долг = всё, что подрядчик привёз (по его цене), минус оплаченные ему счета и акты в Фин.гении. Счета выставляет сам подрядчик; в Фин.гений ничего само не уходит.</div>'
     +'</div>';
 
   var fields='<div class="box"><div class="sect"><b>Контакты и ответственный</b></div>'
@@ -176,12 +199,12 @@ function cardHtml(c){
       +sum(ft.diff>=0?'сэкономили':'переплатили', money(Math.abs(ft.diff||0))+' ₽',ft.diff>=0?'ok':'debt')
     +'</div>'
     +(outRows.length
-      ? '<div class="tbl-wrap tw"><table class="tbl sm w"><thead><tr><th>Заказ</th><th>Деталь · операция</th><th class="n">Отдано</th><th class="n">Привёз</th><th class="n">На руках</th><th class="n">Наша расценка</th><th class="n">Цена подрядчика</th><th>Отдано</th><th class="noprint"></th></tr></thead><tbody>'
-        +outRows.map(function(x,i){ return '<tr><td>'+esc(x.batch)+'</td><td>'+esc(x.detail)+' · '+esc(x.op)+'</td>'
+      ? '<div class="tbl-wrap tw"><table class="tbl sm w"><thead><tr><th>Заказ</th><th>Деталь · операция</th><th class="n">Отдано</th><th class="n">Привёз</th><th class="n">На руках</th><th class="n">Наша расценка</th><th class="n">Цена подрядчика</th><th class="dt">Отдано</th><th class="noprint"></th></tr></thead><tbody>'
+        +outRows.map(function(x,i){ return '<tr><td>'+esc(x.batch)+'</td><td class="wrap">'+esc(x.detail)+' · '+esc(x.op)+'</td>'
           +'<td class="n">'+m0(x.given)+'</td><td class="n">'+m0(x.ship)+'</td><td class="n"><b>'+m0(x.out)+'</b></td>'
-          +'<td class="n">'+money(x.rate)+' ₽/шт · '+money(x.outRub)+' ₽</td>'+cpriceCell(x)+'<td class="muted">'+esc(x.lastGive)+'</td>'
-          +'<td class="noprint"><button class="sm" onclick="openShip('+i+')">📥 Принять</button> <button class="sm sec" onclick="openGive('+i+')">📤 Ещё</button>'
-          +' <button class="sm sec" onclick="openPriceRow('+i+')" title="Изменить цену подрядчика">₽ цена</button></td></tr>'; }).join('')
+          +'<td class="n">'+money(x.rate)+' ₽/шт<span class="sep"> · </span>'+money(x.outRub)+' ₽</td>'+cpriceCell(x)+'<td class="muted dt">'+esc(x.lastGive)+'</td>'
+          +'<td class="noprint act"><button class="sm" onclick="openShip('+i+')" title="Принять привезённое">📥<span class="lbl keep"> Принять</span></button> <button class="sm sec" onclick="openGive('+i+')" title="Передать ещё">📤<span class="lbl"> Ещё</span></button>'
+          +' <button class="sm sec" onclick="openPriceRow('+i+')" title="Изменить цену подрядчика">₽<span class="lbl"> цена</span></button></td></tr>'; }).join('')
         +'</tbody></table></div>'
       : '<div class="hint">Отдать детали можно кнопкой «📤 Передать детали» или из ведомости передачи.</div>')
     +'</div>';
@@ -214,7 +237,7 @@ function priceHint(lp){ if(!lp) return '<div class="hint">цену подряд�
   return lp.src==='contract'?'<div class="hint">договорная цена <b>'+money(lp.price)+' ₽/шт</b> (с '+esc(lp.date)+(lp.by?(', '+esc(lp.by)):'')+') — подставил, можно поправить</div>'
     :'<div class="hint">в прошлый раз платили <b>'+money(lp.price)+' ₽/шт</b> ('+esc(lp.date)+') — подставил, можно поправить</div>'; }
 function cpriceCell(x){ var lp=lastPrice(x); if(!lp) return '<td class="n muted">—</td>';
-  return '<td class="n"'+(lp.src==='contract'?'':' title="договорной цены нет — как в прошлый раз"')+'><b>'+money(lp.price)+' ₽/шт</b> · '+money(x.out*lp.price)+' ₽'
+  return '<td class="n"'+(lp.src==='contract'?'':' title="договорной цены нет — как в прошлый раз"')+'><b>'+money(lp.price)+' ₽/шт</b><span class="sep"> · </span>'+money(x.out*lp.price)+' ₽'
     +(lp.src==='contract'?'':' <span class="pill muted">прошлая</span>')+'<div class="muted">за отданное '+money(x.given*lp.price)+' ₽</div></td>'; }
 function openShip(i){
   var x=flowRow(i); if(!x) return;
