@@ -73,6 +73,7 @@
             border:1px solid var(--line); border-radius:var(--r-xs); padding:1px 3px; min-height:0; }
   input.pl:focus{ outline:2px solid var(--accent); }
   select.who{ font:var(--t-small); padding:1px 4px; min-height:0; max-width:150px; }
+  td.who .chp{ white-space:normal; max-width:150px; margin-top:2px; }   /* «+ шлифовка торцов» — под исполнителем, колонку не расширяет */
   .giv .o{ font:var(--t-tiny); color:var(--muted); margin-left:4px; }
   .giv .over{ color:var(--amber); }
   .wqc{ color:var(--accent-text); }
@@ -294,7 +295,7 @@ function rowHtml(r,dates){
     +'<td class="n" id="ou_'+attr(r.key)+'">'+m0(r.ourQty)+'</td>'
     +'<td class="rub n" id="or_'+attr(r.key)+'" title="сколько стоит работа, которую делаем сами">'+money(r.ourRub)+'</td>'
     +'<td class="who"><select class="who noprint" onchange="setWho(\''+attr(r.key)+'\',this.value)">'+opts+'</select>'
-      +'<span class="pr">'+(who?esc(who):'<span class="fill">&nbsp;</span>')+'</span></td>'
+      +'<span class="pr">'+(who?esc(who):'<span class="fill">&nbsp;</span>')+'</span>'+chainPills(r)+'</td>'
     +cells+'</tr>';
 }
 // можно сделать: цифра + точка готовности. Зелёная — лежат прямо перед операцией; янтарная —
@@ -311,6 +312,8 @@ function canHtml(r){
   return '<span class="dot '+cls+'" title="'+attr(tip)+'"></span><span title="'+attr(tip)+'">'+m0(r.can)+'</span>'
     +'<span class="s2'+(r.ready?' ok':'')+'" title="'+attr(tip)+'">'+esc(sub)+'</span>';
 }
+// тот же подрядчик берёт и предыдущие операции цепочки этой детали (план/передача на них — ему же)
+function chainPills(r){ return (r.chain||[]).length?('<div class="chp">'+r.chain.map(function(o){ return '<span class="pill" title="этот же подрядчик делает и «'+attr(o)+'»">+ '+esc(String(o).toLowerCase())+'</span>'; }).join(' ')+'</div>'):''; }
 function giveHtml(r){
   if(!r.plan && !r.given) return '<button class="plus noprint" title="запланировать и отдать подрядчику" onclick="openGive(\''+attr(r.key)+'\')">📤</button>';
   var over=(r.given>r.plan);
@@ -478,7 +481,7 @@ function chainHtml(k){
   var cur='<label class="chkrow cur"><input type="checkbox" checked disabled><span class="op">'+esc(V.op)+'</span><span class="nums">эта операция · '+money(r.rate||0)+' ₽/шт</span></label>';
   if(!prev.length) return '<div class="sect" style="margin-top:var(--s-3)">Операции этой передачи</div>'+cur+'<div class="hint" id="chainsum"></div>';
   return '<div class="sect" style="margin-top:var(--s-3)">Подрядчик сделает и предыдущие операции?</div>'
-    +prev.map(function(p,i){ return '<label class="chkrow"><input type="checkbox" class="chk" data-op="'+attr(p.op)+'" onchange="chainSum(\''+attr(k)+'\')"><span class="op">'+esc(p.op)+'</span><span class="nums">осталось '+m0(p.left)+' шт · '+money(p.rate)+' ₽/шт'+(p.given?(' · отдано '+m0(p.given)):'')+'</span></label>'; }).join('')
+    +prev.map(function(p,i){ return '<label class="chkrow"><input type="checkbox" class="chk" data-op="'+attr(p.op)+'"'+((r.chain||[]).indexOf(p.op)>=0?' checked':'')+' onchange="chainSum(\''+attr(k)+'\')"><span class="op">'+esc(p.op)+'</span><span class="nums">осталось '+m0(p.left)+' шт · '+money(p.rate)+' ₽/шт'+(p.given?(' · отдано '+m0(p.given)):'')+'</span></label>'; }).join('')
     +cur+'<div class="hint" id="chainsum"></div>';
 }
 function chainOps(){ var a=[]; var cs=document.querySelectorAll('input.chk'); for(var i=0;i<cs.length;i++) if(cs[i].checked) a.push(cs[i].getAttribute('data-op')); return a; }
@@ -505,10 +508,10 @@ function giveAdd(k){
 }
 function giveDel(k,i){
   var r=rowOf(k); if(!r) return;
-  if(!confirm('Удалить запись о передаче?')) return;
+  if(!confirm('Удалить передачу?\n\nЕсли она записана сразу на несколько операций цепочки — удалится со всех.')) return;
   apiPost({vapi:'transfergive',batch:B,op:V.op,detail:r.detail,data:JSON.stringify({act:'del',idx:i})}).then(function(rr){
     if(!rr||!rr.ok){ alert((rr&&rr.error)||'не удалено'); return; }
-    r.give=rr.give||[]; r.given=rr.given||0; repaintRow(k); ovClose();
+    r.give=rr.give||[]; r.given=rr.given||0; repaintRow(k); ovClose(); if((rr.ops||1)>1) load();   // передача ушла и с других операций цепочки — перечитать
   });
 }
 
