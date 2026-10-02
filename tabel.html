@@ -344,25 +344,31 @@ function loadMonth(silent){
   });
 }
 // ── ОЖИДАЕМЫЙ ЗАРАБОТОК по графику (владелец 03.10.2026): смена × ожидание бойца за смену. Ожидание — правило
-// планирования: среднее по 7 последним сменам с выработкой > 30 ₽ (новичок — 50 ₽). Считаем здесь же, по клеткам,
-// чтобы итог менялся сразу при расстановке; «сделано» — подтверждённая выработка до сегодня (сервер).
+// планирования: среднее по 7 последним сменам с выработкой > 30 ₽ (новичок — 50 ₽). Прошедший день считается, только
+// если человек был («вышел» или подал наряд), сегодня и дальше — по графику. Считаем здесь же, по клеткам, чтобы итог
+// менялся сразу при расстановке; «сделано» (подано и принято) — с сервера.
 function expPerDay(w){ var x=M.exp&&M.exp.byWorker&&M.exp.byWorker[w]; return x?x.perDay:50; }
 function expCalc(){
-  var td=isoToday(), by={}, tot=0, past=0, n=0;
-  for(var k in M.map){ var e=M.map[k]; if(!e||!e.shift||e.status==='не вышел') continue;
-    var v=expPerDay(e.worker); by[e.worker]=(by[e.worker]||0)+v; tot+=v; n++; if(e.date<td) past+=v; }
-  return {by:by, tot:Math.round(tot*100)/100, past:Math.round(past*100)/100, n:n};
+  var td=isoToday(), by={}, tot=0, past=0, n=0, np=0, seen={};
+  var add=function(w,iso){ var v=expPerDay(w); by[w]=(by[w]||0)+v; tot+=v; n++; if(iso<td){ past+=v; np++; } };
+  for(var k in M.map){ var e=M.map[k]; if(!e) continue; seen[k]=1;
+    var was=e.status==='вышел'||!!(M.wk&&M.wk[k]);
+    if(e.date<td ? !was : (!e.shift||e.status==='не вышел')) continue;
+    add(e.worker,e.date); }
+  for(var k2 in (M.wk||{})){ if(seen[k2]) continue; var pp=k2.split('|'), iso=M.ym+'-'+pad2(pp[1]); if(iso<td) add(pp[0],iso); }
+  return {by:by, tot:Math.round(tot*100)/100, past:Math.round(past*100)/100, n:n, np:np};
 }
 function expHtml(c){
   if(!M.exp) return '';
   var m0=function(v){ return Math.round(Number(v)||0).toLocaleString('ru-RU'); };
-  var fact=M.exp.factPast||0, pct=c.past>0?Math.round(fact/c.past*100):null;
+  var fact=M.exp.factPast||0, sub=M.exp.factSub||0, pct=c.past>0?Math.round(fact/c.past*100):null, pctS=c.past>0?Math.round(sub/c.past*100):null;
+  var col=function(p){ return p==null?'inherit':(p>=90?'var(--green)':(p>=70?'var(--amber)':'var(--red)')); };
   var t=function(h,v,meta,tip){ return '<div class="tile"'+(tip?(' title="'+esc(tip)+'"'):'')+'><div class="t">'+h+'</div><div class="v">'+v+'</div>'+(meta?'<div class="meta muted" style="font:var(--t-small)">'+meta+'</div>':'')+'</div>'; };
   return '<div class="tiles">'
-    +t('Ожидаем за месяц', m0(c.tot)+' <small>₽</small>', c.n+' смен по графику', 'смена × обычная выработка бойца: среднее по 7 последним сменам с выработкой больше 30 ₽, у новичка 50 ₽')
-    +t('Ожидали до сегодня', m0(c.past)+' <small>₽</small>', 'по отмеченным сменам до вчера')
-    +t('Сделано до сегодня', '<span style="color:'+(pct==null?'inherit':(pct>=90?'var(--green)':(pct>=70?'var(--amber)':'var(--red)')))+'">'+m0(fact)+' <small>₽</small></span>',
-        pct!=null?(pct+'% от ожидаемого'):'', 'подтверждённая выработка по расценкам (без премий и повременки)')
+    +t('Ожидаем за месяц', m0(c.tot)+' <small>₽</small>', c.n+' смен: прошедшие — где был, дальше — по графику', 'смена × обычная выработка бойца: среднее по 7 последним сменам с выработкой больше 30 ₽, у новичка 50 ₽. Прошедший день считается, только если человек вышел или подал наряд')
+    +t('Ожидали до сегодня', m0(c.past)+' <small>₽</small>', c.np+' смен до вчера, где был')
+    +t('Подано до сегодня', '<span style="color:'+col(pctS)+'">'+m0(sub)+' <small>₽</small></span>', pctS!=null?(pctS+'% от ожидаемого'):'', 'всё поданное: принятое + на проверке у мастера + ждёт ОТК (по расценкам, без премий и повременки)')
+    +t('Принято до сегодня', '<span style="color:'+col(pct)+'">'+m0(fact)+' <small>₽</small></span>', pct!=null?(pct+'% от ожидаемого'):'', 'подтверждённая выработка по расценкам (без премий и повременки)')
     +'</div>';
 }
 function renderMonth(){
@@ -413,7 +419,7 @@ function renderMonth(){
     }
     var ex=EC.by[w]||0, xi=M.exp&&M.exp.byWorker&&M.exp.byWorker[w];
     return '<tr><td class="nm">'+esc(w)+' <span class="muted">('+cnt+(was?' · был '+was:'')+')</span>'
-      +(ex>0?' <span class="muted" style="font:var(--t-tiny)" title="'+esc('ожидаем за смену '+money(expPerDay(w))+' ₽ ('+(xi?xi.src:'новичок 50 ₽')+')'+(xi&&xi.fact?('\nсделано до сегодня '+money(xi.fact)+' ₽'):''))+'">≈'+Math.round(ex).toLocaleString('ru-RU')+' ₽</span>':'')+'</td>'+tds+'</tr>';
+      +(ex>0?' <span class="muted" style="font:var(--t-tiny)" title="'+esc('ожидаем за смену '+money(expPerDay(w))+' ₽ ('+(xi?xi.src:'новичок 50 ₽')+')'+(xi&&(xi.factSub||xi.fact)?('\nподано '+money(xi.factSub||0)+' ₽ · принято '+money(xi.fact||0)+' ₽'):''))+'">≈'+Math.round(ex).toLocaleString('ru-RU')+' ₽</span>':'')+'</td>'+tds+'</tr>';
   }).join('');
   var modeSeg='<div class="seg mmode">'
     +'<button class="'+(MMODE==='plan'?'on':'')+'" onclick="setMMode(\'plan\')">✏️ Ставлю график</button>'
