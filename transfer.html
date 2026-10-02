@@ -89,6 +89,7 @@
   .mvbox label.chkrow .op{ font:var(--t-body-strong); }
   .mvbox label.chkrow .nums{ color:var(--muted); white-space:nowrap; font-variant-numeric:tabular-nums; }
   .mvbox label.chkrow.cur{ cursor:default; }
+  .mvbox label.chkrow .seg{ grid-column:2/4; justify-self:start; }
 
   .blist button{ width:100%; text-align:left; margin-bottom:var(--s-1); }
   .hint{ font:var(--t-small); color:var(--muted); margin:var(--s-1) 0; }
@@ -274,7 +275,7 @@ function blockHtml(b,bi,byKey,dates){
 function rowHtml(r,dates){
   var cells=dates.map(function(d){
     var c=(r.cells||{})[d];
-    return '<td class="n dcol">'+(c?('<span class="'+(c.qc?'wqc':'')+'" onclick="openShipLog(\''+attr(r.key)+'\')">'+m0(c.qty)+(c.qc?' ⏳':'')+'</span>'):'')+'</td>';
+    return '<td class="n dcol">'+(c?('<span class="'+(c.qc?'wqc':'')+'"'+(c.pre?' title="предварительно '+m0(c.pre)+' шт — заказ не двигает"':'')+' onclick="openShipLog(\''+attr(r.key)+'\')">'+m0(c.qty)+(c.qc?' ⏳':'')+(c.pre?' ◌':'')+'</span>'):'')+'</td>';
   }).join('');
   var who=r.who||'';
   var opts='<option value="">— сами —</option>'+(D.contractors||[]).map(function(n){
@@ -528,12 +529,16 @@ function openShip(k){
         +(D.contractors||[]).map(function(n){ return '<option value="'+attr(n)+'">'; }).join('')+'</datalist></label>'
       +'<label>Платим подрядчику, ₽ (по его цене)<input id="sb_s" type="number" min="0" step="0.01" inputmode="decimal" value="'+(lp&&r.outQty?(Math.round(m0(r.outQty)*lp.price*100)/100):'')+'" oninput="SBM=1;shipCalc('+(r.rate||0)+')"></label>'
       +(lp?(lp.src==='contract'?'<div class="hint">договорная цена '+esc(r.who||'подрядчика')+' <b>'+money(lp.price)+' ₽/шт</b> (с '+esc(lp.date)+') — подставил, можно поправить</div>':'<div class="hint">в прошлый раз '+esc(r.who||'подрядчику')+' платили <b>'+money(lp.price)+' ₽/шт</b> ('+esc(lp.date)+') — подставил, можно поправить</div>'):'')
+      +'<div class="sect">Как засчитать</div>'
+      +'<label class="chkrow cur"><input type="checkbox" checked disabled><span class="op">'+esc(V.op)+'</span><span class="nums">наша расценка '+money(r.rate||0)+' ₽/шт</span>'+prelimSeg(V.op,prelimDef(r.who||'',V.op))+'</label>'
       +shipChainHtml(k)
+      +'<div class="hint">предварительно — деталь вернулась, операцию доделает наш рабочий, подрядчику платим как договорились</div>'
       +'<label>Дата<input id="sb_d" type="date" value="'+isoToday()+'"></label>'
       +'<label>Комментарий<input id="sb_n"></label>'
       +'<div class="hint" id="sb_sum">наша расценка: '+money((r.outQty||0)*(r.rate||0))+' ₽ — на неё продвинется заказ</div>'
       +'<div class="row" style="margin-top:var(--s-3)"><button id="sb_go" onclick="shipGo(\''+attr(k)+'\')">Записать работу</button>'
       +'<button class="sec" onclick="ovClose()">Отмена</button><span class="msg" id="smsg"></span></div>');
+    shipCalc(r.rate||0);   // итог с учётом умолчания «предварительно»
   });
 }
 // цена подрядчика для приёмки (REFS.prices из subconrefs): договорная по «деталь|операция» → «как в прошлый раз» по той же операции; ключи — как supKey_/qcNorm_ на сервере
@@ -555,13 +560,23 @@ function shipChain(k){
 }
 function shipChainHtml(k){
   var prev=shipChain(k); if(!prev.length) return '';
-  return '<div class="sect">Привёз сразу и по этим операциям?</div>'+prev.map(function(p){ return '<label class="chkrow"><input type="checkbox" class="chk" data-op="'+attr(p.op)+'" data-rate="'+p.rate+'" checked onchange="shipCalc('+((rowOf(k)||{}).rate||0)+')"><span class="op">'+esc(p.op)+'</span><span class="nums">на руках '+m0(p.out)+' шт · наша расценка '+money(p.rate)+' ₽/шт</span></label>'; }).join('');
+  var who=(rowOf(k)||{}).who||'';
+  return '<div class="sect">Привёз сразу и по этим операциям?</div>'+prev.map(function(p){ return '<label class="chkrow"><input type="checkbox" class="chk" data-op="'+attr(p.op)+'" data-rate="'+p.rate+'" checked onchange="shipCalc('+((rowOf(k)||{}).rate||0)+')"><span class="op">'+esc(p.op)+'</span><span class="nums">на руках '+m0(p.out)+' шт · наша расценка '+money(p.rate)+' ₽/шт</span>'+prelimSeg(p.op,prelimDef(who,p.op))+'</label>'; }).join('');
 }
+// «предварительно» (владелец 02.10.2026): деталь вернулась (на руках у подрядчика меньше), операцию доделает наш рабочий —
+// заказ по ней не двигаем, подрядчику платим как договорились. Умолчание — как в прошлый раз у этого подрядчика (REFS.prelim).
+var SBR=0;   // расценка основной операции открытого окна — для пересчёта после переключателя
+function prelimDef(who,op){ var m=((REFS&&REFS.prelim)||{})[supKeyJs(who)]; return !!(m&&m[nk(op)]); }
+function prelimSeg(op,on){ return '<span class="seg prelim" data-op="'+attr(op)+'" data-on="'+(on?'1':'')+'"><button type="button" class="'+(on?'':'on')+'" onclick="event.preventDefault();prelimPick(this,0)">в заказ</button><button type="button" class="'+(on?'on':'')+'" onclick="event.preventDefault();prelimPick(this,1)">предварительно</button></span>'; }
+function prelimPick(b,on){ var s=b.parentNode, bs=s.querySelectorAll('button'); bs[0].className=on?'':'on'; bs[1].className=on?'on':''; s.setAttribute('data-on',on?'1':''); shipCalc(SBR); }
+function prelimOn(op){ var ss=document.querySelectorAll('span.seg.prelim'); for(var i=0;i<ss.length;i++) if(ss[i].getAttribute('data-op')===op) return ss[i].getAttribute('data-on')==='1'; return false; }
+function prelimOps(){ var a=[], ss=document.querySelectorAll('span.seg.prelim'); for(var i=0;i<ss.length;i++) if(ss[i].getAttribute('data-on')==='1') a.push(ss[i].getAttribute('data-op')); return a; }
 function shipCalc(rate){
   var q=num(($('sb_q')||{}).value), s=num(($('sb_s')||{}).value), e=$('sb_sum'); if(!e) return;
-  var cs=document.querySelectorAll('input.chk'); for(var i=0;i<cs.length;i++) if(cs[i].checked) rate+=num(cs[i].getAttribute('data-rate'));
-  var labor=Math.round(q*rate*100)/100;
-  e.textContent='наша расценка: '+money(labor)+' ₽ — на неё продвинется заказ · платим подрядчику: '+money(s)+' ₽ — ляжет в его долг (раздел «Подрядчики»)'
+  SBR=rate; if(prelimOn(V.op)) rate=0;
+  var cs=document.querySelectorAll('input.chk'); for(var i=0;i<cs.length;i++) if(cs[i].checked&&!prelimOn(cs[i].getAttribute('data-op'))) rate+=num(cs[i].getAttribute('data-rate'));
+  var labor=Math.round(q*rate*100)/100, pre=prelimOps().length;
+  e.textContent='наша расценка: '+money(labor)+' ₽ — на неё продвинется заказ'+(pre?(' (предварительно: '+pre+' оп. — заказ не двигают)'):'')+' · платим подрядчику: '+money(s)+' ₽ — ляжет в его долг (раздел «Подрядчики»)'
     +(s?(' · разница '+money(labor-s)+' ₽'):'');
 }
 function shipGo(k){
@@ -575,7 +590,7 @@ function shipGo(k){
   // модель не указываем у общей детали — система разложит по изделиям сама (как у обычных нарядов)
   var model=(r.models&&r.models.length===1)?r.models[0]:'';
   api({vapi:'subconadd',data:JSON.stringify({batch:B,equip:eq,detail:r.detail,op:V.op,model:model,qty:q,
-      contractor:c,sum:num(($('sb_s')||{}).value),alsoOps:chainOps(),
+      contractor:c,sum:num(($('sb_s')||{}).value),alsoOps:chainOps(),prelimOps:prelimOps(),
       date:ruOfIso(($('sb_d')||{}).value||''),note:($('sb_n')||{}).value||''})})
   .then(function(rr){
     if(b){ b.disabled=false; b.textContent='Записать работу'; }
@@ -592,7 +607,7 @@ function openShipLog(k){
     +'<div class="hint">'+esc(r.detail)+' · '+esc(V.op)+' · всего '+m0(r.ship)+' шт'+(r.qc?(' · ⏳ ждёт ОТК '+m0(r.qc)):'')+'</div>'
     +dts.map(function(d){
       var c=r.cells[d];
-      return '<div class="mvn"><span>'+esc(d)+' · <b>'+m0(c.qty)+' шт</b> · '+money(c.sub)+' ₽'+(c.contractor?(' · '+esc(c.contractor)):'')+(c.qc?' · ⏳':'')+'</span>'
+      return '<div class="mvn"><span>'+esc(d)+' · <b>'+m0(c.qty)+' шт</b> · '+money(c.sub)+' ₽'+(c.contractor?(' · '+esc(c.contractor)):'')+(c.qc?' · ⏳':'')+(c.pre?(' <span class="pill muted" title="деталь вернулась, операцию доделывает наш рабочий — заказ не двигает">предварительно '+m0(c.pre)+'</span>'):'')+'</span>'
         +(c.ids||[]).map(function(id){ return '<button class="sm sec" onclick="cellDel(\''+attr(id)+'\')">🗑</button>'; }).join('')+'</div>';
     }).join('')
     +'<div class="hint">Сумма и долг правятся во вкладке «Подряд» в «Выработке».</div>'

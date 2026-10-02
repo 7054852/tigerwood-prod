@@ -1022,10 +1022,12 @@ function subForm(){
     +'<label>Операция<select id="sb_o" onchange="subCalc()"></select></label>'
     +'<label>Кол-во<input id="sb_q" class="q" value="" inputmode="decimal" oninput="subCalc()"></label></div>'
     +'<div id="sb_hint" class="muted small" style="margin:var(--s-2) 0"></div>'
-    +'<div class="subrow"><label style="flex:1;min-width:200px">Подрядчик<input id="sb_c" list="sb_names" placeholder="начните вводить…" style="width:100%"><datalist id="sb_names">'+names+'</datalist></label>'
+    +'<div class="subrow"><label style="flex:1;min-width:200px">Подрядчик<input id="sb_c" list="sb_names" placeholder="начните вводить…" style="width:100%" onchange="subPrelimDef()"><datalist id="sb_names">'+names+'</datalist></label>'
     +'<label>Платим, ₽<input id="sb_s" class="q" value="" inputmode="decimal" oninput="subCalc()"></label></div>'
     +'<div class="subrow"><label>Дата<input id="sb_dt" value="'+esc(subToday())+'" style="width:110px"></label>'
     +'<label style="flex:1;min-width:160px">Комментарий<input id="sb_n" style="width:100%"></label></div>'
+    +'<div class="subrow" style="align-items:center"><span class="muted small">Как засчитать:</span><span class="seg" id="sb_pre" data-on=""><button type="button" class="on" onclick="subPrelim(0)">в заказ</button><button type="button" onclick="subPrelim(1)">предварительно</button></span></div>'
+    +'<div class="muted small" style="margin:0 0 var(--s-2)">предварительно — деталь вернулась, операцию доделает наш рабочий, подрядчику платим как договорились</div>'
     +'<div id="sb_sum" class="submoney"></div>'
     +'<div class="row" style="margin-top:var(--s-3);gap:var(--s-2)"><button onclick="subGo()">Записать работу</button>'
     +'<button class="sec" onclick="closeSub()">Отмена</button><span class="msg" id="sb_msg"></span></div>';
@@ -1041,7 +1043,20 @@ function subOp(){
   var pk=($('sb_p')||{}).value||'', d=($('sb_d')||{}).value||'', P=SUBTREE[pk]||{dets:{}};
   var ops=(P.dets||{})[d]||[];
   $('sb_o').innerHTML=ops.map(function(o){ return '<option value="'+esc(o.id)+'">'+esc(o.op)+'</option>'; }).join('');
-  subCalc();
+  subPrelimDef();
+}
+// «предварительно» (владелец 02.10.2026): деталь вернулась, операцию доделает наш рабочий — заказ не двигаем, подрядчику платим как договорились.
+// Умолчание — как в прошлый раз у этого подрядчика по этой операции (subconrefs.prelim: supKey → { операция: true }).
+function subNk(s){ return String(s||'').toLowerCase().replace(/ё/g,'е').replace(/\s+/g,' ').trim(); }
+function subSupKey(n){ var s=String(n||'').toLowerCase().replace(/[«»"'`’‘]/g,' ').replace(/\s+/g,' ').trim();
+  ['ооо','ип','зао','оао','уп','чуп','одо','руп','сооо','чп','чтуп','чтпуп','птчуп','упп','туп','иооо'].forEach(function(fm){ s=s.replace(new RegExp('(^|\\s)'+fm+'(\\s|$)','g'),' '); });   // без \b: на кириллице граница слова не работает
+  return s.replace(/\s+/g,'').trim(); }
+function subPrelimOn(){ var e=$('sb_pre'); return !!(e&&e.getAttribute('data-on')==='1'); }
+function subPrelim(on){ var e=$('sb_pre'); if(!e) return; var bs=e.querySelectorAll('button'); bs[0].className=on?'':'on'; bs[1].className=on?'on':''; e.setAttribute('data-on',on?'1':''); subCalc(); }
+function subPrelimDef(){
+  var oid=($('sb_o')||{}).value||'', o=(FLOORROWS[SUBORDER]||{})[oid], c=($('sb_c')||{}).value||'';
+  var m=((SUBREFS&&SUBREFS.prelim)||{})[subSupKey(c)];
+  subPrelim(o&&m&&m[subNk(o.op)]?1:0);
 }
 // ⚠ только textContent/innerHTML отдельных узлов: перерисовка формы уводит фокус из поля
 function subCalc(){
@@ -1051,8 +1066,8 @@ function subCalc(){
   var h=$('sb_hint'), m=$('sb_sum'); if(!o){ if(h) h.textContent=''; if(m) m.textContent=''; return; }
   if(h) h.innerHTML='по операции: нужно '+r1(o.need)+' · прошло '+r1(o.ready)+' · осталось '+r1(o.left)
     +' · лежит сейчас '+r1(o.fact)+(o.nextOp?(' · дальше «'+esc(o.nextOp)+'»'):'');
-  var labor=Math.round(q*(Number(o.rate)||0)*100)/100;
-  if(m) m.innerHTML='<div><b>Наша расценка:</b> '+r1(q)+' × '+String(o.rate||0).replace('.',',')+' = <b>'+money(labor)+' ₽</b> <span class="muted">— на неё продвинется заказ</span></div>'
+  var pre=subPrelimOn(), labor=pre?0:Math.round(q*(Number(o.rate)||0)*100)/100;
+  if(m) m.innerHTML='<div><b>Наша расценка:</b> '+(pre?('<b>0 ₽</b> <span class="muted">— предварительно: заказ не двигается, доделает наш рабочий</span>'):(r1(q)+' × '+String(o.rate||0).replace('.',',')+' = <b>'+money(labor)+' ₽</b> <span class="muted">— на неё продвинется заказ</span>'))+'</div>'
     +'<div><b>Платим подрядчику:</b> '+money(s)+' ₽ <span class="muted">— ляжет долгом в Фин.гений</span></div>'
     +(s>0?('<div class="'+(labor-s<0?'subbad':'subok')+'">разница: '+(labor-s>0?'+':'')+money(labor-s)+' ₽</div>'):'');
 }
@@ -1065,12 +1080,12 @@ function subGo(){
   var c=($('sb_c').value||'').trim();
   if(!c){ if(msg) msg.textContent='укажите подрядчика'; return; }
   var s=Number(String($('sb_s').value||'').replace(',','.'))||0;
-  var labor=Math.round(q*(Number(o.rate)||0)*100)/100;
+  var pre=subPrelimOn(), labor=pre?0:Math.round(q*(Number(o.rate)||0)*100)/100;
   if(!confirm('Записать работу подрядчика?\n\n'+o.detail+' · '+o.op+' · '+r1(q)+' шт\nподрядчик: '+c
-      +'\n\nзаказ продвинется на '+money(labor)+' ₽ (наша расценка)\nдолг перед подрядчиком: '+money(s)+' ₽')) return;
+      +(pre?'\n\nпредварительно: заказ не двигается, операцию доделает наш рабочий':('\n\nзаказ продвинется на '+money(labor)+' ₽ (наша расценка)'))+'\nдолг перед подрядчиком: '+money(s)+' ₽')) return;
   if(msg) msg.textContent='…';
   var data={batch:SUBORDER,equip:o.eq,model:o.model,detail:o.detail,op:o.op,qty:q,contractor:c,
-            sum:s,date:$('sb_dt').value,note:$('sb_n').value};
+            sum:s,date:$('sb_dt').value,note:$('sb_n').value,prelimOps:pre?[o.op]:[]};
   api({vapi:'subconadd',data:JSON.stringify(data)}).then(function(r){
     if(!r||!r.ok){ if(msg) msg.textContent=''; alert((r&&r.error)||'не записано'); return; }
     closeSub();

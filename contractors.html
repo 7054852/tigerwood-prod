@@ -67,6 +67,7 @@
   .mvbox label.chkrow .op{ font:var(--t-body-strong); }
   .mvbox label.chkrow .nums{ color:var(--muted); white-space:nowrap; font-variant-numeric:tabular-nums; }
   .mvbox label.chkrow.cur{ cursor:default; }
+  .mvbox label.chkrow .seg{ grid-column:2/4; justify-self:start; }
 
 
   @media (max-width:1280px), (max-height:760px){ .left .cl .more{ display:none; } }
@@ -213,7 +214,7 @@ function cardHtml(c){
     ? '<div class="box"><div class="sect"><b>История: отдали · привезли · оплатили</b></div>'
       +'<div class="tbl-wrap tw"><table class="tbl sm w"><thead><tr><th>Дата</th><th>Что</th><th>Заказ</th><th>Деталь · операция</th><th class="n">Шт</th><th class="n">Наша расценка</th><th class="n">Подрядчику</th><th>Примечание</th><th class="noprint"></th></tr></thead><tbody>'
       +jr.map(function(j,i){ var cls=j.kind==='оплата'?'ok':(j.kind==='отдали'?'muted':'');
-        return '<tr><td>'+esc(j.date)+'</td><td class="'+cls+'">'+esc(j.kind)+(j.waitQC?' <span class="pill warn">ждёт ОТК</span>':'')+'</td><td>'+esc(j.batch)+'</td>'
+        return '<tr><td>'+esc(j.date)+'</td><td class="'+cls+'">'+esc(j.kind)+(j.waitQC?' <span class="pill warn">ждёт ОТК</span>':'')+(j.prelim?' <span class="pill muted" title="деталь вернулась, операцию доделывает наш рабочий — заказ не двигает">предварительно</span>':'')+'</td><td>'+esc(j.batch)+'</td>'
           +'<td>'+esc(j.detail)+(j.op?(' · '+esc(j.op)):'')+'</td><td class="n">'+(j.qty?m0(j.qty):'')+'</td>'
           +'<td class="n">'+(j.labor?(money(j.labor)+' ₽'):'')+'</td><td class="n">'+(j.sum?(money(j.sum)+' ₽'):'')+'</td><td class="muted">'+esc(j.note||'')+'</td>'
           +'<td class="noprint">'+(j.kind==='привезли'?('<button class="sm sec" onclick="editShip('+i+')" title="поправить: сколько принято и по какой цене">✎</button> <button class="sm sec" onclick="delShip('+i+')">🗑</button>'):(j.kind==='отдали'?'<button class="sm sec" onclick="delGive('+i+')" title="удалить запись о передаче">🗑</button>':''))+'</td></tr>'; }).join('')
@@ -247,19 +248,23 @@ function openShip(i){
     +'<label>Привезли, шт<input id="sb_q" type="number" min="0" inputmode="numeric" value="'+m0(x.out)+'" oninput="shipQty('+i+','+(x.rate||0)+')"></label>'
     +'<label>Платим подрядчику за это, ₽ (по его цене)<input id="sb_s" type="number" min="0" step="0.01" inputmode="decimal" value="'+(lp?(Math.round(m0(x.out)*lp.price*100)/100):'')+'" oninput="SBM=1;shipCalc('+(x.rate||0)+')"></label>'
     +priceHint(lp)
+    +'<div class="sect">Как засчитать</div>'
+    +'<label class="chkrow cur"><input type="checkbox" checked disabled><span class="op">'+esc(x.op)+'</span><span class="nums">наша расценка '+money(x.rate||0)+' ₽/шт</span>'+prelimSeg(x.op,prelimDef(x.op))+'</label>'
     +shipChainHtml(x)
+    +'<div class="hint">предварительно — деталь вернулась, операцию доделает наш рабочий, подрядчику платим как договорились</div>'
     +'<div class="hint" id="sb_sum">по нашей расценке '+money((x.out||0)*(x.rate||0))+' ₽</div>'
     +'<label>Дата<input id="sb_d" type="date" value="'+isoToday()+'"></label>'
     +'<label>Комментарий<input id="sb_n"></label>'
     +'<div class="hint">Заказ продвинется по нашей расценке; сумма подрядчику ляжет в его долг здесь. Если операция — точка ОТК, зачтётся после приёмки.</div>'
     +'<div class="row" style="margin-top:var(--s-3)"><button id="sb_go" onclick="shipGo('+i+')">Записать</button><button class="sec" onclick="ovClose()">Отмена</button><span class="msg" id="smsg"></span></div>');
+  shipCalc(x.rate||0);   // итог с учётом умолчания «предварительно»
 }
 function shipGo(i){
   var x=flowRow(i); if(!x) return;
   var q=num(($('sb_q')||{}).value); if(!(q>0)){ omsg('smsg','<span class="err">укажите количество</span>'); return; }
   var b=$('sb_go'); if(b){ b.disabled=true; b.textContent='…'; }
   api({vapi:'subconadd',data:JSON.stringify({batch:x.batchId,detail:x.detail,op:x.op,qty:q,contractor:D.card.supplier.name,
-      sum:num(($('sb_s')||{}).value),date:ruOfIso(($('sb_d')||{}).value||''),note:($('sb_n')||{}).value||'',alsoOps:chainOps()})})
+      sum:num(($('sb_s')||{}).value),date:ruOfIso(($('sb_d')||{}).value||''),note:($('sb_n')||{}).value||'',alsoOps:chainOps(),prelimOps:prelimOps()})})
   .then(function(r){
     if(b){ b.disabled=false; b.textContent='Записать'; }
     if(!r||!r.ok){ omsg('smsg','<span class="err">'+esc((r&&r.error)||'не записано')+'</span>'); return; }
@@ -274,12 +279,22 @@ function shipChain(x){
 }
 function shipChainHtml(x){
   var prev=shipChain(x); if(!prev.length) return '';
-  return '<div class="sect">Привёз сразу и по этим операциям?</div>'+prev.map(function(p){ return '<label class="chkrow"><input type="checkbox" class="chk" data-op="'+attr(p.op)+'" data-rate="'+(p.rate||0)+'" checked onchange="shipCalc('+(x.rate||0)+')"><span class="op">'+esc(p.op)+'</span><span class="nums">на руках '+m0(p.out)+' шт · наша расценка '+money(p.rate)+' ₽/шт</span></label>'; }).join('');
+  return '<div class="sect">Привёз сразу и по этим операциям?</div>'+prev.map(function(p){ return '<label class="chkrow"><input type="checkbox" class="chk" data-op="'+attr(p.op)+'" data-rate="'+(p.rate||0)+'" checked onchange="shipCalc('+(x.rate||0)+')"><span class="op">'+esc(p.op)+'</span><span class="nums">на руках '+m0(p.out)+' шт · наша расценка '+money(p.rate)+' ₽/шт</span>'+prelimSeg(p.op,prelimDef(p.op))+'</label>'; }).join('');
 }
+// «предварительно» (владелец 02.10.2026): деталь вернулась (на руках у подрядчика меньше), операцию доделает наш рабочий —
+// заказ по ней не двигаем, подрядчику платим как договорились. Умолчание — как в прошлый раз у этого подрядчика (card.prelim).
+var SBR=0;   // расценка основной операции открытого окна — для пересчёта после переключателя
+function prelimDef(op){ return !!(((D.card&&D.card.prelim)||{})[nk(op)]); }
+function prelimSeg(op,on){ return '<span class="seg prelim" data-op="'+attr(op)+'" data-on="'+(on?'1':'')+'"><button type="button" class="'+(on?'':'on')+'" onclick="event.preventDefault();prelimPick(this,0)">в заказ</button><button type="button" class="'+(on?'on':'')+'" onclick="event.preventDefault();prelimPick(this,1)">предварительно</button></span>'; }
+function prelimPick(b,on){ var s=b.parentNode, bs=s.querySelectorAll('button'); bs[0].className=on?'':'on'; bs[1].className=on?'on':''; s.setAttribute('data-on',on?'1':''); shipCalc(SBR); }
+function prelimOn(op){ var ss=document.querySelectorAll('span.seg.prelim'); for(var i=0;i<ss.length;i++) if(ss[i].getAttribute('data-op')===op) return ss[i].getAttribute('data-on')==='1'; return false; }
+function prelimOps(){ var a=[], ss=document.querySelectorAll('span.seg.prelim'); for(var i=0;i<ss.length;i++) if(ss[i].getAttribute('data-on')==='1') a.push(ss[i].getAttribute('data-op')); return a; }
 function shipQty(i,rate){ var x=flowRow(i), lp=x?lastPrice(x):null; if(lp&&!SBM){ var q=num(($('sb_q')||{}).value); $('sb_s').value=Math.round(q*lp.price*100)/100; } shipCalc(rate); }
 function shipCalc(rate){ var q=num(($('sb_q')||{}).value), s=num(($('sb_s')||{}).value), e=$('sb_sum'); if(!e) return;
-  var cs=document.querySelectorAll('input.chk'); for(var i=0;i<cs.length;i++) if(cs[i].checked) rate+=num(cs[i].getAttribute('data-rate'));
-  var labor=Math.round(q*rate*100)/100; e.textContent='по нашей расценке '+money(labor)+' ₽'+(s?(' · подрядчику '+money(s)+' ₽ · '+(labor-s>=0?'экономия ':'переплата ')+money(Math.abs(labor-s))+' ₽'):''); }
+  SBR=rate; var main=document.querySelector('span.seg.prelim'); if(main&&main.getAttribute('data-on')==='1') rate=0;   // первый переключатель — основная операция
+  var cs=document.querySelectorAll('input.chk'); for(var i=0;i<cs.length;i++) if(cs[i].checked&&!prelimOn(cs[i].getAttribute('data-op'))) rate+=num(cs[i].getAttribute('data-rate'));
+  var labor=Math.round(q*rate*100)/100, pre=prelimOps().length;
+  e.textContent='по нашей расценке '+money(labor)+' ₽'+(pre?(' (предварительно: '+pre+' оп. — заказ не двигают)'):'')+(s?(' · подрядчику '+money(s)+' ₽ · '+(labor-s>=0?'экономия ':'переплата ')+money(Math.abs(labor-s))+' ₽'):''); }
 function jrow(i){ return ((D.card&&D.card.flow&&D.card.flow.journal)||[])[i]||null; }
 // ── поправить принятое: количество, цена, дата, комментарий (apiSubconEdit — та же дверь, что в «Выработке»)
 function editShip(i){
@@ -291,14 +306,18 @@ function editShip(i){
     +'<label>Платим подрядчику, ₽<input id="sb_s" type="number" min="0" step="0.01" inputmode="decimal" value="'+(j.sum||0)+'" oninput="shipCalc('+rate+')"></label>'
     +'<label>Дата<input id="sb_d" type="date" value="'+isoOfRu(j.date)+'"></label>'
     +'<label>Комментарий<input id="sb_n" value="'+attr(j.note||'')+'"></label>'
+    +'<div class="sect">Как засчитать</div>'
+    +'<label class="chkrow cur"><input type="checkbox" checked disabled><span class="op">'+esc(j.op)+'</span><span class="nums">наша расценка '+money(rate)+' ₽/шт</span>'+prelimSeg(j.op,!!j.prelim)+'</label>'
+    +'<div class="hint">предварительно — деталь вернулась, операцию доделает наш рабочий, подрядчику платим как договорились</div>'
     +'<div class="hint" id="sb_sum">по нашей расценке '+money(j.labor||0)+' ₽</div>'
     +'<div class="row" style="margin-top:var(--s-3)"><button id="sb_go" onclick="editShipGo('+i+')">Сохранить</button><button class="sec" onclick="ovClose()">Отмена</button><span class="msg" id="smsg"></span></div>');
+  shipCalc(rate);
 }
 function editShipGo(i){
   var j=jrow(i); if(!j) return;
   var q=num(($('sb_q')||{}).value); if(!(q>0)){ omsg('smsg','<span class="err">укажите количество</span>'); return; }
   var b=$('sb_go'); if(b){ b.disabled=true; b.textContent='…'; }
-  api({vapi:'subconedit',id:j.id,data:JSON.stringify({qty:q,sum:num(($('sb_s')||{}).value),date:ruOfIso(($('sb_d')||{}).value||''),note:($('sb_n')||{}).value||''})})
+  api({vapi:'subconedit',id:j.id,data:JSON.stringify({qty:q,sum:num(($('sb_s')||{}).value),date:ruOfIso(($('sb_d')||{}).value||''),note:($('sb_n')||{}).value||'',prelim:prelimOn(j.op)?1:0})})
   .then(function(r){
     if(b){ b.disabled=false; b.textContent='Сохранить'; }
     if(!r||!r.ok){ omsg('smsg','<span class="err">'+esc((r&&r.error)||'не сохранено')+'</span>'); return; }
