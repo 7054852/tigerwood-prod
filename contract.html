@@ -332,7 +332,8 @@ function isEu(){ var k=curKind(); return mode()==='legal' && !!k && (k.market===
 /** новый договор, смена рынка типа: умолчания — РФ 60 % / остаток по готовности / 15 раб. дней; Европа 70 % за 3 календ. дня / 7 календ. дней с даты поставки; иначе 80 % / с даты отгрузки / 14 */
 var KIND_MKT='';
 function kindDefaults(){ var k=curKind(), m=((k&&k.market)||'')+(isFw()?'#fw':''); if(m===KIND_MKT) return; KIND_MKT=m;
-  var eu=isEu(), ru=isFca()&&!eu; el('f_prepay').value=ru?(isFw()?70:60):eu?70:80;   // рамочный РФ/Европа — 70/30 по умолчанию (02.10.2026) setSel('f_balance', ru?'ready':'shipped'); el('f_prod').value=ru?15:14;
+  var eu=isEu(), ru=isFca()&&!eu; el('f_prepay').value=ru?(isFw()?70:60):eu?70:80;   // рамочный РФ/Европа — 70/30 по умолчанию (02.10.2026)
+  setSel('f_balance', ru?'ready':'shipped'); el('f_prod').value=ru?15:14;
   el('f_pdays').value=eu?3:5; if(eu){ el('f_bdays').value=7; if(!val('d_delivInc')) el('d_delivInc').value='0'; } }   // EU: по умолчанию FCA
 function schedOn(){ var m=mode(); return m==='retail' ? isInst() : (m==='legal' && !isFw() && val('f_balance')===SCHED_TXT); }
 function defaultValid(){ return isFw()?addDays(todayIso(),365):(todayIso().slice(0,4)+'-12-31'); }
@@ -583,6 +584,7 @@ function fillKinds(){
   var ok=false; for(var i=0;i<sel.options.length;i++) if(cur && sel.options[i].value===cur){ sel.value=cur; ok=true; }
   if(!ok && C && C.kind){ var o=document.createElement('option'); o.value=C.kind+(C.isFramework?'#fw':''); o.text=C.kindRu||C.kind; sel.add(o); sel.value=C.kind; ok=true; }
   if(ok && KINDS.length) WANT_KIND='';
+  if(ok && !C) kindDefaults();   // тип пришёл из ссылки («Рамочный договор» из карточки клиента) — те же умолчания, что при выборе вручную (02.10.2026)
   applyMode();
 }
 var BASE_VALUE=42;   // базовая величина РБ, BYN — с сервера (contractget.baseValue, настройка finance.baseValue)
