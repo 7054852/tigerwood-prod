@@ -382,6 +382,9 @@ function hideAllViews(){
   Object.keys(FRAMES).forEach(function(k){ try{ FRAMES[k].style.display='none'; }catch(e){} });
   var n=document.getElementById('nativeview'); if(n) n.style.display='none';
 }
+/** имя html-страницы раздела: из адреса пункта меню и из текущего адреса окна раздела (чужой домен — '' , не трогаем) */
+function pageOf(u){ return String(u||'').split('?')[0].split('#')[0].split('/').pop(); }
+function framePage(f){ try{ return pageOf(f.contentWindow.location.pathname); }catch(e){ return ''; } }
 function showView(id){
   hideAllViews();
   if(id==='users'||id==='myteam'||id==='access'||id==='company'){
@@ -404,6 +407,8 @@ function showView(id){
     vbox.appendChild(f); FRAMES[id]=f;
   } else if(focus){
     f.src=url;   // переход с фокусом (например, из статистики к расценкам) — грузим заново с параметрами
+  } else if(framePage(f) && framePage(f)!==pageOf(ITEMS[id].url)){
+    f.src=url;   // внутри раздела ушли на другую страницу (карточка договора/сделки) — пункт меню возвращает к корню раздела (02.10.2026)
   } else {
     // пункт меню → раздел встаёт на свою вкладку (salesdocs: «Договоры»/«Счета»/«Накладные» — одна страница с вкладками, 01.10.2026)
     try{ (SECSRC[id]||f.contentWindow).postMessage({tw:'show'},'*'); }catch(e){}
