@@ -339,12 +339,35 @@ function loadMonth(silent){
     var off={}, work={}; (r.off||[]).forEach(function(d){ off[d]=1; }); (r.work||[]).forEach(function(d){ work[d]=1; });
     // дни, за которые работник подал наряд: подал работу — значит был в цеху, даже если отметку забыли
     var wk={}; (r.worked||[]).forEach(function(k){ wk[k]=1; });
-    M={ym:YM, days:days, mon:p[1], map:map, workers:r.workers, off:off, work:work, hol:(r.holidayNames||{}), wk:wk};
+    M={ym:YM, days:days, mon:p[1], map:map, workers:r.workers, off:off, work:work, hol:(r.holidayNames||{}), wk:wk, exp:(r.expect||null)};
     renderMonth();
   });
 }
+// ── ОЖИДАЕМЫЙ ЗАРАБОТОК по графику (владелец 03.10.2026): смена × ожидание бойца за смену. Ожидание — правило
+// планирования: среднее по 7 последним сменам с выработкой > 30 ₽ (новичок — 50 ₽). Считаем здесь же, по клеткам,
+// чтобы итог менялся сразу при расстановке; «сделано» — подтверждённая выработка до сегодня (сервер).
+function expPerDay(w){ var x=M.exp&&M.exp.byWorker&&M.exp.byWorker[w]; return x?x.perDay:50; }
+function expCalc(){
+  var td=isoToday(), by={}, tot=0, past=0, n=0;
+  for(var k in M.map){ var e=M.map[k]; if(!e||!e.shift||e.status==='не вышел') continue;
+    var v=expPerDay(e.worker); by[e.worker]=(by[e.worker]||0)+v; tot+=v; n++; if(e.date<td) past+=v; }
+  return {by:by, tot:Math.round(tot*100)/100, past:Math.round(past*100)/100, n:n};
+}
+function expHtml(c){
+  if(!M.exp) return '';
+  var m0=function(v){ return Math.round(Number(v)||0).toLocaleString('ru-RU'); };
+  var fact=M.exp.factPast||0, pct=c.past>0?Math.round(fact/c.past*100):null;
+  var t=function(h,v,meta,tip){ return '<div class="tile"'+(tip?(' title="'+esc(tip)+'"'):'')+'><div class="t">'+h+'</div><div class="v">'+v+'</div>'+(meta?'<div class="meta muted" style="font:var(--t-small)">'+meta+'</div>':'')+'</div>'; };
+  return '<div class="tiles">'
+    +t('Ожидаем за месяц', m0(c.tot)+' <small>₽</small>', c.n+' смен по графику', 'смена × обычная выработка бойца: среднее по 7 последним сменам с выработкой больше 30 ₽, у новичка 50 ₽')
+    +t('Ожидали до сегодня', m0(c.past)+' <small>₽</small>', 'по отмеченным сменам до вчера')
+    +t('Сделано до сегодня', '<span style="color:'+(pct==null?'inherit':(pct>=90?'var(--green)':(pct>=70?'var(--amber)':'var(--red)')))+'">'+m0(fact)+' <small>₽</small></span>',
+        pct!=null?(pct+'% от ожидаемого'):'', 'подтверждённая выработка по расценкам (без премий и повременки)')
+    +'</div>';
+}
 function renderMonth(){
   if(!M) return;
+  var EC=expCalc();
   var y=Number(M.ym.split('-')[0]), mo=Number(M.ym.split('-')[1]);
   var DOW=['вс','пн','вт','ср','чт','пт','сб'], we={}, hol={};
   for(var wd=1;wd<=M.days;wd++){
@@ -388,7 +411,9 @@ function renderMonth(){
       }
       tds+='<td class="'+(cls+((we[d]||hol[d])?((cls?' ':'')+(hol[d]?'we hol':'we')):''))+'" data-w="'+wi+'" data-d="'+d+'" title="'+esc(w)+' '+d+'.'+M.mon+tip+'">'+txt+'</td>';
     }
-    return '<tr><td class="nm">'+esc(w)+' <span class="muted">('+cnt+(was?' · был '+was:'')+')</span></td>'+tds+'</tr>';
+    var ex=EC.by[w]||0, xi=M.exp&&M.exp.byWorker&&M.exp.byWorker[w];
+    return '<tr><td class="nm">'+esc(w)+' <span class="muted">('+cnt+(was?' · был '+was:'')+')</span>'
+      +(ex>0?' <span class="muted" style="font:var(--t-tiny)" title="'+esc('ожидаем за смену '+money(expPerDay(w))+' ₽ ('+(xi?xi.src:'новичок 50 ₽')+')'+(xi&&xi.fact?('\nсделано до сегодня '+money(xi.fact)+' ₽'):''))+'">≈'+Math.round(ex).toLocaleString('ru-RU')+' ₽</span>':'')+'</td>'+tds+'</tr>';
   }).join('');
   var modeSeg='<div class="seg mmode">'
     +'<button class="'+(MMODE==='plan'?'on':'')+'" onclick="setMMode(\'plan\')">✏️ Ставлю график</button>'
@@ -401,7 +426,7 @@ function renderMonth(){
     +'</div></div>';
   $('pane').innerHTML='<div class="toolbar"><div class="pnav"><button onclick="shiftMonth(-1)">‹</button><span class="lbl">'+esc(MN[mo-1]+' '+y)+'</span><button onclick="shiftMonth(1)">›</button></div>'
     +'<span id="sv" class="meta"></span><div class="end">'+modeSeg+'</div></div>'
-    +PLANNOTE+legend
+    +PLANNOTE+legend+expHtml(EC)
     +'<div class="card mgrid" style="overflow-x:auto"><table class="tbl" id="mtbl"><colgroup>'+Array(M.days+2).join('<col>')+'</colgroup>'+thead+body+'</table></div>';
   var tbl=$('mtbl');
   if(tbl){
