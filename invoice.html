@@ -351,7 +351,10 @@ function ciDlg(){
       return false;
     }, 'Сформировать');
 }
-function goBack(){ if(history.length>1 && document.referrer) history.back(); else if(D&&D.contract) location.href=pageUrl('contract.html',{contract:D.contract.id}); else location.href=pageUrl('salesdocs.html',{tab:'invoices'}); }
+/** «Назад» — на страницу, откуда пришли (как contract.html, 02.10.2026: history.back() уводил в чужой раздел); иначе — карточка контракта или реестр счетов */
+function goBack(){ var r=document.referrer, u=null; try{ u=r?new URL(r):null; }catch(e){}
+  if(u && u.origin===location.origin && !/invoice\.html$/.test(u.pathname)) location.href=r;
+  else if(D&&D.contract) location.href=pageUrl('contract.html',{contract:D.contract.id}); else location.href=pageUrl('salesdocs.html',{tab:'invoices'}); }
 
 start();
 (function(){
