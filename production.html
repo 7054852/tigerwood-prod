@@ -1206,7 +1206,14 @@ function opsKpiHtml(k){
     +((k.pendRub||k.qcRub)?'<span class="muted" style="font-weight:400" title="подано, но ещё не принято: на проверке у мастера / ждёт ОТК. Прогноз — если примут всё">на проверке '+money(k.pendRub||0)+' р · ждёт ОТК '+money(k.qcRub||0)+' р · <b>прогноз '+(k.pctSub||0)+'%</b></span>':'')
     +((k.outRub||k.preRub)?'<span class="muted" style="font-weight:400" title="'+OUT_T+'">у подрядчика '+money(k.outRub||0)+' р · привезено предварительно '+money(k.preRub||0)+' р</span>':'')
     +(k.ourRub!=null?'<span title="'+OUR_T+'">нам осталось <span style="color:var(--accent-text)">'+money(k.ourRub||0)+' р ('+(k.ourPct||0)+'%)</span></span>':'')
+    +reworkKpiHtml(k.rework)
     +(k.overflow?'<span class="pill bad" title="лишние операции сверх плана: в штуках и в деньгах (расценка × лишние штуки)">⚠ перевыполнение +'+Math.round(k.over)+' шт · +'+money(k.overRub||0)+' р</span>':'')+'</div>';
+}
+// лежит на переделке после покраски: вернули с ОТК на шлифовку (материал) / маляру (его ошибка), ещё не переделали
+function reworkKpiHtml(r){
+  if(!r||!(r.sand>0||r.paint>0)) return '';
+  var t=(r.details||[]).map(function(d){ return d.detail+': '+[d.sand>0?('шлифовка '+d.sand):'',d.paint>0?('малярка '+d.paint):''].filter(Boolean).join(', '); }).join('\n');
+  return '<span class="pill warn" title="'+esc('Лежит на переделке (вернули с ОТК после покраски):\n'+t)+'">🔁 на переделке: шлифовка '+r.sand+' шт · малярка '+r.paint+' шт</span>';
 }
 // точечное обновление цифр без пересборки таблицы (не трогаем поля, в которых работает пользователь)
 var pendingStock={};

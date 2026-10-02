@@ -637,19 +637,19 @@ function onBatchChange(){
   var bid=document.getElementById('batch').value;
   var note=document.getElementById('freenote');
   if(bid===FREE){                       // вне заказа — весь каталог деталей/операций (расценки те же)
-    COMP=DATA.comp||{}; PROD=DATA.prod||{}; EQUIPS=DATA.equipments||[];
+    COMP=DATA.comp||{}; PROD=DATA.prod||{}; EQUIPS=DATA.equipments||[]; REWK=DATA.rework||{};
     if(note) note.innerHTML='<div class="note info"><div>'
       +'🧰 <b>Работа вне заказа</b><div style="margin-top:var(--s-1)">Задел на будущее, переделка, помощь другому участку. '
       +'Оплата — по обычным расценкам, войдёт в вашу зарплату. На выполнение заказов такая работа не влияет.</div></div></div>';
     refillEquip(); return;
   }
   if(note) note.innerHTML='';
-  if(!bid){ COMP={}; PROD={}; EQUIPS=[]; refillEquip(); return; }
+  if(!bid){ COMP={}; PROD={}; EQUIPS=[]; REWK={}; refillEquip(); return; }
   document.getElementById('equip').innerHTML=opt('','загрузка…');
   api({vapi:'ordercomp',batch:bid}).then(function(r){
-    COMP=(r&&r.byEquip)||{}; PROD=(r&&r.byProduct)||{}; EQUIPS=(r&&r.equipments)||[];
+    COMP=(r&&r.byEquip)||{}; PROD=(r&&r.byProduct)||{}; EQUIPS=(r&&r.equipments)||[]; REWK=(r&&r.rework)||{};
     refillEquip();
-  }).catch(function(){ COMP={}; PROD={}; EQUIPS=[]; refillEquip(); });
+  }).catch(function(){ COMP={}; PROD={}; EQUIPS=[]; REWK={}; refillEquip(); });
 }
 function refillEquip(){
   document.getElementById('equip').innerHTML=EQUIPS.map(function(e){return opt(e);}).join('')
@@ -661,6 +661,10 @@ function curProd(){ return (COMP||{})[document.getElementById('equip').value]||{
 // Раньше рабочий сдавал «деталь Турник · Упаковка», цвет оставался пустым, и мастер
 // раскидывал упаковку по цветам вручную — оттуда и брались упаковки на некрашеном чёрном.
 var PROD={}, PITEM='__prod__';
+// ── ПЕРЕДЕЛКА после покраски (владелец 02.10.2026): две служебные операции у крашеных деталей.
+// Шлифовка — дефект материала, платим долю шлифовки детали; покраска — ошибка маляра, бесплатно. Заказ не двигают.
+var REWK={};
+function curRework(){ return ((REWK||{})[document.getElementById('equip').value]||{})[document.getElementById('detail').value]||[]; }
 function curPB(){ return (PROD||{})[document.getElementById('equip').value]||null; }
 function isProdMode(){ return document.getElementById('detail').value===PITEM; }
 function curPModel(){ var pb=curPB(); if(!pb) return null; return pb.models[(document.getElementById('pvar')||{}).value]||null; }
@@ -690,17 +694,21 @@ function fillOps(){
     calc(); return;
   }
   var p=curProd(), name=document.getElementById('detail').value; var ops=(p.details||{})[name]||[];
-  document.getElementById('op').innerHTML=ops.map(function(o){ return opt(o.op, o.op+' — '+(opPaid(o)?(o.rate+' р.'):'0 р. — оплата за лист, подайте во вкладке «🪚 Раскрой»')); }).join(''); calc(); }
+  document.getElementById('op').innerHTML=ops.map(function(o){ return opt(o.op, o.op+' — '+(opPaid(o)?(o.rate+' р.'):'0 р. — оплата за лист, подайте во вкладке «🪚 Раскрой»')); }).join('')
+    +curRework().map(function(o){ return opt(o.op, '🔁 '+o.op+' — '+(o.rate>0?(o.rate+' р.'):'бесплатно')); }).join(''); calc(); }
 // «только ЧПУ» и «за лист» = деталь режет станок, человеку платит строка листа. Расценка остаётся
 // (это трудоёмкость), ЗП — нет. ⚠ Эту же деталь надо подавать во вкладке «🪚 Раскрой» ВМЕСТЕ С ЛИСТОМ:
 // поданная обычной формой, она даёт ноль — так и получился наряд Гончара 11.09 на 0 р.
 function opPaid(o){ var p=String((o&&o.pay)||'').toLowerCase(); return !o || (p!=='только чпу' && p!=='за лист'); }
 function curOp(){ var op=document.getElementById('op').value;
   if(isProdMode()){ var mm=curPModel(); return ((mm&&mm.ops)||[]).filter(function(y){return y.op===op;})[0]||null; }
-  var p=curProd(), name=document.getElementById('detail').value; return ((p.details||{})[name]||[]).filter(function(y){return y.op===op;})[0]||null; }
+  var p=curProd(), name=document.getElementById('detail').value; return ((p.details||{})[name]||[]).concat(curRework()).filter(function(y){return y.op===op;})[0]||null; }
 function curRate(){ var o=curOp(); return o?o.rate:0; }
 function curPaid(){ return opPaid(curOp()); }
-function calc(){ var q=Number(document.getElementById('qty').value)||0, r=curRate(), pd=curPaid();
+function calc(){ var q=Number(document.getElementById('qty').value)||0, r=curRate(), pd=curPaid(), rw=(curOp()||{}).area;
+  if(rw && q>0){ document.getElementById('sum').textContent = rw==='paint'
+      ? 'Переделка покраски — бесплатно: ошибку маляра перекрашивают без оплаты. Заказ не двигает'
+      : ('ЗП: '+(Math.round(q*r*100)/100)+' руб. ('+q+' × '+r+') — переделка после покраски (доля шлифовки детали). Заказ не двигает'); return; }
   document.getElementById('sum').textContent = !(q>0) ? '—'
     : (pd ? ('ЗП: '+(Math.round(q*r*100)/100)+' руб. ('+q+' × '+r+')')
           : ('ЗП: 0 руб. — раскрой оплачен листом (работа в заказе зачтётся)')); }
@@ -1604,13 +1612,16 @@ function renderOtk(){
   if(!gs.length){ el.innerHTML='<div class="card muted">Ничего не ждёт приёмки. Как только рабочий сдаст работу на контрольной операции — она появится здесь.</div>'; return; }
   el.innerHTML=gs.map(function(g,gi){
     var ids=g.lines.map(function(l){return l.id;});
+    // после покраски брак можно вернуть на шлифовку (дефект материала) или маляру (его ошибка) — см. otkDestHtml
+    var rw=(OTK&&OTK.rework)||{}, canSand=(rw.sand||[]).indexOf(g.op)>=0, canPaint=(rw.paint||[]).indexOf(g.op)>=0, isCoat=(rw.coat||[]).indexOf(g.op)>=0;
     var lines=g.lines.map(function(l){
       var open=!!OTKOPEN[l.id];
       var form=open
         ? '<div class="card" style="margin:var(--s-2) 0 0;background:var(--bg2)">'
           +'<div class="row"><label style="flex:1">Принято<input id="ok-'+esc(l.id)+'" type="number" min="0" value="'+l.qty+'"></label>'
           +'<label style="flex:1">Брак<input id="bad-'+esc(l.id)+'" type="number" min="0" value="0"></label></div>'
-          +'<div class="muted" style="font:var(--t-small);margin:var(--s-1) 0">Брак не оплачивается и возвращается рабочему на переделку. Оплата — за принятое.</div>'
+          +((canSand||canPaint)?otkDestHtml(l.id,canSand,canPaint,isCoat)
+            :'<div class="muted" style="font:var(--t-small);margin:var(--s-1) 0">Брак не оплачивается и возвращается рабочему на переделку. Оплата — за принятое.</div>')
           +'<div class="row"><button class="sm" onclick="otkBadGo(\''+esc(l.id)+'\')">Провести приёмку</button>'
           +'<button class="sm sec" onclick="otkBadClose(\''+esc(l.id)+'\')">отмена</button>'
           +'<span class="msg" id="om-'+esc(l.id)+'"></span></div></div>'
@@ -1645,6 +1656,24 @@ function renderOtk(){
   }).join('');
 }
 function otkBadOpen(id){ OTKOPEN[id]=1; renderOtk(); }
+// куда вернуть брак после покраски. Маляру: покраска засчитана, перекрашивает бесплатно (пишется ему в переделки).
+// На шлифовку: покраска этих штук не засчитана, шлифовщику платим долю шлифовки, потом красят заново.
+var OTKCOAT={};
+function otkDestHtml(id,canSand,canPaint,isCoat){
+  OTKCOAT[id]=!!isCoat;
+  var o='<option value="">исполнителю — обычный брак, не оплачивается</option>'
+    +(canSand?'<option value="sand">на шлифовку — дефект материала</option>':'')
+    +(canPaint?'<option value="paint">маляру — ошибка покраски</option>':'');
+  return '<label style="margin-top:var(--s-1)">Куда вернуть брак<select id="dest-'+esc(id)+'" onchange="otkDestNote(\''+esc(id)+'\')">'+o+'</select></label>'
+    +'<div class="muted" id="dn-'+esc(id)+'" style="font:var(--t-small);margin:var(--s-1) 0">'+otkDestText('',isCoat)+'</div>';
+}
+function otkDestText(v,isCoat){
+  return v==='paint' ? (isCoat ? 'Покраска засчитана и оплачена маляру. Перекрашивает бесплатно — детали лягут в «Переделка: малярка», ошибка запишется на маляра.'
+                               : 'Эти штуки не засчитаны — после перекраски их сдадут заново. Детали лягут в «Переделка: малярка», перекраска бесплатно.')
+    : v==='sand' ? 'Эти штуки не засчитаны. Детали лягут в «Переделка: шлифовка»: шлифовщику платим долю шлифовки, потом их красят заново.'
+    : 'Брак не оплачивается и возвращается рабочему на переделку. Оплата — за принятое.';
+}
+function otkDestNote(id){ var e=document.getElementById('dn-'+id), s=document.getElementById('dest-'+id); if(e&&s) e.textContent=otkDestText(s.value,OTKCOAT[id]); }
 function otkBadClose(id){ delete OTKOPEN[id]; renderOtk(); }
 function otkMsg(id,html){ var e=document.getElementById(id); if(e) e.innerHTML=html||''; }
 // ⚠ защита от повторного нажатия: ответ идёт 3-9 с, в цеху жмут ещё раз
@@ -1660,9 +1689,11 @@ function otkOne(id){
 function otkBadGo(id){
   var ok=(document.getElementById('ok-'+id)||{}).value;
   var bad=(document.getElementById('bad-'+id)||{}).value||0;
+  var dest=(document.getElementById('dest-'+id)||{}).value||'';
+  if(dest&&!(Number(bad)>0)){ otkMsg('om-'+id,'<span class="err">укажите, сколько штук вернуть</span>'); return; }
   if(!otkGuard()) return;
   otkMsg('om-'+id,'принимаю…');
-  api({vapi:'otkaccept',id:id,ok:ok,bad:bad}).then(function(r){
+  api({vapi:'otkaccept',id:id,ok:ok,bad:bad,dest:dest}).then(function(r){
     OTKBUSY=false;
     if(!r||!r.ok){ otkMsg('om-'+id,'<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'); return; }
     delete OTKOPEN[id]; loadOtk();
@@ -1870,8 +1901,24 @@ function otkStatsLoad(){
       +'<div class="row"><span class="muted">забраковано</span><span>'+r.bad+' шт</span></div>'
       +(qc?('<div class="muted" style="margin-top:var(--s-3)"><b>По приёмщикам:</b></div>'+qc)
           :'<div class="muted" style="margin-top:var(--s-3)">За период приёмок не было — выберите период шире.</div>')
-      +(wrk?('<div class="muted" style="margin-top:var(--s-2)">По рабочим:</div>'+wrk):'')+'</div>';
+      +(wrk?('<div class="muted" style="margin-top:var(--s-2)">По рабочим:</div>'+wrk):'')+'</div>'
+      +otkReworkHtml(r.rework);
   }).catch(function(){ b.innerHTML='<div class="card err">ошибка сети</div>'; });
+}
+// переделки после покраски: сколько вернули, ошибки маляров (по виновнику) и кто сколько переделал
+function otkReworkHtml(x){
+  if(!x) return '';
+  var ret=x.returned||{}, ps=x.painters||[], ws=x.workers||[];
+  if(!(ret.sand>0||ret.paint>0||ps.length||ws.length)) return '';
+  var row=function(a,b){ return '<div class="row"><span class="muted">'+a+'</span><span>'+b+'</span></div>'; };
+  return '<div class="card"><b>🔁 Переделка после покраски</b>'
+    +row('вернули на шлифовку (материал)',(ret.sand||0)+' шт')
+    +row('вернули маляру (его ошибка)',(ret.paint||0)+' шт')
+    +(ps.length?('<div class="muted" style="margin-top:var(--s-2)">Ошибки маляров:</div>'+ps.map(function(p){ return row(esc(p.name),p.qty+' шт'); }).join('')):'')
+    +(ws.length?('<div class="muted" style="margin-top:var(--s-2)">Кто переделывал:</div>'+ws.map(function(w){
+        return row(esc(w.name),[w.sand>0?('шлифовка '+w.sand+' шт'):'',w.paint>0?('покраска '+w.paint+' шт'):''].filter(Boolean).join(' · ')+(w.rub>0?(' · '+w.rub+' р.'):''));
+      }).join('')):'')
+    +'</div>';
 }
 // ═══════════ 🪚 РАСКРОЙ НА ЧПУ: лист → детали ═══════════
 // Рабочий указывает лист материала и что с него вышло. Платим и за лист, и за детали.

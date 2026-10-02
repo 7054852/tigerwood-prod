@@ -35,7 +35,7 @@
   th.det{ text-align:left; width:24%; }
   td.det{ height:26px; font-weight:600; }
   td.n{ text-align:center; width:52px; color:var(--fg2); }
-  td.cell{ width:5.9%; height:26px; }
+  td.cell{ width:4.9%; height:26px; }   /* 14 стадий с «Переделкой» + заметка: при 5,9% колонка «Деталь» ужималась вдвое */
   /* ⚠ td.cell.no, а не td.no: «tr.vrow td{background}» специфичнее и перекрашивал штриховку
      во всех строках цветов в белый — клетки без операции выглядели как обычные */
   td.no,td.cell.no{ background:repeating-linear-gradient(135deg,var(--grey-bg),var(--grey-bg) 4px,var(--line2) 4px,var(--line2) 8px); }
@@ -104,6 +104,9 @@
   tr.hasv td.det{ border-bottom:0; }
   td.down,td.up,td.cell.down,td.cell.up{ background:var(--grey-bg); text-align:center; color:var(--muted); font-size:11px; }
   th.qc{ font-size:10px; }
+  /* «Переделка» — не стадия цепочки, а сколько вернули на переделку: отбиваем группу толстой линией слева */
+  th.rw{ background:var(--red-bg); }
+  th.rw1,td.rw1{ border-left:2px solid var(--fg2); }
   th.qc.w{ background:var(--amber-bg); }
   th.qc.a{ background:var(--green-bg); }
   tr.vrow td{ background:var(--card); }
@@ -121,14 +124,15 @@
     /* книжная: колонок столько же, поэтому ужимаем шрифт и высоту строки */
     body.port th,body.port td{ font-size:9px; padding:0 var(--s-1); }
     body.port td.det,body.port td.cell{ height:21px; }
-    body.port th{ font-size:9px; padding:var(--s-1) 2px; }
-    body.port th .hint{ font-size:8px; line-height:1.1; margin-top:2px; }
+    /* с колонками «Переделка» в книжную шапка влезает только на 8px (шире A4 на 55px при 9px) */
+    body.port th{ font-size:8px; padding:2px 1px; }
+    body.port th .hint{ font-size:7px; line-height:1.1; margin-top:2px; }
     body.port .stitle{ font-size:16px; }
     body.port .legend,body.port .sline{ font-size:10px; }
     body.port .gt{ font-size:13px; }
     body.port td.n{ width:34px; }
-    body.port th.det{ width:22%; }
-    body.port td.cell{ width:5.6%; }
+    body.port th.det{ width:20%; }
+    body.port td.cell{ width:4.6%; }
     body.port .foot{ font-size:10px; }
   }
 </style>
@@ -246,11 +250,18 @@ function load(){
 
 // Шапка стадий. У точек контроля ОТК пара колонок под общим именем: «ждёт ОТК | принято ✓».
 // Близнец идёт в списке ПЕРЕД базовой стадией — порядок задаёт сервер (INV_STAGES).
-var QCW=': ждёт ОТК';
+var QCW=': ждёт ОТК', RWP='Переделка: ';
+// «Переделка: шлифовка / малярка» — общая шапка «Переделка» над двумя колонками (сервер шлёт их отдельным списком rework)
+function isRw(s){ return String(s).indexOf(RWP)===0; }
 function stageHeads(ST,hints,hshort){
-  var top='', bot='';
+  var top='', bot='', nRw=ST.filter(isRw).length, rwSeen=0;
   ST.forEach(function(s){
     var h=hints[s]||'', sh=hshort[s]||h;
+    if(isRw(s)){
+      if(!rwSeen++) top+='<th colspan="'+nRw+'" class="rw rw1" title="вернули с покраски на переделку и ещё не переделали">Переделка</th>';
+      bot+='<th class="qc rw'+(rwSeen===1?' rw1':'')+'" title="'+esc(h)+'">'+esc(s.slice(RWP.length))+(sh?('<span class="hint">'+esc(sh)+'</span>'):'')+'</th>';
+      return;
+    }
     if(s.indexOf(QCW)>0){
       var base=s.slice(0,s.indexOf(QCW));
       top+='<th colspan="2" title="'+esc(base+': сделано → приёмка ОТК')+'">'+esc(base)+'</th>';
@@ -271,19 +282,20 @@ function draw(){
   var acc=document.getElementById('showAcc').checked;
   // ⚠ где деталь расходится по цветам — решает сервер (INV_SPLIT_AT). Раньше здесь стояло
   // имя стадии, и добавление «Грунтовано» молча сдвинуло бы стрелки ↑ на чужую колонку.
-  var ST=R.stages, SPLIT=(R.splitAt!=null?R.splitAt:ST.indexOf('Покрашено'));
+  var SPLIT=(R.splitAt!=null?R.splitAt:R.stages.indexOf('Покрашено')), ST=R.stages.concat(R.rework||[]);
   var legend='<div class="legend">'
     +'Пишите, сколько деталей <b>сейчас физически лежит</b> в этом состоянии — каждую деталь считаем один раз, в самой поздней пройденной стадии. '
     +'Заштрихованная клетка — такой операции у детали нет, писать в неё не нужно. '
     +'<b>Пустая клетка — не считали</b>: в программе останется как есть. Если реально ноль — так и напишите цифру 0.'
     +' У шлифовки, перетирки и покраски <b>две клетки</b>: «ждёт ОТК» — сделано, но контролёр ещё не принял; «принято ✓» — после приёмки. Деталь пишем в одну из них.'
     +' Строка с пометкой <b>изделие</b> — само собранное изделие: его не пилят и не красят, физически считают только упакованные коробки.'
+    +((R.rework||[]).length?' <b>Переделка</b> — сколько деталей вернули с покраски и ещё не переделали: «шлифовка» — лежат на шлифовке (дефект материала), «малярка» — у маляра (его ошибка). Эти детали в стадиях слева не пишем.':'')
     +(R.mode==='detail'?('<br>До грунтовки деталь одна на все цвета — её считаем в строке детали. '
       +'С грунта она расходится по вариантам (грунт под лак и под цвет разный), поэтому ниже идут строки по каждому цвету: '
       +'<b>↓</b> — считать в строках ниже, <b>↑</b> — уже посчитано в строке детали.'):'')
     +'</div>';
   // в колонке — короткое пояснение (шире не влезет), полное — в подсказке при наведении
-  var SH=stageHeads(ST,R.hints||{},R.hintsShort||{});
+  var SH=stageHeads(ST,R.hints||{},R.hintsShort||{}), RWP0=(R.rework||[])[0];
   var head='<tr><th class="det" rowspan="2">Деталь</th><th rowspan="2">Нужно<br>по заказу<span class="hint">справочно — не исправлять</span></th>'
     +SH.top+'<th rowspan="2">Заметка</th></tr><tr>'+SH.bot+'</tr>';
 
@@ -294,10 +306,11 @@ function draw(){
       var vars=d.variants||[];
       var cells=ST.map(function(s){
         var st=d.stages[s];
-        if(!st||!st.has) return '<td class="cell no"></td>';
+        var rw1=(s===RWP0)?' rw1':'';
+        if(!st||!st.has) return '<td class="cell no'+rw1+'"></td>';
         // клетка отдана цветам: писать в неё нельзя, считаем в строках ниже
         if(st.split) return '<td class="cell down">↓</td>';
-        return '<td class="cell'+(acc?' acc':'')+'">'+(acc?st.ready:'')+'</td>';
+        return '<td class="cell'+(acc?' acc':'')+rw1+'">'+(acc?st.ready:'')+'</td>';
       }).join('');
       var head='<tr'+(vars.length?' class="hasv"':'')+'><td class="det">'+esc(d.detail)
         +(d.isProduct?' <span class="pb">изделие</span>':'')
@@ -308,8 +321,9 @@ function draw(){
         var vc=ST.map(function(s,si){
           var st=v.stages[s];
           // до покраски деталь общая → «↑»; после покраски пусто = такой операции у детали нет → штриховка
-          if(!st||!st.has) return (si<SPLIT) ? '<td class="cell up">↑</td>' : '<td class="cell no"></td>';
-          return '<td class="cell'+(acc?' acc':'')+'">'+(acc?st.ready:'')+'</td>';
+          var rw1=(s===RWP0)?' rw1':'';
+          if(!st||!st.has) return (si<SPLIT) ? '<td class="cell up">↑</td>' : '<td class="cell no'+rw1+'"></td>';
+          return '<td class="cell'+(acc?' acc':'')+rw1+'">'+(acc?st.ready:'')+'</td>';
         }).join('');
         return '<tr class="vrow"><td class="det vd">└ '+esc(v.model)+'</td>'
           +'<td class="n">'+v.need+'</td>'+vc+'<td class="cell"></td></tr>';
@@ -375,8 +389,8 @@ function nrm(x){ return String(x==null?'':x).toLowerCase().replace(/ё/g,'е').r
 var RESUMED=false;
 function drawLoad(){
   var box=document.getElementById('pane_load'), d=DRAFT;
-  var st=d.stat||{}, ST=d.stages||[], C=d.cells||{}, INFO=d.info||{};
-  var SPLIT=(d.splitAt!=null?d.splitAt:ST.indexOf('Покрашено'));
+  var st=d.stat||{}, C=d.cells||{}, INFO=d.info||{};
+  var SPLIT=(d.splitAt!=null?d.splitAt:(d.stages||[]).indexOf('Покрашено')), ST=(d.stages||[]).concat(d.rework||[]), RWP0=(d.rework||[])[0], RWS=[];
   var upl='<div class="card"><div class="row" style="margin-bottom:var(--s-2)"><b>📷 Страницы переучёта</b>'
     +'<span class="muted">загружено файлов: '+(d.head.files||0)+'</span></div>'
     +'<input type="file" id="pages" accept="image/*,application/pdf" multiple onchange="pickPages(this.files)">'
@@ -400,6 +414,7 @@ function drawLoad(){
 
   function cellHtml(det,mod,stage,stg,isVar){
     var k=ikey(det,mod,stage), c=C[k], nf=(!c&&INFO[k])?INFO[k]:null;
+    if(isRw(stage)) return rwCellHtml(k,det,stage,stg,c);
     // ⚠ цифра, вписанная в заштрихованную клетку, должна быть ВИДНА — иначе непонятно,
     // почему она «не применится». Штриховку рисуем только когда данных нет.
     if(!c&&(!stg||!stg.has)) return '<td class="cell no"></td>';
@@ -459,6 +474,22 @@ function drawLoad(){
       +opn+acc+'</td>';
   }
 
+  // «Переделка»: не цепочка — цифра с листа становится остатком «на переделке» как есть (было по программе → посчитали)
+  function rwCellHtml(k,det,stage,stg,c){
+    var rw1=(stage===RWP0)?' rw1':'';
+    if(!c&&(!stg||!stg.has)) return '<td class="cell no'+rw1+'"></td>';
+    var prog=(stg&&stg.has)?stg.ready:0, cls='g cell'+rw1, tip, mark='';
+    if(!c){ cls+=' empty'; tip='не заполнено — на переделке остаётся '+prog+' (по программе)'; }
+    else if(c.status==='пропущена'){ cls+=' badc'; mark='!'; tip='НЕ ПРИМЕНИТСЯ: у этой строки нет такой переделки (нет покраски / это изделие или цвет).'; }
+    else{
+      cls+=' ok'; tip=stage+'\nбыло на переделке по программе '+c.was+' → посчитали '+c.qty+'. Цифра с листа — ИТОГ, а не добавка.';
+      if(Math.abs((c.qty||0)-(c.was||0))>0.001) RWS.push({det:det,stage:stage,was:c.was,now:c.qty});
+    }
+    return '<td class="'+cls+'" title="'+esc(tip)+'">'+(mark?('<b class="mk">'+mark+'</b>'):'')
+      +'<input value="'+((c&&c.qty!==null&&c.qty!==undefined&&c.qty!=='')?c.qty:'')+'" inputmode="numeric" onchange="setCell(\''+esc(k)+'\',this.value,this)">'
+      +(c&&!mark?('<span class="drv">было '+c.was+'</span>'):'')+'</td>';
+  }
+
   var SHORTS=[];
   var grid=(d.products||[]).map(function(p){
     var title=esc(p.title||p.eq||'Детали заказа');
@@ -492,11 +523,14 @@ function drawLoad(){
     +((st.ask||0)?('<span class="pill bad">✕ разобраться: '+st.ask+'</span>'):'')
     +((st.skip||0)?('<span class="pill bad">✕ не применится: '+st.skip+'</span>'):'')
     +(SHORTS.length?('<span class="pill bad">✕ насчитали меньше, чем принято: '+SHORTS.length+'</span>'):'')
+    +(RWS.length?('<span class="pill warn">↺ переделка изменится: '+RWS.length+'</span>'):'')
     +'<span class="muted">изменит остатки: '+(st.diffs||0)+' · цифры читаются как «лежит сейчас»</span></div>'
     +(SHORTS.length?('<div class="shorts">'+SHORTS.map(function(s){
         return '<div>'+esc(s.det)+(s.mod?' · '+esc(s.mod):'')+' · '+esc(s.stage)
           +' — по нарядам принято <b>'+s.acc+'</b>, насчитали <b>'+s.got+'</b></div>';
       }).join('')+'</div>'):'')
+    +(RWS.length?('<div class="shorts">↺ <b>На переделке</b> (было по программе → посчитали):'+RWS.map(function(x){
+        return '<div>'+esc(x.stage)+' · '+esc(x.det)+': '+x.was+' → <b>'+x.now+'</b></div>'; }).join('')+'</div>'):'')
     +(d.pay&&(d.pay.over||d.pay.under)?('<div class="shorts">💰 Наряды против факта: переплачено <b>'+d.pay.over.toFixed(2)+' ₽</b> · недоплачено <b>'+d.pay.under.toFixed(2)+' ₽</b> · итог по заказу: <b>'
         +(d.pay.net>=0?'недоплатили ':'переплатили ')+Math.abs(d.pay.net).toFixed(2)+' ₽</b>'
         +'<details><summary>по операциям ('+d.pay.rows.length+')</summary>'+d.pay.rows.map(function(x){
@@ -620,14 +654,15 @@ function applyInv(){
   var m1=document.getElementById('apmsg'); if(m1) m1.textContent='обновляю сверку…';
   loadDraft().then(function(r){
     if(!r) return;
-    var st=r.stat||{}, pay=r.pay||{}, sh=0, C=r.cells||{};
+    var st=r.stat||{}, pay=r.pay||{}, sh=0, nrw=0, C=r.cells||{};
     for(var k in C) if(C.hasOwnProperty(k)){ var c=C[k], got=(c.got!=null&&c.got!==0)?c.got:c.target;
+      if(c.rework){ if(c.status!=='пропущена') nrw++; continue; }
       if(!c.derived&&!c.twin&&(c.acc||0)>(got||0)) sh++; }
     var msg='Провести переучёт?\n\n'
       +'Применится строк: '+(st.apply||0)+((st.ask||0)?(' · разобраться: '+st.ask):'')+((st.skip||0)?(' · не применится: '+st.skip):'')+'\n'
       +(sh?('Насчитали меньше, чем принято нарядами: '+sh+' — готовность там опустится до факта.\n'):'')
       +((pay.over||pay.under)?('Наряды против факта: переплачено '+(pay.over||0).toFixed(2)+' ₽, недоплачено '+(pay.under||0).toFixed(2)+' ₽.\n'):'')
-      +'\nМеняются только начальные остатки заказа. Принятые наряды и ЗП не трогаются.';
+      +'\nМеняются только начальные остатки заказа'+(nrw?' и остаток «на переделке» ('+nrw+')':'')+'. Принятые наряды и ЗП не трогаются.';
     if(!confirm(msg)){ var m2=document.getElementById('apmsg'); if(m2) m2.textContent=''; return; }
     applyGo();
   });
@@ -696,7 +731,9 @@ function showReport(id){
       +' (на '+(t.qtyUp||0)+' шт, +'+(t.rubUp||0)+' р.), упал у '+(t.down||0)+' (на '+(t.qtyDown||0)+' шт, −'+(t.rubDown||0)+' р.).'
       +'<br>Начальные остатки — это то, что было сделано ДО программы. Наряды рабочих не менялись.</div></div>'
       +(rows?('<div class="card"><div style="font:var(--t-heading);margin-bottom:var(--s-1)">Сдвиги, начиная с самых крупных</div>'+rows+'</div>')
-            :'<div class="card muted">Остатки не изменились.</div>');
+            :'<div class="card muted">Остатки не изменились.</div>')
+      +((r.rework||[]).length?('<div class="card"><div style="font:var(--t-heading);margin-bottom:var(--s-1)">↺ На переделке</div>'
+        +r.rework.map(function(x){ return '<div class="rowline">'+esc(x.text)+'</div>'; }).join('')+'</div>'):'');
   }).catch(function(){ box.innerHTML='<div class="card err">сеть недоступна</div>'; });
 }
 function undoInv(id){
