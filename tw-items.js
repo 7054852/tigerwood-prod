@@ -3,14 +3,32 @@
    catalog/options.ts), «в комплекте с» (навесное к комплексу, sales/bundle.ts), обязательные опции (opt.required) — рамка красная, без них
    checkPos() не пускает сохранение. Сервер проверяет всё ещё раз (write.ts checkDealItems).
    Ждёт от страницы: el, esc, money, setm, get; контейнер <div class="pos" id="posBox">, <datalist id="prodlist">; стили .pos — в <style> страницы.
-   Хук onPosTotal() (если объявлен) зовётся после пересчёта сумм. Валюта — TWI_CUR. */
-var PRODS=[], PRODBYNAME={}, PRODBYSKU={}, POS=[], POS0='', POSCHK=false, TWI_CUR='руб';
+   Хук onPosTotal() (если объявлен) зовётся после пересчёта сумм. Валюта — TWI_CUR.
+   02.10.2026 (владелец): цена при выборе товара — по валюте сделки/договора: RUB — priceRub (розница сайта по его курсу: BYN × курс, целые ₽),
+   EUR — priceEur прайса, иначе BYN (price). Подставленная цена — обычное число, правится руками; сохранённые позиции при смене курса не пересчитываются.
+   Курс — RUB из ответа saleproducts (rub: {rate, official, markup, updatedAt}); подсказка — rubHint(). */
+var PRODS=[], PRODBYNAME={}, PRODBYSKU={}, POS=[], POS0='', POSCHK=false, TWI_CUR='руб', RUB=null, DL_CUR=null;
+function curCode(){ var c=String(TWI_CUR||'').toUpperCase(); return c==='RUB'||c==='₽'?'RUB':c==='EUR'?'EUR':'BYN'; }
+function curSign(){ var c=curCode(); return c==='RUB'?'₽':c==='EUR'?'EUR':'руб'; }
+function prodPrice(p){ var c=curCode(); return c==='RUB'?(Number(p.priceRub)||0):c==='EUR'?(Number(p.priceEur)||0):(Number(p.price)||0); }
+/** «цены по курсу сайта 29,20 ₽ за 1 BYN (Нацбанк 27,81 + 5 %), на 01.10.2026» — только для рублёвой сделки/договора */
+function rubHint(){
+  if(curCode()!=='RUB') return '';
+  if(!RUB||!(RUB.rate>0)) return 'курс рубля с сайта не получен — рублёвые цены впишите вручную';
+  var f=function(x){ return Number(x).toFixed(2).replace('.',','); }, d=RUB.updatedAt?new Date(RUB.updatedAt):null, dd=function(n){ return (n<10?'0':'')+n; };
+  return 'цены по курсу сайта '+f(RUB.rate)+' ₽ за 1 BYN'+(RUB.official?(' (Нацбанк '+f(RUB.official)+(RUB.markup?(' + '+RUB.markup+' %'):'')+')'):'')
+    +(d&&!isNaN(d)?(', на '+dd(d.getDate())+'.'+dd(d.getMonth()+1)+'.'+d.getFullYear()):'');
+}
+function fillProdList(){
+  var dl=el('prodlist'); DL_CUR=curCode(); if(!dl) return;
+  dl.innerHTML=PRODS.map(function(p){ var v=prodPrice(p); return '<option value="'+esc(p.name)+'">'+(v?(money(v)+' '+curSign()):(DL_CUR==='BYN'?'':'нет цены '+curSign()))+'</option>'; }).join('');
+}
 var OPTNAME={ropeColor:'цвет каната', slideHooks:'зацепы горки'};
 function loadProducts(){
   if(PRODS.length) return Promise.resolve(PRODS);
   return get({vapi:'saleproducts'}).then(function(r){
-    PRODS=(r&&r.products)||[]; PRODBYNAME={}; PRODBYSKU={};
-    var dl=el('prodlist'); if(dl) dl.innerHTML=PRODS.map(function(p){ return '<option value="'+esc(p.name)+'">'+(p.price?(money(p.price)+' руб'):'')+'</option>'; }).join('');
+    PRODS=(r&&r.products)||[]; PRODBYNAME={}; PRODBYSKU={}; RUB=(r&&r.rub)||null;
+    fillProdList();
     PRODS.forEach(function(p){ PRODBYNAME[p.name]=p; PRODBYSKU[p.sku]=p; });
     if(POS.length) renderPos();   // схемы опций подъехали позже позиций
     return PRODS;
@@ -23,7 +41,7 @@ function posFromItems(items){
   l.forEach(function(p){ p.par=p.pl?l[p.pl-1]||null:null; delete p.pl; });
   return l;
 }
-function pickProd(i,v){ var p=PRODBYNAME[v]; if(p){ POS[i].name=p.name; POS[i].sku=p.sku; POS[i].opt=p.opt||null; POS[i].crossbar=p.crossbar||0; POS[i].options={}; if(!(Number(POS[i].price)>0)) POS[i].price=p.price; renderPos(); posTot(); } }
+function pickProd(i,v){ var p=PRODBYNAME[v]; if(p){ POS[i].name=p.name; POS[i].sku=p.sku; POS[i].opt=p.opt||null; POS[i].crossbar=p.crossbar||0; POS[i].options={}; if(!(Number(POS[i].price)>0)) POS[i].price=prodPrice(p)||''; renderPos(); posTot(); } }
 function optOf(p){ return p.opt || ((PRODBYSKU[p.sku]||{}).opt) || null; }
 function cbOf(p){ return Number(p.crossbar)||Number((PRODBYSKU[p.sku]||{}).crossbar)||0; }
 function extraOf(p){ return (Number((p.options||{}).extraCrossbars)||0)*cbOf(p); }   // надбавка к цене единицы
@@ -59,6 +77,7 @@ function optHtml(p,i){ var s=optOf(p), cx=cxList(), kid=!!p.par, o=p.options||{}
 function posOrder(list){ var order=[]; list.forEach(function(p){ if(!p.par || list.indexOf(p.par)<0){ order.push(p); list.forEach(function(k){ if(k.par===p) order.push(k); }); } }); return order; }
 function renderPos(){
   var box=el('posBox'); if(!box) return;
+  if(DL_CUR!==curCode() && PRODS.length) fillProdList();   // валюта сделки/договора сменилась — цены в подсказке списка товаров тоже
   var h='<div class="pr ph"><div>Наименование</div><div>Кол-во</div><div>Цена</div><div style="text-align:right">Сумма</div><div></div></div>', tot=0;
   posOrder(POS).forEach(function(p){ var i=POS.indexOf(p), s=lineSum(p), kid=!!p.par, kids=POS.some(function(k){ return k.par===p; }); tot+=s;
     h+='<div class="pr'+(kid?' kid':'')+'">'
@@ -70,9 +89,9 @@ function renderPos(){
       +(kid?'<div class="bnote"><span class="kidmark">↳ в комплекте с «'+esc(p.par.name||'')+'»</span></div>':'')
       +(kids?'<div class="bnote">в документах: одной строкой с навесным (сумма '+money(bundleSum(p))+')</div>':'')+optHtml(p,i);
   });
-  h+='<div class="tot">Итого: <span id="posTotal">'+money(tot)+'</span> '+esc(TWI_CUR)+'</div>';
+  h+='<div class="tot">Итого: <span id="posTotal">'+money(tot)+'</span> '+esc(curCode()==='RUB'?'₽':TWI_CUR)+'</div>';
   box.innerHTML=h;
-  var hint=el('posHint'); if(hint) hint.textContent=POS.length?'':'добавьте товары или услуги';
+  var hint=el('posHint'); if(hint) hint.textContent=[POS.length?'':'добавьте товары или услуги', rubHint()].filter(Boolean).join(' · ');
 }
 /** только просмотр (карточка сделки «Что продано»): таблица с опциями и «↳ в комплекте с» */
 function posViewHtml(items, cur){

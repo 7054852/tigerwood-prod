@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="tw-theme.js"></script>
+<script src="tw-config.js"></script>
+<title>Тигервуд — Счёт (Европа)</title>
+<!-- Счёт Европы по рамочному контракту (решения владельца 02.10.2026, бриф brief-eu-invoice.md). ?invoice=new&contract=<id|номер> | ?invoice=<номер|id>.
+     В рамочном контракте товаров нет — номенклатура, цены EUR, условия поставки (FCA Krasnoye / CPT пункт, Incoterms 2020) и предоплата партии — здесь.
+     Оплата по умолчанию — из контракта (70 % за 3 календ. дня, остаток 7 дней с CMR), в счёте меняется: процент или фиксированная сумма.
+     «Сохранить» — черновик (сервер заводит сделку-заявку клиента с позициями, euinvoicesave); «Сформировать документ» — номер PI-ГГГГ-NN + Google Sheet
+     (euinvoicerender), после этого позиции и условия не меняются; «Аннулировать» — euinvoicecancel; «Коммерческий инвойс» — invoicecommercial по отгрузке.
+     Ввод в таблицу не перерисовывает строку (курсор остаётся в поле); суммы считаются на месте, сервер проверяет всё ещё раз. -->
+<style>
+  .hide{ display:none !important; }
+  .blk{ background:var(--card); border:1px solid var(--line); border-radius:var(--r-card); padding:20px; margin-bottom:var(--s-4); box-shadow:var(--shadow-card); }
+  .h{ font:var(--t-heading); margin-bottom:var(--s-3); display:flex; align-items:center; gap:var(--s-2); flex-wrap:wrap; }
+  .h .sp{ margin-left:auto; font:var(--t-body); display:flex; gap:var(--s-2); flex-wrap:wrap; align-items:center; }
+  .hdr .t{ font:var(--t-title); }
+  .hdr .m{ font:var(--t-small); color:var(--muted); margin-top:var(--s-1); }
+  .sm:not(button):not(.btn){ font:var(--t-small); color:var(--muted); }
+  .grid3{ display:grid; grid-template-columns:repeat(3, 1fr); gap:var(--s-3); }
+  label.fl{ display:block; }
+  label.fl > .sm{ display:block; margin-bottom:var(--s-1); }
+  label.fl input, label.fl select{ width:100%; }
+  td input{ width:100%; min-width:0; }
+  td.num input{ text-align:right; }
+  td.num{ white-space:nowrap; }
+  .tbl col.c-n{ width:32px; } .tbl col.c-hs{ width:132px; } .tbl col.c-art{ width:132px; } .tbl col.c-q{ width:84px; } .tbl col.c-p{ width:92px; } .tbl col.c-s{ width:100px; } .tbl col.c-x{ width:32px; }
+  .tbl td input{ padding:0 var(--s-2); }
+  .tbl input.ru{ margin-top:var(--s-1); font:var(--t-small); }
+  .tot{ text-align:right; font:var(--t-heading); font-variant-numeric:tabular-nums; margin-top:var(--s-3); }
+  .paysum{ display:flex; gap:var(--s-4); flex-wrap:wrap; margin-top:var(--s-3); font-variant-numeric:tabular-nums; }
+  .paysum b{ font-weight:600; }
+  .docrow{ display:flex; align-items:center; gap:var(--s-2); padding:var(--s-2) 0; border-top:1px solid var(--line); flex-wrap:wrap; }
+  .docrow:first-child{ border-top:0; }
+  .docrow .sp{ margin-left:auto; }
+  .ro input, .ro select{ background:var(--grey-bg); }
+  .ro .rm, .ro #addBar{ display:none; }
+  .msg{ margin-top:var(--s-2); }
+  @media (max-width:640px){
+    .blk{ padding:var(--s-4); }
+    .grid3{ grid-template-columns:1fr; }
+    table.mob td input{ width:62%; }
+    table.mob td.en{ flex-direction:column; align-items:stretch; text-align:left; }
+    table.mob td.en input{ width:100%; }
+    table.mob td.tf:empty{ display:none; }
+  }
+</style>
+</head>
+<body>
+<div id="twload"><i></i></div>
+<div id="twwait"><div class="wb"><div class="sp"></div><div class="wt" id="twwt">Сохраняю…</div><div class="wh">идёт обмен с сервером — не нажимайте</div></div></div>
+<div class="hi" id="ttl">🧾 Счёт (Европа)</div>
+<div class="sub">Счёт по рамочному контракту: позиции, условия поставки и оплаты партии → документ в Google Sheets.</div>
+
+<div class="toolbar">
+  <button class="sec sm" onclick="goBack()">← Назад</button>
+  <span id="stpills"></span>
+  <div class="end"><button class="green" id="saveTop" onclick="save()">Сохранить</button></div>
+</div>
+<div id="loaderr" class="note bad hide"></div>
+
+<div id="main" class="hide">
+  <div class="blk hdr"><div class="t" id="hTitle">Новый счёт</div><div class="m" id="hMeta"></div></div>
+
+  <div class="blk" id="s_head">
+    <div class="h">Основное</div>
+    <div class="kv" id="headKv"></div>
+    <div class="grid3" style="margin-top:var(--s-4)">
+      <label class="fl"><span class="sm">Номер заказа покупателя</span><input id="f_ref" placeholder="например OBJ-2026-SEP26" autocomplete="off"></label>
+      <label class="fl"><span class="sm">Плановая дата отгрузки</span><input id="f_ship" type="date" autocomplete="off"></label>
+      <label class="fl"><span class="sm">Дата счёта</span><input id="f_date" disabled></label>
+    </div>
+  </div>
+
+  <div class="blk" id="s_items">
+    <div class="h">Позиции <span class="sp"><input id="f_filter" type="search" class="search" placeholder="🔎 найти в счёте: артикул, название" oninput="filterRows()" autocomplete="off"></span></div>
+    <div class="toolbar" id="addBar">
+      <input id="f_pick" list="prodList" class="grow" placeholder="+ из каталога: начните вводить артикул или название" onchange="pickProd(this.value)" autocomplete="off">
+      <datalist id="prodList"></datalist>
+      <button class="sec" onclick="addRow()">+ свободная строка</button>
+    </div>
+    <div class="tbl-wrap"><table class="tbl mob">
+      <colgroup><col class="c-n"><col class="c-hs"><col class="c-art"><col><col class="c-q"><col class="c-p"><col class="c-s"><col class="c-x"></colgroup>
+      <thead><tr><th>№</th><th>HS-код</th><th>Артикул</th><th>Наименование (EN) / по-русски</th><th class="num">Кол-во</th><th class="num">Цена EUR</th><th class="num">Сумма EUR</th><th></th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table></div>
+    <div class="tot">Итого: <span id="total">0,00</span> EUR</div>
+    <div class="msg" id="itemsMsg"></div>
+  </div>
+
+  <div class="blk" id="s_deliv">
+    <div class="h">Условия поставки <span class="sp sm">Incoterms 2020</span></div>
+    <span class="seg" id="segInc"><button type="button" data-v="FCA" onclick="setInc('FCA')">FCA Krasnoye</button><button type="button" data-v="CPT" onclick="setInc('CPT')">CPT пункт назначения</button></span>
+    <label class="fl" id="w_place" style="margin-top:var(--s-3)"><span class="sm">Пункт назначения CPT (пусто — адрес покупателя)</span><input id="f_place" autocomplete="off"></label>
+    <div class="sm" id="incHint" style="margin-top:var(--s-2)"></div>
+  </div>
+
+  <div class="blk" id="s_pay">
+    <div class="h">Оплата <span class="sp sm" id="payDefault"></span></div>
+    <div class="row" style="margin-bottom:var(--s-3)"><span class="sm">Предоплата:</span>
+      <span class="seg" id="segPre"><button type="button" data-v="pct" onclick="setPre('pct')">процент</button><button type="button" data-v="sum" onclick="setPre('sum')">фиксированная сумма</button></span></div>
+    <div class="grid3">
+      <label class="fl" id="w_pct"><span class="sm">Предоплата, %</span><input id="f_pct" type="number" inputmode="decimal" min="0" max="100" oninput="calc()" autocomplete="off"></label>
+      <label class="fl" id="w_sum"><span class="sm">Предоплата, EUR</span><input id="f_sum" type="number" inputmode="decimal" min="0" step="0.01" oninput="calc()" autocomplete="off"></label>
+      <label class="fl"><span class="sm">Срок предоплаты, календ. дней со дня счёта</span><input id="f_pdays" type="number" inputmode="numeric" min="1" autocomplete="off"></label>
+      <label class="fl"><span class="sm">Остаток — календ. дней с даты поставки (CMR)</span><input id="f_bdays" type="number" inputmode="numeric" min="1" autocomplete="off"></label>
+    </div>
+    <div class="paysum" id="paySum"></div>
+  </div>
+
+  <div class="blk" id="s_docs">
+    <div class="h">Документы</div>
+    <div id="docsBox"></div>
+  </div>
+
+  <div class="toolbar" id="botBtns"></div>
+  <div class="msg" id="msg"></div>
+</div>
+
+<div class="dlg-bg" id="askmodal" style="display:none"><div class="dlg">
+  <h3 id="askT"></h3><div id="askB"></div>
+  <div class="dlg-btns"><button class="sec" id="askNo" onclick="hide('askmodal')">Отмена</button><button id="askOk">OK</button></div>
+</div></div>
+<div class="dlg-bg" id="oopsmodal" style="display:none;z-index:60"><div class="dlg sm">
+  <h3>Не получилось</h3><div id="oopsB" class="note bad" style="display:block;white-space:pre-line"></div>
+  <div class="dlg-btns"><button onclick="hide('oopsmodal')">Понятно</button></div>
+</div></div>
+
+<script>
+/* ══════════ связь с сервером (как contract.html) ══════════ */
+var BASE=(window.TW_CFG&&TW_CFG.hub)||'https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';
+var APP='tw7prod';
+function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
+var TGID=qp('tgid')||(function(){try{return localStorage.getItem('tw_tgid')||'';}catch(e){return '';}})();
+try{ if(!TGID && window.Telegram && Telegram.WebApp && Telegram.WebApp.initDataUnsafe && Telegram.WebApp.initDataUnsafe.user) TGID=String(Telegram.WebApp.initDataUnsafe.user.id); }catch(e){}
+function twTok(){ try{ return qp('tok')||localStorage.getItem('tw_tok')||''; }catch(e){ return qp('tok')||''; } }
+(function(){ var t=qp('tok'); if(t){ try{ localStorage.setItem('tw_tok',t); }catch(e){} } })();
+function twAuthWall(r){
+  if(r&&r.needAuth){ document.body.innerHTML='<div style="padding:var(--s-6);font:var(--t-body);color:var(--fg)"><div style="font:var(--t-title);margin-bottom:var(--s-3)">🔒 Нужен вход</div><div>'
+    +esc(r.error||'Откройте сервис из бота @TWOtchbot или войдите по личному коду.')+'</div></div>';
+    return new Promise(function(){}); }
+  return r;
+}
+function qs(p){ var t=twTok(); if(t) p.tok=t; p.app=APP; if(TGID&&!p.tgid) p.tgid=TGID;
+  return Object.keys(p).map(function(k){ return k+'='+encodeURIComponent(p[k]==null?'':p[k]); }).join('&'); }
+var LD=0; function loadOn(){ LD++; el('twload').style.display='block'; }
+function loadOff(){ LD=Math.max(0,LD-1); if(!LD) el('twload').style.display='none'; }
+function done(pr){ return pr.then(function(r){ loadOff(); return r.json(); }, function(e){ loadOff(); throw e; }).then(twAuthWall); }
+function get(p){ loadOn(); return done(fetch(BASE+'?'+qs(p))); }
+function post(p){ loadOn(); return done(fetch(BASE,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body:qs(p)})); }
+function errText(r){ if(!r) return 'Сервер не ответил — повторите.'; return r.error||r.message||'Не получилось, сервер не объяснил причину. Повторите; если повторится — сообщите администратору.'; }
+function netText(e){ return 'Связь оборвалась: '+((e&&e.message)||e)+'. Проверьте интернет и повторите — если не уверены, сохранилось ли, откройте счёт заново.'; }
+var BUSY=0;
+/** запись: заслонка, повторный клик не уходит; отказ — окно с текстом сервера. Promise → ответ или null */
+function run(p, say, m){
+  if(BUSY) return Promise.resolve(null); BUSY=1;
+  el('twwt').textContent=say||'Сохраняю…'; el('twwait').style.display='flex';
+  return post(p).then(function(r){ BUSY=0; el('twwait').style.display='none';
+    if(!r||!r.ok){ var t=errText(r); setm(m,'err','⚠️ '+esc(t)); oops(t); return r&&r.key?r:null; }
+    return r;
+  }, function(e){ BUSY=0; el('twwait').style.display='none'; var t=netText(e); setm(m,'err','⚠️ '+esc(t)); oops(t); return null; });
+}
+function el(id){ return document.getElementById(id); }
+function val(id){ return (el(id)||{}).value||''; }
+function setm(m, cls, html){ if(typeof m==='string') m=el(m); if(!m) return; m.className='msg '+(cls||''); m.innerHTML=html; }
+function oops(t){ el('oopsB').textContent=t||'Сервер не ответил — повторите.'; el('oopsmodal').style.display='flex'; }
+function hide(id){ el(id).style.display='none'; }
+function ask(title, body, onOk, okText, noCancel){
+  el('askT').textContent=title; el('askB').innerHTML=body; el('askOk').textContent=okText||'OK'; el('askNo').style.display=noCancel?'none':'';
+  el('askOk').onclick=function(){ if(onOk(el('askB'))!==false) hide('askmodal'); };
+  el('askmodal').style.display='flex';
+}
+function info(title, html){ ask(title, html, function(){}, 'Понятно', true); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+function num(v){ return Number(String(v==null?'':v).replace(',','.').replace(/\s/g,''))||0; }
+function r2(x){ return Math.round(x*100)/100; }
+function money(n){ n=Number(n)||0; var p=n.toFixed(2).split('.'); return p[0].replace(/\B(?=(\d{3})+(?!\d))/g,' ')+','+p[1]; }
+function ruDate(s){ if(!s) return ''; var p=String(s).split('-'); return p.length===3 ? (p[2]+'.'+p[1]+'.'+p[0]) : s; }
+function isoDate(s){ s=String(s||''); if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10); var m=/^(\d{2})\.(\d{2})\.(\d{4})/.exec(s); return m?(m[3]+'-'+m[2]+'-'+m[1]):''; }
+function pageUrl(page, params){ var sp=new URLSearchParams(location.search); ['invoice','contract','deal','tab','back'].forEach(function(x){ sp.delete(x); });
+  Object.keys(params||{}).forEach(function(k){ if(params[k]!=null&&params[k]!=='') sp.set(k, params[k]); }); var s=sp.toString(); return page+(s?'?'+s:''); }
+
+/* ══════════ состояние ══════════ */
+var KEY=qp('invoice')||'new', CKEY=qp('contract'), D=null, ROWS=[], PRODS=[], EDIT=true, INC='FCA', PRE='pct';
+var ST_CLS={new:'warn', draft:'warn', issued:'', cancelled:'muted'};
+
+function start(){ load(); }
+function load(){
+  get({vapi:'euinvoiceget', invoice:KEY, contract:CKEY}).then(function(r){
+    if(!r||!r.ok){ el('loaderr').className='note bad'; el('loaderr').innerHTML='<div>⚠️ '+esc(errText(r))+'</div>'; el('main').className='hide'; return; }
+    D=r; fill();
+  }).catch(function(e){ el('loaderr').className='note bad'; el('loaderr').innerHTML='<div>⚠️ '+esc(netText(e))+'</div>'; });
+}
+function setKey(k){ if(!k||k===KEY) return; KEY=String(k); var sp=new URLSearchParams(location.search); sp.set('invoice', KEY); sp.delete('contract'); try{ history.replaceState(null,'',location.pathname+'?'+sp.toString()); }catch(e){} }
+
+/** ответ сервера → форма */
+function fill(){
+  var t=D.terms||{};
+  EDIT=!!(D.can&&D.can.edit);
+  ROWS=(D.items||[]).map(function(it){ return { id:it.id, sku:it.sku||'', name:it.name||'', en:it.en||'', hs:it.hs||'', art:it.art||'', qty:it.qty, price:it.price }; });
+  PRODS=D.products||[];
+  el('prodList').innerHTML=PRODS.map(function(p,i){ return '<option value="'+esc(p.sku+' · '+(p.en||p.name))+'">'+esc(p.name)+(p.eur?(' — '+money(p.eur)+' EUR'):' — нет цены EUR')+'</option>'; }).join('');
+  el('f_ref').value=t.buyerRef||''; el('f_ship').value=isoDate(t.shipDate); el('f_date').value=D.invoiceDate||'при формировании';
+  INC=t.incoterm||'FCA'; el('f_place').value=t.place||''; el('f_place').placeholder=(D.client&&D.client.address)||'адрес покупателя';
+  PRE=t.prepayMode||'pct'; el('f_pct').value=t.prepayPct==null?'':t.prepayPct; el('f_sum').value=t.prepaySum?t.prepaySum:''; el('f_pdays').value=t.prepayDays||''; el('f_bdays').value=t.balanceDays||'';
+  el('main').className=EDIT?'':'ro';
+  var ins=el('main').querySelectorAll('#s_head input, #s_deliv input, #s_pay input, #s_deliv button, #s_pay button');
+  for(var i=0;i<ins.length;i++) if(ins[i].id!=='f_date') ins[i].disabled=!EDIT;
+  renderHead(); renderRows(); paintInc(); paintPre(); renderDocs(); renderBtns();
+}
+function renderHead(){
+  var c=D.contract, cl=D.client||{}, dl=D.deal;
+  el('hTitle').textContent=D.number?('Счёт № '+D.number):'Новый счёт (номер выдаётся при формировании)';
+  el('ttl').textContent='🧾 '+(D.number?('Счёт № '+D.number):'Счёт (Европа)');
+  el('hMeta').textContent=(cl.name||'')+(c?(' · к контракту № '+c.number+' от '+c.date):'')+(dl&&dl.num?(' · сделка '+dl.num+' ('+dl.stageRu+')'):'');
+  el('stpills').innerHTML='<span class="pill '+(ST_CLS[D.status]||'')+'">'+esc(D.statusRu||D.status)+'</span> <span class="pill">Европа · EUR</span>';
+  el('saveTop').style.display=EDIT?'':'none';
+  var h='<span class="k">Клиент</span><span class="v"><b>'+esc(cl.name||'—')+'</b>'+(cl.address?(' · '+esc(cl.address)):'')+'</span>';
+  if(c) h+='<span class="k">Рамочный контракт</span><span class="v"><a href="'+esc(pageUrl('contract.html',{contract:c.id}))+'">№ '+esc(c.number||'черновик')+' от '+esc(c.date)+'</a>'
+    +' · действует до '+esc(c.validUntil||'—')+' <span class="pill '+(c.expired?'bad':(c.formed?'ok':'warn'))+'">'+esc(c.expired?'истёк':c.statusRu)+'</span>'
+    +(!c.formed?'<div class="sm">счёт выставляется к сформированному контракту — сначала «Сформировать документ» в карточке контракта</div>':'')+'</span>';
+  else if(D.contractError) h+='<span class="k">Рамочный контракт</span><span class="v"><span class="err">'+esc(D.contractError)+'</span></span>';
+  if(dl) h+='<span class="k">Заказ</span><span class="v"><a href="'+esc(pageUrl('sales.html',{deal:dl.id}))+'">'+esc(dl.num)+'</a> · '+esc(dl.stageRu)+(dl.inProduction?' · в производстве':'')+'</span>';
+  el('headKv').innerHTML=h;
+}
+
+/* ══════════ позиции: ввод не перерисовывает таблицу — курсор остаётся в поле ══════════ */
+function rowHtml(r,i){
+  var dis=EDIT?'':' disabled';
+  var inp=function(f, cls, ph, type){ return '<input'+(type?' type="'+type+'" inputmode="decimal" step="0.01" min="0"':'')+(cls?' class="'+cls+'"':'')+' value="'+esc(r[f]==null?'':r[f])+'" placeholder="'+esc(ph||'')+'" oninput="setF('+i+',\''+f+'\',this.value)" autocomplete="off"'+dis+'>'; };
+  return '<tr id="r'+i+'"><td data-l="№">'+(i+1)+'</td><td data-l="HS-код">'+inp('hs','','9506919000')+'</td><td data-l="Артикул">'+inp('art','','артикул')+'</td>'
+    +'<td data-l="Наименование" class="en">'+inp('en','','Description (EN)')+inp('name','ru','по-русски (для заказа)')+'</td>'
+    +'<td data-l="Кол-во" class="num">'+inp('qty','','0','number')+'</td><td data-l="Цена EUR" class="num">'+inp('price','','0,00','number')+'</td>'
+    +'<td data-l="Сумма EUR" class="num" id="s'+i+'">'+money(num(r.qty)*num(r.price))+'</td>'
+    +'<td class="tf">'+(EDIT?'<button class="ic rm" title="убрать строку" onclick="rmRow('+i+')">✕</button>':'')+'</td></tr>';
+}
+function renderRows(){
+  el('rows').innerHTML=ROWS.map(rowHtml).join('')||'<tr><td colspan="8" class="sm">Позиций нет — добавьте из каталога или свободной строкой.</td></tr>';
+  filterRows(); calc();
+}
+function setF(i,f,v){ ROWS[i][f]=v; if(f==='qty'||f==='price'){ var s=el('s'+i); if(s) s.textContent=money(num(ROWS[i].qty)*num(ROWS[i].price)); calc(); } }
+function rmRow(i){ ROWS.splice(i,1); renderRows(); }
+function addRow(p){
+  ROWS.push(p?{ sku:p.sku, name:p.name, en:p.en||'', hs:p.hs||'', art:p.sku, qty:1, price:p.eur||'' }:{ sku:'', name:'', en:'', hs:'', art:'', qty:1, price:'' });
+  renderRows();
+  var tr=el('r'+(ROWS.length-1)); if(tr){ var x=tr.querySelectorAll('input'); var f=p?(p.eur?x[4]:x[5]):x[2]; if(f){ f.focus(); try{ f.select(); }catch(e){} } }
+  setm('itemsMsg', p&&!p.eur?'warn':'', p&&!p.eur?('⚠️ У «'+esc(p.name)+'» нет цены EUR в прайсе — впишите цену'):'');
+}
+function pickProd(v){
+  v=String(v||'').trim(); if(!v) return;
+  var sku=v.split(' · ')[0].toLowerCase(), p=null;
+  PRODS.forEach(function(x){ if(!p && (x.sku.toLowerCase()===sku || x.name.toLowerCase()===v.toLowerCase() || (x.en&&x.en.toLowerCase()===v.toLowerCase()))) p=x; });
+  el('f_pick').value='';
+  if(!p){ setm('itemsMsg','err','⚠️ «'+esc(v)+'» нет в каталоге — выберите из подсказки или добавьте свободной строкой'); return; }
+  addRow(p);
+}
+function filterRows(){
+  var q=val('f_filter').toLowerCase().trim();
+  ROWS.forEach(function(r,i){ var tr=el('r'+i); if(tr) tr.classList.toggle('hide', !!q && (r.art+' '+r.sku+' '+r.en+' '+r.name+' '+r.hs).toLowerCase().indexOf(q)<0); });
+}
+function total(){ var t=0; ROWS.forEach(function(r){ t+=r2(num(r.qty)*num(r.price)); }); return r2(t); }
+
+/* ══════════ условия поставки и оплаты ══════════ */
+function setInc(v){ INC=v; paintInc(); }
+function paintInc(){
+  var bs=el('segInc').querySelectorAll('button'); for(var i=0;i<bs.length;i++) bs[i].className=bs[i].getAttribute('data-v')===INC?'on':'';
+  el('w_place').classList.toggle('hide', INC!=='CPT');
+  el('incHint').textContent=INC==='CPT'?'CPT: Продавец оплачивает перевозку до пункта назначения; риск переходит при передаче первому перевозчику; разгрузка и ввоз в ЕС — Покупатель.'
+    :'FCA Krasnoye, Republic of Belarus: Продавец передаёт товар перевозчику Покупателя на складе в д. Красное; перевозку организует и оплачивает Покупатель.';
+}
+function setPre(v){ PRE=v; paintPre(); }
+function paintPre(){
+  var bs=el('segPre').querySelectorAll('button'); for(var i=0;i<bs.length;i++) bs[i].className=bs[i].getAttribute('data-v')===PRE?'on':'';
+  el('w_pct').classList.toggle('hide', PRE!=='pct'); el('w_sum').classList.toggle('hide', PRE!=='sum');
+  var c=D&&D.contract; el('payDefault').textContent=c?('по контракту: '+(c.prepayPercent==null?70:c.prepayPercent)+' % за '+(c.prepayDays||3)+' дн., остаток — '+(c.balanceDays||7)+' дн. с CMR'):'';
+  calc();
+}
+function pay(){ var t=total(), p=PRE==='sum'?num(val('f_sum')):t*num(val('f_pct'))/100; p=r2(Math.min(t, Math.max(0,p))); return { total:t, prepay:p, balance:r2(t-p) }; }
+function calc(){
+  var x=pay(); el('total').textContent=money(x.total);
+  var over=PRE==='sum' && num(val('f_sum'))>x.total && x.total>0;
+  el('paySum').innerHTML='<span>Предоплата: <b>'+money(x.prepay)+' EUR</b></span><span>Остаток: <b>'+money(x.balance)+' EUR</b></span>'
+    +'<span>К оплате сейчас: <b>'+money(x.prepay>0?x.prepay:x.total)+' EUR</b></span>'+(over?'<span class="err">⚠ предоплата больше суммы счёта</span>':'');
+}
+
+/* ══════════ документы и кнопки ══════════ */
+function renderDocs(){
+  var h='', docs=D.docs||[], ci=D.commercials||[];
+  if(D.status==='new'||D.status==='draft') h='<div class="sm">Черновик: номера и документа ещё нет — «Сохранить», затем «Сформировать документ» (номер PI-… выдаётся в этот момент).</div>';
+  docs.forEach(function(d){ h+='<div class="docrow"><span><b>Счёт</b> <span class="sm">'+esc(d.date)+'</span></span>'+(d.status!=='formed'?'<span class="pill '+(d.status==='failed'?'bad':'muted')+'">'+esc(d.status==='failed'?'ошибка':d.status)+'</span>':'')
+    +(d.error?'<span class="sm">'+esc(d.error)+'</span>':'')+'<span class="sp">'+(d.url?'<a href="'+esc(d.url)+'" target="_blank" rel="noopener">открыть ↗</a>':'')+'</span></div>'; });
+  ci.forEach(function(x){ h+='<div class="docrow"><span><b>Коммерческий инвойс № '+esc(x.number)+'</b> <span class="sm">'+esc(x.date)+' · '+money(x.sum)+' EUR</span></span><span class="pill">'+esc(x.status)+'</span>'
+    +'<span class="sp">'+(x.url?'<a href="'+esc(x.url)+'" target="_blank" rel="noopener">открыть ↗</a>':'')+'</span></div>'; });
+  if(D.status==='issued' && !docs.length) h+='<div class="sm">Номер выдан, документа нет — нажмите «Сформировать документ» ещё раз (номер тот же).</div>';
+  el('docsBox').innerHTML=h||'<div class="sm">Документов нет.</div>';
+}
+function renderBtns(){
+  var c=D.can||{}, h='';
+  if(c.edit) h+='<button class="green" onclick="save()">Сохранить</button>';
+  if(c.edit||c.render) h+='<button onclick="renderDoc()">Сформировать документ</button>';
+  if(c.commercial) h+='<button class="sec" onclick="ciDlg()">Коммерческий инвойс…</button>';
+  if(c.cancel) h+='<button class="danger sec" onclick="cancelDlg()">Аннулировать</button>';
+  el('botBtns').innerHTML='<div class="end">'+h+'</div>';
+}
+
+/* ══════════ действия ══════════ */
+function collect(){
+  return { items:ROWS.filter(function(r){ return String(r.name||r.en||'').trim() || num(r.qty)>0; }).map(function(r){ return { id:r.id||'', sku:r.sku||'', name:String(r.name||'').trim()||String(r.en||'').trim(), en:String(r.en||'').trim(),
+      hs:String(r.hs||'').trim(), art:String(r.art||'').trim(), qty:num(r.qty), price:num(r.price) }; }),
+    terms:{ incoterm:INC, place:val('f_place').trim(), buyerRef:val('f_ref').trim(), shipDate:ruDate(val('f_ship')), prepayMode:PRE, prepayPct:val('f_pct'), prepaySum:val('f_sum'), prepayDays:val('f_pdays'), balanceDays:val('f_bdays') } };
+}
+function validate(d){
+  if(!d.items.length) return 'Добавьте позиции счёта';
+  for(var i=0;i<d.items.length;i++){ var it=d.items[i]; if(!it.name) return 'Строка '+(i+1)+': впишите наименование'; if(!(it.qty>0)) return 'Строка '+(i+1)+': количество больше 0'; if(!(it.price>0)) return 'Строка '+(i+1)+' «'+(it.en||it.name)+'»: укажите цену в EUR'; }
+  var x=pay(); if(PRE==='sum' && num(val('f_sum'))>x.total) return 'Предоплата больше суммы счёта';
+  if(PRE==='pct' && !(num(val('f_pct'))>=0 && num(val('f_pct'))<=100)) return 'Предоплата, %: от 0 до 100';
+  if(!(Number(val('f_pdays'))>=1) || !(Number(val('f_bdays'))>=1)) return 'Сроки оплаты — целое число календарных дней от 1';
+  return '';
+}
+function save(){
+  var d=collect(), e=validate(d); if(e){ setm('msg','err','⚠️ '+esc(e)); oops(e); return Promise.resolve(null); }
+  return run({vapi:'euinvoicesave', invoice:KEY==='new'?'':KEY, contract:(D.contract&&D.contract.id)||CKEY, data:JSON.stringify(d)}, 'Сохраняю счёт…', 'msg').then(function(r){ if(!r||!r.ok) return null;
+    setKey(r.key); setm('msg','ok','✅ Сохранено'+(r.created?(' · заявка <b>'+esc(r.created)+'</b>'):'')); load(); return r; });
+}
+function renderDoc(){
+  var go=function(){ run({vapi:'euinvoicerender', invoice:KEY}, 'Формирую счёт…', 'msg').then(function(r){ if(!r) return; if(r.key) setKey(r.key); load(); if(!r.ok) return;
+    info('Счёт сформирован', '<div>✅ Счёт <b>№ '+esc(r.number)+'</b> на '+money(r.total)+' EUR'+(r.prepay>0&&r.prepay<r.total?(', предоплата '+money(r.prepay)+' EUR'):'')+'. '+(r.url?'<a href="'+esc(r.url)+'" target="_blank" rel="noopener">Открыть в Google Sheets ↗</a>':'')+'</div>'); }); };
+  if(EDIT) save().then(function(r){ if(r) go(); }); else go();
+}
+function cancelDlg(){
+  ask('Аннулировать счёт'+(D.number?(' № '+D.number):'')+'?', '<div>'+(D.number?'Номер останется занятым, файл уйдёт в корзину, неоплаченный план оплаты снимется.':'Черновик без номера — заявка закроется как «не состоялась».')+'</div>'
+    +'<label class="fl" style="margin-top:var(--s-3)"><span class="sm">Причина (необязательно)</span><input id="cReason" autocomplete="off"></label>',
+    function(){ run({vapi:'euinvoicecancel', invoice:KEY, reason:val('cReason')}, 'Аннулирую…', 'msg').then(function(r){ if(r&&r.ok) load(); }); }, 'Аннулировать');
+}
+/** коммерческий инвойс по фактической отгрузке: кол-во по строкам (0 — не отгружено) → invoicecommercial(deal, items, {proforma}) */
+function ciDlg(){
+  ask('Коммерческий инвойс по отгрузке', '<div class="sm">Укажите, сколько фактически отгружено по строкам (0 — не отгружено). Документ ссылается на счёт № '+esc(D.number)+'.</div>'
+    +'<div class="tbl-wrap" style="margin-top:var(--s-3)"><table class="tbl sm"><thead><tr><th>Позиция</th><th class="num">Отгружено</th></tr></thead><tbody>'
+    +ROWS.map(function(r,i){ return '<tr><td>'+esc(r.art?r.art+' · ':'')+esc(r.en||r.name)+'</td><td class="num"><input id="ci'+i+'" type="number" inputmode="decimal" min="0" value="'+esc(r.qty)+'" autocomplete="off"></td></tr>'; }).join('')
+    +'</tbody></table></div><div class="msg" id="ciMsg"></div>',
+    function(){
+      var arts={}; ROWS.forEach(function(r){ var a=String(r.art||'').trim(); if(a) arts[a]=(arts[a]||0)+1; });
+      var items=ROWS.map(function(r,i){ var a=String(r.art||'').trim(); return arts[a]===1&&a!=='-' ? { sku:a, qty:num(val('ci'+i)) } : { name:r.en||r.name, qty:num(val('ci'+i)) }; });
+      if(!items.some(function(x){ return x.qty>0; })){ setm('ciMsg','err','Нет отгруженных строк'); return false; }
+      run({vapi:'invoicecommercial', deal:D.deal.id, items:JSON.stringify(items), opts:JSON.stringify({ proforma:D.number })}, 'Формирую коммерческий инвойс…', 'ciMsg').then(function(r){ if(!r||!r.ok) return; hide('askmodal');
+        var inv=r.invoice||{}, doc=r.invoiceDoc;
+        info('Готово', '<div>✅ Коммерческий инвойс <b>№ '+esc(inv.number||'')+'</b> на '+money(inv.total)+' EUR. '+(doc&&doc.url?'<a href="'+esc(doc.url)+'" target="_blank" rel="noopener">Открыть ↗</a>':esc(r.invoiceDocError||''))+'</div>'); load(); });
+      return false;
+    }, 'Сформировать');
+}
+function goBack(){ if(history.length>1 && document.referrer) history.back(); else if(D&&D.contract) location.href=pageUrl('contract.html',{contract:D.contract.id}); else location.href=pageUrl('salesdocs.html',{tab:'invoices'}); }
+
+start();
+(function(){
+  try{ window.top.postMessage({tw:'hello',sec:qp('twsec')},'*'); }catch(e){}
+  window.addEventListener('message',function(e){ var d=e&&e.data; if(d&&d.tw==='refresh'&&!EDIT){ try{ load(); }catch(err){} } });
+})();
+</script>
+</body>
+</html>
