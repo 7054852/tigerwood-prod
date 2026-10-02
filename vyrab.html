@@ -133,7 +133,8 @@ function CARD(e){ return '<div style="padding:var(--s-4);line-height:1.5">'
     <label for="wdate">За какую смену — дата начала</label>
     <input id="wdate" type="date" onchange="updateWhen()"><button class="sm sec" type="button" onclick="setDate(0)">Сегодня</button><button class="sm sec" type="button" onclick="setDate(-1)">Вчера</button>
     <div class="seg">
-      <button id="shift-day" class="active" onclick="setShift('день')">☀️ День</button>
+      <button id="shift-day" class="active" onclick="setShift('день')">☀️ 1-я</button>
+      <button id="shift-eve" onclick="setShift('2 смена')">🌇 2-я</button>
       <button id="shift-night" onclick="setShift('ночь')">🌙 Ночь</button>
     </div>
   </div>
@@ -716,9 +717,16 @@ function calc(){ var q=Number(document.getElementById('qty').value)||0, r=curRat
           : ('ЗП: 0 руб. — раскрой оплачен листом (работа в заказе зачтётся)')); }
 var CART=[], SHIFT='день';
 var BONUS={premPct:10,premThr:100,nightPct:15};   // как в Config
-function setShift(sh){ SHIFT=sh;
-  document.getElementById('shift-day').className=(sh==='день')?'active':'';
-  document.getElementById('shift-night').className=(sh==='ночь')?'active':'';
+// три смены (владелец 02.10.2026): «день» = 1-я, «2 смена» = 2-я, «ночь». Ночная надбавка — только ночью.
+function shIco(s){ return s==='ночь'?'🌙':(s==='2 смена'?'🌇':'☀️'); }
+function shName(s){ return s==='ночь'?'ночь':(s==='2 смена'?'2-я смена':'1-я смена'); }
+function shLbl(s){ return shIco(s)+' '+shName(s); }
+function shMarks(){ var m={'shift-day':'день','shift-eve':'2 смена','shift-night':'ночь'};
+  for(var id in m){ var b=document.getElementById(id); if(b) b.className=(SHIFT===m[id])?'active':''; } }
+// переключатель смены наряда у мастера и в журнале: fn — имя функции (setRepShift / setRepShiftJ)
+function shSeg(cur,fn,rid){ return '<div class="seg">'+[['день','☀️ 1-я'],['2 смена','🌇 2-я'],['ночь','🌙 Ночь']].map(function(x){
+    return '<button class="'+(cur===x[0]?'on':'')+'" onclick="'+fn+'(\''+esc(rid)+'\',\''+x[0]+'\')">'+x[1]+'</button>'; }).join('')+'</div>'; }
+function setShift(sh){ SHIFT=sh; shMarks();
   updateWhen(); renderCart(); saveDraft(); }
 function setDate(off){ var d=new Date(); d.setDate(d.getDate()+off);
   var s=d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());
@@ -727,7 +735,7 @@ function setDate(off){ var d=new Date(); d.setDate(d.getDate()+off);
 function updateWhen(){ try{ renderDayTime(); }catch(e){} var el=document.getElementById('whenline'); if(!el) return;
   var wd=(document.getElementById('wdate')||{}).value||'';
   var human=wd?wd.split('-').reverse().slice(0,2).join('.'):'—';
-  el.innerHTML='📅 Отчёт за <b>'+human+'</b> · '+(SHIFT==='ночь'?'🌙 ночь':'☀️ день'); }
+  el.innerHTML='📅 Отчёт за <b>'+human+'</b> · '+shLbl(SHIFT); }
 function bonusCalc(base){
   var night=(SHIFT==='ночь'), ni=night?Math.round(base*BONUS.nightPct)/100:0;
   var prem=base>BONUS.premThr?Math.round(base*BONUS.premPct)/100:0;
@@ -777,7 +785,7 @@ function rmCart(i){ CART.splice(i,1); renderCart(); saveDraft(); }
 function renderCart(){
   var c=document.getElementById('cart');
   if(!CART.length){ c.innerHTML=''; renderTotals(); return; }
-  c.innerHTML='<div class="card"><div class="row"><b>Операции: '+CART.length+'</b><span class="muted">'+esc(SHIFT==='ночь'?'🌙 ночь':'☀️ день')+'</span></div>'
+  c.innerHTML='<div class="card"><div class="row"><b>Операции: '+CART.length+'</b><span class="muted">'+esc(shLbl(SHIFT))+'</span></div>'
     +CART.map(function(x,i){ return '<div class="row" style="border-top:1px solid var(--line);padding-top:var(--s-1)"><span>'+esc(x.label||x.detail)+' · '+esc(x.op)+' · '+x.qty+' шт → '+(x.paid===false?'<span class="muted">0 р. · оплата за лист — подайте во вкладке «🪚 Раскрой» вместе с листом</span>':(x.sum+' р.'))
       +' <span class="muted" style="font:var(--t-tiny)">'+esc(x.batchName||'')+'</span></span><button class="sm sec" onclick="rmCart('+i+')">✕</button></div>'; }).join('')
     +'</div>';
@@ -798,7 +806,7 @@ function renderTotals(){
   if(CART.length) parts.push(CART.length+' оп.');
   if(nSheets) parts.push(nSheets+' лист(ов)'+(nDet?(' · '+nDet+' дет.'):''));
   var bd=computeBreakdown(total, SHIFT==='ночь');
-  box.innerHTML='<div class="card"><div class="row"><b>В наряде: '+parts.join(' + ')+'</b><span class="muted">'+esc(SHIFT==='ночь'?'🌙 ночь':'☀️ день')+'</span></div>'
+  box.innerHTML='<div class="card"><div class="row"><b>В наряде: '+parts.join(' + ')+'</b><span class="muted">'+esc(shLbl(SHIFT))+'</span></div>'
     +bonusBlockHtml(bd)+(CUTNEEDPICK?'<div class="muted" style="color:var(--amber)">Выберите заказ у отмеченных деталей на вкладке «Раскрой»</div>':'')+'</div>';
   setBar((forOther?('<b style="color:var(--amber)">за '+esc(forWho)+'</b> · '):'')+'<b>'+parts.join(' + ')+'</b> · <b>'+bd.total+' р.</b>'
     +(CUTNEEDPICK?' · <span style="color:var(--amber)">выберите заказ у деталей</span>':''), true);
@@ -824,9 +832,7 @@ function restoreDraft(){
   var d=loadDraft(); if(!d) return;
   DRAFT=d;
   if(d.date){ var el=document.getElementById('wdate'); if(el) el.value=d.date; }
-  if(d.shift){ SHIFT=d.shift;
-    var sd=document.getElementById('shift-day'), sn=document.getElementById('shift-night');
-    if(sd) sd.className=(SHIFT==='день')?'active':''; if(sn) sn.className=(SHIFT==='ночь')?'active':''; }
+  if(d.shift){ SHIFT=d.shift; shMarks(); }
   if(d.cart && d.cart.length){ CART=d.cart; renderCart(); }
   if(d.sheets && d.sheets.length){ SHEETS=d.sheets; for(var i=0;i<SHEETS.length;i++) if(SHEETS[i].uid>UID) UID=SHEETS[i].uid; }
   if(d.addto){ ADDTO=d.addto; ADDINFO=d.addinfo||''; renderAddBanner(); }
@@ -1219,10 +1225,10 @@ function renderPending(r){
       var koefLbl='коэффициент'+(uniK!=null?(uniK!==1?' ×'+uniK:''):' (разный)');
       var ctrls = master
         ? '<div class="row" style="margin:var(--s-2) 0 0;justify-content:flex-start">'
-          +(rp.single?'':'<div class="seg"><button class="'+(night?'':'on')+'" onclick="setRepShift(\''+esc(rid)+'\',\'день\')">☀️ День</button><button class="'+(night?'on':'')+'" onclick="setRepShift(\''+esc(rid)+'\',\'ночь\')">🌙 Ночь</button></div>')
+          +(rp.single?'':shSeg(rp.shift,'setRepShift',rid))
           +'<button class="sm sec" onclick="setRepKoef(\''+esc(rid)+'\','+(uniK!=null?uniK:1)+')">'+koefLbl+'</button>'
           +'<button class="sm sec" onclick="setRepDate(\''+esc(rid)+'\',\''+esc(rp.date)+'\',loadPending)" title="за какой день работа">📅 дата</button></div>'
-        : (night?'<div class="muted" style="font:var(--t-small)">🌙 ночная смена</div>':'');
+        : (rp.shift&&rp.shift!=='день'?'<div class="muted" style="font:var(--t-small)">'+shLbl(rp.shift)+'</div>':'');
       var footer = master
         ? '<div id="bonbox-m-'+bonKey(rid)+'"></div>'
           +'<div class="row" style="margin-top:var(--s-3)" id="acts-m-'+bonKey(rid)+'"><button class="sm sec" onclick="addBonus(\''+esc(rid)+'\',\''+esc(rp.worker)+'\',\'m\')" title="премия рабочему за этот наряд">🎁 + премия</button>'
@@ -1508,7 +1514,7 @@ function renderJournal(){
       var g=groups[gidx[key]]; g.sum+=it.sum; g.lines.push(it);
     });
     lst.innerHTML=groups.map(function(g){
-      var rep=g.lines[0]&&g.lines[0].report||'', night=(g.lines[0]&&g.lines[0].shift==='ночь');
+      var rep=g.lines[0]&&g.lines[0].report||'', gsh=(g.lines[0]&&g.lines[0].shift)||'день', night=(gsh==='ночь');
       var lines=g.lines.map(function(it){
         var koef=kOf(it.koef), kbadge=(koef!==1)?' <span class="muted" style="font:var(--t-small)">×'+koef+'</span>':'';
         var acts = '';
@@ -1544,9 +1550,9 @@ function renderJournal(){
       var bonBtn = (master && !isSub) ? '<button class="sm sec" onclick="addBonus(\''+esc(bonRid)+'\',\''+esc(g.worker)+'\',\'j\')" title="премия за наряд">🎁 + премия</button>' : '';
       var dateBtn = (master && !isSub) ? '<button class="sm sec" onclick="setRepDate(\''+esc(g.key)+'\',\''+esc(g.date)+'\',loadJournal)" title="за какой день работа">📅 дата</button>' : '';
       var shiftCtl = isSub ? '' : (master && !g.single && rep)
-        ? '<div class="row" style="margin:var(--s-2) 0 0;justify-content:flex-start"><div class="seg"><button class="'+(night?'':'on')+'" onclick="setRepShiftJ(\''+esc(rep)+'\',\'день\')">☀️ День</button><button class="'+(night?'on':'')+'" onclick="setRepShiftJ(\''+esc(rep)+'\',\'ночь\')">🌙 Ночь</button></div>'+dateBtn+'</div>'
-        : (master?('<div class="row" style="margin:var(--s-2) 0 0;justify-content:flex-start">'+(night?'<span class="muted" style="font:var(--t-small);margin-right:var(--s-2)">🌙 ночная</span>':'')+dateBtn+'</div>')
-                 : (night?'<div class="muted" style="font:var(--t-small)">🌙 ночная</div>':''));
+        ? '<div class="row" style="margin:var(--s-2) 0 0;justify-content:flex-start">'+shSeg(gsh,'setRepShiftJ',rep)+dateBtn+'</div>'
+        : (master?('<div class="row" style="margin:var(--s-2) 0 0;justify-content:flex-start">'+(gsh!=='день'?'<span class="muted" style="font:var(--t-small);margin-right:var(--s-2)">'+shLbl(gsh)+'</span>':'')+dateBtn+'</div>')
+                 : (gsh!=='день'?'<div class="muted" style="font:var(--t-small)">'+shLbl(gsh)+'</div>':''));
       var effBase=0, gbon=0;
       for(var q=0;q<g.lines.length;q++){ var L=g.lines[q];
         if(L.status==='ждёт ОТК') continue;   // ещё не засчитано — в разбивку наряда не берём
@@ -1566,7 +1572,7 @@ function renderJournal(){
       // дата смены — заметной, как в приёмке и у мастера. Тут ничего не «горит», поэтому без
       // красного: журнал листают, чтобы найти нужный день, а не чтобы поймать просрочку.
       return '<div class="card"><div class="row"><b>'+esc(g.worker)+'</b>'
-        +'<span style="font:var(--t-small)">📅 <b>'+esc(g.date)+'</b> <span class="muted">'+(night?'🌙 ночь':'☀️ день')+'</span></span>'+bonBtn+'</div>'
+        +'<span style="font:var(--t-small)">📅 <b>'+esc(g.date)+'</b> <span class="muted">'+shLbl(gsh)+'</span></span>'+bonBtn+'</div>'
         +'<div class="muted" style="font:var(--t-small)">'+dayLine(g.worker,g.date)
         +(g.submitted?'подан '+esc(g.submitted)+' · ':'')
           +((g.lines||[]).some(isCutLine)?batchTag({kind:'лист'}):((g.lines[0]&&g.lines[0].free)?batchTag(g.lines[0]):esc(g.batch)))
@@ -1733,7 +1739,7 @@ function renderOtkAdd(){
     // ⚠ ДАТА ПРИЁМКИ. Контролёр часто вносит вчерашнюю смену (сдали под вечер, принял утром);
     // без выбора даты работа падала на сегодня и портила табель и «выработку по дням».
     +'<label>Дата приёмки<input id="oa_dt" type="date" value="'+attr(todayIso())+'" max="'+attr(todayIso())+'"></label>'
-    +'<label>Смена<select id="oa_sh"><option value="день">☀️ день</option><option value="ночь">🌙 ночь</option></select></label>'
+    +'<label>Смена<select id="oa_sh"><option value="день">☀️ 1-я смена</option><option value="2 смена">🌇 2-я смена</option><option value="ночь">🌙 ночь</option></select></label>'
     +'<label>Заказ<select id="oa_b">'+bopts+'</select></label>'
     +'<label>Оборудование<select id="oa_e" onchange="otkAddDet()">'+eqs.map(function(e){return opt(e);}).join('')+'</select></label>'
     +'<label>Деталь<select id="oa_d" onchange="otkAddOp()"></select></label>'
@@ -2231,7 +2237,7 @@ function loadMyShifts(){
       var p=s.date.split('-'), lbl=(s.date===today)?'сегодня':(p[2]+'.'+p[1]);
       var st=(s.status==='вышел')?' ✅':(s.status==='не вышел'?' ✖':'');
       return '<span class="pill '+(s.shift==='ночь'?'info':'warn')+'" style="margin:0 var(--s-1) var(--s-1) 0">'
-        +(s.shift==='ночь'?'🌙':'☀️')+' '+lbl+st+(s.group?(' · '+esc(s.group)):'')+'</span>';
+        +shIco(s.shift)+' '+lbl+st+(s.group?(' · '+esc(s.group)):'')+'</span>';
     }).join('');
     // ЗАДАНИЕ. Мастер расставляет работу с вечера, но до сих пор рабочий этого не видел —
     // расстановка оставалась заметкой в таблице. Теперь задание здесь, и его можно взять в наряд.
@@ -2249,7 +2255,7 @@ function loadMyShifts(){
       }).join('');
       task='<div class="card" style="margin-bottom:var(--s-3);background:var(--accent-bg);border-color:transparent">'
         +'<div class="row"><b>📋 Задание '+when+'</b>'
-        +'<span class="muted" style="margin-left:auto">'+(s.shift==='ночь'?'🌙 ночь':'☀️ день')+(s.group?(' · '+esc(s.group)):'')+'</span></div>'
+        +'<span class="muted" style="margin-left:auto">'+shLbl(s.shift)+(s.group?(' · '+esc(s.group)):'')+'</span></div>'
         +rows
         +'<div class="row" style="margin-top:var(--s-2)"><span class="muted" style="flex:1">примерно '+(s.planRub||0)+' р.'
         +((s.factRub>0)?(' · сдано на '+s.factRub+' р.'):'')+'</span>'

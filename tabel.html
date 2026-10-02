@@ -14,7 +14,7 @@
   .mgrid td.nm{ text-align:left; font-weight:600; white-space:nowrap; }
   .mgrid td{ cursor:pointer; transition:background-color .12s var(--ease); -webkit-tap-highlight-color:transparent; }
   .mgrid tr:hover td{ background:var(--accent-bg); }
-  .mgrid tr:hover td.cell-d{ background:var(--heat-over); } .mgrid tr:hover td.cell-n{ background:var(--bar); }
+  .mgrid tr:hover td.cell-d{ background:var(--heat-over); } .mgrid tr:hover td.cell-n{ background:var(--bar); } .mgrid tr:hover td.cell-e{ background:var(--bar); }
   .mgrid col.hl{ background:var(--accent-bg); }
   .mgrid th.hl{ background:var(--accent); color:var(--on-accent); border-radius:var(--r-xs); }
   .mgrid td.nm.hl{ color:var(--accent-text); }
@@ -51,6 +51,8 @@
     .seg.mmode button{ flex:1; min-height:var(--h-ctl); padding:0 var(--s-2); }
   }
   .cell-d, .mgrid td.cell-d{ background:var(--amber-bg); } .cell-n, .mgrid td.cell-n{ background:var(--blue-bg); }
+  /* 2-я смена (владелец 02.10.2026) — между днём и ночью: подложка акцента */
+  .cell-e, .mgrid td.cell-e{ background:var(--accent-bg); }
   .cell-out{ outline:2px solid var(--green); outline-offset:-2px; } .cell-no{ outline:2px solid var(--red); outline-offset:-2px; text-decoration:line-through; }
   /* сводка месяца — плитки темы */
   .tiles{ margin-bottom:var(--s-4); }
@@ -271,7 +273,7 @@ function renderPay(){
       var v=w.byDay[d], cls=(d===todayD?'tdy':(wkd(d)?'wknd':'')), hd=(w.hoursByDay||{})[d], tm=(w.timeIn||{})[d];
       var ttl=(v||hd)?(esc(w.name)+', '+d+' '+esc(mLabel)+(v?(': '+money(v)+' ₽'):'')+(hd?('\n'+(tm?tm+' · ':'')+h1(hd)+' ч'):'')):'';
       return '<td class="'+cls+(v?'':' zero')+'"'+(ttl?(' title="'+ttl+'"'):'')+'>'
-        +(v?(rub(v)+(w.night[d]?'<span class="nn">🌙</span>':'')):'·')+'</td>';
+        +(v?(rub(v)+(w.night[d]?'<span class="nn">🌙</span>':((w.eve||{})[d]?'<span class="nn">🌇</span>':''))):'·')+'</td>';
     }).join('');
     var tip=w.name+' · всего '+money(w.total)+' ₽ за '+w.days+' дн'
       +(w.sheetRub>0?('\nиз них раскрой листов: '+money(w.sheetRub)+' ₽'):'')
@@ -308,7 +310,7 @@ function renderPay(){
       return '<td class="'+(d===todayD?'tdy':(wkd(d)?'wknd':''))+(t?'':' zero')+'">'+(t?rub(t):'·')+'</td>'; }).join('')
     +'</tr></tfoot>';
   var note='<div class="note"><div>В клетках — заработок за день, целыми рублями (точная сумма — при наведении). '
-    +'🌙 — была ночная смена. Колонка «Итого ₽» и строка «ВСЕГО» — с копейками. '
+    +'🌇 — 2-я смена, 🌙 — ночная. Колонка «Итого ₽» и строка «ВСЕГО» — с копейками. '
     +'Колонки «ч» и «₽/ч» — часы по табелю (приход и уход, обед не вычитается) и заработок за час. '
     +'Под именем, если есть непринятое: ✓ подтверждено · ⏳ на проверке у мастера · 🔎 ждёт ОТК · ✖ отклонено.'
     +(hidden>0&&ZONLY?(' Скрыто дней без выработки: '+hidden+'.'):'')+'</div></div>';
@@ -320,7 +322,7 @@ function renderPay(){
   },80);
 }
 
-/* ── МЕСЯЦ: график расставляется кликами по клеткам (пусто → ☀️ день → 🌙 ночь → пусто) ── */
+/* ── МЕСЯЦ: график расставляется кликами по клеткам (пусто → ☀️ 1-я → 🌇 2-я → 🌙 ночь → пусто) ── */
 var YM=isoToday().slice(0,7);
 var M=null;   // {ym, days, mon, map{worker|day→entry}, workers}
 function shiftMonth(d){ var p=YM.split('-'); var dt=new Date(Number(p[0]),Number(p[1])-1+d,1); YM=dt.getFullYear()+'-'+pad2(dt.getMonth()+1); loadMonth(); }
@@ -369,14 +371,14 @@ function renderMonth(){
       var cls='', txt='', tip='';
       if(sh){ cnt++;
         var out=(st==='вышел'), no=(st==='не вышел');
-        cls=(sh==='ночь'?'cell-n':'cell-d')+(out||(did&&!no)?' cell-out':(no?' cell-no':''));
+        cls=(sh==='ночь'?'cell-n':(sh==='2 смена'?'cell-e':'cell-d'))+(out||(did&&!no)?' cell-out':(no?' cell-no':''));
         // значок смены остаётся (день это был или ночь — важно для надбавки), факт добавляется меткой
-        txt=(sh==='ночь'?'🌙':'☀️')
+        txt=(sh==='ночь'?'🌙':(sh==='2 смена'?'🌇':'☀️'))
            +(out?'<b class="fk ok">✓</b>'
              :(no?('<b class="fk no">✕</b>'+(did?'<b class="fk warn">!</b>':''))
                :(did?'<b class="fk auto">✓</b>':'')));
         if(out||did) was++;
-        tip=' '+esc(sh)+(st&&st!=='план'?' · '+esc(st):'')
+        tip=' '+esc(sh==='день'?'1-я смена':(sh==='2 смена'?'2-я смена':'ночь'))+(st&&st!=='план'?' · '+esc(st):'')
            +(did?(no?' · ⚠ но за этот день подан наряд':(out?'':' · был на работе (есть наряд)')):'');
       } else if(did){                       // наряд есть, а смены в графике нет — тоже был на работе
         cnt++; was++;
@@ -394,7 +396,7 @@ function renderMonth(){
   var legend='<div class="note"><div>'
     +(MMODE==='fact'
       ? 'Клик по клетке: <b>по графику → ✓ вышел → ✕ не вышел</b>. Смену в этом режиме не меняем — только факт.'
-      : 'Клик по клетке: ☀️ день → 🌙 ночь → пусто · зелёная рамка — вышел, красная — не вышел · серые колонки — выходные, розовые — праздники')
+      : 'Клик по клетке: ☀️ 1-я смена → 🌇 2-я смена → 🌙 ночь → пусто · зелёная рамка — вышел, красная — не вышел · серые колонки — выходные, розовые — праздники')
     +'<div style="margin-top:var(--s-1)">Бледная <b class="fk auto" style="font:var(--t-small);font-weight:600">✓</b> — отметки нет, но за этот день подан наряд: значит был на работе. Зелёная клетка без солнышка — наряд есть, а смена в графике не проставлена. <b class="fk warn" style="font:var(--t-small);font-weight:600">!</b> — отмечен «не вышел», но наряд есть.</div>'
     +'</div></div>';
   $('pane').innerHTML='<div class="toolbar"><div class="pnav"><button onclick="shiftMonth(-1)">‹</button><span class="lbl">'+esc(MN[mo-1]+' '+y)+'</span><button onclick="shiftMonth(1)">›</button></div>'
@@ -440,7 +442,7 @@ function monthCellClick(ev){
     bgSave({vapi:'tabelfact',date:YM+'-'+pad2(d),worker:w,status:nf,tgid:TGID});
     return;
   }
-  var next=(sh==='')?'день':(sh==='день'?'ночь':'');
+  var next=(sh==='')?'день':(sh==='день'?'2 смена':(sh==='2 смена'?'ночь':''));
   // по смене уже отмечен ФАКТ выхода: снятие удалило бы строку вместе с фактом — не пускаем
   if(next==='' && st && st!=='план'){
     alert(w+' '+d+'.'+M.mon+': выход уже отмечен («'+st+'»). Чтобы снять смену, переключитесь в «✅ Отмечаю выход», верните клетку в «план» и снимите смену.');
