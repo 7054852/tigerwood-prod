@@ -161,16 +161,9 @@ function cardHtml(c){
       +c.ops.map(function(o){ return '<tr><td>'+esc(o.op)+'</td><td class="n">'+m0(o.qty)+' шт</td>'
         +'<td class="n">'+money(o.ourPrice)+' ₽/шт</td><td class="n"><b>'+money(o.price)+' ₽/шт</b></td>'
         +'<td class="n">'+money(o.sub)+' ₽</td><td class="muted">'+esc(o.last)+'</td></tr>'; }).join('')
-      +'</tbody></table></div></div>'
-    : '<div class="box muted">Работ по этому подрядчику ещё не записано.</div>';
-
-  var det=(c.details||[]).length
-    ? '<div class="box"><div class="sect"><b>По деталям</b></div>'
-      +'<div class="tbl-wrap tw"><table class="tbl sm w"><thead><tr><th>Деталь</th><th>Операция</th><th class="n">Шт</th>'
-      +'<th class="n">Наша расценка</th><th class="n">Цена подрядчика</th></tr></thead><tbody>'
-      +c.details.map(function(x){ return '<tr><td>'+esc(x.detail)+'</td><td>'+esc(x.op)+'</td><td class="n">'+m0(x.qty)+'</td>'
-        +'<td class="n">'+money(x.ourPrice)+' ₽/шт</td><td class="n">'+money(x.price)+' ₽/шт</td></tr>'; }).join('')
-      +'</tbody></table></div></div>' : '';
+      +'</tbody></table></div>'+detHtml(c)+'</div>'
+    : '<div class="box muted">Работ по этому подрядчику ещё не записано.'+detHtml(c)+'</div>';
+  var det='';
 
   var fl=c.flow||{rows:[],journal:[]};
   var outRows=(fl.rows||[]).filter(function(x){ return x.out>0; });
@@ -183,11 +176,12 @@ function cardHtml(c){
       +sum(ft.diff>=0?'сэкономили':'переплатили', money(Math.abs(ft.diff||0))+' ₽',ft.diff>=0?'ok':'debt')
     +'</div>'
     +(outRows.length
-      ? '<div class="tbl-wrap tw"><table class="tbl sm w"><thead><tr><th>Заказ</th><th>Деталь · операция</th><th class="n">Отдано</th><th class="n">Привёз</th><th class="n">На руках</th><th class="n">Наша расценка</th><th>Отдано</th><th class="noprint"></th></tr></thead><tbody>'
+      ? '<div class="tbl-wrap tw"><table class="tbl sm w"><thead><tr><th>Заказ</th><th>Деталь · операция</th><th class="n">Отдано</th><th class="n">Привёз</th><th class="n">На руках</th><th class="n">Наша расценка</th><th class="n">Цена подрядчика</th><th>Отдано</th><th class="noprint"></th></tr></thead><tbody>'
         +outRows.map(function(x,i){ return '<tr><td>'+esc(x.batch)+'</td><td>'+esc(x.detail)+' · '+esc(x.op)+'</td>'
           +'<td class="n">'+m0(x.given)+'</td><td class="n">'+m0(x.ship)+'</td><td class="n"><b>'+m0(x.out)+'</b></td>'
-          +'<td class="n">'+money(x.rate)+' ₽/шт · '+money(x.outRub)+' ₽</td><td class="muted">'+esc(x.lastGive)+'</td>'
-          +'<td class="noprint"><button class="sm" onclick="openShip('+i+')">📥 Принять</button> <button class="sm sec" onclick="openGive('+i+')">📤 Ещё</button></td></tr>'; }).join('')
+          +'<td class="n">'+money(x.rate)+' ₽/шт · '+money(x.outRub)+' ₽</td>'+cpriceCell(x)+'<td class="muted">'+esc(x.lastGive)+'</td>'
+          +'<td class="noprint"><button class="sm" onclick="openShip('+i+')">📥 Принять</button> <button class="sm sec" onclick="openGive('+i+')">📤 Ещё</button>'
+          +' <button class="sm sec" onclick="openPriceRow('+i+')" title="Изменить цену подрядчика">₽ цена</button></td></tr>'; }).join('')
         +'</tbody></table></div>'
       : '<div class="hint">Отдать детали можно кнопкой «📤 Передать детали» или из ведомости передачи.</div>')
     +'</div>';
@@ -213,7 +207,15 @@ function goLedger(){
 // ── принять детали от подрядчика: та же запись подряда, что и в ведомости (apiSubconAdd)
 function flowRow(i){ var fl=(D.card&&D.card.flow)||{rows:[]}; return (fl.rows||[]).filter(function(x){ return x.out>0; })[i]||null; }
 var SBM=0;   // сумму правили руками — больше не пересчитывать от количества
-function lastPrice(x){ var pr=(D.card&&D.card.prices)||{}; var k=String(x.detail||'').toLowerCase().replace(/ё/g,'е').replace(/\s+/g,' ').trim(); return pr[k]||null; }
+function nk(s){ return String(s||'').toLowerCase().replace(/ё/g,'е').replace(/\s+/g,' ').trim(); }
+// цена подрядчика для приёмки: договорная («деталь|операция») → «как в прошлый раз» по той же операции (торцы и финиш — разные цены)
+function lastPrice(x){ var pr=(D.card&&D.card.prices)||{}; return pr[nk(x.detail)+'|'+nk(x.op)]||null; }
+function priceHint(lp){ if(!lp) return '<div class="hint">цену подрядчика за эту деталь и операцию ещё не вводили — задайте договорную («₽ цена») или после первой приёмки запомнится</div>';
+  return lp.src==='contract'?'<div class="hint">договорная цена <b>'+money(lp.price)+' ₽/шт</b> (с '+esc(lp.date)+(lp.by?(', '+esc(lp.by)):'')+') — подставил, можно поправить</div>'
+    :'<div class="hint">в прошлый раз платили <b>'+money(lp.price)+' ₽/шт</b> ('+esc(lp.date)+') — подставил, можно поправить</div>'; }
+function cpriceCell(x){ var lp=lastPrice(x); if(!lp) return '<td class="n muted">—</td>';
+  return '<td class="n"'+(lp.src==='contract'?'':' title="договорной цены нет — как в прошлый раз"')+'><b>'+money(lp.price)+' ₽/шт</b> · '+money(x.out*lp.price)+' ₽'
+    +(lp.src==='contract'?'':' <span class="pill muted">прошлая</span>')+'<div class="muted">за отданное '+money(x.given*lp.price)+' ₽</div></td>'; }
 function openShip(i){
   var x=flowRow(i); if(!x) return;
   var nm=D.card.supplier.name, lp=lastPrice(x); SBM=0;
@@ -221,7 +223,7 @@ function openShip(i){
     +'<div class="hint">'+esc(x.batch)+' · '+esc(x.detail)+' · '+esc(x.op)+' · на руках '+m0(x.out)+' шт</div>'
     +'<label>Привезли, шт<input id="sb_q" type="number" min="0" inputmode="numeric" value="'+m0(x.out)+'" oninput="shipQty('+i+','+(x.rate||0)+')"></label>'
     +'<label>Платим подрядчику за это, ₽ (по его цене)<input id="sb_s" type="number" min="0" step="0.01" inputmode="decimal" value="'+(lp?(Math.round(m0(x.out)*lp.price*100)/100):'')+'" oninput="SBM=1;shipCalc('+(x.rate||0)+')"></label>'
-    +(lp?'<div class="hint">в прошлый раз платили <b>'+money(lp.price)+' ₽/шт</b> ('+esc(lp.date)+') — подставил, можно поправить</div>':'<div class="hint">цену подрядчика за эту деталь ещё не вводили — после первой приёмки запомнится</div>')
+    +priceHint(lp)
     +shipChainHtml(x)
     +'<div class="hint" id="sb_sum">по нашей расценке '+money((x.out||0)*(x.rate||0))+' ₽</div>'
     +'<label>Дата<input id="sb_d" type="date" value="'+isoToday()+'"></label>'
@@ -284,6 +286,74 @@ function delShip(i){
   var j=jrow(i); if(!j||!j.id) return;
   if(!confirm('Удалить приёмку '+j.date+': '+j.detail+' · '+j.op+' · '+m0(j.qty)+' шт?\n\nЗаказ откатится на эту работу, долг подрядчика уменьшится на '+money(j.sum)+' ₽.')) return;
   api({vapi:'subcondel',id:j.id}).then(function(r){ if(!r||!r.ok){ alert((r&&r.error)||'не удалено'); return; } load(); });
+}
+// ── договорная цена подрядчика (деталь × операция) и пересчёт уже принятого — apiSubconPrice; наша расценка и заказ не меняются
+function contractList(){ var pr=(D.card&&D.card.prices)||{}, a=[]; for(var k in pr) if(pr[k]&&pr[k].src==='contract') a.push(pr[k]); return a; }
+function detHtml(c){
+  var rows=(c.details||[]).map(function(x){ return {detail:x.detail,op:x.op,qty:x.qty,ourPrice:x.ourPrice,price:x.price}; });
+  contractList().forEach(function(p){ if(!rows.some(function(r){ return nk(r.detail)===nk(p.detail)&&nk(r.op)===nk(p.op); })) rows.push({detail:p.detail,op:p.op,qty:0,ourPrice:null,price:null}); });
+  if(!rows.length) return '';
+  PRW=rows;
+  return '<div class="sect"><b>По деталям</b> <span class="muted">договорная цена подставится в приёмку вместо «как в прошлый раз»</span></div>'
+    +'<div class="tbl-wrap tw"><table class="tbl sm w"><thead><tr><th>Деталь</th><th>Операция</th><th class="n">Шт</th>'
+    +'<th class="n">Наша расценка</th><th class="n">Платили в среднем</th><th class="n">Договорная цена</th><th class="noprint"></th></tr></thead><tbody>'
+    +rows.map(function(x,i){ var cp=lastPrice(x); cp=cp&&cp.src==='contract'?cp:null;
+      return '<tr><td>'+esc(x.detail)+'</td><td>'+esc(x.op)+'</td><td class="n">'+(x.qty?m0(x.qty):'')+'</td>'
+        +'<td class="n">'+(x.ourPrice!=null?(money(x.ourPrice)+' ₽/шт'):'')+'</td><td class="n">'+(x.price!=null?(money(x.price)+' ₽/шт'):'')+'</td>'
+        +'<td class="n">'+(cp?('<b>'+money(cp.price)+' ₽/шт</b><div class="muted">с '+esc(cp.date)+'</div>'):'<span class="muted">нет</span>')+'</td>'
+        +'<td class="noprint"><button class="sm sec" onclick="openPriceDet('+i+')" title="Изменить цену подрядчика">✎ цена</button></td></tr>'; }).join('')
+    +'</tbody></table></div>';
+}
+var PRW=[], PR=null;   // PR — открытое окно цены: {detail, op, batchId, batch, rows}
+function openPriceRow(i){ var x=flowRow(i); if(x) openPrice({detail:x.detail,op:x.op,batchId:x.batchId,batch:x.batch}); }
+function openPriceDet(i){ var x=PRW[i]; if(x) openPrice({detail:x.detail,op:x.op,batchId:'',batch:''}); }
+function openPrice(p){
+  var nm=D.card.supplier.name, lp=lastPrice(p), cur=lp&&lp.src==='contract'?lp.price:'';
+  PR=p; PR.rows=null;
+  ovOpen('<b>₽ Цена '+esc(nm)+'</b> <span class="mvclose" onclick="ovClose()">✕</span>'
+    +'<div class="hint">'+(p.batch?(esc(p.batch)+' · '):'')+esc(p.detail)+' · '+esc(p.op)+'</div>'
+    +'<div class="hint">'+(cur!==''?('сейчас договорная <b>'+money(cur)+' ₽/шт</b> (с '+esc(lp.date)+')'):(lp?('договорной нет; в прошлый раз '+money(lp.price)+' ₽/шт'):'договорной цены пока нет'))+'</div>'
+    +'<label>Новая цена подрядчика, ₽/шт<input id="pr_p" type="number" min="0" step="0.01" inputmode="decimal" value="'+(cur!==''?cur:(lp?lp.price:''))+'" oninput="priceCalc()"></label>'
+    +'<div id="pr_acc" class="hint">считаю принятое…</div><div id="pr_paid" class="note warn" style="display:none"></div>'
+    +'<label class="chkrow" id="pr_rl" style="display:none"><input type="checkbox" id="pr_r" onchange="priceCalc()"><span class="op">Пересчитать уже принятое</span><span class="nums" id="pr_rn"></span></label>'
+    +'<div id="pr_tot" class="note" style="display:none"></div>'
+    +'<div class="hint">Меняется только то, сколько должны подрядчику. Наша расценка, движение заказа и себестоимость остаются как были.</div>'
+    +'<div class="row" style="margin-top:var(--s-3)"><button id="pr_go" onclick="priceGo()">Сохранить цену</button><button class="sec" onclick="ovClose()">Отмена</button>'
+    +(cur!==''?'<button class="sec" onclick="priceGo(1)" title="убрать договорную — в приёмку снова пойдёт «как в прошлый раз»">снять договорную</button>':'')
+    +'<span class="msg" id="pmsg"></span></div>');
+  api({vapi:'subconprice',data:JSON.stringify({contractor:nm,detail:p.detail,op:p.op,batch:p.batchId,price:(cur!==''?cur:1),dry:1})}).then(function(r){
+    if(PR!==p) return;
+    if(!r||!r.ok){ omsg('pr_acc','<span class="err">'+esc((r&&r.error)||'не посчитано')+'</span>'); return; }
+    PR.rows=r.rows||[]; PR.pay={payments:r.payments,debt:r.debt}; priceCalc();
+  }).catch(function(e){ omsg('pr_acc','<span class="err">сеть: '+esc(e.message)+'</span>'); });
+}
+function priceCalc(){
+  if(!PR||!PR.rows) return;
+  var p=num(($('pr_p')||{}).value), rs=PR.rows, chk=$('pr_r'), rl=$('pr_rl');
+  var q=0,s=0,pq=0,ps=0,uq=0,us=0,nw=0;
+  rs.forEach(function(r){ q+=r.qty; s+=r.sum; if(r.paid>0.005){ pq+=r.qty; ps+=r.sum; } else { uq+=r.qty; us+=r.sum; nw+=Math.round(r.qty*p*100)/100; } });
+  var where=PR.batch?'по этой строке':'по этой детали и операции (все заказы)';
+  omsg('pr_acc',rs.length?('Уже принято '+where+': <b>'+m0(q)+' шт</b> на <b>'+money(s)+' ₽</b> ('+plural(rs.length,'приёмка','приёмки','приёмок')+')'
+    )
+    :('По этой '+(PR.batch?'строке':'детали и операции')+' ещё ничего не принято — цена подставится в следующие приёмки.'));
+  var pd=$('pr_paid'); pd.style.display=pq?'':'none';
+  pd.innerHTML='<div><b>'+m0(pq)+' шт на '+money(ps)+' ₽ уже оплачены</b> — их не пересчитываю. Оплаты из Фин.гения ('+money(PR.pay.payments)+' ₽) закрывают приёмки по порядку дат. Чтобы поменять оплаченное — сначала снимите оплату в Фин.гении.</div>';
+  if(!uq){ rl.style.display='none'; chk.checked=false; } else { rl.style.display=''; omsg('pr_rn','неоплачено '+m0(uq)+' шт · '+money(us)+' ₽'); }
+  var t=$('pr_tot');
+  if(chk.checked&&uq&&p>0){ var was=s, will=s-us+nw, dz=Math.round((will-was)*100)/100;
+    t.style.display=''; t.innerHTML='<div>Было <b>'+money(was)+' ₽</b> → станет <b>'+money(will)+' ₽</b>, долг '+(dz>=0?'вырастет':'уменьшится')+' на <b>'+money(Math.abs(dz))+' ₽</b>'+(PR.batch?' (только этот заказ)':'')+'</div>';
+  } else t.style.display='none';
+}
+function priceGo(clear){
+  if(!PR) return;
+  var p=num(($('pr_p')||{}).value); if(!clear&&!(p>0)){ omsg('pmsg','<span class="err">укажите цену</span>'); return; }
+  var b=$('pr_go'); if(b){ b.disabled=true; b.textContent='…'; }
+  var rc=!clear&&!!(($('pr_r')||{}).checked);
+  apiPost({vapi:'subconprice',data:JSON.stringify({contractor:D.card.supplier.name,detail:PR.detail,op:PR.op,batch:PR.batchId,price:clear?'':p,recalc:rc})}).then(function(r){
+    if(b){ b.disabled=false; b.textContent='Сохранить цену'; }
+    if(!r||!r.ok){ omsg('pmsg','<span class="err">'+esc((r&&r.error)||'не сохранено')+'</span>'); return; }
+    ovClose(); msg('<span class="ok">'+(clear?'договорная цена снята':('цена '+money(r.price)+' ₽/шт сохранена'+(rc?(' · долг '+(r.delta>=0?'+':'−')+money(Math.abs(r.delta))+' ₽'):'')))+'</span>'); load();
+  }).catch(function(e){ if(b){ b.disabled=false; b.textContent='Сохранить цену'; } omsg('pmsg','<span class="err">сеть: '+esc(e.message)+'</span>'); });
 }
 function isoOfRu(s){ var p=String(s||'').split('.'); return p.length===3?(p[2]+'-'+p[1]+'-'+p[0]):isoToday(); }
 function delGive(i){
