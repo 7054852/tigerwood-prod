@@ -1010,6 +1010,10 @@ function renderMySummary(r){
   var box=document.getElementById('mysum'); if(!box) return;
   (function(){
     var items=(r&&r.items)||[], pr=(r&&r.payroll)||[], zp=pr.length?pr[0].sum:0;
+    // ещё не принятое за месяц — по статусу строки (sum есть у всех строк журнала); подряд — не зарплата
+    var pend=0, qcs=0;
+    items.forEach(function(it){ if(it.kind==='подряд') return;
+      if(it.status==='на проверке') pend+=Number(it.sum)||0; else if(it.status==='ждёт ОТК') qcs+=Number(it.sum)||0; });
     var recent=items.slice(0,5).map(function(it){ return '<div class="row"><span class="muted">'+esc(it.date)+' · '+esc(it.op)+' · '+it.qty+'шт</span><span class="'+(it.status==='подтверждено'?'ok':(it.status==='отклонено'?'err':'muted'))+'">'+it.sum+'р · '+esc(it.status)+'</span></div>'; }).join('');
     // часы за месяц по табелю: рабочий видит, за сколько часов эти деньги
     var hh=0, hk=(r&&r.hours)||{};
@@ -1017,6 +1021,8 @@ function renderMySummary(r){
     hh=Math.round(hh*10)/10;
     box.innerHTML='<div class="card"><div class="row"><b>💰 Ваша ЗП за месяц (подтв.)</b><b class="ok">'+zp+' руб.'
       +(hh?(' <span class="muted">/ '+String(hh).replace('.',',')+' ч'+(zp?(' · '+(Math.round(zp/hh*100)/100)+' р/ч'):'')+'</span>'):'')+'</b></div>'
+      +((pend||qcs)?('<div class="row"><span class="muted">ещё не принято</span><span class="warn">'
+        +(pend?('на проверке <b>'+rub2(pend)+' р</b>'):'')+((pend&&qcs)?' · ':'')+(qcs?('ждёт ОТК <b>'+rub2(qcs)+' р</b>'):'')+'</span></div>'):'')
       +(recent?'<div class="muted" style="margin-top:var(--s-2)">Последние отчёты:</div>'+recent:'<div class="muted" style="margin-top:var(--s-2)">пока нет отчётов</div>')+'</div>';
   })();
 }
@@ -1511,7 +1517,7 @@ function renderJournal(){
             ? ('🎁 <b>Премия</b>'+(it.note?(' — '+esc(it.note)):''))
             : kindBadge(it)+esc(it.detail)+' · '+esc(it.op)+' · '+it.qty+' шт'+kbadge;
         var money = (it.status==='ждёт ОТК')
-          ? '<span class="muted">🔎 ждёт приёмку ОТК</span>'
+          ? '<span class="muted">'+it.sum+' р · 🔎 ждёт ОТК</span>'
           : '<span class="'+(it.paid===false?'muted':'ok')+'">'+(it.paid===false?'0 р · '+payNote(it):(it.sum+' р'))+'</span>';
         // след приёмки: кто принял и сколько вернул — видно и рабочему, и мастеру
         var qc = it.qcBy
@@ -2249,13 +2255,14 @@ function timeLine(w,dRu,t,canEdit){
 function dayLine(w,dRu){
   var t=((JRESP&&JRESP.hours)||{})[tKey(w,dRu)]||{'in':'',out:'',h:0};
   if(!t['in']) return '';
-  var sum=0,pend=0;
+  var sum=0,pend=0,qc=0;
   ((JRESP&&JRESP.items)||[]).forEach(function(x){ if(x.worker!==w||x.date!==dRu) return;
-    if(x.status==='подтверждено') sum+=Number(x.sum)||0; else if(x.status!=='отклонено') pend+=Number(x.sum)||0; });
+    if(x.status==='подтверждено') sum+=Number(x.sum)||0; else if(x.status==='на проверке') pend+=Number(x.sum)||0; else if(x.status==='ждёт ОТК') qc+=Number(x.sum)||0; });
   sum=Math.round(sum*100)/100;
   var s='🕘 '+t['in']+(t.out?('–'+t.out):'')+(t.h?(' · <b>'+hFmt(t.h)+'</b>'):' · уход не отмечен');
   if(sum) s+=' · за день <b>'+rub2(sum)+' р</b>'+(t.h?(' · '+rub2(Math.round(sum/t.h*100)/100)+' р/ч'):'');
   if(pend) s+=' <span class="warn">+'+rub2(pend)+' р на проверке</span>';
+  if(qc) s+=' <span class="warn">+'+rub2(qc)+' р ждёт ОТК</span>';
   return s+' · ';
 }
 function editDayTime(w,dRu){

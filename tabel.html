@@ -93,9 +93,14 @@
   table.pay tfoot .nmc{ background:var(--bg2); z-index:6; }
   table.pay tfoot .totc{ background:var(--green-bg); z-index:6; }
   table.pay .nn{ font:var(--t-tiny); opacity:.75; }
-  table.pay .sub{ display:block; font:var(--t-tiny); font-weight:400; color:var(--muted); line-height:1.1; margin-top:calc(-1 * var(--s-1)); }
-  .pnd{ display:inline-block; margin-left:var(--s-1); font:var(--t-tiny); font-weight:600; color:var(--amber);
-    background:var(--amber-bg); border-radius:var(--r-pill); padding:0 var(--s-1); vertical-align:1px; }
+  /* .sub темы — подзаголовок с отступом снизу 24px; в клетке таблицы он давал пустую полосу под строкой «ср ₽/день» */
+  table.pay .sub{ display:block; font:var(--t-tiny); font-weight:400; color:var(--muted); line-height:1.1; margin-top:calc(-1 * var(--s-1)); margin-bottom:0; }
+  /* строка «подтверждено · на проверке · ждёт ОТК · отклонено» под именем: цвета — как плитки сверху */
+  table.pay .sub.stl{ margin-top:0; white-space:normal; }
+  table.pay .stl .ok{ color:var(--green); } table.pay .stl .pnd{ color:var(--blue); }
+  table.pay .stl .qcw{ color:var(--amber); } table.pay .stl .rej{ color:var(--red); }
+  table.pay .stl b{ font-weight:600; }
+  table.pay .stl > span{ white-space:nowrap; }   /* на телефоне переносим между суммами, а не внутри «🔎 163,00» */
 </style>
 </head>
 <body>
@@ -234,7 +239,13 @@ function renderPay(){
     +'</div>'+PLANNOTE;
   var tile=function(t,v,st,tip){ return '<div class="tile"><div class="t">'+t+'</div><div class="v"'+(st?(' style="color:'+st+'"'):'')+(tip?(' title="'+tip+'"'):'')+'>'+v+'</div></div>'; };
   var tiles='<div class="tiles">'
-      +tile('Зарплата за месяц (подтверждено)', money(r.grand)+' <small>₽</small>', 'var(--green)')
+      // «подано» = подтверждено + на проверке + ждёт ОТК (отклонённое не входит): сколько работы заявлено за месяц,
+      // чтобы прикинуть зарплату до приёмки. Суммы по статусам сервер отдаёт только в Прохабе; GAS их не знает — ||0.
+      +tile('Подано за месяц', money(r.submitted||0)+' <small>₽</small>', '', 'подтверждено + на проверке + ждёт ОТК; отклонённое не входит')
+      +tile('Подтверждено', money(r.grand)+' <small>₽</small>', 'var(--green)', 'принято мастером и ОТК — идёт в зарплату')
+      +((r.pendingTotal||0)>0?tile('На проверке', money(r.pendingTotal)+' <small>₽</small>', 'var(--blue)', 'у мастера: количество ещё не принято'):'')
+      +((r.qcTotal||0)>0?tile('Ждёт ОТК', money(r.qcTotal)+' <small>₽</small>', 'var(--amber)', 'количество принято, качество ещё не проверено'):'')
+      +((r.rejectedTotal||0)>0?tile('Отклонено', money(r.rejectedTotal)+' <small>₽</small>', 'var(--red)', 'мастер отклонил — в зарплату и в «подано» не входит'):'')
       +tile('Рабочих', r.workers.length)
       +tile('В среднем на человека', money(avgPer)+' <small>₽</small>')
       +(bestD?tile('Лучший день', money(bestV)+' <small>₽ · '+bestD+'.'+ym[1]+'</small>'):'')
@@ -242,7 +253,6 @@ function renderPay(){
       +(r.freeTotal>0?tile('Из них вне заказа', money(r.freeTotal)+' <small>₽</small>', 'var(--accent-text)'):'')
       +(r.hoursTotal>0?tile('Часов всего', h1(r.hoursTotal)+' <small>ч</small>', '', 'приход и уход из табеля: часы = уход − приход, обед не вычитается'):'')
       +(r.hoursTotal>0?tile('В среднем ₽/час', money(Math.round(r.grand/r.hoursTotal*100)/100)+' <small>₽</small>'):'')
-      +(r.pendingTotal>0?tile('Ждёт подтверждения', money(r.pendingTotal)+' <small>₽</small>', 'var(--amber)'):'')
     +'</div>';
   if(!r.workers.length){ $('pane').innerHTML=top+tiles+'<div class="empty">За этот месяц подтверждённой выработки нет.</div>'; return; }
   // ⚠ Инициал вместо второго слова терял ФАМИЛИЮ у половины людей: в «Работниках» имя записано
@@ -269,8 +279,17 @@ function renderPay(){
       +(w.bonusRub>0?('\nпремии: '+money(w.bonusRub)+' ₽'):'')
       +(w.timeRub>0?('\nповременно: '+money(w.timeRub)+' ₽'):'')
       +(w.hours>0?('\nчасов по табелю: '+h1(w.hours)+' ч'+(w.rubPerHour>0?(' · '+money(w.rubPerHour)+' ₽/час'):'')):'');
+    if((w.pending||0)>0) tip+='\nна проверке у мастера: '+money(w.pending)+' ₽';
+    if((w.qc||0)>0) tip+='\nждёт ОТК: '+money(w.qc)+' ₽';
+    if((w.rejected||0)>0) tip+='\nотклонено: '+money(w.rejected)+' ₽';
+    // по статусам (только если есть непринятое): подтверждено · на проверке · ждёт ОТК · отклонено; на телефоне переносится на две строки
+    var pnd=w.pending||0, qcw=w.qc||0, rej=w.rejected||0;
+    var stl=(pnd>0||qcw>0||rej>0)?('<span class="sub stl" title="подтверждено · на проверке у мастера · ждёт ОТК · отклонено">'
+        +'<span class="ok">✓ <b>'+money(w.total)+'</b></span>'
+        +(pnd>0?' · <span class="pnd">⏳ <b>'+money(pnd)+'</b></span>':'')
+        +(qcw>0?' · <span class="qcw">🔎 <b>'+money(qcw)+'</b></span>':'')
+        +(rej>0?' · <span class="rej">✖ <b>'+money(rej)+'</b></span>':'')+'</span>'):'';
     return '<tr><td class="nmc" title="'+esc(tip)+'">'+esc(shortName(w.name))
-        +(w.pending>0?'<span class="pnd" title="на проверке у мастера">+'+money(w.pending)+'</span>':'')
         // ⚠ раскрой листов — это НЕ «вне заказа»: работа по заказу есть, просто оплата идёт за лист,
         // а не за детали (детали с листа уходят в разные заказы). Раньше он в подписи не показывался
         // вовсе, и треть зарплаты раскройщика выглядела как деньги ниоткуда.
@@ -278,7 +297,7 @@ function renderPay(){
           // словами не помещается (замер: нужно 269px, есть 216) и обрезается ровно на цифрах —
           // оставляем значки, расшифровка полностью в подсказке на имени
           +(w.sheetRub>0?('<span class="pt"> · </span><span class="pc">🪚 '+money(w.sheetRub)+'</span>'):'')
-          +(w.freeRub>0?('<span class="pt"> · </span><span class="pc">🧰 '+money(w.freeRub)+'</span>'):'')+'</span></td>'
+          +(w.freeRub>0?('<span class="pt"> · </span><span class="pc">🧰 '+money(w.freeRub)+'</span>'):'')+'</span>'+stl+'</td>'
       +'<td class="totc">'+money(w.total)+'</td><td>'+w.days+'</td>'
       +'<td'+(w.hours>0?'':' class="zero"')+'>'+(w.hours>0?h1(w.hours):'·')+'</td>'
       +'<td'+(w.rubPerHour>0?'':' class="zero"')+'>'+(w.rubPerHour>0?money(w.rubPerHour):'·')+'</td>'+tds+'</tr>';
@@ -290,7 +309,8 @@ function renderPay(){
     +'</tr></tfoot>';
   var note='<div class="note"><div>В клетках — заработок за день, целыми рублями (точная сумма — при наведении). '
     +'🌙 — была ночная смена. Колонка «Итого ₽» и строка «ВСЕГО» — с копейками. '
-    +'Колонки «ч» и «₽/ч» — часы по табелю (приход и уход, обед не вычитается) и заработок за час.'
+    +'Колонки «ч» и «₽/ч» — часы по табелю (приход и уход, обед не вычитается) и заработок за час. '
+    +'Под именем, если есть непринятое: ✓ подтверждено · ⏳ на проверке у мастера · 🔎 ждёт ОТК · ✖ отклонено.'
     +(hidden>0&&ZONLY?(' Скрыто дней без выработки: '+hidden+'.'):'')+'</div></div>';
   $('pane').innerHTML=top+note+tiles+'<div class="tbl-wrap paywrap" id="paywrap"><table class="tbl pay">'+cg+th+body+ft+'</table></div>';
   setTimeout(function(){   // прокрутить к сегодняшнему дню; если его нет — к последним дням с работой
