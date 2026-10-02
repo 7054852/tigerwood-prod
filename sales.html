@@ -130,7 +130,7 @@
   <div id="editPanel" class="blk hide">
     <div class="h"><span id="editTtl">✏️ Редактирование сделки</span> <span class="sp" id="editClose"><button class="gray sm" onclick="toggleEdit()">закрыть</button></span></div>
     <label class="fl" id="numWrap"><span class="sm">№ заказа — только цифры; менять может администратор или директор (сохранение переименует сделку в amoCRM)</span><input id="e_num" placeholder="2512" inputmode="numeric" autocomplete="off"></label>
-    <label class="fl"><span class="sm">Клиент (название / ФИО)</span><input id="e_client" list="clientList" autocomplete="off" placeholder="начните вводить — подставится из справочника"><datalist id="clientList"></datalist></label>
+    <label class="fl"><span class="sm">Клиент (название / ФИО)</span><input id="e_client" list="clientList" autocomplete="off" placeholder="начните вводить — подставится из справочника" onchange="onDealClient()"><datalist id="clientList"></datalist></label>
     <div class="row" style="margin-top:var(--s-2)">
       <div id="ctypeWrap" class="hide"><span class="sm">Тип клиента</span><select id="e_ctype" onchange="fillClientList()"><option value="юрлицо">юрлицо</option><option value="ИП">ИП</option><option value="физлицо">физлицо</option></select></div>
       <div id="typeWrap"><span class="sm">Опт/розница</span><select id="e_type"><option value="розница">розница</option><option value="опт">опт</option></select></div>
@@ -431,6 +431,9 @@ function matchedBuyer_(name, ul){
   for(var i=0;i<BUYERS.length;i++){ var nm=(ul?buyerName_(BUYERS[i]):buyerFio_(BUYERS[i])).toLowerCase(); if(nm&&nm===name) return BUYERS[i]; }
   return null;
 }
+/** новая сделка: клиент из справочника → валюта позиций по его рынку (РФ — ₽ по курсу сайта, Европа — EUR), 02.10.2026 */
+function onDealClient(){ var b=matchedBuyer_(val('e_client'), val('e_ctype')!=='физлицо'), m=b&&b.market, c=m==='ru'?'RUB':(m==='eu'||m==='other')?'EUR':'руб';
+  if(c===TWI_CUR) return; TWI_CUR=c; POS.forEach(function(p){ if(p.sku){ var pr=PRODBYSKU[p.sku]; if(pr){ p.price=prodPrice(pr)||p.price; p.crossbar=prodCb(pr); } } }); renderPos(); if(typeof posTot==='function') posTot(); }
 function loadList(){
   get({vapi:'dealslist'}).then(function(r){
     if(!r||!r.ok){ el('rows').innerHTML='<tr><td colspan="9" class="err">⚠️ '+esc(errText(r))+'</td></tr>'; return; }

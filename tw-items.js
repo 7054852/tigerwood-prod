@@ -41,9 +41,11 @@ function posFromItems(items){
   l.forEach(function(p){ p.par=p.pl?l[p.pl-1]||null:null; delete p.pl; });
   return l;
 }
-function pickProd(i,v){ var p=PRODBYNAME[v]; if(p){ POS[i].name=p.name; POS[i].sku=p.sku; POS[i].opt=p.opt||null; POS[i].crossbar=p.crossbar||0; POS[i].options={}; if(!(Number(POS[i].price)>0)) POS[i].price=prodPrice(p)||''; renderPos(); posTot(); } }
+function pickProd(i,v){ var p=PRODBYNAME[v]; if(p){ POS[i].name=p.name; POS[i].sku=p.sku; POS[i].opt=p.opt||null; POS[i].crossbar=prodCb(p); POS[i].options={}; if(!(Number(POS[i].price)>0)) POS[i].price=prodPrice(p)||''; renderPos(); posTot(); } }
 function optOf(p){ return p.opt || ((PRODBYSKU[p.sku]||{}).opt) || null; }
-function cbOf(p){ return Number(p.crossbar)||Number((PRODBYSKU[p.sku]||{}).crossbar)||0; }
+/** надбавка за комплект перемычек у товара каталога — в валюте сделки: ₽ — crossbarRub (штука по курсу сайта, 02.10.2026) */
+function prodCb(p){ return p?(curCode()==='RUB'?(Number(p.crossbarRub)||0):(Number(p.crossbar)||0)):0; }
+function cbOf(p){ return Number(p.crossbar)||prodCb(PRODBYSKU[p.sku])||0; }
 function extraOf(p){ return (Number((p.options||{}).extraCrossbars)||0)*cbOf(p); }   // надбавка к цене единицы
 function lineSum(p){ return (Number(p.qty)||0)*((Number(p.price)||0)+extraOf(p)); }
 function optText(p){ var o=p.options||{}, t=[]; if(o.ropeColor) t.push('канат '+o.ropeColor); if(o.slideHooks) t.push('горка с '+(o.slideHooks==='реечки'?'реечками':'кружочками')); if(o.extraCrossbars) t.push('+ '+o.extraCrossbars+' компл. перемычек'); return t.join('; '); }
