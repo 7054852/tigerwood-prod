@@ -226,6 +226,7 @@ function initOrient(){
   try{ v=localStorage.getItem('tw_inv_orient')||'landscape'; }catch(e){}
   setOrient(v);
 }
+function isoToday(){ var d=new Date(), p=function(n){ return (n<10?'0':'')+n; }; return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate()); }
 function today(){ var d=new Date(), p=function(n){ return (n<10?'0':'')+n; }; return p(d.getDate())+'.'+p(d.getMonth()+1)+'.'+d.getFullYear(); }
 
 function boot(){
@@ -374,7 +375,7 @@ function startInv(){
     if(!r||!r.ok){ box.innerHTML='<div class="card err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
     // ⚠ незакрытый черновик у заказа один: программа продолжает начатый, а не заводит второй.
     // Об этом надо сказать вслух — иначе загруженные страницы лягут поверх чужой работы незаметно.
-    INV=r.invId; RESUMED=!!r.resumed; loadDraft();
+    INV=r.invId; RESUMED=!!r.resumed; IDLE=r.idleDays||0; AGE=r.ageDays||0; loadDraft();
   }).catch(function(){ box.innerHTML='<div class="card err">сеть недоступна</div>'; });
 }
 function loadDraft(){
@@ -386,7 +387,7 @@ function loadDraft(){
 function ikey(det,mod,st){ return nrm(det)+'|'+nrm(mod)+'|'+st; }
 function nrm(x){ return String(x==null?'':x).toLowerCase().replace(/ё/g,'е').replace(/x/g,'х').replace(/[«»"'`]/g,'').replace(/\s+/g,' ').trim(); }
 
-var RESUMED=false;
+var RESUMED=false, IDLE=0, AGE=0;
 function drawLoad(){
   var box=document.getElementById('pane_load'), d=DRAFT;
   var st=d.stat||{}, C=d.cells||{}, INFO=d.info||{};
@@ -400,8 +401,12 @@ function drawLoad(){
     +'<div id="uplbox"></div>'
     +'</div>';
   // уведомления над содержимым: начатый черновик и подсказка по клеткам
-  var resumed=RESUMED?('<div class="note warn"><div><b>Это уже начатый переучёт</b> — по заказу может быть только один незакрытый черновик. '
-      +'Загруженные страницы лягут поверх того, что здесь уже есть. Чтобы считать с нуля, удалите черновик кнопкой ниже.</div></div>'):'';
+  // черновик старше 3 дней: цифры в нём, скорее всего, устарели — проводить их поверх свежих нарядов опасно
+  var stale=RESUMED&&(IDLE>3||AGE>3);
+  var resumed=RESUMED?('<div class="note '+(stale?'bad':'warn')+'"><div><b>Это уже начатый переучёт</b>'
+      +(stale?(' — <b>начат '+AGE+' дн. назад, последняя правка '+IDLE+' дн. назад</b>. Цифры могли устареть: если в цеху с тех пор работали, удалите черновик и посчитайте заново.')
+             :' — по заказу может быть только один незакрытый черновик. Загруженные страницы лягут поверх того, что здесь уже есть.')
+      +'<div style="margin-top:var(--s-2)"><button class="sec sm" onclick="discardInv()">🗑 Удалить черновик и начать заново</button></div></div></div>'):'';
   var cellNote='<div class="note"><div><b>Пишите, сколько деталей лежит на участке сейчас</b> — только в той стадии, где они лежат. '
     +'Покрашенные 10 шт пишете в «Покрашено», загрунтованные 20 шт — в «Грунтовано». Что покрашенные прошли грунт, шлифовку и раскрой, программа досчитает сама при проведении. '
     +'Пустая клетка — не считали; на участке пусто — пишите 0. '
@@ -542,7 +547,8 @@ function drawLoad(){
     +'<span><i style="background:var(--green-bg)"></i><b class="ok">✓</b> проверено — в цеху уже столько же</span>'
     +'<span><i style="background:var(--heat-over)"></i>применится, но есть замечание</span>'
     +'<span><i style="background:var(--heat-stop);outline:2px solid var(--red)"></i>вопрос — наведите, чтобы увидеть</span></div>'
-    +'<button class="pri" onclick="applyInv()">✅ Провести переучёт</button> <span class="msg" id="apmsg"></span></div>';
+    +'<div class="row" style="justify-content:flex-start;gap:var(--s-2)"><label class="mini">Дата переучёта <input type="date" id="apdate" value="'+isoToday()+'" max="'+isoToday()+'"></label>'
+    +'<button class="pri" onclick="applyInv()">✅ Провести переучёт</button> <span class="msg" id="apmsg"></span></div></div>';
 
   box.innerHTML=checksHtml(d.checks, d.lost)+resumed+cellNote+upl
     +((d.products||[]).length?(bar+'<div class="sheet">'+grid+'</div>'):'<div class="card muted">Загрузите страницы — здесь появится эта же ведомость с цифрами.</div>');
@@ -669,7 +675,8 @@ function applyInv(){
 }
 function applyGo(){
   var m=document.getElementById('apmsg'); if(m) m.textContent='применяю…';
-  api({vapi:'invapply',inv:INV}).then(function(r){
+  var ad=(document.getElementById('apdate')||{}).value||'', adr=ad?ad.split('-').reverse().join('.'):'';   // день, когда считали
+  api({vapi:'invapply',inv:INV,date:adr}).then(function(r){
     if(!r||!r.ok){ if(m) m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; return; }
     var b=r.before||{}, a=r.after||{};
     if(m) m.innerHTML='<span class="ok">✓ применено строк '+r.applied+'</span>';
@@ -689,7 +696,8 @@ function loadHist(){
     if(!l.length){ box.innerHTML='<div class="card muted">По этому заказу переучётов ещё не было.</div>'; return; }
     box.innerHTML='<div class="card"><div style="font:var(--t-heading);margin-bottom:var(--s-2)">🕘 Переучёты заказа</div>'
       +l.map(function(x){
-        return '<div class="rowline"><span style="min-width:130px"><b>№'+x.num+'</b> '+esc(x.date||x.created)+'</span>'
+        var old=(x.status==='черновик'&&x.ageDays>3);
+        return '<div class="rowline"><span style="min-width:130px"><b>№'+x.num+'</b> '+esc(x.dateRu||x.created||x.date)+'</span>'
           +'<span style="min-width:150px" class="mini">считал '+esc(x.counter||'—')+'</span>'
           +'<span class="pill'+(x.status==='применён'?' ok':(x.status==='отменён'?' bad':' warn'))+'">'+(x.status==='применён'?'✓ ':(x.status==='отменён'?'✕ ':'⏳ '))+esc(x.status)+'</span>'
           +'<span class="mini">строк '+x.rows+' · применено '+x.applied+' · изменило остатки '+x.diffs+'</span>'
@@ -697,9 +705,20 @@ function loadHist(){
           +(x.applier?('<span class="mini">применил '+esc(x.applier)+'</span>'):'')
           +(x.status!=='черновик'?('<button class="tb sec sm" onclick="showReport(\''+esc(x.id)+'\')">📊 что изменилось</button>'):'')
           +(x.status==='применён'?('<button class="tb sec sm" onclick="undoInv(\''+esc(x.id)+'\')">↩ откатить</button>'):'')
+          +(old?('<span class="pill bad">черновик висит '+x.ageDays+' дн.</span>'):'')
+          +(x.status==='черновик'?('<button class="tb sec sm" onclick="discardInv(\''+esc(x.id)+'\')">🗑 удалить черновик</button>'):'')
           +'</div>';
       }).join('')+'</div>';
   }).catch(function(){ box.innerHTML='<div class="card err">сеть недоступна</div>'; });
+}
+function discardInv(id){
+  id=id||INV; if(!id) return;
+  if(!confirm('Удалить черновик переучёта? Остатки он не менял, введённые в него цифры пропадут.')) return;
+  api({vapi:'invdiscard',inv:id}).then(function(r){
+    if(!r||!r.ok){ alert((r&&r.error)||'ошибка'); return; }
+    if(id===INV){ INV=''; RESUMED=false; }
+    var h=document.getElementById('pane_hist'); if(h&&!/hide/.test(h.className)) loadHist(); else startInv();
+  }).catch(function(){ alert('сеть недоступна'); });
 }
 function showReport(id){
   var box=document.getElementById('pane_hist');
