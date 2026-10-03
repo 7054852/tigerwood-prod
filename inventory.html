@@ -392,8 +392,10 @@ var RESUMED=false, IDLE=0, AGE=0, PARTIAL=false;
 // что лежит на стадии по программе: «прошло эту стадию» − «прошло следующую». В тех же единицах, что вписывают в лист.
 var SHOWPROG=false; try{ SHOWPROG=localStorage.getItem('tw_inv_prog')==='1'; }catch(e){}
 function setShowProg(v){ SHOWPROG=!!v; try{ localStorage.setItem('tw_inv_prog',v?'1':''); }catch(e){} drawLoad(); }
-function progLies(st){ return (st&&st.lies!=null&&!st.twin)?st.lies:''; }
-function progHtml(stg){ if(!SHOWPROG||!stg||!stg.has||stg.twin||stg.lies==null) return ''; return '<span class="prg">прогр. '+stg.lies+'</span>'; }   // PARTIAL — корректировка: пустые клетки не трогаем
+// у колонок «Переделка» «лежит» = остаток на переделке по программе (ready)
+function progVal(st){ if(!st||!st.has||st.twin) return null; if(st.rework) return st.ready!=null?st.ready:null; return st.lies!=null?st.lies:null; }
+function progLies(st){ var v=progVal(st); return v==null?'':v; }
+function progHtml(stg){ if(!SHOWPROG) return ''; var v=progVal(stg); return v==null?'':'<span class="prg">прогр. '+v+'</span>'; }   // PARTIAL — корректировка: пустые клетки не трогаем
 function drawLoad(){
   var box=document.getElementById('pane_load'), d=DRAFT;
   var st=d.stat||{}, C=d.cells||{}, INFO=d.info||{};
@@ -501,7 +503,7 @@ function drawLoad(){
     }
     return '<td class="'+cls+'" title="'+esc(tip)+'">'+(mark?('<b class="mk">'+mark+'</b>'):'')
       +'<input value="'+((c&&c.qty!==null&&c.qty!==undefined&&c.qty!=='')?c.qty:'')+'" inputmode="numeric" onchange="setCell(\''+esc(k)+'\',this.value,this)">'
-      +(c&&!mark?('<span class="drv">было '+c.was+'</span>'):'')+'</td>';
+      +(c&&!mark?('<span class="drv">было '+c.was+'</span>'):progHtml(stg))+'</td>';
   }
 
   var SHORTS=[];
