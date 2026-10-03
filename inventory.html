@@ -379,7 +379,7 @@ function startInv(){
   }).catch(function(){ box.innerHTML='<div class="card err">сеть недоступна</div>'; });
 }
 function loadDraft(){
-  return api({vapi:'invgrid',inv:INV}).then(function(r){
+  return api({vapi:'invgrid',inv:INV,partial:PARTIAL?'1':''}).then(function(r){
     if(!r||!r.ok){ document.getElementById('pane_load').innerHTML='<div class="card err">'+esc((r&&r.error)||'ошибка')+'</div>'; return null; }
     DRAFT=r; drawLoad(); return r;
   }).catch(function(){ return null; });
@@ -387,7 +387,7 @@ function loadDraft(){
 function ikey(det,mod,st){ return nrm(det)+'|'+nrm(mod)+'|'+st; }
 function nrm(x){ return String(x==null?'':x).toLowerCase().replace(/ё/g,'е').replace(/x/g,'х').replace(/[«»"'`]/g,'').replace(/\s+/g,' ').trim(); }
 
-var RESUMED=false, IDLE=0, AGE=0;
+var RESUMED=false, IDLE=0, AGE=0, PARTIAL=false;   // PARTIAL — корректировка: пустые клетки не трогаем
 function drawLoad(){
   var box=document.getElementById('pane_load'), d=DRAFT;
   var st=d.stat||{}, C=d.cells||{}, INFO=d.info||{};
@@ -548,8 +548,12 @@ function drawLoad(){
     +'<span><i style="background:var(--green-bg)"></i><b class="ok">✓</b> проверено — в цеху уже столько же</span>'
     +'<span><i style="background:var(--heat-over)"></i>применится, но есть замечание</span>'
     +'<span><i style="background:var(--heat-stop);outline:2px solid var(--red)"></i>вопрос — наведите, чтобы увидеть</span></div>'
+    +'<div class="seg" style="margin:var(--s-2) 0"><button class="'+(PARTIAL?'':'on')+'" onclick="setPartial(false)">📋 Полный переучёт</button><button class="'+(PARTIAL?'on':'')+'" onclick="setPartial(true)">✏️ Корректировка</button></div>'
+    +'<div class="mini" style="margin-bottom:var(--s-2)">'+(PARTIAL
+        ?'<b>Корректировка:</b> меняются только заполненные клетки, пустые остаются как были. Предыдущие стадии подтянутся по цепочке только вверх.'
+        :'<b>Полный переучёт:</b> у посчитанной детали пустая клетка = 0, в системе останутся ровно эти цифры.')+'</div>'
     +'<div class="row" style="justify-content:flex-start;gap:var(--s-2)"><label class="mini">Дата переучёта <input type="date" id="apdate" value="'+isoToday()+'" max="'+isoToday()+'"></label>'
-    +'<button class="pri" onclick="applyInv()">✅ Провести переучёт</button> <span class="msg" id="apmsg"></span></div></div>';
+    +'<button class="pri" onclick="applyInv()">'+(PARTIAL?'✏️ Провести корректировку':'✅ Провести переучёт')+'</button> <span class="msg" id="apmsg"></span></div></div>';
 
   box.innerHTML=checksHtml(d.checks, d.lost)+resumed+cellNote+upl
     +((d.products||[]).length?(bar+'<div class="sheet">'+grid+'</div>'):'<div class="card muted">Загрузите страницы — здесь появится эта же ведомость с цифрами.</div>');
@@ -665,7 +669,7 @@ function applyInv(){
     for(var k in C) if(C.hasOwnProperty(k)){ var c=C[k], got=(c.got!=null&&c.got!==0)?c.got:c.target;
       if(c.rework){ if(c.status!=='пропущена') nrw++; continue; }
       if(!c.derived&&!c.twin&&(c.acc||0)>(got||0)) sh++; }
-    var msg='Провести переучёт?\n\n'
+    var msg=(PARTIAL?'Провести корректировку? Пустые клетки не трогаются.':'Провести полный переучёт? Пустые клетки посчитанных деталей станут 0.')+'\n\n'
       +'Применится строк: '+(st.apply||0)+((st.ask||0)?(' · разобраться: '+st.ask):'')+((st.skip||0)?(' · не применится: '+st.skip):'')+'\n'
       +(sh?('Насчитали меньше, чем принято нарядами: '+sh+' — готовность там опустится до факта.\n'):'')
       +((pay.over||pay.under)?('Наряды против факта: переплачено '+(pay.over||0).toFixed(2)+' ₽, недоплачено '+(pay.under||0).toFixed(2)+' ₽.\n'):'')
@@ -677,7 +681,7 @@ function applyInv(){
 function applyGo(){
   var m=document.getElementById('apmsg'); if(m) m.textContent='применяю…';
   var ad=(document.getElementById('apdate')||{}).value||'', adr=ad?ad.split('-').reverse().join('.'):'';   // день, когда считали
-  api({vapi:'invapply',inv:INV,date:adr}).then(function(r){
+  api({vapi:'invapply',inv:INV,date:adr,partial:PARTIAL?'1':''}).then(function(r){
     if(!r||!r.ok){ if(m) m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; return; }
     var b=r.before||{}, a=r.after||{};
     if(m) m.innerHTML='<span class="ok">✓ применено строк '+r.applied+'</span>';
@@ -700,6 +704,7 @@ function loadHist(){
         var old=(x.status==='черновик'&&x.ageDays>3);
         return '<div class="rowline"><span style="min-width:130px"><b>№'+x.num+'</b> '+esc(x.dateRu||x.created||x.date)+'</span>'
           +'<span style="min-width:150px" class="mini">считал '+esc(x.counter||'—')+'</span>'
+          +(x.partial?'<span class="pill info" title="меняли только заполненные клетки">✏️ корректировка</span>':'')
           +'<span class="pill'+(x.status==='применён'?' ok':(x.status==='отменён'?' bad':' warn'))+'">'+(x.status==='применён'?'✓ ':(x.status==='отменён'?'✕ ':'⏳ '))+esc(x.status)+'</span>'
           +'<span class="mini">строк '+x.rows+' · применено '+x.applied+' · изменило остатки '+x.diffs+'</span>'
           +((x.status==='применён'&&x.pctWas)?('<span class="pill">% труда '+x.pctWas+' → '+x.pctNew+' · осталось '+x.leftWas+' → '+x.leftNew+' р.</span>'):'')
@@ -712,6 +717,7 @@ function loadHist(){
       }).join('')+'</div>';
   }).catch(function(){ box.innerHTML='<div class="card err">сеть недоступна</div>'; });
 }
+function setPartial(v){ PARTIAL=!!v; var m=document.getElementById('apmsg'); if(m) m.textContent='пересчитываю…'; loadDraft(); }
 function discardInv(id){
   id=id||INV; if(!id) return;
   if(!confirm('Удалить черновик переучёта? Остатки он не менял, введённые в него цифры пропадут.')) return;
