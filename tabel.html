@@ -349,14 +349,16 @@ function loadMonth(silent){
 // менялся сразу при расстановке; «сделано» (подано и принято) — с сервера.
 function expPerDay(w){ var x=M.exp&&M.exp.byWorker&&M.exp.byWorker[w]; return x?x.perDay:50; }
 function expCalc(){
-  var td=isoToday(), by={}, tot=0, past=0, n=0, np=0, seen={};
-  var add=function(w,iso){ var v=expPerDay(w); by[w]=(by[w]||0)+v; tot+=v; n++; if(iso<td){ past+=v; np++; } };
+  var td=isoToday(), by={}, tot=0, past=0, n=0, np=0, nofact=0, seen={};
+  // own — своё ожидание дня, если его задали в планировании; иначе обычная выработка бойца
+  var add=function(w,iso,own){ var v=own>0?own:expPerDay(w); by[w]=(by[w]||0)+v; tot+=v; n++; if(iso<td){ past+=v; np++; } };
   for(var k in M.map){ var e=M.map[k]; if(!e) continue; seen[k]=1;
     var was=e.status==='вышел'||!!(M.wk&&M.wk[k]);
+    if(e.date<td&&!was&&e.shift&&e.status!=='не вышел') nofact++;   // план в прошлом без «вышел» и без наряда
     if(e.date<td ? !was : (!e.shift||e.status==='не вышел')) continue;
-    add(e.worker,e.date); }
-  for(var k2 in (M.wk||{})){ if(seen[k2]) continue; var pp=k2.split('|'), iso=M.ym+'-'+pad2(pp[1]); if(iso<td) add(pp[0],iso); }
-  return {by:by, tot:Math.round(tot*100)/100, past:Math.round(past*100)/100, n:n, np:np};
+    add(e.worker,e.date,Number(e.own)||0); }
+  for(var k2 in (M.wk||{})){ if(seen[k2]) continue; var pp=k2.split('|'), iso=M.ym+'-'+pad2(pp[1]); if(iso<td) add(pp[0],iso,0); }
+  return {by:by, tot:Math.round(tot*100)/100, past:Math.round(past*100)/100, n:n, np:np, nofact:nofact};
 }
 function expHtml(c){
   if(!M.exp) return '';
@@ -366,7 +368,9 @@ function expHtml(c){
   var t=function(h,v,meta,tip){ return '<div class="tile"'+(tip?(' title="'+esc(tip)+'"'):'')+'><div class="t">'+h+'</div><div class="v">'+v+'</div>'+(meta?'<div class="meta muted" style="font:var(--t-small)">'+meta+'</div>':'')+'</div>'; };
   return '<div class="tiles">'
     +t('Ожидаем за месяц', m0(c.tot)+' <small>₽</small>', c.n+' смен: прошедшие — где был, дальше — по графику', 'смена × обычная выработка бойца: среднее по 7 последним сменам с выработкой больше 30 ₽ по поданным нарядам (принятые, на проверке и ждут ОТК), у новичка 50 ₽. Прошедший день считается, только если человек вышел или подал наряд')
-    +t('Ожидали до сегодня', m0(c.past)+' <small>₽</small>', c.np+' смен до вчера, где был')
+    +t('Ожидали до сегодня', m0(c.past)+' <small>₽</small>', c.np+' смен до вчера, где был'
+        +(c.nofact?(' · <span style="color:var(--amber)">ещё '+c.nofact+' без отметки — не считаются</span>'):''),
+        'прошедший день считается, только если человек вышел или подал наряд. Отметьте «✓ вышел» в режиме «Отмечаю выход» — смена сразу попадёт в ожидание')
     +t('Подано до сегодня', '<span style="color:'+col(pctS)+'">'+m0(sub)+' <small>₽</small></span>', pctS!=null?(pctS+'% от ожидаемого'):'', 'всё поданное: принятое + на проверке у мастера + ждёт ОТК (по расценкам, без премий и повременки)')
     +t('Принято до сегодня', '<span style="color:'+col(pct)+'">'+m0(fact)+' <small>₽</small></span>', pct!=null?(pct+'% от ожидаемого'):'', 'подтверждённая выработка по расценкам (без премий и повременки)')
     +'</div>';
@@ -468,7 +472,7 @@ function monthCellClick(ev){
     // отмечать выход можно только там, где смена стоит: факт без смены сервер не примет
     if(!sh){ svShow('<span class="muted">'+esc(w)+', '+d+'.'+M.mon+': смены нет — сначала поставьте график</span>'); return; }
     var nf=(st==='вышел')?'не вышел':((st==='не вышел')?'план':'вышел');
-    M.map[key]={date:YM+'-'+pad2(d), worker:w, shift:sh, status:nf};
+    M.map[key]={date:YM+'-'+pad2(d), worker:w, shift:sh, status:nf, own:e&&e.own};
     renderMonth();
     bgSave({vapi:'tabelfact',date:YM+'-'+pad2(d),worker:w,status:nf,tgid:TGID});
     return;
@@ -480,7 +484,7 @@ function monthCellClick(ev){
     return;
   }
   if(next==='') delete M.map[key];
-  else M.map[key]={date:YM+'-'+pad2(d), worker:w, shift:next, status:(e&&e.status)||'план'};
+  else M.map[key]={date:YM+'-'+pad2(d), worker:w, shift:next, status:(e&&e.status)||'план', own:e&&e.own};
   renderMonth();                                       // мгновенно на экране
   bgSave({vapi:'tabelset',date:YM+'-'+pad2(d),worker:w,shift:next,tgid:TGID});
 }
