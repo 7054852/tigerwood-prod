@@ -347,7 +347,8 @@ function loadMonth(silent){
 // планирования, но по ПОДАННЫМ нарядам: среднее по 7 последним сменам с выработкой > 30 ₽ (новичок — 50 ₽). Прошедший день считается, только
 // если человек был («вышел» или подал наряд), сегодня и дальше — по графику. Считаем здесь же, по клеткам, чтобы итог
 // менялся сразу при расстановке; «сделано» (подано и принято) — с сервера.
-function expPerDay(w){ var x=M.exp&&M.exp.byWorker&&M.exp.byWorker[w]; return x?x.perDay:50; }
+function expPerf(w){ return (M.exp&&M.exp.perf&&M.exp.perf[w])||null; }
+function expPerDay(w){ var p=expPerf(w); if(p) return p.rub; var x=M.exp&&M.exp.byWorker&&M.exp.byWorker[w]; return x?x.perDay:50; }
 function expCalc(){
   var td=isoToday(), by={}, tot=0, past=0, n=0, np=0, nofact=0, seen={};
   // own — своё ожидание дня, если его задали в планировании; иначе обычная выработка бойца
@@ -421,9 +422,13 @@ function renderMonth(){
       }
       tds+='<td class="'+(cls+((we[d]||hol[d])?((cls?' ':'')+(hol[d]?'we hol':'we')):''))+'" data-w="'+wi+'" data-d="'+d+'" title="'+esc(w)+' '+d+'.'+M.mon+tip+'">'+txt+'</td>';
     }
-    var ex=EC.by[w]||0, xi=M.exp&&M.exp.byWorker&&M.exp.byWorker[w];
-    return '<tr><td class="nm">'+esc(w)+' <span class="muted">('+cnt+(was?' · был '+was:'')+')</span>'
-      +(ex>0?' <span class="muted" style="font:var(--t-tiny)" title="'+esc('ожидаем за смену '+money(expPerDay(w))+' ₽ ('+(xi?xi.src:'новичок 50 ₽')+')'+(xi&&(xi.factSub||xi.fact)?('\nподано '+money(xi.factSub||0)+' ₽ · принято '+money(xi.fact||0)+' ₽'):''))+'">≈'+Math.round(ex).toLocaleString('ru-RU')+' ₽</span>':'')+'</td>'+tds+'</tr>';
+    var ex=EC.by[w]||0, xi=M.exp&&M.exp.byWorker&&M.exp.byWorker[w], pf=expPerf(w);
+    // средняя производительность за смену: 7 последних смен > 30 ₽ по поданным нарядам, у новичка 50 ₽
+    var pfh=pf?(' <span class="pill '+(/новичок/.test(pf.src)?'mute':'info')+'" style="font:var(--t-tiny);padding:0 6px" title="'
+      +esc('средняя выработка за смену: '+money(pf.rub)+' ₽ ('+pf.src+'). Считается по 7 последним сменам с выработкой больше 30 ₽ по поданным нарядам; меньше трёх таких смен — новичок, 50 ₽')
+      +'">⚡'+Math.round(pf.rub)+(/новичок/.test(pf.src)?' нов.':'')+'</span>'):'';
+    return '<tr><td class="nm">'+esc(w)+pfh+' <span class="muted">('+cnt+(was?' · был '+was:'')+')</span>'
+      +(ex>0?' <span class="muted" style="font:var(--t-tiny)" title="'+esc('ожидаем за смену '+money(expPerDay(w))+' ₽ ('+(pf?pf.src:(xi?xi.src:'новичок 50 ₽'))+')'+(xi&&(xi.factSub||xi.fact)?('\nподано '+money(xi.factSub||0)+' ₽ · принято '+money(xi.fact||0)+' ₽'):''))+'">≈'+Math.round(ex).toLocaleString('ru-RU')+' ₽</span>':'')+'</td>'+tds+'</tr>';
   }).join('');
   var modeSeg='<div class="seg mmode">'
     +'<button class="'+(MMODE==='plan'?'on':'')+'" onclick="setMMode(\'plan\')">✏️ Ставлю график</button>'
