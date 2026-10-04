@@ -538,7 +538,8 @@ function applyMode(){
     :legal?(inc==='1'?'Поставщик доставляет по адресу Покупателя, стоимость в цене Товара; разгрузка — Покупатель':(inc==='0'?'франко-склад Поставщика: вывоз Товара силами и за счёт Покупателя':'в договор: доставка включена в цену или франко-склад')):'';
   el('wayHint').textContent='';
   if(!C) el('d_warranty').placeholder=(legal?12:36)+' — как у продавца';
-  el('lblTransfer').textContent='Срок передачи, раб. дней '+(inst?'от поступления аванса':isCod()?'от подписания договора':'от оплаты');
+  el('lblTransfer').textContent='Срок передачи, раб. дней '+(inst?'от поступления аванса':'от оплаты');
+  vis('w_transfer', !isCod());   // 100 % при получении — срока передачи в договоре нет (владелец 04.10.2026)
   paintSeg('segWay', way); paintSeg('segInc', val('d_delivInc'));
   // оплата
   vis('payFull', retail && !inst); el('payFull').textContent=isCod()?'Оплата: 100 % при получении товара':'100 % при заключении договора'; vis('schedBody', schedOn());
@@ -724,7 +725,7 @@ function localMissing(){
   }
   if(m!=='retail') return l;
   var way=val('d_wayMode'), inc=val('d_delivInc');
-  if(!val('d_transfer')) l.push('срок передачи');
+  if(!val('d_transfer') && !isCod()) l.push('срок передачи');
   if(!way) l.push('способ: доставка или самовывоз');
   if(way==='del'){
     if(!val('d_city').trim() && !val('d_addr').trim()) l.push('адрес доставки (город/адрес)');
@@ -738,7 +739,7 @@ function renderReady(){
   var e=el('ready'), m=mode();
   if(!m){ e.className='note hide'; return; }
   var srv=C?((C.readiness&&C.readiness.missing)||[]):READY_SRV;
-  if(m==='retail') srv=srv.filter(function(t){ return !FORM_KEYS.test(t) || (/срок передачи/i.test(t) && !val('d_transfer')); });
+  if(m==='retail') srv=srv.filter(function(t){ return !FORM_KEYS.test(t) || (/срок передачи/i.test(t) && !val('d_transfer') && !isCod()); });
   if(m==='legal') srv=srv.filter(function(t){ return !/доставка в договоре|стоимость доставки|адрес доставки/i.test(t); });
   else srv=srv.filter(function(t){ return !/у позици|позиции товара/i.test(t); });   // опции позиций — по форме (живьём), не по сохранённому
   var l=localMissing(); srv.forEach(function(t){ if(l.indexOf(t)<0 && !(/срок передачи/i.test(t) && l.some(function(x){ return /срок передачи/i.test(x); }))) l.push(t); });
