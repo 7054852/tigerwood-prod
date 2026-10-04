@@ -114,6 +114,9 @@
       <span class="v" id="fwV"><label class="ck"><input type="checkbox" id="f_fw" onchange="onFw()"> на клиента, без сделки и суммы — счета его сделок выставляются к нему, пока он действует</label></span>
       <span class="k" id="dealK">Сделка</span>
       <span class="v" id="dealV"><select id="f_deal" onchange="onDeal()"></select><div class="sm" id="dealHint"></div></span>
+      <!-- кредит банка / лизинг / карта рассрочки (04.10.2026): договора с клиентом нет — выбирается банк/карта, основание накладной — наш договор с ним -->
+      <span class="k hide" id="finK">Банк / карта</span>
+      <span class="v hide" id="finV"><select id="f_paymap" onchange="onFin()"></select><div class="sm" id="finHint"></div></span>
       <span class="k" id="dateK">Дата договора</span>
       <span class="v" id="dateV"><input type="date" id="f_date" autocomplete="off" onchange="renderReady()"></span>
       <span class="k" id="validK">Действует до</span>
@@ -307,7 +310,8 @@ var SCHED_TXT='по графику (рассрочка / отсрочка)';
 /** типы, если маршрут contractkinds ещё не выложен: по типу клиента и рынку (как было на экранах) */
 function localKinds(b){
   var fl=isPerson(b), m=marketOf(b);
-  if(fl) return [{kind:'installment',label:'Договор рассрочки',framework:false,market:'by'},{kind:'full_payment',label:'Договор 100%',framework:false,market:'by'},{kind:'full_on_delivery',label:'Договор 100% при получении',framework:false,market:'by'}];
+  if(fl) return [{kind:'installment',label:'Договор рассрочки',framework:false,market:'by'},{kind:'full_payment',label:'Договор 100%',framework:false,market:'by'},{kind:'full_on_delivery',label:'Договор 100% при получении',framework:false,market:'by'},
+    {kind:'bank_credit',label:'Кредит банка',framework:false,market:'by'},{kind:'leasing',label:'Лизинг',framework:false,market:'by'},{kind:'installment_card',label:'Карта рассрочки',framework:false,market:'by'}];
   if(m==='eu'||m==='other') return [{kind:'supply_eu',label:'Договор поставки (Европа)',framework:false,market:'eu'},{kind:'supply_eu',label:'Рамочный контракт (Европа)',framework:true,market:'eu'}];
   if(m==='ru') return [{kind:'supply_rf',label:'Договор поставки РФ',framework:false,market:'ru'},{kind:'supply_rf',label:'Рамочный договор РФ',framework:true,market:'ru'}];
   return [{kind:'supply',label:'Договор поставки',framework:false,market:'by'},{kind:'supply',label:'Рамочный договор',framework:true,market:'by'}];   // услуги/сотрудничество убраны 01.10.2026
@@ -324,7 +328,26 @@ function curOf(){ return (C&&C.currency)||CUR[marketOf(BUYER)]||'BYN'; }
 /** режим карточки по типу: '' — тип не выбран (видны только клиент и тип), retail — 100 % / рассрочка (физлицо), legal — ЮЛ/ИП */
 /** вид договора без признака рамочного: в списке рамочный — отдельный пункт «<kind>#fw» (01.10.2026, владелец не нашёл галочку) */
 function kindVal(){ return val('f_kind').split('#')[0]; }
-function mode(){ var k=kindVal(); if(!k) return ''; return (k==='installment'||k==='full_payment'||k==='full_on_delivery')?'retail':'legal'; }
+function mode(){ var k=kindVal(); if(!k) return ''; return (k==='installment'||k==='full_payment'||k==='full_on_delivery'||FIN_OF[k])?'retail':'legal'; }
+/** кредит банка / лизинг / карта рассрочки (04.10.2026): как розница (физлицо, позиции, передача), но документа и условий оплаты нет — банк/карта из справочника */
+var FIN_OF={bank_credit:'credit',leasing:'leasing',installment_card:'card'}, FIN_PAYS=[];
+var FIN_HINT={credit:'Договор с клиентом не заключается: платит банк. Клиенту — ТТН, в основании — наш договор с банком.',
+  leasing:'Договор с клиентом не заключается: лизинг Финшопа. Пакет Финшопа (акт, спецификация, отчётность по С/Н) загружается в сделку; наша — ТН на Финшоп.',
+  card:'Договор с клиентом не заключается: карта рассрочки через ООО «Регион-Логистик» (доставляет и принимает оплату). ТТН — на Регион-Логистик, основание — договор поручения.'};
+function finKind(){ return FIN_OF[kindVal()]||''; }
+function isFin(){ return !!finKind(); }
+function fillFin(){
+  var sel=el('f_paymap'), fk=finKind(), cur=sel.value||(C&&C.paymentMappingId)||'';
+  vis('finK', !!fk); vis('finV', !!fk); if(!fk) return;
+  var list=FIN_PAYS.filter(function(p){ return p.finKind===fk; });
+  sel.innerHTML='<option value="">— выберите '+(fk==='card'?'карту':fk==='leasing'?'лизинг':'банк')+' —</option>'+list.map(function(p){
+    return '<option value="'+esc(p.id)+'">'+esc(p.label+(p.partner&&fk!=='credit'?(' · '+p.partner):'')+(p.ready?(' · '+p.title+' № '+p.contractNo+' от '+p.contractDate):' · договора нет'))+'</option>'; }).join('');
+  if(!list.length && C && C.fin && C.paymentMappingId) sel.innerHTML+='<option value="'+esc(C.paymentMappingId)+'">'+esc(C.fin.pay)+'</option>';   // список не пришёл — показать сохранённый
+  if(cur) sel.value=cur; onFin(true);
+}
+function onFin(quiet){ var fk=finKind(); if(!fk) return; var p=null; FIN_PAYS.forEach(function(x){ if(x.id===val('f_paymap')) p=x; });
+  el('finHint').textContent=FIN_HINT[fk]+(p&&!p.ready?' ⚠️ № и дата нашего договора не заданы — «Компания и настройки» → «Способы оплаты и банки».':'');
+  if(quiet!==true) renderReady(); }
 function isInst(){ return kindVal()==='installment'; }
 /** «Договор 100% при получении» (04.10.2026): оплата при получении товара — ни предоплаты, ни графика */
 function isCod(){ return kindVal()==='full_on_delivery'; }
@@ -480,8 +503,8 @@ function renderHead(){
   var c=C, h='', pills='';
   if(!c){ h='Новый договор'; pills='<span class="pill warn">черновик · не сохранён</span>'; }
   else {
-    h=(c.number?('Договор № '+esc(c.number)):'Договор (номер выдаётся при формировании)');
-    pills='<span class="pill '+(ST_CLS[c.status]||'')+'">'+esc(c.statusRu||ST_RU[c.status]||c.status||'—')+(c.status==='signed'&&c.signedAt?(' '+esc(c.signedAt)):'')+'</span>';
+    h=(c.number?((c.fin?esc(c.kindRu||'')+' № ':'Договор № ')+esc(c.number)):c.fin?esc(c.kindRu||'')+' (номер выдаётся, когда банк одобрит)':'Договор (номер выдаётся при формировании)');
+    pills='<span class="pill '+(ST_CLS[c.status]||'')+'">'+esc(c.fin&&c.status==='signed'?'оформлен':(c.statusRu||ST_RU[c.status]||c.status||'—'))+(c.status==='signed'&&c.signedAt?(' '+esc(c.signedAt)):'')+'</span>';
     if(c.externalNumber) pills+=' <span class="pill info" title="номер взят с бумаги">номер с бумаги</span>';
     if(c.expired && mode()!=='retail') pills+=' <span class="pill bad">истёк '+esc(c.validUntil||'')+'</span>';
   }
@@ -504,9 +527,11 @@ function setEditable(){
 function renderBtns(){
   var c=C, h='';
   if(EDIT) h+='<button class="green" onclick="save()">Сохранить</button>';
-  if(EDIT) h+='<button '+(c?'':'disabled title="сначала сохраните черновик"')+' onclick="renderDoc()">Сформировать документ</button>';
-  if(c && (c.canSign || (c.canSign==null && (c.status==='active'||c.status==='reserved') && !c.expired))) h+='<button class="sec" onclick="signDlg()">Подписан</button>';
-  if(!c || (c.canUpload!==false && c.status!=='cancelled')) h+='<button class="sec" onclick="uploadDlg()">Загрузить подписанный</button>';
+  var fin=isFin();   // кредит / лизинг / карта: документа нет — «Банк одобрил» из сохранённого черновика
+  if(EDIT && !fin) h+='<button '+(c?'':'disabled title="сначала сохраните черновик"')+' onclick="renderDoc()">Сформировать документ</button>';
+  if(fin && c && c.status==='draft') h+='<button class="sec" onclick="signDlg()">✅ Банк одобрил</button>';
+  else if(!fin && c && (c.canSign || (c.canSign==null && (c.status==='active'||c.status==='reserved') && !c.expired))) h+='<button class="sec" onclick="signDlg()">Подписан</button>';
+  if(!fin && (!c || (c.canUpload!==false && c.status!=='cancelled'))) h+='<button class="sec" onclick="uploadDlg()">Загрузить подписанный</button>';
   if(c && c.status!=='cancelled' && c.status!=='draft') h+='<button class="danger sec" onclick="cancelDlg()">Аннулировать</button>';
   if(c && (c.canDelete || (c.canDelete==null && c.status==='draft'))) h+='<button class="danger sec" onclick="deleteDlg()">Удалить черновик</button>';
   el('botBtns').innerHTML='<div class="end">'+h+'</div>';
@@ -520,7 +545,7 @@ function applyMode(){
   vis('dateK', !!m); vis('dateV', !!m);
   vis('validK', legal); vis('validV', legal);
   vis('s_body', !!m);
-  vis('s_items', !!m && !fw); vis('s_terms', legal && !fwNoSum()); vis('s_deliv', !!m && !fw); vis('s_sched', retail || schedOn());
+  vis('s_items', !!m && !fw); vis('s_terms', legal && !fwNoSum()); vis('s_deliv', !!m && !fw); vis('s_sched', (retail && !isFin()) || schedOn());
   // ЮЛ: условия оплаты
   // рамочный РФ/Европа (02.10.2026): условия оплаты контракта правятся здесь — по умолчанию для его счетов (в счёте можно изменить); рамочный РБ — как был, без них
   var bm=val('f_balance'), pay=legal && !coop && !(fw && fwNoSum());
@@ -551,7 +576,7 @@ function applyMode(){
   el('wayHint').textContent='';
   if(!C) el('d_warranty').placeholder=(legal?12:36)+' — как у продавца';
   el('lblTransfer').textContent='Срок передачи, раб. дней '+(inst?'от поступления аванса':'от оплаты');
-  vis('w_transfer', !isCod());   // 100 % при получении — срока передачи в договоре нет (владелец 04.10.2026)
+  vis('w_transfer', !isCod() && !isFin());   // 100 % при получении, кредит/лизинг/карта — срока передачи нет (владелец 04.10.2026)
   paintSeg('segWay', way); paintSeg('segInc', val('d_delivInc'));
   // оплата
   vis('payFull', retail && !inst); el('payFull').textContent=isCod()?'В договоре: оплата до передачи товара':'100 % при заключении договора'; vis('schedBody', schedOn()); onCod();
@@ -562,7 +587,7 @@ function applyMode(){
     :'Первая строка — платёж до отгрузки (может быть 0), дальше 1–5 платежей по датам; одна строка после отгрузки = отсрочка. Сумма строк должна сойтись с суммой договора.';
   if(schedOn() && !LEGS.length) initLegs();
   vis('w_amount', legal && !fwNoSum()); el('amtNote').textContent=retail?'сумма договора = итог позиций':'';
-  fillBuyerList(); renderHead(); itemsTot(); renderReady();
+  fillFin(); fillBuyerList(); renderHead(); itemsTot(); renderReady();
 }
 function paintSeg(id, v){ var bs=el(id).querySelectorAll('button'); for(var i=0;i<bs.length;i++) bs[i].className=bs[i].getAttribute('data-v')===v?'on':''; }
 
@@ -586,7 +611,7 @@ function loadKinds(){
   get({vapi:'contractkinds', key:key}).then(function(r){
     if(KINDS_KEY!==key) return;
     if(!r||!r.ok||!r.kinds||!r.kinds.length){ el('kindHint').innerHTML='<span class="warn">Список типов с сервера не пришёл'+(r&&r.error?(': '+esc(r.error)):'')+' — показан стандартный набор.</span>'; return; }
-    el('kindHint').textContent=''; KINDS=r.kinds; fillKinds();
+    el('kindHint').textContent=''; KINDS=r.kinds; FIN_PAYS=r.fin||[]; fillKinds();
   }).catch(function(){ el('kindHint').innerHTML='<span class="warn">Нет связи — показан стандартный набор типов.</span>'; });
 }
 /** в списке — обычные типы и рамочные отдельными пунктами (значение «<kind>#fw»); галочка f_fw скрыта и следует за выбором */
@@ -737,7 +762,8 @@ function localMissing(){
   }
   if(m!=='retail') return l;
   var way=val('d_wayMode'), inc=val('d_delivInc');
-  if(!val('d_transfer') && !isCod()) l.push('срок передачи');
+  if(!val('d_transfer') && !isCod() && !isFin()) l.push('срок передачи');
+  if(isFin() && !val('f_paymap')) l.push(finKind()==='card'?'карта рассрочки':finKind()==='leasing'?'лизинговая компания':'банк');
   if(!way) l.push('способ: доставка или самовывоз');
   if(way==='del'){
     if(!val('d_city').trim() && !val('d_addr').trim()) l.push('адрес доставки (город/адрес)');
@@ -751,7 +777,7 @@ function renderReady(){
   var e=el('ready'), m=mode();
   if(!m){ e.className='note hide'; return; }
   var srv=C?((C.readiness&&C.readiness.missing)||[]):READY_SRV;
-  if(m==='retail') srv=srv.filter(function(t){ return !FORM_KEYS.test(t) || (/срок передачи/i.test(t) && !val('d_transfer') && !isCod()); });
+  if(m==='retail') srv=srv.filter(function(t){ return !FORM_KEYS.test(t) || (/срок передачи/i.test(t) && !val('d_transfer') && !isCod() && !isFin()); });
   if(m==='legal') srv=srv.filter(function(t){ return !/доставка в договоре|стоимость доставки|адрес доставки/i.test(t); });
   else srv=srv.filter(function(t){ return !/у позици|позиции товара/i.test(t); });   // опции позиций — по форме (живьём), не по сохранённому
   var l=localMissing(); srv.forEach(function(t){ if(l.indexOf(t)<0 && !(/срок передачи/i.test(t) && l.some(function(x){ return /срок передачи/i.test(x); }))) l.push(t); });
@@ -819,6 +845,14 @@ function renderDocs(){
   var c=C, box=el('docsBox'), ib=el('invBox');
   if(!c){ box.innerHTML='<div class="sm">Черновик: документа ещё нет — сохраните и нажмите «Сформировать документ» или загрузите подписанный.</div>'; ib.innerHTML=''; el('wbBox').innerHTML=''; return; }
   var docs=c.documents||[];
+  if(c.fin){   // кредит / лизинг / карта: документа нет; основание накладной — наш договор с банком/партнёром, накладные — по виду
+    var fd=c.fin.docs||[], dk=c.deal&&c.status!=='cancelled';
+    box.innerHTML='<div class="sm">'+esc(c.fin.hint||'')+'</div><div class="sm" style="margin-top:var(--s-2)">Основание накладной: '
+      +(c.fin.basis?('<b>'+esc(c.fin.basis)+'</b>'+(c.fin.partner?(' ('+esc(c.fin.partner)+')'):'')):'<span class="warn">№ и дата договора не заданы — «Компания и настройки» → «Способы оплаты и банки»</span>')+'</div>';
+    el('wbBox').innerHTML=dk?('<div class="row" style="margin-top:var(--s-3)"><span class="sm">Накладные по сделке '+esc(c.deal.num||'')+':</span>'
+      +fd.map(function(t){ return '<button class="sec sm" onclick="twWaybill(C.deal.id,\''+t+'\',loadContract)">✍️ Выписать '+esc(t)+'</button>'; }).join('')+'</div>'):'';
+    ib.innerHTML=''; return;
+  }
   box.innerHTML=docs.length?docs.map(function(d){
     return '<div class="docrow"><span><b>'+esc(d.docType||d.type||'Договор')+'</b> <span class="sm">'+esc(d.date||'')+'</span></span>'
       +'<span class="pill '+(d.origin==='uploaded'?'info':'')+'">'+esc(ORIGIN_RU[d.origin]||d.origin||'сформирован')+'</span>'
@@ -847,7 +881,7 @@ function collect(){
   var d={ kind:kindVal(), kindLabel:k?k.label:'', isFramework:fw, client:BUYER?buyerKey(BUYER):'', clientName:val('f_client').trim(), deal:fw?'':val('f_deal'),
     contractDate:ruDate(val('f_date')), currency:retail?'BYN':curOf(),
     items:fw?[]:cleanPos(), delivery:fw?{}:collectDeliv(), legs:schedOn()?cleanLegs():[] };
-  if(retail){ d.amount=posTotalValue(); if(isCod()) d.codPrepay=codPre(); return d; }   // розница: сумма = итог позиций, рынок BYN, «Действует до» — до исполнения (сервер)
+  if(retail){ d.amount=posTotalValue(); if(isCod()) d.codPrepay=codPre(); if(isFin()){ d.paymentMappingId=val('f_paymap'); d.legs=[]; } return d; }   // розница: сумма = итог позиций, рынок BYN, «Действует до» — до исполнения (сервер)
   d.validUntil=ruDate(val('f_valid')); d.amount=amountVal();   // рамочный РБ — null внутри amountVal (fwNoSum); РФ/Европа — сумма
   var lbl=k?(k.label||''):'', svc=/услуг/i.test(lbl), coop=/сотрудничеств/i.test(lbl);
   if(!coop && !(fw && fwNoSum())){ var bm=val('f_balance'), m3=(bm==='shipped'||bm==='ready'||bm==='accepted');
@@ -863,6 +897,7 @@ function validate(d){
   var retail=mode()==='retail';
   if(!retail && !d.validUntil) return 'Укажите срок действия';
   if(retail && !d.items.length) return 'Добавьте позиции — сумма розничного договора = итог позиций';
+  if(isFin() && !d.paymentMappingId) return 'Выберите '+(finKind()==='card'?'карту рассрочки':finKind()==='leasing'?'лизинговую компанию':'банк');
   if(d.codPrepay!==undefined && val('f_codMode')==='pre' && !(d.codPrepay>0)) return 'Укажите сумму предоплаты (или выберите «100 % при получении»)';
   if(d.codPrepay>0 && d.amount>0 && d.codPrepay>=d.amount) return 'Предоплата должна быть меньше суммы договора: вся сумма до получения — это «Договор 100%»';
   if(!retail && !d.isFramework && !(d.amount>0) && !d.items.length) return 'Укажите позиции или сумму договора';
@@ -900,6 +935,15 @@ function renderDoc(){
 }
 function signDlg(){
   var c=C||{}, n=c.number||'';
+  if(c.fin){   // кредит / лизинг / карта: «Банк одобрил» — номер реестра и заказ
+    ask('Банк одобрил', '<div>'+esc(c.kindRu||'')+(c.fin.pay?(' · '+esc(c.fin.pay)):'')+'. Договор получит номер, заявка станет заказом и уйдёт в производство.</div>'
+      +'<label class="fl" style="margin-top:var(--s-3)"><span class="sm">Дата одобрения</span><input type="date" id="signDate" value="'+todayIso()+'" autocomplete="off"></label><div class="msg" id="signMsg"></div>',
+      function(){ var d=val('signDate'); if(!d){ setm('signMsg','err','Укажите дату'); return false; }
+        run({vapi:'contractsign', id:c.id, date:ruDate(d)}, 'Оформляю…').then(function(r){ if(!r) return; var dl=r.deal||{};
+          info('Готово', '<div>✅ '+esc(c.kindRu||'')+' № '+esc(r.number||'')+' оформлен.'+(dl.num?(dl.issued?(' Заявка стала заказом <b>'+esc(dl.num)+'</b>.'):(' Заказ '+esc(dl.num)+'.')):'')+'</div>');
+          loadContract(); }); }, 'Оформить');
+    return;
+  }
   ask('Договор № '+n+' подписан', '<div>Укажите дату подписи. Если договор относится к заявке — она станет заказом и получит сквозной номер.</div>'
     +'<label class="fl" style="margin-top:var(--s-3)"><span class="sm">Дата подписи</span><input type="date" id="signDate" value="'+todayIso()+'" autocomplete="off"></label><div class="msg" id="signMsg"></div>',
     function(){ var d=val('signDate'); if(!d){ setm('signMsg','err','Укажите дату'); return false; }

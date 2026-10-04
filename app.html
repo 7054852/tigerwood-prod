@@ -682,7 +682,42 @@ function renderCompany(box,r){
     +'<div style="display:flex;gap:var(--s-2);flex:none"><button onclick="refreshBlanks()">Обновить бланки</button><button class="sec" onclick="checkTemplates()">Проверить шаблоны</button></div></div><div class="msg" id="blankmsg" style="margin-top:var(--s-3)"></div></div>';
   box.innerHTML='<div class="pad"><div class="hi">Компания и настройки</div>'
     +'<p class="muted">Реквизиты юрлиц — <b>единый источник</b>: поменяли здесь → меняется во всех документах (договоры продаж и кадровые). Отметьте «наниматель» у того юрлица, от которого оформляете сотрудников.</p>'
-    +setBlock+blanksBox+'<div class="sect">Юридические лица</div>'+(cards||'<div class="box muted">нет юрлиц</div>')+'</div>';
+    +setBlock+blanksBox+'<div class="box" style="margin-bottom:var(--s-4)" id="payBox"><h3>Способы оплаты и банки</h3><div class="muted small">Загрузка…</div></div>'
+    +'<div class="sect">Юридические лица</div>'+(cards||'<div class="box muted">нет юрлиц</div>')+'</div>';
+  loadPayMaps();
+}
+/* «Способы оплаты и банки» (04.10.2026): вид (кредит банка / лизинг / карта рассрочки) — выбор в договоре физлица; партнёр и наш договор с ним — основание накладной */
+var PAY_FIN={'':'—',credit:'кредит банка',leasing:'лизинг',card:'карта рассрочки'};
+function loadPayMaps(){
+  var box=document.getElementById('payBox'); if(!box) return;
+  api({vapi:'paymaps',tgid:TGID}).then(function(r){
+    if(!r||!r.ok){ box.innerHTML='<h3>Способы оплаты и банки</h3><div class="err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
+    window.PAY_ROWS=r.rows||[];
+    var pOpts=function(cur){ return '<option value="">—</option>'+(r.partners||[]).map(function(p){ return '<option value="'+esc(p.id)+'"'+(p.id===cur?' selected':'')+'>'+esc(p.name)+(p.bank?' (банк)':'')+'</option>'; }).join(''); };
+    var rows=(r.rows||[]).map(function(m,i){
+      var fk=Object.keys(PAY_FIN).map(function(k){ return '<option value="'+k+'"'+(k===m.finKind?' selected':'')+'>'+PAY_FIN[k]+'</option>'; }).join('');
+      return '<div class="box" style="margin-top:var(--s-2)"><div class="row"><b>'+esc(m.pay)+'</b><span class="muted small">'+esc([m.type,m.wallet].filter(Boolean).join(' · '))+(m.deals?(' · сделок '+m.deals):'')+'</span></div>'
+        +'<div class="formgrid">'
+        +'<div><span class="fl">Вид в договоре физлица</span><select id="pm'+i+'_k">'+fk+'</select></div>'
+        +'<div><span class="fl">Банк / партнёр (покупатель накладной у лизинга и карт)</span><select id="pm'+i+'_p">'+pOpts(m.partnerId)+'</select></div>'
+        +'<div><span class="fl">Наш договор — название</span><input id="pm'+i+'_t" value="'+esc(m.title||'Договор')+'"></div>'
+        +'<div><span class="fl">№ договора</span><input id="pm'+i+'_n" value="'+esc(m.contractNo)+'"></div>'
+        +'<div><span class="fl">Дата (дд.мм.гггг)</span><input id="pm'+i+'_d" value="'+esc(m.contractDate)+'" placeholder="дд.мм.гггг"></div>'
+        +'<label class="small" style="display:flex;align-items:center;gap:var(--s-2)"><input type="checkbox" id="pm'+i+'_a"'+(m.active?' checked':'')+'> активен</label>'
+        +'</div><div style="margin-top:var(--s-2)"><button onclick="savePayMap('+i+')">Сохранить</button> <span class="msg" id="pm'+i+'_m"></span></div></div>';
+    }).join('');
+    box.innerHTML='<h3>Способы оплаты и банки</h3><div class="muted small">Вид «кредит / лизинг / карта» — выбор банка в договоре физлица. Основание накладной — «название № … от …». '
+      +'Партнёр (Финшоп, Регион-Логистик) — покупатель ТН / ТТН Юрлицо; его реквизиты правятся в «Клиентах».</div>'+rows;
+  }).catch(function(){ box.innerHTML='<h3>Способы оплаты и банки</h3><div class="err">сеть недоступна</div>'; });
+}
+function savePayMap(i){
+  var m=(window.PAY_ROWS||[])[i]; if(!m) return;
+  var g=function(x){ return (document.getElementById('pm'+i+'_'+x)||{}).value||''; }, msg=document.getElementById('pm'+i+'_m');
+  var f={ finKind:g('k'), partnerId:g('p'), title:g('t'), contractNo:g('n'), contractDate:g('d'), active:!!(document.getElementById('pm'+i+'_a')||{}).checked };
+  if(msg) msg.textContent='…';
+  api({vapi:'paymapsave',tgid:TGID,id:m.id,data:JSON.stringify(f)}).then(function(r){
+    if(msg) msg.innerHTML=(r&&r.ok)?'<span class="ok">✅ сохранено</span>':'<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>';
+  }).catch(function(){ if(msg) msg.innerHTML='<span class="err">сеть недоступна</span>'; });
 }
 // галочка «совпадает с юридическим»: включить/выключить поле адреса, подставить юр.адрес
 function toggleSame(ci,addrJ){

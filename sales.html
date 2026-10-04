@@ -1018,12 +1018,12 @@ function loadStDocs(){
       var badge=dc.ready?'<span class="ok">✓</span>':'<span class="err">⚠ '+esc((dc.missing||[]).join(', '))+'</span>';
       return '<div class="drow"><span class="dname">'+esc(dc.type)+'</span> '+badge+' <span class="sp"><button class="sm" onclick="gen('+esc(JSON.stringify(String(dc.type)))+')">Сформировать</button></span></div>';
     }).join('');
-    box.innerHTML='<div class="sm" style="margin:var(--s-2) 0">Категория: <b>'+esc(r.category)+'</b> · позиций: '+esc(r.positions)+'</div>'+rows+'<div class="msg" id="gmsg"></div>';
+    box.innerHTML='<div class="sm" style="margin:var(--s-2) 0">Категория: <b>'+esc(r.category)+'</b> · позиций: '+esc(r.positions)+'</div>'+(r.hint?'<div class="sm" style="margin-bottom:var(--s-2)">'+esc(r.hint)+'</div>':'')+rows+'<div class="msg" id="gmsg"></div>';
   }).catch(function(e){ box.innerHTML='<div class="err">'+esc(netText(e))+'</div>'; });
 }
 function gen(dt){
   // накладные ТН/ТТН — диалог накладной (дата, адрес, перевозка, места/масса), как в реестре и в договоре
-  if(/ТН|ТТН/.test(String(dt))){ twWaybill(KEY, /ТТН/.test(String(dt))?'ТТН':'ТН', renderDealDocs); return; }
+  if(/ТН|ТТН/.test(String(dt))){ twWaybill(KEY, /ТТН Юр/.test(String(dt))?'ТТН Юрлицо':/ТТН/.test(String(dt))?'ТТН':'ТН', renderDealDocs); return; }   // ТТН Юрлицо — карта рассрочки (на партнёра)
   run({vapi:'docgen', lead:DEAL.leadId, type:dt}, 'Формирую «'+dt+'»…', 'gmsg').then(function(r){ if(!r) return;
     setm('gmsg','ok','✅ <a href="'+esc(r.url)+'" target="_blank" rel="noopener">'+esc(r.name)+'</a>'+(r.waybill?(' · № '+esc(r.waybill)):'')); renderDealDocs(); });   // не reload: он перерисует блок и сотрёт ссылку на документ
 }
