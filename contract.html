@@ -189,6 +189,12 @@
   <div class="blk" id="s_sched">
     <div class="h" id="schedTtl">Оплата</div>
     <div id="payFull" class="payfull hide">100 % при заключении договора</div>
+    <!-- «100 % при получении» (владелец 04.10.2026): в договоре — «оплата до передачи»; как платит клиент — только для нас (план «Поступлений», ТН на предоплату) -->
+    <div id="w_cod" class="grid2 hide">
+      <label class="fl"><span class="sm">Как платит клиент</span><select id="f_codMode" onchange="onCod()"><option value="all">100 % при получении</option><option value="pre">предоплата + остаток при получении</option></select></label>
+      <label class="fl hide" id="w_codPre"><span class="sm">Предоплата, руб.</span><input id="f_codPre" type="number" inputmode="decimal" min="0" step="0.01" oninput="onCod()" autocomplete="off"></label>
+    </div>
+    <div class="sm" id="codHint"></div>
     <div id="schedBody">
       <div class="sm" id="schedNote" style="margin-bottom:var(--s-2)"></div>
       <div class="tbl-wrap"><table class="tbl sm mob">
@@ -322,6 +328,11 @@ function mode(){ var k=kindVal(); if(!k) return ''; return (k==='installment'||k
 function isInst(){ return kindVal()==='installment'; }
 /** «Договор 100% при получении» (04.10.2026): оплата при получении товара — ни предоплаты, ни графика */
 function isCod(){ return kindVal()==='full_on_delivery'; }
+function codPre(){ return val('f_codMode')==='pre' ? Number(val('f_codPre'))||0 : 0; }
+function onCod(){ var cod=isCod(), pre=val('f_codMode')==='pre', a=posTotalValue()||0;
+  vis('w_cod', cod); vis('w_codPre', cod && pre); vis('codHint', cod);
+  el('f_codMode').disabled=!EDIT; el('f_codPre').disabled=!EDIT;
+  el('codHint').textContent=!cod?'':pre?'Клиенту: договор, товарный чек на всю сумму и ТН на сумму предоплаты'+(codPre()>0&&a>codPre()?'; остаток '+money(a-codPre())+' руб. — при получении':''):'Клиенту: договор и товарный чек'; }
 function fwAvail(){ var k=kindVal(); return KINDS.some(function(x){ return x.framework && x.kind===k; }) || !!(C&&C.isFramework); }
 function isFw(){ return mode()==='legal' && fwAvail() && el('f_fw').checked; }
 /** рамочный РБ — без суммы (стоимость по счетам); РФ/Европа — валютный, сумма обязательна (владелец 01.10.2026) */
@@ -399,7 +410,8 @@ function fillForm(){
   el('f_valid').value=isoDate(c.validUntil);
   el('f_amount').value=(c.amount==null||c.amount==='')?'':c.amount;
   if(c.prepayPercent!=null&&c.prepayPercent!=='') el('f_prepay').value=c.prepayPercent;
-  var tm=c.terms||{}; setSel('f_balance', balanceModeOf(tm.balanceMode, c.balanceCondition, c.balanceDays)); if(tm.prepayDays>0) el('f_pdays').value=tm.prepayDays;
+  var tm=c.terms||{}; setSel('f_codMode', tm.codPrepay>0?'pre':'all'); el('f_codPre').value=tm.codPrepay>0?tm.codPrepay:'';
+  setSel('f_balance', balanceModeOf(tm.balanceMode, c.balanceCondition, c.balanceDays)); if(tm.prepayDays>0) el('f_pdays').value=tm.prepayDays;
   if(c.freightPayer) el('f_freight').value=/клиент/i.test(String(c.freightPayer))?'Клиент':'Мы';
   var t=c.terms||{}; if(t.prodDays) el('f_prod').value=t.prodDays;
   el('f_bdays').value=(c.balanceDays==null)?'':c.balanceDays; el('f_regNo').value=c.currencyRegNo||'';
@@ -542,7 +554,7 @@ function applyMode(){
   vis('w_transfer', !isCod());   // 100 % при получении — срока передачи в договоре нет (владелец 04.10.2026)
   paintSeg('segWay', way); paintSeg('segInc', val('d_delivInc'));
   // оплата
-  vis('payFull', retail && !inst); el('payFull').textContent=isCod()?'Оплата: 100 % при получении товара':'100 % при заключении договора'; vis('schedBody', schedOn());
+  vis('payFull', retail && !inst); el('payFull').textContent=isCod()?'В договоре: оплата до передачи товара':'100 % при заключении договора'; vis('schedBody', schedOn()); onCod();
   el('schedTtl').textContent=retail?(inst?'Оплата — график рассрочки':'Оплата'):'График оплаты';
   el('thPre').textContent=retail?'Аванс (до передачи)':'До отгрузки';
   el('lblN').textContent=retail?'после передачи, платежей':'после отгрузки, платежей';
@@ -835,7 +847,7 @@ function collect(){
   var d={ kind:kindVal(), kindLabel:k?k.label:'', isFramework:fw, client:BUYER?buyerKey(BUYER):'', clientName:val('f_client').trim(), deal:fw?'':val('f_deal'),
     contractDate:ruDate(val('f_date')), currency:retail?'BYN':curOf(),
     items:fw?[]:cleanPos(), delivery:fw?{}:collectDeliv(), legs:schedOn()?cleanLegs():[] };
-  if(retail){ d.amount=posTotalValue(); return d; }   // розница: сумма = итог позиций, рынок BYN, «Действует до» — до исполнения (сервер)
+  if(retail){ d.amount=posTotalValue(); if(isCod()) d.codPrepay=codPre(); return d; }   // розница: сумма = итог позиций, рынок BYN, «Действует до» — до исполнения (сервер)
   d.validUntil=ruDate(val('f_valid')); d.amount=amountVal();   // рамочный РБ — null внутри amountVal (fwNoSum); РФ/Европа — сумма
   var lbl=k?(k.label||''):'', svc=/услуг/i.test(lbl), coop=/сотрудничеств/i.test(lbl);
   if(!coop && !(fw && fwNoSum())){ var bm=val('f_balance'), m3=(bm==='shipped'||bm==='ready'||bm==='accepted');
@@ -851,6 +863,8 @@ function validate(d){
   var retail=mode()==='retail';
   if(!retail && !d.validUntil) return 'Укажите срок действия';
   if(retail && !d.items.length) return 'Добавьте позиции — сумма розничного договора = итог позиций';
+  if(d.codPrepay!==undefined && val('f_codMode')==='pre' && !(d.codPrepay>0)) return 'Укажите сумму предоплаты (или выберите «100 % при получении»)';
+  if(d.codPrepay>0 && d.amount>0 && d.codPrepay>=d.amount) return 'Предоплата должна быть меньше суммы договора: вся сумма до получения — это «Договор 100%»';
   if(!retail && !d.isFramework && !(d.amount>0) && !d.items.length) return 'Укажите позиции или сумму договора';
   if(d.isFramework && !fwNoSum() && !(d.amount>0)) return 'Рамочный договор с клиентом из РФ или Европы — валютный: укажите сумму договора';
   if((d.balanceMode==='shipped'||d.balanceMode==='accepted') && !(Number(d.balanceDays)>0)) return 'Укажите срок остатка в днях';
