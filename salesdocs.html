@@ -255,8 +255,9 @@ function signContract(number, after){
 /** Аннулировать договор: сервер откажет, пока по нему есть неаннулированные счета, — текст отказа в окне «Не получилось». */
 function cancelContract(number){
   ask('Аннулировать договор № '+number+'?', '<div>Документ уйдёт в корзину, запись останется в реестре как аннулированная.</div>'
-    +'<div class="note" style="margin-top:var(--s-3)"><div>Договор, к которому выставлены счета, аннулировать нельзя — сначала аннулируйте счета.</div></div>',
-    function(){ run({vapi:'contractcancel', number:number}, 'Аннулирую договор…').then(function(r){ if(r) loadContracts(); }); }, 'Аннулировать');
+    +'<div class="note" style="margin-top:var(--s-3)"><div>Договор, к которому выставлены счета, аннулировать нельзя — сначала аннулируйте счета.</div></div>'
+    +'<label class="fl" style="margin-top:var(--s-3)"><span class="sm">Причина аннулирования (для подписанного договора — обязательно; аннулирует директор или администратор)</span><input id="cReason" autocomplete="off"></label>',
+    function(){ run({vapi:'contractcancel', number:number, reason:((document.getElementById('cReason')||{}).value||'')}, 'Аннулирую договор…').then(function(r){ if(r) loadContracts(); }); }, 'Аннулировать');
 }
 function stageOk(d, f){ var s=d.stage;
   if(!s) return !/отмен|аннулир/.test(String(d.status||''));   // старый сервер без стадии

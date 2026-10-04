@@ -889,12 +889,13 @@ function renderDealDocs(){
 }
 function delDoc(kind, number){
   var ttl=(kind==='contract'?'договор':'счёт')+' № '+number;
-  ask('Отменить '+ttl+'?', '<div>Документ уйдёт в корзину, запись останется в истории как отменённая'+(kind==='invoice'?'; плановые платежи по счёту снимутся из финансов (полученные деньги не трогаются).':'.')+'</div>',
-    function(){ run({vapi:kind==='contract'?'contractcancel':'invoicecancel', number:number}, 'Отменяю '+ttl+'…').then(function(r){ if(r) reload(); }); }, 'Отменить');
+  ask('Отменить '+ttl+'?', '<div>Документ уйдёт в корзину, запись останется в истории как отменённая'+(kind==='invoice'?'; плановые платежи по счёту снимутся из финансов (полученные деньги не трогаются).':'.')+'</div>'
+    +(kind==='contract'?'<label class="fl" style="margin-top:var(--s-3)"><span class="sm">Причина аннулирования (для подписанного договора — обязательно; аннулирует директор или администратор)</span><input id="cReason" autocomplete="off"></label>':''),
+    function(){ var p={vapi:kind==='contract'?'contractcancel':'invoicecancel', number:number}; if(kind==='contract') p.reason=((document.getElementById('cReason')||{}).value||''); run(p, 'Отменяю '+ttl+'…').then(function(r){ if(r) reload(); }); }, 'Отменить');
 }
 function delOtherDoc(type){
-  ask('Отменить «'+type+'» по сделке?', '<div>Документ уйдёт в корзину.</div>',
-    function(){ run({vapi:'deldealdoc', deal:KEY, type:type}, 'Отменяю документ…').then(function(r){ if(r) reload(); }); }, 'Отменить');
+  ask('Отменить «'+type+'» по сделке?', '<div>Документ уйдёт в корзину.</div>'+(/договор|контракт/i.test(type)?'<label class="fl" style="margin-top:var(--s-3)"><span class="sm">Причина аннулирования (для подписанного договора — обязательно; аннулирует директор или администратор)</span><input id="cReason" autocomplete="off"></label>':''),
+    function(){ run({vapi:'deldealdoc', deal:KEY, type:type, reason:((document.getElementById('cReason')||{}).value||'')}, 'Отменяю документ…').then(function(r){ if(r) reload(); }); }, 'Отменить');
 }
 function editInvoice(number){
   ask('Изменить счёт № '+number+'?', '<div>Текущий счёт отменится (документ в корзину, плановые платежи снимутся), затем выставите новый.</div>',
