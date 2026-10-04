@@ -185,7 +185,7 @@
     <div class="sm" id="delivHint" style="margin-top:var(--s-2)"></div>
   </div>
 
-  <!-- оплата: 100 % — текст; рассрочка — график всегда открыт; ЮЛ — график, когда остаток «по графику» -->
+  <!-- оплата: 100 % / 100 % при получении — текст; рассрочка — график всегда открыт; ЮЛ — график, когда остаток «по графику» -->
   <div class="blk" id="s_sched">
     <div class="h" id="schedTtl">Оплата</div>
     <div id="payFull" class="payfull hide">100 % при заключении договора</div>
@@ -301,7 +301,7 @@ var SCHED_TXT='по графику (рассрочка / отсрочка)';
 /** типы, если маршрут contractkinds ещё не выложен: по типу клиента и рынку (как было на экранах) */
 function localKinds(b){
   var fl=isPerson(b), m=marketOf(b);
-  if(fl) return [{kind:'installment',label:'Договор рассрочки',framework:false,market:'by'},{kind:'full_payment',label:'Договор 100%',framework:false,market:'by'}];
+  if(fl) return [{kind:'installment',label:'Договор рассрочки',framework:false,market:'by'},{kind:'full_payment',label:'Договор 100%',framework:false,market:'by'},{kind:'full_on_delivery',label:'Договор 100% при получении',framework:false,market:'by'}];
   if(m==='eu'||m==='other') return [{kind:'supply_eu',label:'Договор поставки (Европа)',framework:false,market:'eu'},{kind:'supply_eu',label:'Рамочный контракт (Европа)',framework:true,market:'eu'}];
   if(m==='ru') return [{kind:'supply_rf',label:'Договор поставки РФ',framework:false,market:'ru'},{kind:'supply_rf',label:'Рамочный договор РФ',framework:true,market:'ru'}];
   return [{kind:'supply',label:'Договор поставки',framework:false,market:'by'},{kind:'supply',label:'Рамочный договор',framework:true,market:'by'}];   // услуги/сотрудничество убраны 01.10.2026
@@ -318,8 +318,10 @@ function curOf(){ return (C&&C.currency)||CUR[marketOf(BUYER)]||'BYN'; }
 /** режим карточки по типу: '' — тип не выбран (видны только клиент и тип), retail — 100 % / рассрочка (физлицо), legal — ЮЛ/ИП */
 /** вид договора без признака рамочного: в списке рамочный — отдельный пункт «<kind>#fw» (01.10.2026, владелец не нашёл галочку) */
 function kindVal(){ return val('f_kind').split('#')[0]; }
-function mode(){ var k=kindVal(); if(!k) return ''; return (k==='installment'||k==='full_payment')?'retail':'legal'; }
+function mode(){ var k=kindVal(); if(!k) return ''; return (k==='installment'||k==='full_payment'||k==='full_on_delivery')?'retail':'legal'; }
 function isInst(){ return kindVal()==='installment'; }
+/** «Договор 100% при получении» (04.10.2026): оплата при получении товара — ни предоплаты, ни графика */
+function isCod(){ return kindVal()==='full_on_delivery'; }
 function fwAvail(){ var k=kindVal(); return KINDS.some(function(x){ return x.framework && x.kind===k; }) || !!(C&&C.isFramework); }
 function isFw(){ return mode()==='legal' && fwAvail() && el('f_fw').checked; }
 /** рамочный РБ — без суммы (стоимость по счетам); РФ/Европа — валютный, сумма обязательна (владелец 01.10.2026) */
@@ -411,7 +413,7 @@ function fillForm(){
   POS=posFromItems(c.items); TWI_CUR=c.currency||'руб'; POSCHK=false;
   fillDeliv(c.deal||{});
   LEGS=(c.legs||[]).map(function(l,i){ return { legNo:l.legNo||(i+1), amount:l.amount, dueDate:isoDate(l.dueDate), beforeShip:!!l.beforeShip }; });
-  if(LEGS.length && c.kind!=='installment' && c.kind!=='full_payment') setSel('f_balance', SCHED_TXT);
+  if(LEGS.length && c.kind!=='installment' && c.kind!=='full_payment' && c.kind!=='full_on_delivery') setSel('f_balance', SCHED_TXT);
   if(c.deal) PRESEL_DEAL={ id:String(c.deal.id), num:c.deal.num||c.deal.inquiryNum||c.deal.id, stage:c.deal.stage, stageRu:c.deal.stageRu, leadId:c.deal.leadId||'' };
   EDIT=(c.status!=='signed' && c.status!=='cancelled');
   WANT_KIND=c.kind;
@@ -536,10 +538,10 @@ function applyMode(){
     :legal?(inc==='1'?'Поставщик доставляет по адресу Покупателя, стоимость в цене Товара; разгрузка — Покупатель':(inc==='0'?'франко-склад Поставщика: вывоз Товара силами и за счёт Покупателя':'в договор: доставка включена в цену или франко-склад')):'';
   el('wayHint').textContent='';
   if(!C) el('d_warranty').placeholder=(legal?12:36)+' — как у продавца';
-  el('lblTransfer').textContent='Срок передачи, раб. дней '+(inst?'от поступления аванса':'от оплаты');
+  el('lblTransfer').textContent='Срок передачи, раб. дней '+(inst?'от поступления аванса':isCod()?'от подписания договора':'от оплаты');
   paintSeg('segWay', way); paintSeg('segInc', val('d_delivInc'));
   // оплата
-  vis('payFull', retail && !inst); vis('schedBody', schedOn());
+  vis('payFull', retail && !inst); el('payFull').textContent=isCod()?'Оплата: 100 % при получении товара':'100 % при заключении договора'; vis('schedBody', schedOn());
   el('schedTtl').textContent=retail?(inst?'Оплата — график рассрочки':'Оплата'):'График оплаты';
   el('thPre').textContent=retail?'Аванс (до передачи)':'До отгрузки';
   el('lblN').textContent=retail?'после передачи, платежей':'после отгрузки, платежей';
