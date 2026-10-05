@@ -7,6 +7,7 @@
 <script src="tw-config.js"></script>
 <script src="tw-items.js"></script>
 <script src="tw-waybill.js"></script>
+<script src="tw-pay.js"></script>
 <title>Тигервуд — Договор</title>
 <!-- Карточка договора (план «Договоры Прохаба», 30.09.2026). ?contract=new|<id|номер> (+ &client=<ключ> &deal=<ключ сделки> &framework=1).
      Черновик хранится без номера (contractsave); номер выдаётся при «Сформировать документ» (contractrender) или берётся с бумаги
@@ -214,6 +215,9 @@
       <div class="msg" id="schedMsg"></div>
     </div>
   </div>
+
+  <!-- оплата онлайн: ссылки ЕРИП / карта к договору физлица (tw-pay.js, 05.10.2026) -->
+  <div class="blk" id="s_pay" style="display:none"></div>
 
   <!-- документы и счета -->
   <div class="blk" id="s_docs">
@@ -843,6 +847,7 @@ function cleanLegs(){ return LEGS.map(function(l,i){ return { legNo:i+1, amount:
 /* ── документы и счета ── */
 function renderDocs(){
   var c=C, box=el('docsBox'), ib=el('invBox');
+  twPay('s_pay', c&&c.pay, { contract: c?c.id:'', canCreate: !!c && c.status!=='cancelled', onDone: loadContract });
   if(!c){ box.innerHTML='<div class="sm">Черновик: документа ещё нет — сохраните и нажмите «Сформировать документ» или загрузите подписанный.</div>'; ib.innerHTML=''; el('wbBox').innerHTML=''; return; }
   var docs=c.documents||[];
   if(c.fin){   // кредит / лизинг / карта: документа нет; основание накладной — наш договор с банком/партнёром, накладные — по виду
