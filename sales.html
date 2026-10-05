@@ -209,7 +209,8 @@
 
   <!-- доставка: сводка из полей сделки (правится в договоре) -->
   <div class="blk" id="s_deliv">
-    <div class="h">🚚 Доставка и передача <span class="sp"><a id="delivEditLink" class="sm" href="#">изменить в договоре →</a></span></div>
+    <div class="h">🚚 Доставка и передача <span class="sp"><button class="gray sm" id="delivAddrBtn" onclick="editDeliv()">✏️ Изменить адрес</button><a id="delivEditLink" class="sm" href="#">изменить в договоре →</a></span></div>
+    <div class="msg" id="delivMsg"></div>
     <div id="delivView" class="pvbox" style="margin-top:0"></div>
   </div>
 
@@ -568,7 +569,7 @@ function pushScrm(){
 function renderDelivView(){
   var d=DEAL, h='', inc=function(v,c){ return v===true?'включена в стоимость':(v===false?('оплачивается отдельно'+(c?(' — '+money(c)+' руб'):'')):(c?(money(c)+' руб, отдельно'):'')); };
   h+=infoRow('Способ доставки', d.deliveryMethod||EX('Способ доставки'));
-  h+=infoRow('Адрес', [d.country||EX('Страна'), d.region||EX('Область'), d.district||EX('Район'), d.city||EX('Город'), d.deliveryAddress||EX('Адрес доставки')].filter(function(x){ return String(x||'').trim(); }).join(', '));
+  h+=infoRow(/почт/i.test(d.deliveryMethod||'')?'Отделение почты':'Адрес', [d.country||EX('Страна'), d.region||EX('Область'), d.district||EX('Район'), d.city||EX('Город'), d.deliveryAddress||EX('Адрес доставки')].filter(function(x){ return String(x||'').trim(); }).join(', '));
   h+=infoRow('Срок передачи', d.transferDays!=null?(d.transferDays+' раб. дн. от оплаты'):'');
   h+=infoRow('Гарантия', d.warrantyMonths!=null?(d.warrantyMonths+' мес.'):'');
   h+=infoRow('Доставка в договоре', inc(d.deliveryIncluded, d.deliveryCost)); h+=infoRow('Сборка в договоре', inc(d.assemblyIncluded, d.assemblyCost));
@@ -579,6 +580,20 @@ function renderDelivView(){
   if(wb) h+='<div class="muted" style="margin-top:var(--s-2)">Данные накладной (правятся в диалоге «Выписать ТН/ТТН»):</div>'+wb;
   el('delivView').innerHTML=h||'<div class="muted">Условия передачи не заданы — заполняются в договоре.</div>';
   el('delivEditLink').href=editInContractUrl();
+}
+/* смена способа и адреса доставки (05.10.2026): клиент передумал — правка прямо в сделке; договор не переделывается (в нём право сменить адрес сообщением),
+   накладные берут адрес из сделки. Несформированный/неподписанный договор — переформировать в карточке договора (номер тот же). */
+function editDeliv(){
+  var d=DEAL||{}, m=d.deliveryMethod||'', way=/самовывоз/i.test(m)?'pick':/белпочт/i.test(m)?'bel':/почт/i.test(m)?'euro':'del';
+  var opt=function(v,t){ return '<option value="'+v+'"'+(v===way?' selected':'')+'>'+t+'</option>'; };
+  ask('Способ и адрес доставки', '<label class="fl"><span class="sm">Способ</span><select id="dvWay">'+opt('del','Доставка домой')+opt('euro','До отделения Европочты')+opt('bel','До отделения Белпочты')+opt('pick','Самовывоз')+'</select></label>'
+    +'<label class="fl" style="margin-top:var(--s-2)"><span class="sm">Город / населённый пункт</span><input id="dvCity" value="'+esc(d.city||'')+'" autocomplete="off"></label>'
+    +'<label class="fl" style="margin-top:var(--s-2)"><span class="sm">Адрес доставки или номер и адрес отделения</span><input id="dvAddr" value="'+esc(d.deliveryAddress||'')+'" autocomplete="off"></label>'
+    +'<div class="sm" style="margin-top:var(--s-2)">Договор переделывать не нужно: клиент вправе сменить адрес сообщением. Накладные возьмут новый адрес. Если договор ещё не подписан — переформируйте его в карточке договора.</div><div class="msg" id="dvMsg"></div>',
+    function(){ var w=val('dvWay'), f={ deliveryMethod: w==='pick'?'самовывоз':w==='euro'?'Европочта':w==='bel'?'Белпочта':(/самовывоз|почт/i.test(m)||!m?'доставка':m), city: val('dvCity').trim(), deliveryAddress: val('dvAddr').trim() };
+      if(w!=='pick' && !f.deliveryAddress && !f.city){ setm('dvMsg','err','Укажите адрес или отделение'); return false; }
+      run({vapi:'dealupdate', deal:KEY, data:JSON.stringify(f)}, 'Сохраняю доставку…', 'delivMsg').then(function(r){ if(!r) return;
+        setm('delivMsg','ok','✅ Доставка изменена'); reload(); }); }, 'Сохранить');
 }
 function fillNote(){
   el('o_note').value=DEAL.note||EX('Примечание')||'';

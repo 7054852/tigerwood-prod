@@ -177,7 +177,9 @@
       <label class="fl" id="w_transfer"><span class="sm" id="lblTransfer">Срок передачи, раб. дней от оплаты</span><input id="d_transfer" type="number" inputmode="numeric" min="0" autocomplete="off" oninput="renderReady()"></label>
       <label class="fl" id="w_warranty"><span class="sm">Гарантия, мес.</span><input id="d_warranty" type="number" inputmode="numeric" min="0" placeholder="36 — как у продавца" autocomplete="off"></label>
       <div class="fl full" id="w_way"><span class="sm">Способ</span>
-        <span class="seg" id="segWay"><button type="button" data-v="pick" onclick="setWay('pick')">Самовывоз</button><button type="button" data-v="del" id="btnWayDel" onclick="setWay('del')">Доставка</button></span><span class="sm" id="wayHint"></span></div>
+        <span class="seg" id="segWay"><button type="button" data-v="pick" onclick="setWay('pick')">Самовывоз</button><button type="button" data-v="del" id="btnWayDel" onclick="setWay('del')">Доставка домой</button><button type="button" data-v="post" onclick="setWay('post')">До отделения почты</button></span><span class="sm" id="wayHint"></span></div>
+      <!-- до отделения почты (05.10.2026): оператор + номер и адрес отделения (в сделку: deliveryMethod = оператор, deliveryAddress = отделение) -->
+      <label class="fl hide" id="w_post"><span class="sm">Почта</span><select id="d_post" onchange="renderReady()"><option>Европочта</option><option>Белпочта</option></select></label>
       <div class="fl full" id="w_cost"><span class="sm" id="lblCost">Стоимость доставки</span>
         <div class="row"><span class="seg" id="segInc"><button type="button" data-v="1" id="btnIncYes" onclick="setInc('1')">включена в цену</button><button type="button" data-v="0" id="btnIncNo" onclick="setInc('0')">оплачивается отдельно</button></span>
         <label class="fl" id="w_costSum"><input id="d_delivCost" type="number" inputmode="decimal" min="0" step="0.01" placeholder="сумма, руб." autocomplete="off" oninput="renderReady()"></label></div>
@@ -565,14 +567,14 @@ function applyMode(){
   if(!el('f_valid').value || el('f_valid').value===(fw?(todayIso().slice(0,4)+'-12-31'):addDays(todayIso(),365))) el('f_valid').value=defaultValid();
   el('validHint').textContent=fw?'рамочный — 365 дней':'до 31 декабря текущего года; можно изменить';
   // передача и доставка: розница — срок, гарантия, область/город/адрес; ЮЛ — способ, стоимость, город/адрес (для накладной)
-  var way=val('d_wayMode'), del=way==='del', inc=val('d_delivInc');
+  var way=val('d_wayMode'), post=way==='post', del=way==='del'||post, inc=val('d_delivInc');   // почта — как доставка (стоимость, город, адрес), адрес — отделения
   // ЮЛ v3 (решение владельца 01.10.2026): способа и стоимости нет — только «доставка включена в цену» (адрес Покупателя) / «не включена» (франко-склад, вывоз за счёт Покупателя);
   // способ доставки сделки (для накладной) с экрана не трогаем. Гарантия ЮЛ — поле сделки, по умолчанию 12 (подсказка с сервера)
-  vis('w_transfer', retail); vis('w_warranty', retail || legal); vis('w_region', retail && del);
+  vis('w_transfer', retail); vis('w_warranty', retail || legal); vis('w_region', retail && del && !post); vis('w_post', retail && post);
   var fca=isFca();   // РФ: FCA всегда — блока «Доставка» нет, остаётся гарантия
   vis('w_way', !legal); vis('w_cost', (legal && !fca) || del); vis('w_costSum', !legal && del && inc==='0');
   vis('w_city', legal ? !fca && inc==='1' : del); vis('w_addr', legal ? !fca && inc==='1' : del);
-  el('lblAddr').textContent=eu?'Адрес доставки — пункт назначения CPT (пусто — юр. адрес покупателя)':'Адрес доставки'; el('lblCost').textContent=eu?'Условия поставки':legal?'Доставка':'Стоимость доставки';
+  el('lblAddr').textContent=eu?'Адрес доставки — пункт назначения CPT (пусто — юр. адрес покупателя)':post?'Отделение: номер и адрес':'Адрес доставки'; el('lblCost').textContent=eu?'Условия поставки':legal?'Доставка':'Стоимость доставки';
   el('btnIncYes').textContent=eu?'Доставка включена в цену (CPT)':'включена в цену';
   el('btnIncNo').textContent=eu?'Перевозку оплачивает покупатель (FCA)':legal?'не включена (франко-склад)':'оплачивается отдельно';
   el('costHint').textContent=eu?(inc==='1'?'CPT пункт назначения: Продавец оплачивает перевозку; риск переходит при передаче первому перевозчику; разгрузка и ввоз в ЕС — Покупатель':(inc==='0'?'FCA Krasnoye: Покупатель организует и оплачивает перевозку':'в договор: FCA или CPT'))
@@ -711,7 +713,8 @@ function fillDeliv(d){
   d=d||{}; var nz=function(v){ return (v==null)?'':String(v); };
   WAY0=d.deliveryMethod||'';
   el('d_transfer').value=nz(d.transferDays); el('d_warranty').value=nz(d.warrantyMonths);
-  el('d_wayMode').value=/самовывоз/i.test(WAY0)?'pick':((WAY0||d.deliveryAddress||d.city)?'del':'');
+  el('d_wayMode').value=/самовывоз/i.test(WAY0)?'pick':/почт/i.test(WAY0)?'post':((WAY0||d.deliveryAddress||d.city)?'del':'');
+  if(/белпочт/i.test(WAY0)) el('d_post').value='Белпочта'; else if(/почт/i.test(WAY0)) el('d_post').value='Европочта';
   el('d_delivInc').value=d.deliveryIncluded===true?'1':((d.deliveryIncluded===false||Number(d.deliveryCost)>0)?'0':'');
   el('d_delivCost').value=nz(d.deliveryCost);
   el('d_region').value=d.region||''; el('d_city').value=d.city||''; el('d_addr').value=d.deliveryAddress||'';
@@ -729,10 +732,10 @@ function collectDeliv(){
     return o;
   }
   if(way==='pick') o.deliveryMethod='самовывоз';
-  if(way==='del'){
-    o.deliveryMethod=(WAY0 && !/самовывоз/i.test(WAY0))?WAY0:'доставка';   // «курьер» / «транспортная компания» из amoCRM не затираем
+  if(way==='del'||way==='post'){
+    o.deliveryMethod=way==='post'?val('d_post'):(WAY0 && !/самовывоз|почт/i.test(WAY0))?WAY0:'доставка';   // «курьер» / «транспортная компания» из amoCRM не затираем; почта — оператор
     if(val('d_delivInc')){ o.deliveryIncluded=val('d_delivInc'); o.deliveryCost=val('d_delivInc')==='1'?'':val('d_delivCost'); }
-    if(m==='retail') o.region=val('d_region').trim();
+    if(m==='retail' && way==='del') o.region=val('d_region').trim();
     o.city=val('d_city').trim(); o.deliveryAddress=val('d_addr').trim();
   }
   return o;
@@ -769,8 +772,9 @@ function localMissing(){
   if(!val('d_transfer') && !isCod() && !isFin()) l.push('срок передачи');
   if(isFin() && !val('f_paymap')) l.push(finKind()==='card'?'карта рассрочки':finKind()==='leasing'?'лизинговая компания':'банк');
   if(!way) l.push('способ: доставка или самовывоз');
-  if(way==='del'){
-    if(!val('d_city').trim() && !val('d_addr').trim()) l.push('адрес доставки (город/адрес)');
+  if(way==='post' && !val('d_addr').trim()) l.push('адрес доставки: номер и адрес отделения почты');
+  if(way==='del'||way==='post'){
+    if(way==='del' && !val('d_city').trim() && !val('d_addr').trim()) l.push('адрес доставки (город/адрес)');
     if(!inc) l.push('стоимость доставки: включена в цену или отдельно');
     else if(inc==='0' && !(Number(val('d_delivCost'))>0)) l.push('стоимость доставки, руб.');
   }
