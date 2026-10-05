@@ -8,6 +8,7 @@
 <script src="tw-items.js"></script>
 <script src="tw-waybill.js"></script>
 <script src="tw-pay.js"></script>
+<script src="tw-deliv.js"></script>
 <title>Тигервуд — Договор</title>
 <!-- Карточка договора (план «Договоры Прохаба», 30.09.2026). ?contract=new|<id|номер> (+ &client=<ключ> &deal=<ключ сделки> &framework=1).
      Черновик хранится без номера (contractsave); номер выдаётся при «Сформировать документ» (contractrender) или берётся с бумаги
@@ -171,7 +172,8 @@
 
   <!-- передача и доставка (не для рамочного): колонки сделки, contractsave{delivery} — уходят только видимые поля -->
   <div class="blk" id="s_deliv">
-    <div class="h">Передача и доставка</div>
+    <div class="h">Передача и доставка <span class="sp"><button class="gray sm hide" id="delivAddrBtn" onclick="twDelivEdit(C.deal.id, C.deal, 'delivAddrMsg', loadContract)">✏️ Изменить адрес</button></span></div>
+    <div class="msg" id="delivAddrMsg"></div>
     <input type="hidden" id="d_wayMode"><input type="hidden" id="d_delivInc">
     <div class="grid2">
       <label class="fl" id="w_transfer"><span class="sm" id="lblTransfer">Срок передачи, раб. дней от оплаты</span><input id="d_transfer" type="number" inputmode="numeric" min="0" autocomplete="off" oninput="renderReady()"></label>
@@ -525,6 +527,7 @@ function renderHead(){
 function setEditable(){
   var ins=el('main').querySelectorAll('#s_head input, #s_head select, #s_terms input, #s_terms select, #s_items input, #s_items select, #s_deliv input, #s_deliv select, #s_deliv button, #s_sched input, #s_sched select');
   for(var i=0;i<ins.length;i++) ins[i].disabled=!EDIT;
+  el('delivAddrBtn').disabled=false;   // смена адреса у подписанного — всегда доступна (правка сделки, не договора)
   ['addItemBtn','addLegBtn','splitBtn','newClientBtn'].forEach(function(id){ el(id).disabled=!EDIT; });
   if(EDIT){ itemsTot(); onBalanceDays(); }
   el('main').className=EDIT?'':'ro';
@@ -851,6 +854,7 @@ function cleanLegs(){ return LEGS.map(function(l,i){ return { legNo:i+1, amount:
 /* ── документы и счета ── */
 function renderDocs(){
   var c=C, box=el('docsBox'), ib=el('invBox');
+  vis('delivAddrBtn', !!(c && c.deal && !EDIT && c.status!=='cancelled' && mode()!=='legal'));   // подписан — поля закрыты; адрес меняется в сделке (06.10.2026)
   twPay('s_pay', c&&c.pay, { contract: c?c.id:'', canCreate: !!c && c.status!=='cancelled', onDone: loadContract });
   if(!c){ box.innerHTML='<div class="sm">Черновик: документа ещё нет — сохраните и нажмите «Сформировать документ» или загрузите подписанный.</div>'; ib.innerHTML=''; el('wbBox').innerHTML=''; return; }
   var docs=c.documents||[];
