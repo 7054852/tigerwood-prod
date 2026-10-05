@@ -31,8 +31,8 @@ function twPay(boxId, pay, opts){
   h += '</div><div class="msg" id="twpaymsg"></div>';
   box.innerHTML = h;
 }
-function twPayCopy(url){
-  var done = function(){ setm('twpaymsg', 'ok', '✅ Ссылка скопирована — отправьте её клиенту'); };
+function twPayCopy(url, msgId){
+  var done = function(){ setm(msgId || 'twpaymsg', 'ok', '✅ Ссылка скопирована — отправьте её клиенту'); };
   try { navigator.clipboard.writeText(url).then(done, function(){ prompt('Скопируйте ссылку', url); }); } catch(e){ prompt('Скопируйте ссылку', url); }
 }
 function twPayNew(method){
@@ -49,7 +49,8 @@ function twPayDone(r){
   if(!r) return;
   if(r.link && r.link.url) info(r.existing ? 'Ссылка уже есть' : 'Ссылка создана', '<div>' + esc(r.link.methodRu) + ' № ' + esc(r.link.accountNo) + ' · ' + money(r.link.amount) + ' руб.' + (r.dealNum ? ' · заказ ' + esc(r.dealNum) : '') + '</div>'
     + '<div style="margin-top:var(--s-2);word-break:break-all"><a href="' + esc(r.link.url) + '" target="_blank" rel="noopener">' + esc(r.link.url) + '</a></div>'
-    + '<div class="sm" style="margin-top:var(--s-2)">Скопируйте ссылку в блоке «Оплата онлайн» и отправьте клиенту.</div>');
+    + '<div class="row" style="margin-top:var(--s-2)"><button class="green sm" onclick="twPayCopy(\'' + esc(r.link.url) + '\', \'twPayDlgMsg\')">📋 Скопировать ссылку</button><span class="msg" id="twPayDlgMsg"></span></div>'
+    + '<div class="sm" style="margin-top:var(--s-2)">Отправьте ссылку клиенту — в мессенджере или по почте.</div>');
   if(r.pay) twPay(TWPAY.box, r.pay, TWPAY.opts);
   if(TWPAY.opts.onDone) TWPAY.opts.onDone(r);
 }
