@@ -557,7 +557,7 @@ function renderBtns(){
   if(EDIT && !fin) h+='<button '+(c?'':'disabled title="сначала сохраните черновик"')+' onclick="renderDoc()">Сформировать документ</button>';
   if(fin && c && c.status==='draft') h+='<button class="sec" onclick="signDlg()">✅ Банк одобрил</button>';
   else if(!fin && c && (c.canSign || (c.canSign==null && (c.status==='active'||c.status==='reserved') && !c.expired))) h+='<button class="sec" onclick="signDlg()">Подписан</button>';
-  if(!fin && (!c || (c.canUpload!==false && c.status!=='cancelled'))) h+='<button class="sec" onclick="uploadDlg()">Загрузить подписанный</button>';
+  if(!fin && (!c || (c.canUpload!==false && c.status!=='cancelled'))) h+='<button class="sec" onclick="uploadDlg()">'+(hasUpload()?'Загрузить новый файл':'Загрузить подписанный')+'</button>';
   if(c && c.status!=='cancelled' && c.status!=='draft') h+='<button class="danger sec" onclick="cancelDlg()">Аннулировать</button>';
   if(c && (c.canDelete || (c.canDelete==null && c.status==='draft'))) h+='<button class="danger sec" onclick="deleteDlg()">Удалить черновик</button>';
   el('botBtns').innerHTML='<div class="end">'+h+'</div>';
@@ -887,7 +887,8 @@ function renderDocs(){
     return '<div class="docrow"><span><b>'+esc(d.docType||d.type||'Договор')+'</b> <span class="sm">'+esc(d.date||'')+'</span></span>'
       +'<span class="pill '+(d.origin==='uploaded'?'info':'')+'">'+esc(ORIGIN_RU[d.origin]||d.origin||'сформирован')+'</span>'
       +(d.status&&d.status!=='сформирован'&&d.status!=='formed'?' <span class="pill '+(/ошиб|failed/.test(d.status)?'bad':'muted')+'">'+esc(d.status)+'</span>':'')
-      +'<span class="sp">'+(d.url?'<a href="'+esc(d.url)+'" target="_blank" rel="noopener">'+(d.origin==='uploaded'?'открыть файл':'открыть в Google Docs')+' ↗</a>':'<span class="sm">файла нет</span>')+'</span></div>'; }).join('')
+      +'<span class="sp">'+(d.url?'<a href="'+esc(d.url)+'" target="_blank" rel="noopener">'+(d.origin==='uploaded'?'открыть файл':'открыть в Google Docs')+' ↗</a>':'<span class="sm">файла нет</span>')
+      +(d.origin==='uploaded'&&d.id&&d.status!=='cancelled'&&c.status!=='cancelled'?' <button class="gho sm" onclick="fileDeleteDlg(\''+esc(d.id)+'\')">удалить</button>':'')+'</span></div>'; }).join('')
     :'<div class="sm">'+(c.status==='draft'?'Черновик: документа ещё нет — нажмите «Сформировать документ» или загрузите подписанный.':'Документов нет.')+'</div>';
   el('wbBox').innerHTML=(c.deal&&c.status!=='cancelled')?('<div class="row" style="margin-top:var(--s-3)"><span class="sm">Накладные по сделке '+esc(c.deal.num||'')+':</span>'
     +'<button class="sec sm" onclick="twWaybill(C.deal.id,\'ТН\',loadContract)">✍️ Выписать ТН</button><button class="sec sm" onclick="twWaybill(C.deal.id,\'ТТН\',loadContract)">✍️ Выписать ТТН</button></div>'):'';
@@ -986,7 +987,10 @@ function signDlg(){
 /** подписанный скан: файл → base64 (≤15 МБ), номер с бумаги, дата → contractupload; для нового договора — тип/клиент/сделка из формы */
 function uploadDlg(){
   var c=C, kinds=KINDS.filter(function(k){ return !!k.framework===isFw(); });
-  ask('Загрузить подписанный договор', '<div class="sm">Загруженный файл = подписанный документ: договор станет «подписан», номер берётся <b>с бумаги</b> (серии не тратятся). Если по договору есть заявка — она станет заказом.</div>'
+  var had=hasUpload();
+  ask(had?'Загрузить новый файл договора':'Загрузить подписанный договор', (had?'<div class="sm">Новый файл подписанного договора (например, вместо неверного скана). Номер и дата — как на бумаге.</div>'
+      +'<label class="fl" style="margin-top:var(--s-3);flex-direction:row;align-items:center;gap:var(--s-2)"><input type="checkbox" id="upReplace" checked style="width:18px"> <span>Заменить прежний файл (старый уйдёт в корзину)</span></label>'
+    :'<div class="sm">Загруженный файл = подписанный документ: договор станет «подписан», номер берётся <b>с бумаги</b> (серии не тратятся). Если по договору есть заявка — она станет заказом.</div>')
     +(c?'':'<label class="fl" style="margin-top:var(--s-3)"><span class="sm">Тип договора</span><select id="upKind">'+kinds.map(function(k){ return '<option value="'+esc(k.kind)+'"'+(k.kind===kindVal()?' selected':'')+'>'+esc(k.label)+'</option>'; }).join('')+'</select></label>')
     +'<label class="fl" style="margin-top:var(--s-3)"><span class="sm">Номер договора (как на бумаге)</span><input id="upNum" value="'+esc((c&&c.number)||'')+'" placeholder="например 12/2026" autocomplete="off"></label>'
     +'<label class="fl" style="margin-top:var(--s-2)"><span class="sm">Дата подписи</span><input type="date" id="upDate" value="'+todayIso()+'" autocomplete="off"></label>'
@@ -1003,12 +1007,19 @@ function uploadDlg(){
       var rd=new FileReader();
       rd.onload=function(){ var b64=String(rd.result).split(',')[1]||'';
         run({vapi:'contractupload', id:c?ID:'', kind:c?(c.kind||''):val('upKind'), key:c?((c.client&&c.client.key)||''):buyerKey(BUYER), deal:c?'':(isFw()?'':val('f_deal')),
-             framework:isFw()?1:0, number:num, date:ruDate(d), b64:b64, name:f.name||'', mime:f.type||''}, 'Загружаю подписанный договор…', 'msg').then(function(r){ if(!r) return;
+             framework:isFw()?1:0, number:num, date:ruDate(d), b64:b64, name:f.name||'', mime:f.type||'', replace:(el('upReplace')&&el('upReplace').checked)?1:0}, 'Загружаю подписанный договор…', 'msg').then(function(r){ if(!r) return;
           hide('askmodal'); if(r.id) setId(r.id);
-          info('Готово', '<div>✅ Договор <b>№ '+esc(r.number||num)+'</b> загружен и отмечен подписанным.</div>'); loadContract(); }); };
+          info('Готово', '<div>✅ '+(had?'Новый файл договора <b>№ '+esc(r.number||num)+'</b> загружен.':'Договор <b>№ '+esc(r.number||num)+'</b> загружен и отмечен подписанным.')+'</div>'); loadContract(); }); };
       rd.onerror=function(){ setm('upMsg','err','Не удалось прочитать файл'); };
       rd.readAsDataURL(f); return false;   // окно закроем после ответа сервера
     }, 'Загрузить');
+}
+function hasUpload(){ return !!(C && (C.documents||[]).some(function(d){ return d.origin==='uploaded' && d.status!=='cancelled'; })); }
+/** удалить загруженный файл (07.10.2026): файл → корзина Drive, договор остаётся подписанным */
+function fileDeleteDlg(id){
+  ask('Удалить загруженный файл?', '<div>Файл уйдёт в корзину Google Drive, из карточки договора пропадёт. Договор останется <b>подписанным</b> — загрузите правильный файл кнопкой «Загрузить новый файл».</div>'
+    +'<div class="sm" style="margin-top:var(--s-2)">Если подписан не тот договор — его нужно аннулировать.</div>',
+    function(){ run({vapi:'contractfiledelete', id:id}, 'Удаляю файл…', 'msg').then(function(r){ if(r) loadContract(); }); }, 'Удалить файл');
 }
 function cancelDlg(){
   var n=(C&&C.number)||'';
