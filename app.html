@@ -329,7 +329,9 @@ function shell(){
   window.onhashchange=route;
   markTheme();
   // «Оформить в Прохабе» из amoCRM (06.10.2026): app.html?lead=<ID> → раздел «Договоры», карточка договора по лиду
-  var lead=twQp('lead'); if(/^\d{4,18}$/.test(lead) && ITEMS.contracts){ FOCUS={ id:'contracts', params:{ lead:lead } }; if(location.hash!=='#/contracts'){ location.hash='#/contracts'; return; } }
+  // хеш ставим без события hashchange (оно приходило не всегда — раздел не открывался) и сразу route(); ?lead убираем, чтобы обновление страницы не открывало новый договор снова
+  var lead=twQp('lead'); if(/^\d{4,18}$/.test(lead) && ITEMS.contracts){ FOCUS={ id:'contracts', params:{ lead:lead } };
+    try{ var sp=new URLSearchParams(location.search); sp.delete('lead'); var qs=sp.toString(); history.replaceState(null,'',location.pathname+(qs?'?'+qs:'')+'#/contracts'); }catch(e){ location.hash='#/contracts'; } }
   route();
 }
 // роль приходит с эмодзи в начале («🗂 Диспетчер производства») — в шапке меню показываем без него

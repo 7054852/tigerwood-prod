@@ -152,5 +152,23 @@
   d.addEventListener('visibilitychange',function(){ if(!d.hidden && MODE==='auto') apply(); });
   if(d.readyState==='loading') d.addEventListener('DOMContentLoaded', paintTelegram); else paintTelegram();
 
+  // реестр table.adapt не помещается по ширине → карточки (.cards в tw-theme.css); уже 640px работают карточки .mob
+  var FIT=0;
+  function fitTables(){
+    FIT=0; var ts=d.querySelectorAll('table.adapt'), narrow=(root.innerWidth||0)<=640;
+    for(var i=0;i<ts.length;i++){ var t=ts[i], p=t.parentElement;
+      t.classList.remove('cards');
+      if(!narrow && p && t.offsetParent && t.offsetWidth>p.clientWidth+1) t.classList.add('cards'); }
+  }
+  function fitSoon(){ if(!FIT) FIT=setTimeout(fitTables, 30); }   // не rAF: в скрытом iframe оболочки он не срабатывает
+  root.addEventListener('resize', fitSoon);
+  root.addEventListener('message', function(e){ if(e && e.data && e.data.tw==='show') fitSoon(); });
+  if(root.MutationObserver) d.addEventListener('DOMContentLoaded', function(){
+    new MutationObserver(function(ms){ for(var i=0;i<ms.length;i++){ var m=ms[i]; if(!(m.type==='attributes' && m.target.tagName==='TABLE')) return fitSoon(); } })
+      .observe(d.body, { childList:true, subtree:true, attributes:true, attributeFilter:['class','style','hidden'] });
+    fitSoon();
+  });
+  root.twFitTables=fitTables;
+
   root.twTheme={ get:function(){ return MODE; }, set:set, now:current, sun:sun, text:nowText, icon:icon };
 })(typeof window!=='undefined'?window:this);
