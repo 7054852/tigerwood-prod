@@ -52,6 +52,22 @@
   .seg button .twi{ width:15px; height:15px; }
   .suntxt{ font:var(--t-small); color:var(--side-mut); margin-top:var(--s-2); text-align:center; }
 
+  /* свёрнутое меню (06.10.2026, только компьютер): узкая полоса значков, название — во всплывающей подсказке; выбор помнит браузер */
+  .side{ transition:width .2s var(--ease), flex-basis .2s var(--ease); }
+  .sidetgl{ background:transparent; color:var(--muted); border:0; padding:0; width:36px; min-height:36px; flex:none; margin-left:calc(-1 * var(--s-2)); }
+  .sidetgl:hover{ background:var(--grey-bg); color:var(--fg); }
+  @media(min-width:821px){
+    body.slim .side{ width:68px; flex-basis:68px; }
+    body.slim .sbrand{ padding:var(--s-5) 0 var(--s-4); justify-content:center; }
+    body.slim .sbrand .who, body.slim .sitem .lb, body.slim .sitem .ex, body.slim .suntxt{ display:none; }
+    body.slim .snav{ padding:0 var(--s-2) var(--s-4); }
+    body.slim .sgroup{ margin-top:var(--s-3); padding-top:var(--s-3); border-top:1px solid var(--line); }
+    body.slim .sgroup>.gt{ display:none; }
+    body.slim .sitem{ justify-content:center; padding:0; }
+    body.slim .sfoot{ padding:var(--s-2); }
+    body.slim .sfoot .seg{ flex-direction:column; gap:2px; }
+    body.slim .seg button{ font-size:0; gap:0; }
+  }
   .main{ flex:1; min-width:0; display:flex; flex-direction:column; }
   .topbar{ display:none; align-items:center; gap:var(--s-2); min-height:52px; padding:0 var(--s-3); background:var(--card);
            border-bottom:1px solid var(--line); position:sticky; top:0; z-index:20; padding-top:env(safe-area-inset-top); }
@@ -322,12 +338,13 @@ function shell(){
     +'</aside>'
     +'<div class="main">'
       +'<div class="topbar"><button class="burger" onclick="drawer(true)" aria-label="меню">'+twTheme.icon('menu')+'</button><span class="dtile" id="toptile"></span><span class="tt" id="topttl">Тигервуд</span></div>'
-      +'<div class="vhead" id="vhead"><span class="dtile" id="vhtile"></span><div style="min-width:0"><div class="vg" id="vhgrp"></div><div class="vt" id="vhttl"></div></div></div>'
+      +'<div class="vhead" id="vhead"><button class="sidetgl" onclick="slim()" id="sidetgl" title="свернуть меню" aria-label="свернуть или развернуть меню">'+twTheme.icon('menu')+'</button><span class="dtile" id="vhtile"></span><div style="min-width:0"><div class="vg" id="vhgrp"></div><div class="vt" id="vhttl"></div></div></div>'
       +'<div class="view" id="view"></div>'
     +'</div>'
     +'</div>';
   window.onhashchange=route;
   markTheme();
+  try{ slim(localStorage.getItem('tw_slim')==='1'); }catch(e){}
   // «Оформить в Прохабе» из amoCRM (06.10.2026): app.html?lead=<ID> → раздел «Договоры», карточка договора по лиду
   // хеш ставим без события hashchange (оно приходило не всегда — раздел не открывался) и сразу route(); ?lead убираем, чтобы обновление страницы не открывало новый договор снова
   var lead=twQp('lead'); if(/^\d{4,18}$/.test(lead) && ITEMS.contracts){ FOCUS={ id:'contracts', params:{ lead:lead } };
@@ -355,6 +372,12 @@ function setTheme(m){
 setInterval(function(){ if(document.getElementById('suntxt')) markTheme(); }, 300000);
 function groupOf(id){ for(var i=0;i<GROUPS.length;i++){ if(GROUPS[i].items.indexOf(id)>=0) return GROUPS[i]; } return { key:'admin', title:'' }; }
 function drawer(open){ document.body.classList.toggle('drawer',!!open); }
+// свернуть меню до значков (компьютер); без аргумента — переключить, выбор помнит браузер
+function slim(on){
+  if(on===undefined){ on=!document.body.classList.contains('slim'); try{ localStorage.setItem('tw_slim', on?'1':''); }catch(e){} }
+  document.body.classList.toggle('slim',!!on);
+  var b=document.getElementById('sidetgl'); if(b) b.title=on?'развернуть меню':'свернуть меню';
+}
 function go(id){ var t='#/'+id; if(location.hash===t) route(); else location.hash=t; }   // смена хеша → route через onhashchange (без двойного рендера)
 function route(){
   // первый доступный встраиваемый раздел по умолчанию
