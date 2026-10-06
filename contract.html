@@ -109,7 +109,7 @@
     <div class="kv">
       <span class="k">Клиент</span>
       <span class="v"><input id="f_client" list="buyerList" placeholder="начните вводить название или ФИО" autocomplete="off" oninput="onClientInput()" onchange="onClientInput()"><datalist id="buyerList"></datalist>
-        <div class="row"><span class="sm" id="clientInfo">выберите клиента из справочника — от него зависят тип договора, валюта и серия номера</span><button class="gho sm" id="newClientBtn" onclick="newClient()">+ Создать клиента</button></div></span>
+        <div class="row"><span class="sm" id="clientInfo">выберите клиента из справочника — от него зависят тип договора, валюта и серия номера</span><button class="gho sm" id="newClientBtn" onclick="newClient()">+ Создать клиента</button></div><div class="sm" id="leadHint"></div></span>
       <span class="k">Тип договора</span>
       <span class="v"><select id="f_kind" onchange="onKind()"></select><div class="sm" id="kindHint"></div></span>
       <span class="k" id="fwK">Рамочный</span>
@@ -404,10 +404,26 @@ function loadContract(){
   }).catch(function(e){ loadErr(netText(e)); });
 }
 /** Новый договор из ссылки: ?client= (карточка клиента), ?deal= (карточка сделки), &framework=1 */
+/* «Оформить в Прохабе» из лида amoCRM (06.10.2026): ?lead=<ID>. Сделка по лиду есть — её договор (или новый к ней); нет — новый договор,
+   клиент из справочника по телефону/ФИО контакта лида, иначе «+ Создать клиента» с ФИО и телефоном; сделка создаётся при сохранении и привязывается к лиду */
+var LEAD=qp('lead'), LEAD_PHONE='';
 function prefillNew(){
   C=null; EDIT=true;
   el('f_date').value=todayIso();
   el('f_fw').checked=(qp('framework')==='1');
+  if(LEAD && !qp('deal') && qp('restore')!=='1'){
+    get({vapi:'leadopen', lead:LEAD}).then(function(r){
+      if(!r||!r.ok){ el('dealHint').innerHTML='<span class="err">Лид '+esc(LEAD)+': '+esc(errText(r))+'</span>'; showMain(); afterLoad(); return; }
+      if(r.contract){ location.replace(pageUrl('contract.html',{contract:r.contract})); return; }
+      if(r.deal){ location.replace(pageUrl('contract.html',{contract:'new', deal:r.deal})); return; }
+      LEAD_PHONE=r.phone||'';
+      var b=r.buyerKey?findBuyer(r.buyerKey):null;
+      if(b) setBuyer(b); else if(r.name) el('f_client').value=r.name;
+      el('leadHint').innerHTML='Лид amoCRM № '+esc(LEAD)+(r.name?(' · '+esc(r.name)):'')+(r.phone?(' · '+esc(r.phone)):'')+(b?'':(' — <b>клиента нет в справочнике</b>: «+ Создать клиента» (ФИО и телефон подставятся)'))+'. Сделка создастся при сохранении договора.';
+      showMain(); afterLoad(); if(!b) paintClient();
+    }).catch(function(e){ el('dealHint').innerHTML='<span class="err">'+esc(netText(e))+'</span>'; showMain(); afterLoad(); });
+    return;
+  }
   var ck=qp('client'), dk=qp('deal');
   if(ck && qp('restore')!=='1') setBuyer(findBuyer(ck));
   if(dk){
@@ -469,14 +485,14 @@ function draftKey(){ return 'tw_contract_draft:'+ID; }
 function saveDraft(){
   var f={}, ins=el('main').querySelectorAll('input[id], select[id]');
   for(var i=0;i<ins.length;i++){ var e=ins[i]; if(e.type==='file') continue; f[e.id]=(e.type==='checkbox'||e.type==='radio')?e.checked:e.value; }
-  var d={ f:f, pos:cleanPos(), legs:LEGS, deal:PRESEL_DEAL, cur:TWI_CUR, way0:WAY0 };
+  var d={ f:f, pos:cleanPos(), legs:LEGS, deal:PRESEL_DEAL, cur:TWI_CUR, way0:WAY0, lead:LEAD };
   try{ sessionStorage.setItem(draftKey(), JSON.stringify(d)); }catch(e){}
 }
 function restoreDraft(){
   var d=null; try{ d=JSON.parse(sessionStorage.getItem(draftKey())||'null'); sessionStorage.removeItem(draftKey()); }catch(e){ d=null; }
   if(!d||!d.f) return false;
   Object.keys(d.f).forEach(function(id){ var e=el(id); if(!e||e.type==='file') return; if(e.type==='checkbox'||e.type==='radio') e.checked=!!d.f[id]; else e.value=d.f[id]; });
-  WANT_KIND=d.f.f_kind||''; PRESEL_DEAL=d.deal||PRESEL_DEAL; LEGS=d.legs||[]; TWI_CUR=d.cur||TWI_CUR; WAY0=d.way0||WAY0;
+  WANT_KIND=d.f.f_kind||''; PRESEL_DEAL=d.deal||PRESEL_DEAL; LEAD=d.lead||LEAD; LEGS=d.legs||[]; TWI_CUR=d.cur||TWI_CUR; WAY0=d.way0||WAY0;
   POS=posFromItems(d.pos||[]); POS.forEach(function(p,i){ if(d.pos[i]&&d.pos[i].crossbar) p.crossbar=d.pos[i].crossbar; });
   BUYER=findBuyerByName(val('f_client')); KINDS_KEY=null;
   return true;
@@ -490,13 +506,14 @@ function afterLoad(){
   var sp=new URLSearchParams(location.search); sp.delete('restore'); sp.delete('client'); try{ history.replaceState(null,'',location.pathname+'?'+sp.toString()); }catch(e){}
 }
 /** адрес возврата в эту карточку (с теми же служебными параметрами) */
-function backUrl(){ return pageUrl('contract.html', { contract:ID, deal:isNew()?qp('deal'):'', restore:'1' }); }
+function backUrl(){ return pageUrl('contract.html', { contract:ID, deal:isNew()?qp('deal'):'', lead:isNew()?LEAD:'', restore:'1' }); }
 /** «+ Создать клиента»: форма нового клиента в «Клиентах» с ФИО/названием и типом; после сохранения — назад сюда с новым клиентом */
 function newClient(){
   var m=mode(), nm=BUYER?'':val('f_client').trim();
   // тип не выбран: похоже на ФИО (нет кавычек и ООО/ЧУП/ИП…) — физлицо (\b с кириллицей не работает — границы пробелами)
   var t=m==='retail'?'физлицо':(m==='legal'?'юрлицо':((nm && !/[«"]|(^|\s)(ООО|ОАО|ЗАО|АО|ОДО|ЧУП|ЧТУП|УП|СООО|ИООО|ИП)(\s|$)/i.test(nm))?'физлицо':''));
   saveDraft();
+  try{ if(LEAD_PHONE) sessionStorage.setItem('tw_newclient_phone', LEAD_PHONE); }catch(e){}   // телефон — не в адресе страницы
   location.replace(pageUrl('clients.html', { new:'1', type:t, name:nm, back:backUrl() }));
 }
 /** данные клиента (телефон, паспорт, реквизиты) правятся в карточке клиента — туда и обратно */
@@ -894,6 +911,7 @@ function collect(){
   var d={ kind:kindVal(), kindLabel:k?k.label:'', isFramework:fw, client:BUYER?buyerKey(BUYER):'', clientName:val('f_client').trim(), deal:fw?'':val('f_deal'),
     contractDate:ruDate(val('f_date')), currency:retail?'BYN':curOf(),
     items:fw?[]:cleanPos(), delivery:fw?{}:collectDeliv(), legs:schedOn()?cleanLegs():[] };
+  if(LEAD && !d.deal && !fw) d.lead=LEAD;   // новая заявка привяжется к лиду amoCRM
   if(retail){ d.amount=posTotalValue(); if(isCod()) d.codPrepay=codPre(); if(isFin()){ d.paymentMappingId=val('f_paymap'); d.legs=[]; } return d; }   // розница: сумма = итог позиций, рынок BYN, «Действует до» — до исполнения (сервер)
   d.validUntil=ruDate(val('f_valid')); d.amount=amountVal();   // рамочный РБ — null внутри amountVal (fwNoSum); РФ/Европа — сумма
   var lbl=k?(k.label||''):'', svc=/услуг/i.test(lbl), coop=/сотрудничеств/i.test(lbl);

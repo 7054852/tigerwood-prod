@@ -341,7 +341,9 @@ function route(){
   CKEY=qp('client'); el('backBar').className=BACK?'toolbar':'toolbar hide';
   if(qp('new')==='1' && !NEW_DONE && !CKEY){ NEW_DONE=true;   // «+ Создать клиента» из договора: тип и ФИО/название уже введены там
     openAdd(); var t=qp('type'); if(t==='физлицо'||t==='юрлицо'||t==='ИП') setType(t);
-    var nm=new URLSearchParams(location.search).get('name')||''; if(nm){ var cur=collectRaw(); cur[CTYPE==='физлицо'?'Полное ФИО':'Наименование ЮЛ (полное)']=nm; renderFields(cur); } }
+    var sp0=new URLSearchParams(location.search), nm=sp0.get('name')||'', ph='';   // телефон — из контакта лида amoCRM («Оформить в Прохабе», 06.10.2026), через sessionStorage
+    try{ ph=sessionStorage.getItem('tw_newclient_phone')||''; sessionStorage.removeItem('tw_newclient_phone'); }catch(e){}
+    if(nm||ph){ var cur=collectRaw(); if(nm) cur[CTYPE==='физлицо'?'Полное ФИО':'Наименование ЮЛ (полное)']=nm; if(ph) cur['тел']=ph.replace(/^\s*\+/,''); renderFields(cur); } }
   if(CKEY){ el('vList').className='hide'; el('vCard').className=''; openClient(); }
   else { el('vCard').className='hide'; el('vList').className=''; el('ttl').textContent='👤 Клиенты'; load(); }
 }

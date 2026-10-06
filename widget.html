@@ -6,274 +6,45 @@
 <script src="tw-theme.js"></script>
 <script src="tw-config.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Тигервуд — документы</title>
+<title>Тигервуд — Прохаб</title>
 <style>
-  /* виджет живёт в карточке amoCRM (узкий светлый iframe): токены и элементы темы, отступ поменьше */
+  /* виджет в карточке лида amoCRM (06.10.2026): только статус сделки Прохаба и кнопка «Оформить в Прохабе».
+     Клиент, договор, позиции, доставка, оплата и документы оформляются в Прохабе — главный источник данных */
   body{ padding:var(--s-3); }
   .hd{ font:var(--t-heading); }
-  .sub{ margin:var(--s-1) 0 0; }
   .sec{ background:var(--card); border:1px solid var(--line); border-radius:var(--r-card); padding:var(--s-3); margin-top:var(--s-3); }
-  .lbl{ font:var(--t-label); color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin-bottom:var(--s-2); }
-  .tiles{ margin-top:var(--s-2); }
-  .tile{ display:flex; flex-direction:column; align-items:flex-start; gap:2px; text-align:left; font:var(--t-strong); font-weight:600; color:var(--fg); cursor:pointer; min-height:0; }
-  .tile:hover{ border-color:var(--accent); background:var(--card); }
-  .tile .t2{ font:var(--t-tiny); color:var(--muted); }
-  .row{ margin-top:var(--s-2); }
-  input,textarea{ width:100%; }
-  textarea{ min-height:96px; }
-  .msg{ margin-top:var(--s-2); }
+  .kv{ display:flex; justify-content:space-between; gap:var(--s-2); margin-top:var(--s-1); font:var(--t-small); }
+  .kv span:first-child{ color:var(--muted); }
+  .btn{ display:block; width:100%; text-align:center; margin-top:var(--s-3); }
   .hide{ display:none; }
-  .cli{ display:flex; align-items:center; gap:var(--s-2); flex-wrap:wrap; }
-  .out{ margin-top:var(--s-2); font:var(--t-small); }
 </style>
 </head>
 <body>
-<div id="hd" class="hd">Документы по сделке…</div>
-<div id="sub" class="sub">загрузка…</div>
-<div id="err" class="sec err hide"></div>
-
-<div id="main" class="hide">
-  <!-- передать сделку в SCRM (явный триггер: создать + присвоить №N) -->
-  <div class="sec" id="secPush">
-    <button class="green" style="width:100%" onclick="pushScrm()">📥 Передать в SCRM</button>
-    <div class="sub" id="pushHint">Создаст сделку в программе и присвоит сквозной номер.</div>
-    <div class="msg" id="pushMsg"></div>
-  </div>
-
-  <!-- тип клиента -->
-  <div class="sec">
-    <div class="lbl">Клиент</div>
-    <div class="cli">
-      <span class="seg" id="segType">
-        <button data-v="юрлицо" onclick="setType('юрлицо')">Юрлицо</button>
-        <button data-v="физлицо" onclick="setType('физлицо')">Физлицо</button>
-      </span>
-      <span id="cliBadge" class="pill">не привязан</span>
-    </div>
-  </div>
-
-  <!-- СФОРМИРОВАННЫЕ ДОКУМЕНТЫ (остаются в виджете) -->
-  <div id="secDocs" class="sec hide">
-    <div class="lbl">Сформированные документы</div>
-    <div id="docsList"></div>
-  </div>
-
-  <!-- ЮРЛИЦО: реквизиты -->
-  <div id="secReq" class="sec hide">
-    <div class="lbl">Реквизиты юрлица</div>
-    <div id="reqStart">
-      <button class="gray" onclick="openReq()">📋 Загрузить реквизиты</button>
-      <div class="sub">Распознаю текст или файл/фото → создам клиента и разнесу реквизиты в карточку amoCRM.</div>
-    </div>
-    <div id="reqPanel" class="hide">
-      <textarea id="raw" placeholder="Вставьте реквизиты: ООО «...», УНП…, р/с…, банк, БИК, адрес, тел, e-mail"></textarea>
-      <div class="row">
-        <button class="gray sm" onclick="parseText()">🔍 Распознать текст</button>
-        <label class="btn sm sec">📎 Файл/фото<input type="file" id="file" style="display:none" accept="application/pdf,image/*,.doc,.docx,.xls,.xlsx" onchange="parseFile()"></label>
-        <button class="gray sm" onclick="closeReq()">отмена</button>
-      </div>
-      <div class="msg" id="reqMsg"></div>
-    </div>
-  </div>
-
-  <!-- ДОГОВОР -->
-  <div class="sec">
-    <div class="lbl">Договор</div>
-    <div id="freightRow" class="row hide" style="margin-top:0">
-      <span class="sub">Заказчик перевозки:</span>
-      <span class="seg" id="segFreight">
-        <button data-v="Мы" class="on" onclick="setFreight('Мы')">Мы</button>
-        <button data-v="Клиент" onclick="setFreight('Клиент')">Клиент</button>
-      </span>
-    </div>
-    <div class="tiles" id="conTiles"></div>
-    <div class="msg" id="conMsg"></div>
-    <div class="out" id="conOut"></div>
-  </div>
-
-  <!-- СЧЁТ (только юрлицо) -->
-  <div id="secInv" class="sec hide">
-    <div class="lbl">Счёт</div>
-    <button class="green" style="width:100%" onclick="genInvoice()">🧾 Сформировать счёт</button>
-    <div class="sub" id="invHint"></div>
-    <div class="msg" id="invMsg"></div>
-    <div class="out" id="invOut"></div>
-  </div>
-</div>
+<div class="hd">Тигервуд · Прохаб</div>
+<div class="sec" id="box"><div class="sm">Загрузка…</div></div>
+<a class="btn pri" id="go" href="#" target="_blank" rel="noopener">Оформить в Прохабе →</a>
+<div class="sm" style="margin-top:var(--s-2)" id="note">Клиент, договор, позиции, доставка и ссылка на оплату оформляются в Прохабе. Номер заказа появится в названии сделки.</div>
 
 <script>
-// ── бэкенд: анонимный @200 vapi (тот же, что у vyrab). Без GAS-iframe → работает в amoCRM. ──
-var BASE=(window.TW_CFG&&TW_CFG.hub)||'https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';   // адрес задаёт tw-config.js; запасной — живой GAS
-var APP='tw7prod';
-function api(p, post){
-  p.app=APP; p.wk=qp('wk');   // ключ виджета — из адреса iframe (его ставит script.js виджета)
-  var body=Object.keys(p).map(function(k){ return encodeURIComponent(k)+'='+encodeURIComponent(p[k]==null?'':p[k]); }).join('&');
-  if(post){ return fetch(BASE, {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'}, body:body}).then(function(r){return r.json();}); }
-  return fetch(BASE+'?'+body).then(function(r){return r.json();});
-}
+var BASE=(window.TW_CFG&&TW_CFG.hub)||'';
+var APP_URL='https://7054852.github.io/tigerwood-prod/app.html';
 function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]*)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
-
-var LEAD=qp('lead');
-var KEY=LEAD, DEAL=null, CTYPE='юрлицо', FREIGHT='Мы';
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
-function $(id){ return document.getElementById(id); }
 function money(n){ n=Number(n)||0; return n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,' '); }
-function EX(k){ return (DEAL&&DEAL.extra&&DEAL.extra[k]!=null)?String(DEAL.extra[k]):''; }
-function attached(){ return DEAL && DEAL.buyerKey; }
-
-function boot(){
-  if(!LEAD){ showErr('Не передан ID сделки'); return; }
-  loadDeal();
-}
-function loadDeal(){
-  api({vapi:'deal', deal:KEY}).then(function(r){
-    if(!r||!r.ok){ showErr((r&&r.error)||'сделка не найдена'); return; }
-    DEAL=r.deal; render();
-  }).catch(function(e){ showErr(e.message||String(e)); });
-}
-function showErr(m){ $('err').className='sec err'; $('err').innerHTML='⚠️ '+esc(m); $('sub').textContent=''; }
-
-// «Передать в SCRM» — явный триггер: создать сделку + присвоить сквозной №N + переименовать лид
-function pushScrm(){
-  var m=$('pushMsg'); m.className='msg'; m.innerHTML='Передаю в SCRM…';
-  api({vapi:'pushscrm', lead:LEAD}).then(function(r){
-    if(!r||!r.ok){ m.className='msg err'; m.innerHTML='⚠️ '+esc((r&&r.error)||'ошибка'); return; }
-    m.className='msg ok'; m.innerHTML='✅ Сделка в SCRM'+(r.num?(' · '+esc(r.num)):'');
-    setTimeout(loadDeal, 600);
-  }).catch(function(e){ m.className='msg err'; m.innerHTML='Ошибка: '+esc(e.message||String(e)); });
-}
-
-function render(){
-  $('main').className='';
-  var d=DEAL;
-  $('hd').textContent='Документы · Сделка № '+String(d.num||d.id).replace(/^№\s*/,'');
-  $('sub').textContent=(d.client||'клиент не указан')+' · '+money(d.sum||0)+' руб';
-  CTYPE=d.clientType||'юрлицо'; syncType();
-  if(attached()){ var b=d.buyer||{}; $('cliBadge').className='pill ok'; $('cliBadge').textContent=(b['Наименование ЮЛ (полное)']||d.client||'клиент')+' · привязан'; }
-  else { $('cliBadge').className='pill'; $('cliBadge').textContent='не привязан'; }
-  var hasNum=/№\s*\d/.test(String(d.num||''));
-  $('pushHint').textContent = hasNum ? ('✓ В SCRM · '+String(d.num)) : 'Создаст сделку в программе и присвоит сквозной номер.';
-  applyType();
-  renderConTiles();
-  renderDocsList();
-}
-
-function renderDocsList(){
-  var d=DEAL, h='';
-  (d.contracts||[]).forEach(function(c){
-    h+='<div class="out">📄 Договор № '+esc(c.number)+' <span class="sub">('+esc(c.type||'')+')</span>'+(c.url?(' — <a href="'+esc(c.url)+'" target="_blank">открыть</a>'):'')+'</div>';
-  });
-  (d.invoices||[]).forEach(function(v){
-    h+='<div class="out">🧾 Счёт № '+esc(v.number)+(v.validUntil?(' <span class="sub">до '+esc(v.validUntil)+'</span>'):'')+(v.url?(' — <a href="'+esc(v.url)+'" target="_blank">открыть</a>'):'')+'</div>';
-  });
-  if(h){ $('secDocs').className='sec'; $('docsList').innerHTML=h; }
-  else { $('secDocs').className='sec hide'; $('docsList').innerHTML=''; }
-}
-
-// проверка данных под конкретный документ (по клику)
-function checkReady(docName, msgEl, cb){
-  msgEl.className='msg'; msgEl.innerHTML='Проверяю данные…';
-  api({vapi:'readiness', deal:KEY}).then(function(r){
-    if(!r||!r.ok){ msgEl.className='msg err'; msgEl.innerHTML='⚠️ '+esc((r&&r.error)||'ошибка'); return; }
-    var c=(r.checks||[]).filter(function(x){ return x.doc===docName; })[0];
-    if(c && !c.ready){ msgEl.className='msg err'; msgEl.innerHTML='⚠ Не хватает данных для «'+esc(docName)+'»: '+esc((c.missing||[]).join(', ')); return; }
-    msgEl.className='msg ok'; msgEl.innerHTML='✓ Данные готовы — формирую…';
-    cb();
-  }).catch(function(e){ msgEl.className='msg err'; msgEl.innerHTML='Ошибка: '+esc(e.message||String(e)); });
-}
-
-// тип клиента
-function setType(t){ CTYPE=t; syncType(); applyType(); renderConTiles(); }
-function syncType(){ var bs=document.querySelectorAll('#segType button'); for(var i=0;i<bs.length;i++){ bs[i].className=bs[i].getAttribute('data-v')===CTYPE?'on':''; } }
-function applyType(){
-  var jur=(CTYPE==='юрлицо');
-  $('secReq').className = jur ? 'sec' : 'sec hide';
-  $('secInv').className = jur ? 'sec' : 'sec hide';
-  if(jur){ var need=!attached(); $('invHint').textContent = need?'Сначала загрузите реквизиты клиента.':''; }
-}
-
-// реквизиты
-function openReq(){ $('reqStart').className='hide'; $('reqPanel').className=''; }
-function closeReq(){ $('reqPanel').className='hide'; $('reqStart').className=''; $('reqMsg').innerHTML=''; $('raw').value=''; }
-function parseText(){
-  var t=$('raw').value, m=$('reqMsg');
-  if(t.trim().length<5){ m.className='msg err'; m.innerHTML='Вставьте текст реквизитов'; return; }
-  m.className='msg'; m.innerHTML='Распознаю…';
-  api({vapi:'parsereq', text:t}).then(onParsed).catch(function(e){ m.className='msg err'; m.innerHTML='Ошибка: '+esc(e.message||String(e)); });
-}
-function parseFile(){
-  var f=$('file').files[0], m=$('reqMsg'); if(!f) return;
-  m.className='msg'; m.innerHTML='Загружаю и распознаю…';
-  var rd=new FileReader();
-  rd.onload=function(){ var b64=String(rd.result).split(',')[1]||'';
-    api({vapi:'parsereqfile', b64:b64, mime:(f.type||''), name:(f.name||'')}, true).then(onParsed).catch(function(e){ m.className='msg err'; m.innerHTML='Ошибка: '+esc(e.message||String(e)); }); };
-  rd.readAsDataURL(f);
-}
-function onParsed(r){
-  var m=$('reqMsg');
-  if(!r||!r.ok || !(r.count>0)){ m.className='msg err'; m.innerHTML='⚠️ Не удалось распознать реквизиты. Проверьте текст/файл.'; return; }
-  var f=r.fields||{}; f['Тип']='юрлицо';
-  if(!f['Валюта']) f['Валюта']=(f['Страна']==='Россия')?'RUB':'BYN';
-  m.innerHTML='Сохраняю клиента и разношу в amoCRM…';
-  api({vapi:'savebuyer', data:JSON.stringify(f)}).then(function(rs){
-    if(!rs||!rs.ok){ m.className='msg err'; m.innerHTML='⚠️ '+esc((rs&&rs.error)||'ошибка сохранения'); return; }
-    var key=rs.key||rs.unp||rs.id, nm=rs.name||f['Наименование ЮЛ (полное)']||'клиент';
-    api({vapi:'setdealbuyer', deal:KEY, buyer:key, clientType:'юрлицо'}).then(function(){
-      if(/^\d+$/.test(String(LEAD))) api({vapi:'linkbuyer', lead:LEAD, unp:key});
-      m.className='msg ok'; m.innerHTML='✅ Клиент «'+esc(nm)+'» привязан, реквизиты внесены в карточку amoCRM.';
-      setTimeout(function(){ loadDeal(); }, 500);
-    }).catch(function(e){ m.className='msg err'; m.innerHTML='Привязка: '+esc(e.message||String(e)); });
-  }).catch(function(e){ m.className='msg err'; m.innerHTML='Ошибка: '+esc(e.message||String(e)); });
-}
-
-// договор: плитки типов
-function setFreight(v){ FREIGHT=v; var bs=document.querySelectorAll('#segFreight button'); for(var i=0;i<bs.length;i++){ bs[i].className=bs[i].getAttribute('data-v')===v?'on':''; } }
-function conTypes(){ return CTYPE==='физлицо'
-  ? [['Договор рассрочки','рассрочка платежей'],['Договор 100%','полная оплата'],['Договор 100% при получении','оплата при получении']]
-  : [['Договор поставки','товар юрлицу'],['Договор услуг','работы/услуги'],['Договор сотрудничества','рамочный']]; }
-function renderConTiles(){
-  var jur=(CTYPE==='юрлицо');
-  $('freightRow').className = jur ? 'row' : 'row hide';
-  $('conTiles').innerHTML = conTypes().map(function(t){
-    return '<button class="tile" onclick="genContract(\''+esc(t[0])+'\')"><span>'+esc(t[0])+'</span><span class="t2">'+esc(t[1])+'</span></button>';
-  }).join('');
-}
-function genContract(type){
-  var m=$('conMsg'); $('conOut').innerHTML='';
-  checkReady(type, m, function(){
-    var cf={}; if(type==='Договор поставки') cf['Заказчик перевозки']=FREIGHT;
-    var opts={ total:(DEAL&&DEAL.sum)||0, prodDays:14, seller:'TW', contractFields:cf };
-    api({vapi:'contractfordeal', deal:KEY, type:type, opts:JSON.stringify(opts)}).then(function(r){
-      if(!r||!r.ok){ m.className='msg err'; m.innerHTML='⚠️ '+esc((r&&(r.error||(r.missing&&('не хватает: '+r.missing.join(', ')))))||'ошибка'); return; }
-      m.className='msg ok'; m.innerHTML='✅ Договор сформирован';
-      if(r.contract&&r.contract.url) $('conOut').innerHTML='📄 <a href="'+esc(r.contract.url)+'" target="_blank">Договор № '+esc(r.contract.number)+' — открыть</a>';
-      loadDeal();
-    }).catch(function(e){ m.className='msg err'; m.innerHTML='Ошибка: '+esc(e.message||String(e)); });
-  });
-}
-
-// счёт (юрлицо)
-function scenarioFromAmo(){ var p=EX('Оплата').toLowerCase();
-  if(/рассрочк/.test(p)) return 'prepay_balance';
-  if(/(по\s*факт|отгруз|постоплат)/.test(p)) return 'on_ship';
-  return 'prepay100'; }
-function genInvoice(){
-  var m=$('invMsg'); $('invOut').innerHTML='';
-  checkReady('Счёт', m, function(){
-    var pay1=Number(EX('Сумма 1-го платежа'))||0, scen=scenarioFromAmo();
-    var opts={ total:(DEAL&&DEAL.sum)||0, scenario:scen, prepay:(scen==='prepay_balance'?pay1:0), genInvoiceDoc:true, shipDate:EX('Дата забора со склада') };
-    api({vapi:'invoicefordeal', deal:KEY, opts:JSON.stringify(opts)}).then(function(r){
-      if(!r||!r.ok){ m.className='msg err'; m.innerHTML='⚠️ '+esc((r&&r.error)||'ошибка'); return; }
-      m.className='msg ok'; m.innerHTML='✅ Счёт выставлен';
-      var h='';
-      if(r.invoice) h+='🧾 Счёт № '+esc(r.invoice.number)+(r.invoice.validUntil?(' · до '+esc(r.invoice.validUntil)):'')+'<br>';
-      if(r.invoiceDoc&&r.invoiceDoc.url) h+='<a href="'+esc(r.invoiceDoc.url)+'" target="_blank">открыть документ</a>';
-      $('invOut').innerHTML=h; loadDeal();
-    }).catch(function(e){ m.className='msg err'; m.innerHTML='Ошибка: '+esc(e.message||String(e)); });
-  });
-}
-
-boot();
+function api(p){ p.app='tw7prod'; p.wk=qp('wk'); var q=Object.keys(p).map(function(k){ return encodeURIComponent(k)+'='+encodeURIComponent(p[k]); }).join('&'); return fetch(BASE+'?'+q).then(function(r){ return r.json(); }); }
+var LEAD=qp('lead'), box=document.getElementById('box'), go=document.getElementById('go');
+function kv(k,v){ return v?'<div class="kv"><span>'+esc(k)+'</span><span>'+v+'</span></div>':''; }
+go.href=APP_URL+'?lead='+encodeURIComponent(LEAD);
+if(!LEAD){ box.innerHTML='<div class="err">Не передан номер сделки amoCRM.</div>'; go.className='hide'; }
+else api({vapi:'deal', deal:LEAD}).then(function(r){
+  var d=r&&r.ok&&r.deal;
+  if(!d || !d.id){ box.innerHTML='<div class="sm">В Прохабе по этой сделке ещё ничего не оформлено.</div>'; return; }
+  go.textContent='Открыть в Прохабе →';
+  var c=(d.contracts||[]).filter(function(x){ return x.status!=='аннулирован'; }).pop(), p=d.pay||null;
+  box.innerHTML=kv('Сделка', esc(d.num||d.inquiryNum||'заявка'))+kv('Стадия', esc(d.stageRu||''))+kv('Клиент', esc(d.client||'—'))
+    +kv('Договор', c?esc((c.type||'Договор')+' № '+(c.number||'черновик')+' · '+(c.status||'')):'ещё нет')
+    +(p&&p.total?kv('Оплачено', money(p.paid)+' из '+money(p.total)+' руб.'):'')+kv('Сумма', d.sum?money(d.sum)+' руб.':'');
+}).catch(function(){ box.innerHTML='<div class="err">Прохаб не ответил — обновите карточку.</div>'; });
 </script>
 </body>
 </html>
