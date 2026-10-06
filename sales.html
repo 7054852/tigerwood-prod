@@ -245,7 +245,7 @@
       <div id="invPay">
       <div id="posHost"></div>
       <div class="sm hide" id="posInCon" style="margin-bottom:var(--s-2)">Позиции правятся в карточке договора; счёт выставляется по ним.</div>
-      <label class="fl"><span class="sm">Договор, к которому счёт</span><select id="invContract"></select></label>
+      <label class="fl"><span class="sm">Договор, к которому счёт</span><select id="invContract" onchange="presetScenario()"></select></label>
       <label class="fl"><span class="sm" id="totalLbl">Сумма счёта — из позиций (можно изменить)</span><input id="total" type="number" inputmode="decimal" oninput="refreshPreview()" autocomplete="off"></label>
       <label class="fl"><span class="sm">Сценарий оплаты</span>
         <select id="scen" onchange="onScen()">
@@ -569,13 +569,12 @@ function pushScrm(){
 /* ── доставка и передача: сводка (правится в договоре); старые поля amoCRM (даты, накладная ЮЛ) — тоже видны, но правятся из диалога накладной ── */
 function renderDelivView(){
   var d=DEAL, h='', inc=function(v,c){ return v===true?'включена в стоимость':(v===false?('оплачивается отдельно'+(c?(' — '+money(c)+' руб'):'')):(c?(money(c)+' руб, отдельно'):'')); };
-  h+=infoRow('Способ доставки', d.deliveryMethod||EX('Способ доставки'));
-  h+=infoRow(/почт/i.test(d.deliveryMethod||'')?'Отделение почты':'Адрес', [d.country||EX('Страна'), d.region||EX('Область'), d.district||EX('Район'), d.city||EX('Город'), d.deliveryAddress||EX('Адрес доставки')].filter(function(x){ return String(x||'').trim(); }).join(', '));
+  h+=infoRow('Способ доставки', d.deliveryMethod);
+  h+=infoRow(/почт/i.test(d.deliveryMethod||'')?'Отделение почты':'Адрес', [d.country, d.region, d.district, d.city, d.deliveryAddress].filter(function(x){ return String(x||'').trim(); }).join(', '));
   h+=infoRow('Срок передачи', d.transferDays!=null?(d.transferDays+' раб. дн. от оплаты'):'');
   h+=infoRow('Гарантия', d.warrantyMonths!=null?(d.warrantyMonths+' мес.'):'');
   h+=infoRow('Доставка в договоре', inc(d.deliveryIncluded, d.deliveryCost)); h+=infoRow('Сборка в договоре', inc(d.assemblyIncluded, d.assemblyCost));
-  h+=infoRow('Оплата (amoCRM)', EX('Оплата'));
-  h+=infoRow('Дата забора со склада', ruDate(isoDate(EX('Дата забора со склада')))||EX('Дата забора со склада')); h+=infoRow('Дата доставки клиенту', ruDate(isoDate(EX('Дата доставки клиенту')))||EX('Дата доставки клиенту'));
+  h+=infoRow('Дата забора со склада', d.pickupDate||''); h+=infoRow('Дата доставки клиенту', d.deliveryDate||'');
   var wb=[['Заказчик перевозки',EX('Заказчик перевозки')],['Адрес (накладная ЮЛ)',EX('Адрес доставки ЮЛ')],['Водитель',EX('Водитель')],['Автомобиль',EX('Автомобиль')],['Прицеп',EX('Прицеп')],['Путевой лист',EX('Путевой лист')]]
     .filter(function(x){ return x[1]; }).map(function(x){ return infoRow(x[0],x[1]); }).join('');
   if(wb) h+='<div class="muted" style="margin-top:var(--s-2)">Данные накладной (правятся в диалоге «Выписать ТН/ТТН»):</div>'+wb;
@@ -584,9 +583,9 @@ function renderDelivView(){
 }
 function editDeliv(){ twDelivEdit(KEY, DEAL, 'delivMsg', reload); }   // диалог — tw-deliv.js (общий со страницей договора)
 function fillNote(){
-  el('o_note').value=DEAL.note||EX('Примечание')||'';
+  el('o_note').value=DEAL.note||'';
   // старые поля amoCRM «Примечание (опции)»: не редактируются (опции теперь у позиций), но не теряются
-  var old=[['Цвет каната',EX('Цвет каната')],['Зацепы',EX('Зацепы')],['Ткань палатки',EX('Ткань')],['Ткань матраса',EX('Ткань матраса')]].filter(function(x){ return x[1]; });
+  var old=[];   // старые поля amoCRM (канат, зацепы, ткань) не показываем: опции — у позиций в договоре (06.10.2026)
   el('noteLegacy').className=old.length?'sm':'sm hide';
   el('noteLegacy').innerHTML=old.length?('Из amoCRM (старые поля): '+old.map(function(x){ return esc(x[0])+' — '+esc(x[1]); }).join('; ')+'. Опции теперь у позиций в договоре.'):'';
 }
@@ -636,7 +635,7 @@ function render(){
     el('cliAttached').className=''; el('cliManage').className='hide'; renderCliInfo(b);
   } else { el('curbuyer').className='pill'; el('curbuyer').textContent='не привязан';
     el('cliAttached').className='hide'; el('cliManage').className=''; el('cliCancel').style.display='none'; }
-  renderDelivView(); fillNote(); presetScenario();
+  renderDelivView(); fillNote();
   TWI_CUR=d.currency||'руб'; POSCHK=false; POS=posFromItems(d.items); POS0=posKey(POS);
   // «Что продано» — просмотр; редактор: договор есть → в договоре; нет → в блоке «Счёт» (существующий путь счёта/позиций — не тупик)
   el('posView').innerHTML=posViewHtml(d.items, d.currency||'руб'); el('posHint').textContent='';
@@ -650,7 +649,7 @@ function render(){
   if(isAmo()) loadStDocs();
   renderDealDocs(); renderConList();
   twPay('dealPay', DEAL.pay, { deal: DEAL.id, canCreate: false, onDone: reload });
-  renderInvMarket(); fillInvContracts(); fillCommercial();
+  renderInvMarket(); fillInvContracts(); fillCommercial(); presetScenario();   // сценарий счёта — от договора (после списка договоров)
   el('wbBtns').className=isClosed(d)?'row hide':'row';
   if(d.buyerKey) loadInvCtx();
 }
@@ -985,13 +984,12 @@ function issueCommercial(){
   });
 }
 // сценарий оплаты — по полю «Оплата» из amoCRM (вместо 100% предоплаты по умолчанию)
+/* сценарий счёта — от выбранного договора Прохаба (предоплата %), а не от «Оплаты» amoCRM (06.10.2026): 100 % → вся сумма; меньше — предоплата + остаток */
 function presetScenario(){
-  var pay=EX('Оплата').toLowerCase(), pay1=Number(EX('Сумма 1-го платежа'))||0, chosen='';
-  if(/рассрочк/.test(pay)) chosen='prepay_balance';
-  else if(/(по\s*факт|отгруз|постоплат)/.test(pay)) chosen='on_ship';
-  else if(/(100|полн|предоплат)/.test(pay)) chosen='prepay100';
-  if(chosen) el('scen').value=chosen;
-  if(pay1>0 && (chosen==='prepay_balance'||chosen==='prepay_interim_ship')) el('prepay').value=pay1;
+  var no=val('invContract'), c=null; ((DEAL&&DEAL.contracts)||[]).forEach(function(x){ if(x.number===no) c=x; });
+  var pct=c&&c.prepayPercent!=null?Number(c.prepayPercent):null, chosen=pct===null||pct>=100?'prepay100':'prepay_balance';
+  el('scen').value=chosen;
+  if(chosen==='prepay_balance'){ var sum=Number(c.sum)||Number(DEAL&&DEAL.sum)||0; if(sum>0) el('prepay').value=Math.round(sum*pct)/100; }
   onScen();
 }
 function onScen(){ var s=val('scen'); function show(id,on){ el(id).style.display=on?'':'none'; }
