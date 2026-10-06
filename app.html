@@ -469,9 +469,13 @@ function usersView(box){
   box.innerHTML='<div class="pad"><div class="hi">Сотрудники и доступы</div><div class="center">Загрузка…</div></div>';
   // доступ к Снабу (кто подаёт счета) живёт в Config Фин.гения — подмешиваем сюда, чтобы
   // не лазить в таблицу: настройка человека должна быть там же, где остальные его доступы
-  Promise.all([api({vapi:'users',tgid:TGID}), api({vapi:'snabaccess',tgid:TGID}).catch(function(){ return null; })])
-    .then(function(a){ var r=a[0]; if(r&&r.ok) r.snab=(a[1]&&a[1].ok)?a[1]:null; renderUsers(box,r); })
-    .catch(function(e){ box.innerHTML='<div class="pad err">Ошибка</div>'; });
+  // список показываем сразу, колонку «Снаб» дорисовываем после: snabaccess идёт в Фин.гений (Google) и отвечает 6+ с,
+  // а Promise.all держал весь экран на «Загрузка…» (07.10.2026)
+  var R=null, SNAB;
+  api({vapi:'users',tgid:TGID}).then(function(r){ R=r; if(r&&r.ok&&SNAB) r.snab=SNAB; renderUsers(box,r); })
+    .catch(function(e){ box.innerHTML='<div class="pad err">Не удалось загрузить сотрудников: '+esc((e&&e.message)||'нет связи с сервером')+'. Обновите страницу.</div>'; });
+  api({vapi:'snabaccess',tgid:TGID}).catch(function(){ return null; }).then(function(s){ SNAB=(s&&s.ok)?s:null;
+    if(R&&R.ok&&SNAB&&box.isConnected){ R.snab=SNAB; renderUsers(box,R); } });
 }
 function renderUsers(box,r){
   if(!r||!r.ok){ box.innerHTML='<div class="pad err">'+esc((r&&r.error)||'нет прав')+'</div>'; return; }
