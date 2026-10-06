@@ -868,19 +868,19 @@ function renderDealDocs(){
   var d=DEAL, h='';
   (d.contracts||[]).forEach(function(c){
     var n=jq(c.number), live=(c.status!=='аннулирован'&&c.status!=='черновик');
-    h+='<div class="drow"><span class="dname">📄 <a href="'+esc(contractUrl(c))+'">Договор '+(c.number?('№ '+esc(c.number)):'(черновик)')+'</a></span> <span class="sm">'+esc(c.type)+' · '+esc(c.date)+(c.origin==='uploaded'?' · загружен':'')+'</span> '+conPills(c)
-      +'<span class="sp">'+(canSign(c)?'<button class="sm sec" onclick="signContract('+n+',reload)">Подписан</button>':'')
-      +(c.url?'<a href="'+esc(c.url)+'" target="_blank" rel="noopener">открыть</a>':'')
-      +(live?'<a href="#" style="color:var(--red)" onclick="delDoc(\'contract\','+n+');return false;">отменить</a>':'')+'</span></div>';
+    h+=twFileCard({ href:contractUrl(c), tag:twDocTag(c.type), title:'Договор '+(c.number?'№ '+c.number:'(черновик)'),
+      meta:[c.type, c.date, c.origin==='uploaded'?'загружен':''].filter(Boolean).join(' · '), pills:conPills(c), off:c.status==='аннулирован',
+      acts:(canSign(c)?'<button class="sm sec" onclick="signContract('+n+',reload)">Подписан</button>':'')+(c.url?'<a href="'+esc(c.url)+'" target="_blank" rel="noopener">файл ↗</a>':''),
+      del:live?'delDoc(\'contract\','+JSON.stringify(String(c.number||''))+')':'', delTitle:'Отменить договор' });
   });
   (d.invoices||[]).forEach(function(v){
     var n=jq(v.number), ci=(v.kind==='commercial'), live=(v.status!=='аннулирован');
-    h+='<div class="drow"><span class="dname">🧾 '+(ci?'Коммерческий инвойс':(v.market==='eu'||v.market==='other'?'Проформа':'Счёт'))+' № '+esc(v.number)+'</span>'
-      +' <span class="sm">'+(v.sum?(money(v.sum)+' '+esc(v.currency||'')+' · '):'')+(ci&&v.proforma?('к проформе '+esc(v.proforma)):esc(v.paymentText||''))+(v.validUntil?(' · до '+esc(v.validUntil)):'')+'</span>'
-      +(v.status?(' <span class="pill '+(live?'':'muted')+'">'+esc(v.status)+'</span>'):'')
-      +'<span class="sp">'+(v.url?'<a href="'+esc(v.url)+'" target="_blank" rel="noopener">открыть</a>':'')
-      +((live&&!ci)?'<a href="#" onclick="editInvoice('+n+');return false;">изменить</a>':'')
-      +(live?'<a href="#" style="color:var(--red)" onclick="delDoc(\'invoice\','+n+');return false;">отменить</a>':'')+'</span></div>';
+    var vt=ci?'Коммерческий инвойс':(v.market==='eu'||v.market==='other'?'Проформа':'Счёт');
+    h+=twFileCard({ href:v.url, tab:1, tag:twDocTag(vt), title:vt+' № '+v.number, off:!live,
+      meta:[v.sum?money(v.sum)+' '+(v.currency||''):'', ci&&v.proforma?'к проформе '+v.proforma:(v.paymentText||''), v.validUntil?'до '+v.validUntil:''].filter(Boolean).join(' · '),
+      pills:v.status?'<span class="pill '+(live?'':'muted')+'">'+esc(v.status)+'</span>':'',
+      acts:(live&&!ci)?'<a href="#" onclick="editInvoice('+n+');return false;">изменить</a>':'',
+      del:live?'delDoc(\'invoice\','+JSON.stringify(String(v.number||''))+')':'', delTitle:'Отменить счёт' });
   });
   el('deldocs').innerHTML=h||'<div class="sm">Пока нет договоров и счетов по сделке.</div>';
   // прочие сформированные документы (чек / ТН / ТТН / счёт …); договоры — выше, из реестра договоров
@@ -889,9 +889,8 @@ function renderDealDocs(){
     if(r&&r.ok===false){ el('otherdocs').innerHTML='<div class="sm err">Сформированные документы не загрузились: '+esc(errText(r))+'</div>'; return; }
     var docs=((r&&r.docs)||[]).filter(function(x){ return !/договор|контракт/i.test(String(x.type||'')); });
     el('otherdocs').innerHTML=docs.length?('<div class="sm" style="font-weight:600;margin:var(--s-2) 0 var(--s-1)">Сформированные документы</div>'
-      +docs.map(function(x){ return '<div class="drow"><span class="dname">📎 '+esc(x.type)+'</span> <span class="sm">'+esc(x.date)+'</span><span class="sp">'
-        +(x.url?'<a href="'+esc(x.url)+'" target="_blank" rel="noopener">открыть</a>':'')
-        +'<a href="#" style="color:var(--red)" onclick="delOtherDoc('+esc(JSON.stringify(String(x.type)))+');return false;">отменить</a></span></div>'; }).join('')):'';
+      +docs.map(function(x){ return twFileCard({ href:x.url, tab:1, tag:twDocTag(x.type), title:x.type, meta:x.date||'',
+        del:'delOtherDoc('+JSON.stringify(String(x.type))+')', delTitle:'Отменить документ' }); }).join('')):'';
   }).catch(function(){});
 }
 function delDoc(kind, number){

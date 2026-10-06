@@ -290,10 +290,10 @@ function calc(){
 function renderDocs(){
   var h='', docs=D.docs||[], ci=D.commercials||[];
   if(D.status==='new'||D.status==='draft') h='<div class="sm">Черновик: номера и документа ещё нет — «Сохранить», затем «Сформировать документ» (номер PI-… выдаётся в этот момент).</div>';
-  docs.forEach(function(d){ h+='<div class="docrow"><span><b>Счёт</b> <span class="sm">'+esc(d.date)+'</span></span>'+(d.status!=='formed'?'<span class="pill '+(d.status==='failed'?'bad':'muted')+'">'+esc(d.status==='failed'?'ошибка':d.status)+'</span>':'')
-    +(d.error?'<span class="sm">'+esc(d.error)+'</span>':'')+'<span class="sp">'+(d.url?'<a href="'+esc(d.url)+'" target="_blank" rel="noopener">открыть ↗</a>':'')+'</span></div>'; });
-  ci.forEach(function(x){ h+='<div class="docrow"><span><b>Коммерческий инвойс № '+esc(x.number)+'</b> <span class="sm">'+esc(x.date)+' · '+money(x.sum)+' EUR</span></span><span class="pill">'+esc(x.status)+'</span>'
-    +'<span class="sp">'+(x.url?'<a href="'+esc(x.url)+'" target="_blank" rel="noopener">открыть ↗</a>':'')+'</span></div>'; });
+  docs.forEach(function(d){ h+=twFileCard({ href:d.url, tab:1, tag:'PI', title:'Проформа'+(D.number?' № '+D.number:''), meta:[d.date, d.error||''].filter(Boolean).join(' · '), off:d.status==='cancelled',
+    pills:d.status!=='formed'?'<span class="pill '+(d.status==='failed'?'bad':'muted')+'">'+esc(d.status==='failed'?'ошибка':d.status)+'</span>':'' }); });
+  ci.forEach(function(x){ h+=twFileCard({ href:x.url, tab:1, tag:'CI', title:'Коммерческий инвойс № '+x.number, meta:[x.date, money(x.sum)+' EUR'].join(' · '),
+    pills:x.status?'<span class="pill">'+esc(x.status)+'</span>':'', off:/аннул/.test(x.status||'') }); });
   if(D.status==='issued' && !docs.length) h+='<div class="sm">Номер выдан, документа нет — нажмите «Сформировать документ» ещё раз (номер тот же).</div>';
   el('docsBox').innerHTML=h||'<div class="sm">Документов нет.</div>';
 }

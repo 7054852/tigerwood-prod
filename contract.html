@@ -47,19 +47,6 @@
   .docrow{ display:flex; align-items:center; gap:var(--s-2); padding:var(--s-2) 0; border-top:1px solid var(--line); flex-wrap:wrap; }
   .docrow .sp{ margin-left:auto; display:flex; gap:var(--s-2); flex-wrap:wrap; }
   .docrow:first-child{ border-top:0; }
-  /* загруженный файл (07.10.2026): карточка-ссылка «значок типа + имя», клик открывает файл; красный крестик — удалить */
-  .fcard{ display:flex; align-items:center; gap:var(--s-2); max-width:560px; margin:var(--s-2) 0; padding:var(--s-2) var(--s-2) var(--s-2) var(--s-3);
-          border:1px solid var(--line); border-radius:var(--r-ctl); background:var(--bg); transition:border-color .15s var(--ease); }
-  .fcard:hover{ border-color:var(--line2); }
-  .fcard .fmain{ display:flex; align-items:center; gap:var(--s-3); flex:1; min-width:0; color:var(--fg); text-decoration:none; }
-  .fcard .fic{ width:40px; height:40px; flex:none; border-radius:var(--r-xs); background:var(--blue-bg); color:var(--blue);
-               display:flex; align-items:center; justify-content:center; font:var(--t-tiny); font-weight:700; letter-spacing:.03em; }
-  .fcard .ftx{ display:flex; flex-direction:column; min-width:0; }
-  .fcard .ftx b{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .fcard .fmain:hover b{ color:var(--accent-text); text-decoration:underline; }
-  .fcard .fdel{ width:32px; height:32px; min-height:32px; flex:none; padding:0; border:0; border-radius:50%; background:transparent; color:var(--red);
-                display:flex; align-items:center; justify-content:center; }
-  .fcard .fdel:hover{ background:var(--red-bg); }
   .toolbar.bot{ margin-top:var(--s-4); }
   .ro input:not([type=checkbox]), .ro select{ background:var(--grey-bg); }
   .grid2 .full{ grid-column:1 / -1; }
@@ -898,11 +885,9 @@ function renderDocs(){
   }
   box.innerHTML=docs.length?docs.map(function(d){
     if(d.origin==='uploaded' && d.status!=='cancelled') return fileCard(d, c.status!=='cancelled');
-    return '<div class="docrow"><span><b>'+esc(d.docType||d.type||'Договор')+'</b> <span class="sm">'+esc(d.date||'')+'</span></span>'
-      +'<span class="pill '+(d.origin==='uploaded'?'info':'')+'">'+esc(ORIGIN_RU[d.origin]||d.origin||'сформирован')+'</span>'
-      +(d.status&&d.status!=='сформирован'&&d.status!=='formed'?' <span class="pill '+(/ошиб|failed/.test(d.status)?'bad':'muted')+'">'+esc(d.status)+'</span>':'')
-      +'<span class="sp">'+(d.url?'<a href="'+esc(d.url)+'" target="_blank" rel="noopener">'+(d.origin==='uploaded'?'открыть файл':'открыть в Google Docs')+' ↗</a>':'<span class="sm">файла нет</span>')
-+'</span></div>'; }).join('')
+    var bad=d.status&&d.status!=='сформирован'&&d.status!=='formed', t=d.docType||d.type||'Договор';
+    return twFileCard({ href:d.url, tab:1, tag:twDocTag(t), title:t+(c.number?' № '+c.number:''), meta:[d.date||'', d.url?'Google Docs':'файла нет'].filter(Boolean).join(' · '),
+      pills:bad?'<span class="pill '+(/ошиб|failed/.test(d.status)?'bad':'muted')+'">'+esc(d.statusRu||d.status)+'</span>':'', off:d.status==='cancelled' }); }).join('')
     :'<div class="sm">'+(c.status==='draft'?'Черновик: документа ещё нет — нажмите «Сформировать документ» или загрузите подписанный.':'Документов нет.')+'</div>';
   el('wbBox').innerHTML=(c.deal&&c.status!=='cancelled')?('<div class="row" style="margin-top:var(--s-3)"><span class="sm">Накладные по сделке '+esc(c.deal.num||'')+':</span>'
     +'<button class="sec sm" onclick="twWaybill(C.deal.id,\'ТН\',loadContract)">✍️ Выписать ТН</button><button class="sec sm" onclick="twWaybill(C.deal.id,\'ТТН\',loadContract)">✍️ Выписать ТТН</button></div>'):'';
@@ -910,11 +895,13 @@ function renderDocs(){
   var canNew=euPage && (c.status==='active'||c.status==='signed') && !c.expired;
   ib.innerHTML=(inv.length||drafts.length||euPage)?('<div class="sm" style="margin-top:var(--s-3);font-weight:600">Счета по договору</div>'+inv.map(function(v){
     var page=euPage && v.kind!=='commercial';
-    return '<div class="docrow"><span><b>'+(v.kind==='commercial'?'CI ':'')+'№ '+esc(v.number)+'</b> <span class="sm">'+esc(v.date||'')+(v.sum!=null?(' · '+money(v.sum)+' '+esc(v.currency||c.currency||'')):'')+'</span></span>'
-      +(v.status?'<span class="pill '+(/аннул/.test(v.status)?'muted':'')+'">'+esc(v.status)+'</span>':'')
-      +'<span class="sp">'+(page?'<a href="'+esc(pageUrl('invoice.html',{invoice:v.number}))+'">счёт →</a>':'')+(v.url?'<a href="'+esc(v.url)+'" target="_blank" rel="noopener">открыть ↗</a>':'')+(v.dealId?'<a href="'+esc(pageUrl('sales.html',{deal:v.dealId}))+'">сделка →</a>':'')+'</span></div>'; }).join('')
-    +drafts.map(function(v){ return '<div class="docrow"><span><b>черновик счёта</b> <span class="sm">'+esc(v.date||'')+' · '+money(v.sum)+' '+esc(v.currency||'EUR')+' · заявка '+esc(v.num||'')+'</span></span><span class="pill warn">без номера</span>'
-      +'<span class="sp"><a href="'+esc(pageUrl('invoice.html',{invoice:v.key}))+'">открыть →</a></span></div>'; }).join('')
+    var off=/аннул/.test(v.status||''), ci=v.kind==='commercial';
+    return twFileCard({ href:page?pageUrl('invoice.html',{invoice:v.number}):v.url, tab:!page, tag:ci?'CI':(euPage?'PI':'СЧ'), title:(ci?'Коммерческий инвойс':euPage?'Проформа':'Счёт')+' № '+v.number,
+      meta:[v.date||'', v.sum!=null?money(v.sum)+' '+(v.currency||c.currency||''):''].filter(Boolean).join(' · '), off:off,
+      pills:v.status?'<span class="pill '+(off?'muted':'')+'">'+esc(v.status)+'</span>':'',
+      acts:(page&&v.url?'<a href="'+esc(v.url)+'" target="_blank" rel="noopener">файл ↗</a>':'')+(v.dealId?'<a href="'+esc(pageUrl('sales.html',{deal:v.dealId}))+'">сделка →</a>':'') }); }).join('')
+    +drafts.map(function(v){ return twFileCard({ href:pageUrl('invoice.html',{invoice:v.key}), tag:'PI', title:'Черновик счёта', meta:[v.date||'', money(v.sum)+' '+(v.currency||'EUR'), 'заявка '+(v.num||'')].join(' · '),
+      pills:'<span class="pill warn">без номера</span>' }); }).join('')
     +(euPage?('<div class="row" style="margin-top:var(--s-2)">'+(canNew?'<a class="btn sec sm" href="'+esc(pageUrl('invoice.html',{invoice:'new', contract:c.id}))+'">＋ Новый счёт по контракту</a>'
       :'<span class="sm">Счета выставляются к сформированному действующему контракту — сначала «Сформировать документ».</span>')+'</div>'):'')):'';
 }
@@ -1030,11 +1017,9 @@ function uploadDlg(){
 }
 /** загруженный файл договора: имя-ссылка со значком типа, под ним вид и дата; крестик — удалить */
 function fileCard(d, canDel){
-  var nm=d.name||'Подписанный договор', ext=(/\.([a-z0-9]{2,4})$/i.exec(nm)||[])[1]||'файл';
-  var meta=[d.docType||d.type||'Договор', d.date||'', 'загружен'].filter(Boolean).join(' · ');
-  var main='<span class="fic">'+esc(ext.toUpperCase())+'</span><span class="ftx"><b>'+esc(nm)+'</b><span class="sm">'+esc(meta)+'</span></span>';
-  return '<div class="fcard">'+(d.url?'<a class="fmain" href="'+esc(d.url)+'" target="_blank" rel="noopener" title="Открыть файл">'+main+'</a>':'<span class="fmain">'+main+'</span>')
-    +(canDel&&d.id?'<button class="fdel" title="Удалить файл" aria-label="Удалить файл" onclick="fileDeleteDlg(\''+esc(d.id)+'\')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>':'')+'</div>';
+  var nm=d.name||'Подписанный договор';
+  return twFileCard({ href:d.url, tab:1, tag:twDocTag('', nm), title:nm, meta:[d.docType||d.type||'Договор', d.date||'', 'загружен'].filter(Boolean).join(' · '),
+    del:(canDel&&d.id)?"fileDeleteDlg('"+d.id+"')":'', delTitle:'Удалить файл' });
 }
 function hasUpload(){ return !!(C && (C.documents||[]).some(function(d){ return d.origin==='uploaded' && d.status!=='cancelled'; })); }
 /** удалить загруженный файл (07.10.2026): файл → корзина Drive, договор остаётся подписанным */

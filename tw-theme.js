@@ -170,5 +170,22 @@
   });
   root.twFitTables=fitTables;
 
+  // документ / файл карточкой (07.10.2026, стиль .fcard в tw-theme.css). o: {href, tab (новая вкладка), tag (PDF / ДОГ / СЧ…), title, meta,
+  // pills (готовый html), acts (готовый html справа), del (код onclick крестика), delTitle, off (аннулирован — приглушить)}
+  function fe(x){ return String(x==null?'':x).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  root.twFileCard=function(o){
+    var inner='<span class="fic">'+fe(String(o.tag||'ФАЙЛ').slice(0,4).toUpperCase())+'</span><span class="ftx"><b>'+fe(o.title)+'</b>'
+      +(o.meta?'<span class="sm">'+fe(o.meta)+'</span>':'')+(o.pills?'<span>'+o.pills+'</span>':'')+'</span>';
+    var main=o.href?'<a class="fmain" href="'+fe(o.href)+'"'+(o.tab?' target="_blank" rel="noopener"':'')+' title="'+(o.tab?'Открыть файл':'Открыть')+'">'+inner+'</a>':'<span class="fmain">'+inner+'</span>';
+    return '<div class="fcard'+(o.off?' off':'')+'">'+main+(o.acts?'<span class="facts">'+o.acts+'</span>':'')
+      +(o.del?'<button class="fdel" title="'+fe(o.delTitle||'Удалить')+'" aria-label="'+fe(o.delTitle||'Удалить')+'" onclick="'+fe(o.del)+'"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>':'')+'</div>';
+  };
+  // короткий значок по виду документа или расширению файла
+  root.twDocTag=function(type, name){
+    var m=/\.([a-z0-9]{2,4})$/i.exec(String(name||'')); if(m) return m[1];
+    var t=String(type||'');
+    return /инвойс|commercial/i.test(t)?'CI':/проформ/i.test(t)?'PI':/ттн/i.test(t)?'ТТН':/(^|\s)тн(\s|$)/i.test(t)?'ТН':/чек/i.test(t)?'ЧЕК':/счёт|счет/i.test(t)?'СЧ':/акт/i.test(t)?'АКТ':/догов|контракт/i.test(t)?'ДОГ':'ДОК';
+  };
+
   root.twTheme={ get:function(){ return MODE; }, set:set, now:current, sun:sun, text:nowText, icon:icon };
 })(typeof window!=='undefined'?window:this);
