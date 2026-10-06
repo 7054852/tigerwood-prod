@@ -1024,8 +1024,14 @@ function deleteDlg(){
 /** «Назад» ничего не пишет: несохранённые правки пропадают (так просил владелец — «Отмена» без записи) */
 /** «Назад» — на страницу, откуда пришли (список договоров, сделка, клиент), а не history.back(): внутри сервиса история общая с меню,
  *  и back уводил в чужой раздел («Сделки»), 02.10.2026 */
-function goBack(){ var r=document.referrer, u=null; try{ u=r?new URL(r):null; }catch(e){}
-  if(u && u.origin===location.origin && !/contract\.html$/.test(u.pathname)) location.href=r; else location.href=pageUrl('salesdocs.html',{tab:'contracts'}); }
+/*  Откуда пришли, запоминаем при входе (06.10.2026): после «Новый счёт» / карточки клиента и возврата referrer = счёт или клиент,
+ *  и «Назад» гонял по кругу договор ↔ счёт. Возврат из дочерней страницы (счёт, договор, ?restore=1) источник не меняет */
+(function(){ var r=document.referrer, u=null; try{ u=r?new URL(r):null; }catch(e){}
+  var own=u && u.origin===location.origin;
+  if(qp('restore') || (own && /(contract|invoice)\.html$/.test(u.pathname))) return;
+  try{ if(own && !/app\.html$/.test(u.pathname)) sessionStorage.setItem('tw_contract_back', r); else sessionStorage.removeItem('tw_contract_back'); }catch(e){} })();
+function goBack(){ var r=''; try{ r=sessionStorage.getItem('tw_contract_back')||''; }catch(e){}
+  location.href=r||pageUrl('salesdocs.html',{tab:'contracts'}); }
 
 
 start();
