@@ -11,7 +11,9 @@
      Перенесено из блока «Счёт» карточки сделки (sales.html): счёт BY / «Счёт РФ» / проформа Европы по сделке (invoicefordeal) к договору сделки
      или рамочному договору клиента (invoicectx), коммерческий инвойс к проформе (invoicecommercial), предпросмотр графика (schedpreview).
      Позиции: есть живой договор сделки — только просмотр («изменить в договоре →»); нет — правятся здесь (tw-items.js, dealitems).
-     Изменить выставленный счёт = отменить его в карточке сделки и выставить новый. Счёт Европы по рамочному контракту — invoice.html. -->
+     Изменить выставленный счёт = отменить его в карточке сделки и выставить новый. Счёт Европы по рамочному контракту — invoice.html.
+     ?contract=<id> (07.10.2026) — новая поставка по рамочному договору РБ/РФ: сделки ещё нет; позиции здесь, «Выставить счёт» заводит
+     сделку-заявку клиента (dealcreate с позициями) и сразу выставляет счёт к этому рамочному (invoicefordeal, contractNo). -->
 <style>
   .hide{ display:none !important; }
   .sm:not(button):not(.btn){ font:var(--t-small); color:var(--muted); }
@@ -250,14 +252,48 @@ function signContract(number, after){
 
 
 /* ══════════ СЧЁТ ПО СДЕЛКЕ ══════════ */
-var KEY=qp('deal'), DEAL=null, INVCTX=null, INVKIND='payment', CI=[];
+var KEY=qp('deal'), FWID=KEY?'':qp('contract'), FW=null, DEAL=null, INVCTX=null, INVKIND='payment', CI=[];
 function liveContract(){ var cs=(DEAL&&DEAL.contracts)||[]; for(var i=cs.length-1;i>=0;i--){ var c=cs[i]; if(c.status!=='аннулирован' && c.status!=='черновик') return c; } return null; }
 function load(){
+  if(!KEY && FWID){ loadFw(); return; }
   if(!KEY){ loadErr('Не указана сделка — откройте счёт из карточки сделки.'); return; }
   el('backLink').href=pageUrl('sales.html','deal',KEY);
   loadProducts();
   get({vapi:'deal', deal:KEY}).then(function(r){ if(!r||!r.ok){ loadErr(errText(r)); return; } DEAL=r.deal; render(); })
     .catch(function(e){ loadErr(netText(e)); });
+}
+/* ── новая поставка по рамочному (сделки ещё нет) ── */
+function loadFw(){
+  el('backLink').href=pageUrl('contract.html','contract',FWID); el('backLink').textContent='← к договору';
+  loadProducts();
+  get({vapi:'contractget', id:FWID}).then(function(r){
+    if(!r||!r.ok){ loadErr(errText(r)); return; }
+    var c=r.contract||r, cl=c.client||{};
+    if(!c.isFramework){ loadErr('Это не рамочный договор — счёт выставляется из карточки сделки.'); return; }
+    if(!(c.status==='active'||c.status==='signed') || c.expired){ loadErr('Рамочный договор не действует (не сформирован, аннулирован или истёк) — счёт к нему выставить нельзя.'); return; }
+    FW=c; el('main').className='';
+    el('ttl').textContent='🧾 Счёт по рамочному № '+(c.number||'');
+    el('hdr').innerHTML='<div class="t">Новый счёт по рамочному договору <a href="'+esc(pageUrl('contract.html','contract',FWID))+'">№ '+esc(c.number||'')+'</a></div>'
+      +'<div class="m">'+esc(cl.name||'')+' · при выставлении заведётся сделка-заявка с этими позициями</div>';
+    INVCTX={ market:c.market||'by', frameworks:[{ number:c.number, type:c.type||'Рамочный договор', validUntil:c.validUntil||'', status:c.statusRu||'', isFramework:true, prepayPercent:c.prepayPercent }] };
+    TWI_CUR=(c.market==='ru')?'RUB':'руб'; POSCHK=false; POS=[{name:'',qty:1,price:''}]; POS0=''; renderPos();
+    el('posEdit').className=''; el('posEditLink').className='sm hide'; el('posView').innerHTML='';
+    el('posEdit').querySelector('button.green').className='hide';   // позиции сохраняются вместе со счётом
+    el('total').value='';
+    renderInvMarket(); fillInvContracts(); el('invContract').value=c.number; presetScenario();
+  }).catch(function(e){ loadErr(netText(e)); });
+}
+/** «Выставить счёт» без сделки: заявка клиента с позициями → карточка счёта этой сделки → счёт к рамочному */
+function issueFw(){
+  var cl=FW.client||{}, items=cleanPos();
+  if(!items.length){ setm('imsg','err','Добавьте позиции'); return; }
+  if(!checkPos('imsg')) return;
+  run({vapi:'dealcreate', data:JSON.stringify({ buyer:cl.key, client:cl.name, clientType:cl.type||'юрлицо', type:'опт', items:items, note:'счёт по рамочному № '+(FW.number||'') })}, 'Завожу сделку…', 'imsg').then(function(r){ if(!r) return;
+    KEY=r.id; FWID=''; try{ history.replaceState(null,'',pageUrl('bill.html','deal',KEY)); }catch(e){}
+    get({vapi:'deal', deal:KEY}).then(function(d){ if(!d||!d.ok){ setm('imsg','err','Сделка '+esc(r.inquiryNum||r.id)+' заведена, но не загрузилась — откройте её и выставьте счёт.'); return; }
+      DEAL=d.deal; POS0=posKey(POS); FW=null; el('backLink').href=pageUrl('sales.html','deal',KEY); el('backLink').textContent='← к сделке';
+      issueInvoice(); });
+  });
 }
 function loadErr(m){ el('loaderr').className='note bad'; el('loaderr').innerHTML='<div>⚠️ '+esc(m)+'</div>'; el('hdr').querySelector('.m').textContent=''; }
 function reload(){ load(); }
@@ -279,7 +315,7 @@ function render(){
 
 
 /* ── позиции (редактор — tw-items.js): сохранение; после запуска в производство сервер правку не примет (Р-3) ── */
-function onPosTotal(){ syncTotal(); refreshPreview(); }
+function onPosTotal(){ syncTotal(); if(FW) presetScenario(); else refreshPreview(); }
 function syncTotal(){ if(!isEu() && posTotalValue()>0) el('total').value=posTotalValue(); }   // проформа EUR — по прайсу EUR, а не по ценам позиций
 function savePos(){
   if(!checkPos('posMsg')) return;
@@ -389,16 +425,17 @@ function issueCommercial(){
 // сценарий оплаты — по полю «Оплата» из amoCRM (вместо 100% предоплаты по умолчанию)
 /* сценарий счёта — от выбранного договора Прохаба (предоплата %), а не от «Оплаты» amoCRM (06.10.2026): 100 % → вся сумма; меньше — предоплата + остаток */
 function presetScenario(){
-  var no=val('invContract'), c=null; ((DEAL&&DEAL.contracts)||[]).forEach(function(x){ if(x.number===no) c=x; });
-  var pct=c&&c.prepayPercent!=null?Number(c.prepayPercent):null, chosen=pct===null||pct>=100?'prepay100':'prepay_balance';
+  var no=val('invContract'), c=null; ((DEAL&&DEAL.contracts)||[]).concat((INVCTX&&INVCTX.frameworks)||[]).forEach(function(x){ if(!c && x.number===no) c=x; });
+  var pct=c&&c.prepayPercent!=null&&c.prepayPercent!==''?Number(c.prepayPercent):null, chosen=pct===null||pct>=100?'prepay100':'prepay_balance';
   el('scen').value=chosen;
-  if(chosen==='prepay_balance'){ var sum=Number(c.sum)||Number(DEAL&&DEAL.sum)||0; if(sum>0) el('prepay').value=Math.round(sum*pct)/100; }
+  if(chosen==='prepay_balance'){ var sum=Number(c.sum)||posTotalValue()||Number(DEAL&&DEAL.sum)||0; if(sum>0) el('prepay').value=Math.round(sum*pct)/100; }
   onScen();
 }
 function onScen(){ var s=val('scen'); function show(id,on){ el(id).style.display=on?'':'none'; }
   show('f_prepay', s==='prepay_balance'||s==='prepay_interim_ship'); show('f_interim', s==='prepay_interim_ship');
   show('f_prepayDate', s!=='on_ship'); show('f_afterDays', s==='prepay_balance'||s==='prepay_interim_ship'||s==='on_ship'); refreshPreview(); }
 function issueInvoice(){
+  if(FW) return issueFw();
   if(!DEAL||!DEAL.buyerKey){ setm('imsg','err','Сначала привяжите клиента к сделке'); return; }
   var clean=cleanPos(), total=isEu()?(Number(val('total'))||0):(clean.length?posTotalValue():(Number(val('total'))||0));
   if(total<=0 && !isEu()){ setm('imsg','err','Добавьте позиции или укажите сумму счёта'); return; }
