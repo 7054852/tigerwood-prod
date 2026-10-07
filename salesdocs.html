@@ -500,7 +500,7 @@ function loadRegistry(){
         var act=(x.docUrl?'<a class="btn sm" href="'+esc(x.docUrl)+'" target="_blank" rel="noopener">открыть</a>':'')
           +(x.status==='issued'&&x.docId?'<button class="sec sm" onclick="twWbSignDlg(\''+esc(x.docId)+'\',loadRegistry)">⬆ скан</button>':'')
           +(x.status==='signed'&&x.signedUrl?'<a class="btn sm" href="'+esc(x.signedUrl)+'" target="_blank" rel="noopener">скан ↗</a>':'')
-          +(x.status==='reserved'&&x.dealId?'<button class="gho sm" onclick="regUnreserve('+i+')">снять резерв</button>':'')
+          +(x.status==='reserved'?'<button class="gho sm" onclick="regUnreserve('+i+')">снять резерв</button>':'')
           +((x.status==='issued'||x.status==='signed')?'<button class="danger sec sm" onclick="regCancel('+i+')">отменить</button>':'');
         return '<tr'+(x.status==='spoiled'?' class="sp"':'')+'>'
           +'<td data-l="Бланк"><b>'+esc((x.seria?x.seria+' ':'')+x.num)+'</b></td><td data-l="Дата">'+esc(x.date)+'</td><td data-l="Вид">'+esc(x.kind)+'</td>'
@@ -517,7 +517,8 @@ function regCancel(i){ var x=REG_ROWS[i], chk=x.kind==='ЧЕК';
     function(){ (chk?run({vapi:'deldealdoc', deal:x.dealId, type:'Товарный чек', reason:'отмена из реестра'}, 'Отменяю чек…'):run({vapi:'wbcancel', kind:x.kind, order:x.dealId||x.order}, 'Отменяю накладную…'))
       .then(function(r){ if(r){ loadRegistry(); loadBlanksStatus(); } }); }, 'Отменить'); }
 function regUnreserve(i){ var x=REG_ROWS[i];
-  run({vapi:'blankunreserve', deal:x.dealId, kind:x.kind}, 'Снимаю резерв…').then(function(r){ if(r){ loadRegistry(); loadBlanksStatus(); } }); }
+  ask('Снять резерв с бланка '+x.seria+' '+x.num+'?', '<div>Бланк снова станет свободным'+(x.contra?(' (был за: '+esc(x.contra)+')'):'')+'.</div>', function(){
+    run({vapi:'blankunreserve', id:x.id, kind:x.kind}, 'Снимаю резерв…').then(function(r){ if(r){ loadRegistry(); loadBlanksStatus(); } }); }, 'Снять резерв'); }
 function csvSave(name, head, rows){
   var q=function(v){ v=String(v==null?'':v); return /[";\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; };
   var txt='﻿'+[head].concat(rows).map(function(r){ return r.map(q).join(';'); }).join('\n');

@@ -114,6 +114,7 @@ function twWbRender(){
     else if(!has) resv+='<button class="gho sm" onclick="twWbReserveDlg(\''+k+'\')">📌 Зарезервировать бланк '+(k==='tn'?'ТН':'ТТН')+'</button>';
   });
   var note=(r.options||[]).length===1&&r.options[0].note?'<span class="sm">'+esc(r.options[0].note)+'</span>':'';
+  if(!(r.options||[]).length&&r.hint) note='<span class="sm warn">'+esc(r.hint)+'</span>';
   h+='<div class="row" style="margin-top:var(--s-2);align-items:center">'+btns+resv+note+'</div><div class="msg" id="twwbmsg"></div>';
   TWWBB.box.innerHTML=h;
 }
