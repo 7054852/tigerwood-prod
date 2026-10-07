@@ -114,8 +114,9 @@ function twWbRender(){
   h+=docs.map(function(d){
     var chk=d.docType==='receipt', bad=d.status!=='formed', ttl=chk?'Товарный чек':d.type;
     var pills=bad?'<span class="pill bad">ошибка формирования</span>':d.signedAt?'<span class="pill ok">подписана '+esc(d.signedAt)+'</span>':'<span class="pill warn">выписана — ждёт подписи</span>';
-    var acts=bad?'':d.signedAt?('<a href="'+esc(d.signedUrl)+'" target="_blank" rel="noopener">скан ↗</a><a href="#" onclick="twWbUnsign(\''+esc(d.id)+'\');return false;">убрать скан</a>')
-      :'<button class="sec sm" onclick="twWbSignDlg(\''+esc(d.id)+'\')">⬆ Подписанный скан</button>';
+    var pdf=(!bad&&!chk)?'<a href="#" onclick="twWbPdf(\''+esc(d.id)+'\');return false;" title="одна страница A4, без сетки — для печати на бланке">🖨 PDF для печати</a>':'';
+    var acts=bad?'':pdf+(d.signedAt?('<a href="'+esc(d.signedUrl)+'" target="_blank" rel="noopener">скан ↗</a><a href="#" onclick="twWbUnsign(\''+esc(d.id)+'\');return false;">убрать скан</a>')
+      :'<button class="sec sm" onclick="twWbSignDlg(\''+esc(d.id)+'\')">⬆ Подписанный скан</button>');
     return twFileCard({ href:d.url, tab:1, tag:chk?'ЧЕК':d.type, title:ttl+' '+(d.blank||''), meta:[d.date, twWbMoney(d.sum)+' '+(d.currency||'BYN'), d.error].filter(Boolean).join(' · '),
       pills:pills, acts:acts, del:"twWbCancel('"+(d.cancelType||ttl)+"')", delTitle:'Отменить '+(chk?'чек':'накладную') });
   }).join('');
@@ -133,6 +134,16 @@ function twWbRender(){
   if(!(r.options||[]).length&&r.hint) note='<span class="sm warn">'+esc(r.hint)+'</span>';
   h+='<div class="row" style="margin-top:var(--s-2);align-items:center">'+btns+resv+note+'</div><div class="msg" id="twwbmsg"></div>';
   TWWBB.box.innerHTML=h;
+}
+/** PDF накладной для печати (07.10.2026): сервер выгружает лист на одну страницу A4 без сетки — открываем в новой вкладке */
+function twWbPdf(id){
+  var w=window.open('', '_blank'); if(w) w.document.write('<p style="font:16px sans-serif;padding:24px">Готовлю PDF для печати…</p>');
+  get({vapi:'wbpdf', id:id}).then(function(r){
+    if(!r||!r.ok){ if(w) w.close(); oops(errText(r)); return; }
+    var bin=atob(r.b64), arr=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
+    var url=URL.createObjectURL(new Blob([arr],{type:'application/pdf'}));
+    if(w) w.location.href=url; else { var a=document.createElement('a'); a.href=url; a.download=r.name||'накладная.pdf'; document.body.appendChild(a); a.click(); a.remove(); }
+  }).catch(function(e){ if(w) w.close(); oops('Связь оборвалась: '+((e&&e.message)||e)); });
 }
 function twWbSignDlg(id, after){
   var today=new Date(Date.now()+3*3600e3).toISOString().slice(0,10);
