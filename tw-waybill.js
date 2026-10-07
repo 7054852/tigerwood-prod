@@ -41,25 +41,33 @@ function twWaybill(dealKey, kind, onDone){
       }, p.kind==='Товарный чек'?'Сформировать чек':'Сформировать накладную');
       return;
     }
+    var tn=!!p.tn, trans=''
+      +'<label style="'+L+'"><span style="'+SM+'">Заказчик перевозки (плательщик)</span><select id="wbf" style="width:100%"><option value="Мы"'+(p.freight!=='Клиент'?' selected':'')+'>Мы (ООО «Тигервуд»)</option><option value="Клиент"'+(p.freight==='Клиент'?' selected':'')+'>Клиент (грузополучатель)</option></select></label>'
+      +inp('wbdr','Водитель (фамилия, инициалы)', p.driver)+inp('wbcar','Автомобиль (марка, гос. номер)', p.car)+inp('wbtr','Прицеп', p.trailer)+inp('wbpl','Путевой лист №', p.waybillDoc);
+    var proxy=inp('wbrc','Товар к доставке принял (должность, Ф.И.О.)', p.recipient)+inp('wbpx','Доверенность (номер, дата)', p.proxy, 'например, № 23 от 11.05.2026')+inp('wbpb','Доверенность выдана (организация)', p.proxyBy);
     var body=miss
       +'<div class="sm" style="margin-bottom:var(--s-2)">Клиент: <b>'+esc(p.client)+'</b>'+(p.contract?(' · '+esc(p.contract)):' · <span class="err">договор не привязан</span>')+(p.num?(' · заказ '+esc(p.num)):'')+'</div>'
+      +(p.note?'<div class="note"><div>'+esc(p.note)+'</div></div>':'')
       +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0 var(--s-3)">'
       +inp('wbd','📅 Дата отгрузки (= дата накладной) — проверьте!', p.date, 'дд.мм.гггг')
-      +'<label style="'+L+'"><span style="'+SM+'">Заказчик перевозки</span><select id="wbf" style="width:100%"><option value="Мы"'+(p.freight!=='Клиент'?' selected':'')+'>Мы (Тигервуд)</option><option value="Клиент"'+(p.freight==='Клиент'?' selected':'')+'>Клиент</option></select></label>'
-      +'<label style="'+L+';grid-column:1 / -1"><span style="'+SM+'">📍 Адрес доставки — проверьте!</span><input id="wba" value="'+esc(p.address)+'" autocomplete="off" style="width:100%"></label>'
       +blankSel
-      +inp('wbdr','Водитель', p.driver)+inp('wbcar','Автомобиль', p.car)+inp('wbtr','Прицеп', p.trailer)+inp('wbpl','Путевой лист', p.waybillDoc)
+      +(tn?'':'<label style="'+L+';grid-column:1 / -1"><span style="'+SM+'">📍 Адрес доставки (пункт разгрузки) — проверьте!</span><input id="wba" value="'+esc(p.address)+'" autocomplete="off" style="width:100%"></label>')
       +'</div>'
-      +'<div class="tbl-wrap" style="margin-top:var(--s-3)"><table class="tbl sm mob wbt"><thead><tr><th>Наименование</th><th class="num">Кол-во</th><th>Мест</th><th>Масса, кг</th></tr></thead>'
-      +'<tbody>'+rows+'<tr style="font-weight:600"><td>Итого</td><td></td><td data-l="Мест" id="wbtp">0</td><td data-l="Масса, кг" id="wbtm">0</td></tr></tbody></table></div>'
-      +'<label class="sm" style="display:block;margin-top:var(--s-3)"><input type="checkbox" id="wbc"> Я проверил <b>дату</b> и <b>адрес</b></label>'
+      +(tn
+        ?'<details style="margin-top:var(--s-3)"><summary class="sm">🚚 Перевозка и доверенность — если нужно заполнить в накладной</summary><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0 var(--s-3)">'+proxy+trans+'</div></details>'
+        :'<div class="sm" style="margin-top:var(--s-3);font-weight:600">🚚 Перевозка</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0 var(--s-3)">'+trans+'</div>'
+          +'<div class="tbl-wrap" style="margin-top:var(--s-3)"><table class="tbl sm mob wbt"><thead><tr><th>Наименование</th><th class="num">Кол-во</th><th>Мест</th><th>Масса, кг</th></tr></thead>'
+          +'<tbody>'+rows+'<tr style="font-weight:600"><td>Итого</td><td></td><td data-l="Мест" id="wbtp">0</td><td data-l="Масса, кг" id="wbtm">0</td></tr></tbody></table></div>')
+      +'<label class="sm" style="display:block;margin-top:var(--s-3)"><input type="checkbox" id="wbc"> Я проверил <b>дату</b>'+(tn?'':' и <b>адрес</b>')+'</label>'
       +'<div class="msg" id="wbm"></div>';
     ask('✍️ Выписать '+esc(p.title||kind), body, function(){
-      var date=val('wbd').trim(), addr=val('wba').trim();
+      var date=val('wbd').trim(), addr=el('wba')?val('wba').trim():undefined;
       if(!date){ setm('wbm','err','Укажите дату накладной'); return false; }
-      if(!el('wbc').checked){ setm('wbm','err','Отметьте, что проверили дату и адрес'); return false; }
-      var payload={ date:date, address:addr, freight:val('wbf'), driver:val('wbdr').trim(), car:val('wbcar').trim(), trailer:val('wbtr').trim(), waybillDoc:val('wbpl').trim(),
-        blankId:(el('wbbl')&&el('wbbl').value)||'', items:(TWWB.items||[]).map(function(it){ return {places:Number(it.places)||0, mass:Number(it.mass)||0}; }) };
+      if(!el('wbc').checked){ setm('wbm','err','Отметьте, что проверили дату'+(tn?'':' и адрес')); return false; }
+      var payload={ date:date, freight:val('wbf'), driver:val('wbdr').trim(), car:val('wbcar').trim(), trailer:val('wbtr').trim(), waybillDoc:val('wbpl').trim(),
+        recipient:twWbVal('wbrc').trim(), proxy:twWbVal('wbpx').trim(), proxyBy:twWbVal('wbpb').trim(), blankId:(el('wbbl')&&el('wbbl').value)||'' };
+      if(addr!==undefined) payload.address=addr;
+      if(!tn) payload.items=(TWWB.items||[]).map(function(it){ return {places:Number(it.places)||0, mass:Number(it.mass)||0}; });
       twWbSend(dealKey, kind, payload, onDone);
       return false;   // окно закроем после ответа сервера
     }, 'Сформировать накладную');
@@ -158,6 +166,7 @@ function twWbReserveDlg(k){
 function twWbUnreserve(k){
   run({vapi:'blankunreserve', deal:TWWBB.deal, kind:k==='tn'?'ТН':'ТТН'}, 'Снимаю резерв…', 'twwbmsg').then(function(x){ if(x) twWbRefresh(); });
 }
+function twWbVal(id){ var e=el(id); return e?String(e.value||''):''; }
 function twWbDlg(cls){ var d=el('askmodal').querySelector('.dlg'); if(d) d.className=cls; }
 function twWbSums(){ var pl=0,ms=0; ((TWWB&&TWWB.items)||[]).forEach(function(it){ pl+=Number(it.places)||0; ms+=Number(it.mass)||0; });
   var a=el('wbtp'), b=el('wbtm'); if(a) a.textContent=pl; if(b) b.textContent=Math.round(ms*100)/100; }
