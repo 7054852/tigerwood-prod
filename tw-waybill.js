@@ -13,11 +13,15 @@ function twWaybill(dealKey, kind, onDone){
     TWWB=p; TWWB.__kind=kind; TWWB.__deal=dealKey;
     var items=p.items||[];
     var miss=(p.missing&&p.missing.length)?('<div class="note warn"><div>⚠ Не хватает для накладной: '+esc(p.missing.join(', '))+'</div></div>'):'';
+    // строки накладной (07.10.2026): комплект — одной строкой (места/масса комплекса), остальное — своими строками; 0 — подсветка
     var rows=items.map(function(it,i){
-      return '<tr><td data-l="Наименование">'+esc(it.name)+'</td><td data-l="Кол-во" class="num">'+esc(it.qty)+'</td>'
-        +'<td data-l="Мест"><input type="number" min="0" value="'+esc(it.places)+'" oninput="TWWB.items['+i+'].places=this.value;twWbSums()" autocomplete="off"></td>'
-        +'<td data-l="Масса, кг"><input type="number" min="0" step="0.01" value="'+esc(it.mass)+'" oninput="TWWB.items['+i+'].mass=this.value;twWbSums()" autocomplete="off"></td></tr>';
+      var z=function(v){ return Number(v)>0?'':' style="border-color:var(--red);background:var(--red-bg)"'; };
+      return '<tr id="wbr'+i+'"><td data-l="Наименование">'+esc(it.name)+(it.set?' <span class="pill info">комплект</span>':'')+(it.model&&it.model!==it.name?'<div class="sm">'+esc(it.model)+'</div>':'')+'</td>'
+        +'<td data-l="Кол-во" class="num">'+esc(it.qty)+' '+esc(it.unit||'')+'</td>'
+        +'<td data-l="Мест"><input type="number" min="0" value="'+esc(it.places)+'"'+z(it.places)+' oninput="TWWB.items['+i+'].places=this.value;twWbSums()" autocomplete="off"></td>'
+        +'<td data-l="Масса, кг"><input type="number" min="0" step="0.01" value="'+esc(it.mass)+'"'+z(it.mass)+' oninput="TWWB.items['+i+'].mass=this.value;twWbSums()" autocomplete="off"></td></tr>';
     }).join('');
+    var zeroNote='<div class="note warn" id="wbzero" style="margin-top:var(--s-2);display:none"><div>⚠ У подсвеченных строк не заданы места или масса — в каталоге нет данных. Впишите их: значения сохранятся в сделке.</div></div>';
     // сетка полей — своими стилями: страницы реестра/договора не обязаны иметь .grid2/.fl
     var L='display:block;margin-top:var(--s-2)', SM='display:block;font:var(--t-small);color:var(--muted);margin-bottom:var(--s-1)';
     var inp=function(id,label,v,ph){ return '<label style="'+L+'"><span style="'+SM+'">'+label+'</span><input id="'+id+'" value="'+esc(v||'')+'"'+(ph?' placeholder="'+esc(ph)+'"':'')+' autocomplete="off" style="width:100%"></label>'; };
@@ -57,7 +61,7 @@ function twWaybill(dealKey, kind, onDone){
         ?'<details style="margin-top:var(--s-3)"><summary class="sm">🚚 Перевозка и доверенность — если нужно заполнить в накладной</summary><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0 var(--s-3)">'+proxy+trans+'</div></details>'
         :'<div class="sm" style="margin-top:var(--s-3);font-weight:600">🚚 Перевозка</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0 var(--s-3)">'+trans+'</div>'
           +'<div class="tbl-wrap" style="margin-top:var(--s-3)"><table class="tbl sm mob wbt"><thead><tr><th>Наименование</th><th class="num">Кол-во</th><th>Мест</th><th>Масса, кг</th></tr></thead>'
-          +'<tbody>'+rows+'<tr style="font-weight:600"><td>Итого</td><td></td><td data-l="Мест" id="wbtp">0</td><td data-l="Масса, кг" id="wbtm">0</td></tr></tbody></table></div>')
+          +'<tbody>'+rows+'<tr style="font-weight:600"><td>Итого</td><td></td><td data-l="Мест" id="wbtp">0</td><td data-l="Масса, кг" id="wbtm">0</td></tr></tbody></table></div>'+zeroNote)
       +'<label class="sm" style="display:block;margin-top:var(--s-3)"><input type="checkbox" id="wbc"> Я проверил <b>дату</b>'+(tn?'':' и <b>адрес</b>')+'</label>'
       +'<div class="msg" id="wbm"></div>';
     ask('✍️ Выписать '+esc(p.title||kind), body, function(){
@@ -67,7 +71,11 @@ function twWaybill(dealKey, kind, onDone){
       var payload={ date:date, freight:val('wbf'), driver:val('wbdr').trim(), car:val('wbcar').trim(), trailer:val('wbtr').trim(), waybillDoc:val('wbpl').trim(),
         recipient:twWbVal('wbrc').trim(), proxy:twWbVal('wbpx').trim(), proxyBy:twWbVal('wbpb').trim(), blankId:(el('wbbl')&&el('wbbl').value)||'' };
       if(addr!==undefined) payload.address=addr;
-      if(!tn) payload.items=(TWWB.items||[]).map(function(it){ return {places:Number(it.places)||0, mass:Number(it.mass)||0}; });
+      if(!tn){
+        payload.items=(TWWB.items||[]).map(function(it){ return {id:it.id||'', kids:it.kids||[], places:Number(it.places)||0, mass:Number(it.mass)||0}; });
+        var zr=(TWWB.items||[]).filter(function(it){ return !(Number(it.places)>0) || !(Number(it.mass)>0); });
+        if(zr.length && !TWWB.__zeroOk){ TWWB.__zeroOk=1; setm('wbm','err','⚠ У '+zr.length+' строк(и) места или масса = 0 — заполните или нажмите «Сформировать» ещё раз, чтобы выписать так'); return false; }
+      }
       twWbSend(dealKey, kind, payload, onDone);
       return false;   // окно закроем после ответа сервера
     }, 'Сформировать накладную');
@@ -168,5 +176,7 @@ function twWbUnreserve(k){
 }
 function twWbVal(id){ var e=el(id); return e?String(e.value||''):''; }
 function twWbDlg(cls){ var d=el('askmodal').querySelector('.dlg'); if(d) d.className=cls; }
-function twWbSums(){ var pl=0,ms=0; ((TWWB&&TWWB.items)||[]).forEach(function(it){ pl+=Number(it.places)||0; ms+=Number(it.mass)||0; });
-  var a=el('wbtp'), b=el('wbtm'); if(a) a.textContent=pl; if(b) b.textContent=Math.round(ms*100)/100; }
+function twWbSums(){ var pl=0,ms=0,zero=0; ((TWWB&&TWWB.items)||[]).forEach(function(it,i){ pl+=Number(it.places)||0; ms+=Number(it.mass)||0;
+    var bad=!(Number(it.places)>0)||!(Number(it.mass)>0); if(bad) zero++;
+    var r=el('wbr'+i); if(r){ var ins=r.getElementsByTagName('input'); for(var k=0;k<ins.length;k++){ var ok=Number(ins[k].value)>0; ins[k].style.borderColor=ok?'':'var(--red)'; ins[k].style.background=ok?'':'var(--red-bg)'; } } });
+  var a=el('wbtp'), b=el('wbtm'), z=el('wbzero'); if(a) a.textContent=pl; if(b) b.textContent=Math.round(ms*100)/100; if(z) z.style.display=zero?'':'none'; }
