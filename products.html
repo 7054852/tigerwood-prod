@@ -103,6 +103,7 @@ function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){retur
 function jsq(s){ return esc(String(s==null?'':s)).replace(/'/g,'&#39;'); }
 
 /* ══ Состояние ══ */
+var CLONESRC='';                        // «⎘ Дублировать»: артикул-источник новой карточки (поля и состав копируются)
 var P=[], GF=[], CODES=[], CATIDX={}, ORPHANS=[], COMP={}, IZDREF=null;
 var TAB='reg', CARD=null;               // CARD: sku | '' (новый) | null
 var SEL={}, Q='', GRPF='';
@@ -420,6 +421,7 @@ function regView(){
     h+='<div id="massbar">выбрано: <b>'+selN+'</b>'
       +'<span>перенести в группу</span><select id="massGrp" style="width:auto">'+GF.map(function(g){return '<option>'+esc(g.name)+'</option>';}).join('')+'</select>'
       +'<button class="btn pri sm" onclick="massMove()">Применить</button>'
+      +(selN===1?'<button class="btn sm pri" onclick="dupProd(Object.keys(SEL)[0])" title="новый товар с теми же полями и составом — останется вписать артикул и модель">⎘ Дублировать</button>':'')
       +(selN>=2?'<button class="btn sm" onclick="openCompare()">⚖ Сравнить ('+Math.min(selN,6)+')</button>':'')
       +'<button class="btn sm" onclick="SEL={};renderBody()">снять выделение</button></div>';
   }
@@ -738,6 +740,7 @@ function statView(){
 }
 
 /* ══════ КАРТОЧКА ТОВАРА (полноэкранно, паттерн «Кадров») ══════ */
+function dupProd(sku){ if(!prodBy(sku)) return; CLONESRC=sku; SEL={}; openCard(''); }
 function openCard(sku){ CARD=sku; ARTSEL={}; PENDCONF=null; renderTabs(); renderBody(); skuHintDraw(); window.scrollTo(0,0); }
 function fld(id,label,val,ph,wide,listId,oninput){
   return '<div'+(wide?' style="grid-column:1/-1"':'')+'><label class="f">'+label+'</label><input id="c_'+id+'" value="'+esc(val||'')+'"'
@@ -780,16 +783,20 @@ function skuHintDraw(){
 function cardView(){
   var p=CARD?prodBy(CARD):null;
   var isNew=!p;
+  if(!isNew) CLONESRC='';
+  var src=isNew&&CLONESRC?prodBy(CLONESRC):null; if(!src) CLONESRC='';
   var d=p||{};
+  if(src){ d={}; for(var k in src) d[k]=src[k]; d.sku=''; d.folder=''; d.photos=[]; d.priceFrom=''; }
   var grpOpts='<option value="">—</option>'+GF.map(function(g){
     return '<option'+(d.group===g.name?' selected':'')+'>'+esc(g.name)+'</option>'; }).join('');
-  SKUAUTO=isNew;
+  SKUAUTO=isNew&&!src;   // у копии поля те же — собранный артикул совпал бы с источником
   var h=dlOptions('brand','brand')+dlOptions('equip','equip')+dlOptions('model','model')
     +dlOptions('size','size')+dlOptions('color','color')+dlOptions('pack','kit');
   h+='<div class="toolbar"><button class="btn sec" onclick="CARD=null;renderTabs();renderBody()">← к реестру</button>'
-    +'<b style="font:var(--t-heading)">'+(isNew?'Новый товар':esc(d.sku))+'</b>'
+    +'<b style="font:var(--t-heading)">'+(src?'Копия «'+esc(src.sku)+'»':isNew?'Новый товар':esc(d.sku))+'</b>'
     +(d.src==='хаб'?'<span class="reghub">хаб</span>':'')
     +'<div class="end">'
+    +(!isNew?'<button class="btn sec" onclick="dupProd(d.sku)" title="новый товар с теми же полями и составом">⎘ Дублировать</button>':'')
     +(!isNew?'<button class="btn sec" onclick="cardFolder()">'+(d.folder?'📁 Папка':'📁 Создать папку')+'</button>':'')
     +(!isNew?'<button class="btn sec" onclick="eqRenameAsk()" title="переименовать оборудование везде: товары, составы, заказы, выработка, склад">✎ Оборудование</button>':'')
     +(!isNew?'<button class="btn danger" onclick="cardDelAsk()">🗑 Удалить</button>':'')
@@ -862,7 +869,16 @@ function cardSave(){
   if(!d.sku){ msg('⚠ артикул обязателен'); return; }
   if(!d.equip||!d.model){ msg('⚠ нужны оборудование и модель'); return; }
   if(oldSku && pkey(oldSku)!==pkey(d.sku)) twSay('Каскад по системе: составы, заказы, продажи, склад…');
+  var cloneFrom=(!oldSku&&CLONESRC&&prodBy(CLONESRC)&&prodBy(CLONESRC)._hasComp)?CLONESRC:'';
   run(apiPost({vapi:'productsave',data:JSON.stringify(d),oldsku:oldSku}), function(r){
+    CLONESRC='';
+    if(cloneFrom){   // копия: состав источника на новый артикул (как «⎘ как …» в карточке)
+      twSay('Копирую состав…');
+      return api({vapi:'clonevariant',from:cloneFrom,eq:d.equip,mod:d.model,to:d.sku}).then(function(cr){
+        msg('✓ создан'+(cr&&cr.ok?' · состав скопирован с '+esc(cloneFrom):' · состав не скопирован: '+esc((cr&&cr.error)||'ошибка')),1);
+        CARD=null; load(true); renderBody();
+      });
+    }
     var casc='';
     if(r.cascade){ var n=0; Object.keys(r.cascade).forEach(function(k){ n+=Number(r.cascade[k])||0; });
       if(n) casc=' · артикул обновлён в связанных листах: '+n+' строк'; }
