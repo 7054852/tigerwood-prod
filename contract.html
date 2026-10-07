@@ -879,8 +879,7 @@ function renderDocs(){
     var fd=c.fin.docs||[], dk=c.deal&&c.status!=='cancelled';
     box.innerHTML='<div class="sm">'+esc(c.fin.hint||'')+'</div><div class="sm" style="margin-top:var(--s-2)">Основание накладной: '
       +(c.fin.basis?('<b>'+esc(c.fin.basis)+'</b>'+(c.fin.partner?(' ('+esc(c.fin.partner)+')'):'')):'<span class="warn">№ и дата договора не заданы — «Компания и настройки» → «Способы оплаты и банки»</span>')+'</div>';
-    el('wbBox').innerHTML=dk?('<div class="row" style="margin-top:var(--s-3)"><span class="sm">Накладные по сделке '+esc(c.deal.num||'')+':</span>'
-      +fd.map(function(t){ return '<button class="sec sm" onclick="twWaybill(C.deal.id,\''+t+'\',loadContract)">✍️ Выписать '+esc(t)+'</button>'; }).join('')+'</div>'):'';
+    twWbBox(dk);
     ib.innerHTML=''; return;
   }
   box.innerHTML=docs.length?docs.map(function(d){
@@ -889,8 +888,7 @@ function renderDocs(){
     return twFileCard({ href:d.url, tab:1, tag:twDocTag(t), title:t+(c.number?' № '+c.number:''), meta:[d.date||'', d.url?'Google Docs':'файла нет'].filter(Boolean).join(' · '),
       pills:bad?'<span class="pill '+(/ошиб|failed/.test(d.status)?'bad':'muted')+'">'+esc(d.statusRu||d.status)+'</span>':'', off:d.status==='cancelled' }); }).join('')
     :'<div class="sm">'+(c.status==='draft'?'Черновик: документа ещё нет — нажмите «Сформировать документ» или загрузите подписанный.':'Документов нет.')+'</div>';
-  el('wbBox').innerHTML=(c.deal&&c.status!=='cancelled')?('<div class="row" style="margin-top:var(--s-3)"><span class="sm">Накладные по сделке '+esc(c.deal.num||'')+':</span>'
-    +'<button class="sec sm" onclick="twWaybill(C.deal.id,\'ТН\',loadContract)">✍️ Выписать ТН</button><button class="sec sm" onclick="twWaybill(C.deal.id,\'ТТН\',loadContract)">✍️ Выписать ТТН</button></div>'):'';
+  twWbBox(c.deal&&c.status!=='cancelled');
   var inv=c.invoices||[], drafts=c.invoiceDrafts||[], euPage=!!c.euInvoices;   // рамочный Европы: счета — страница invoice.html (02.10.2026)
   var canNew=euPage && (c.status==='active'||c.status==='signed') && !c.expired;
   ib.innerHTML=(inv.length||drafts.length||euPage)?('<div class="sm" style="margin-top:var(--s-3);font-weight:600">Счета по договору</div>'+inv.map(function(v){
@@ -1020,6 +1018,12 @@ function fileCard(d, canDel){
   var nm=d.name||'Подписанный договор';
   return twFileCard({ href:d.url, tab:1, tag:twDocTag('', nm), title:nm, meta:[d.docType||d.type||'Договор', d.date||'', 'загружен'].filter(Boolean).join(' · '),
     del:(canDel&&d.id)?"fileDeleteDlg('"+d.id+"')":'', delTitle:'Удалить файл' });
+}
+/** блок «Накладные» сделки договора (07.10.2026, tw-waybill.js): что выписывать — по виду договора, статус, скан, резерв бланка */
+function twWbBox(on){
+  if(!on){ el('wbBox').innerHTML=''; return; }
+  el('wbBox').innerHTML='<div class="sm" style="margin-top:var(--s-3);font-weight:600">🚚 Накладные по сделке '+esc(C.deal.num||'')+'</div><div id="wbBlock"></div>';
+  twWaybillBlock(C.deal.id, 'wbBlock', null);
 }
 function hasUpload(){ return !!(C && (C.documents||[]).some(function(d){ return d.origin==='uploaded' && d.status!=='cancelled'; })); }
 /** удалить загруженный файл (07.10.2026): файл → корзина Drive, договор остаётся подписанным */

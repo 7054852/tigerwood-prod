@@ -278,7 +278,9 @@
   <!-- документы -->
   <div class="blk">
     <div class="h">📄 Документы сделки <span class="sp"><button class="gray sm" onclick="toFinance()">💰 В финансы</button><button class="gray sm" onclick="reload()">обновить</button></span></div>
-    <div class="row" id="wbBtns" style="margin-bottom:var(--s-2)"><span class="sm">Накладные:</span><button class="sec sm" onclick="twWaybill(KEY,'ТН',renderDealDocs)">✍️ Выписать ТН</button><button class="sec sm" onclick="twWaybill(KEY,'ТТН',renderDealDocs)">✍️ Выписать ТТН</button></div>
+    <!-- накладные и чеки (07.10.2026): что выписывать — по договору сделки; статус выписана / подписана; резерв бланка; оплачено ЕРИП (tw-waybill.js) -->
+    <div class="sm" style="font-weight:600;margin-bottom:var(--s-1)">🚚 Накладные</div>
+    <div id="wbBlock" style="margin-bottom:var(--s-3)"><div class="sm">—</div></div>
     <div class="msg" id="finMsg"></div>
     <div id="deldocs"><div class="sm">—</div></div>
     <div id="otherdocs"></div>
@@ -650,7 +652,7 @@ function render(){
   renderDealDocs(); renderConList();
   twPay('dealPay', DEAL.pay, { deal: DEAL.id, canCreate: false, onDone: reload });
   renderInvMarket(); fillInvContracts(); fillCommercial(); presetScenario();   // сценарий счёта — от договора (после списка договоров)
-  el('wbBtns').className=isClosed(d)?'row hide':'row';
+  twWaybillBlock(KEY, 'wbBlock', null);
   if(d.buyerKey) loadInvCtx();
 }
 
@@ -887,7 +889,7 @@ function renderDealDocs(){
   el('otherdocs').innerHTML='';
   get({vapi:'dealdocs', deal:KEY}).then(function(r){
     if(r&&r.ok===false){ el('otherdocs').innerHTML='<div class="sm err">Сформированные документы не загрузились: '+esc(errText(r))+'</div>'; return; }
-    var docs=((r&&r.docs)||[]).filter(function(x){ return !/договор|контракт/i.test(String(x.type||'')); });
+    var docs=((r&&r.docs)||[]).filter(function(x){ return !/договор|контракт|^ТН$|^ТТН|товарный чек/i.test(String(x.type||'')); });   // накладные и чеки — в блоке «Накладные»
     el('otherdocs').innerHTML=docs.length?('<div class="sm" style="font-weight:600;margin:var(--s-2) 0 var(--s-1)">Сформированные документы</div>'
       +docs.map(function(x){ return twFileCard({ href:x.url, tab:1, tag:twDocTag(x.type), title:x.type, meta:x.date||'',
         del:'delOtherDoc('+JSON.stringify(String(x.type))+')', delTitle:'Отменить документ' }); }).join('')):'';
