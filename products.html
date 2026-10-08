@@ -190,9 +190,7 @@ function load(silent){
     if(silent){
       // мягко: не трогаем открытую карточку, правку ячейки и выделение; сохраняем прокрутку
       if(CARD!==null||BUSY||document.querySelector('[data-e]')) return;
-      var sy=window.scrollY;
-      fillGrpFilter(); renderBody();
-      window.scrollTo(0,sy);
+      fillGrpFilter(); renderBody();   // прокрутку реестра (и окна) держит сам renderBody
     } else {
       defaultCollapse();
       renderShell();
@@ -250,17 +248,27 @@ function renderTabs(){
 }
 function go(tab){ TAB=tab; CARD=null; CMPV=null; PENDCONF=null; renderTabs(); renderBody(); }
 /** раскрыть/свернуть группу: перерисовка не должна «уносить» экран — прокрутка остаётся, заголовок группы держим в поле зрения */
+// ⚠ реестр прокручивается ВНУТРИ блока .tbwrap (липкая шапка колонок), а не окном: раньше здесь берегли window.scrollY,
+// а renderBody создавал новый блок с прокруткой 0 — таблица прыгала к первой группе (владелец 09.10.2026). Прокрутку блока держит renderBody.
 function toggleGrp(key){
-  var sy=window.scrollY; CLOSED[key]=!CLOSED[key]; renderBody(); window.scrollTo(0,sy);
-  var h=null; document.querySelectorAll('tr[data-grp]').forEach(function(t){ if(t.getAttribute('data-grp')===key) h=t; });
-  if(h){ var r=h.getBoundingClientRect(); if(r.top<0||r.bottom>window.innerHeight) h.scrollIntoView({block:'start'}); }
+  CLOSED[key]=!CLOSED[key]; renderBody();
+  var w=document.querySelector('#tabbody .tbwrap'), h=null;
+  document.querySelectorAll('tr[data-grp]').forEach(function(t){ if(t.getAttribute('data-grp')===key) h=t; });
+  if(!w||!h) return;
+  var th=w.querySelector('thead'), head=th?th.offsetHeight:0, top=h.offsetTop-head;   // заголовок группы — под шапкой колонок, если ушёл из виду
+  if(top<w.scrollTop || h.offsetTop+h.offsetHeight>w.scrollTop+w.clientHeight) w.scrollTop=Math.max(0,top);
 }
 function renderBody(){
   var b=$('tabbody'); if(!b) return;
   regBar('','');                   // счётчик и «колонки / развернуть» — только на самом реестре
   if(CMPV){ b.innerHTML=compareHtml(); return; }
   if(CARD!==null){ b.innerHTML=cardView(); compRender(); return; }
-  if(TAB==='reg') b.innerHTML=regView();
+  if(TAB==='reg'){
+    var ow=b.querySelector('.tbwrap'), st=ow?ow.scrollTop:0, sl=ow?ow.scrollLeft:0, wy=window.scrollY;
+    b.innerHTML=regView();
+    var nw=b.querySelector('.tbwrap'); if(nw){ nw.scrollTop=st; nw.scrollLeft=sl; }
+    if(Math.abs(window.scrollY-wy)>1) window.scrollTo(0,wy);
+  }
   else if(TAB==='grp') b.innerHTML=grpView();
   else if(TAB==='art') b.innerHTML=artView();
   else b.innerHTML=statView();

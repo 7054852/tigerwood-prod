@@ -52,6 +52,16 @@
   #workbar .wl b{ color:var(--fg); }
   #workbar button{ margin-top:0; }
   body.hasbar{ padding-bottom:120px; }   /* чтобы панель не накрывала конец списка */
+  /* операции детали — галочками (09.10.2026): строка во всю ширину, 48 px под палец */
+  .oplist{ display:flex; flex-direction:column; gap:var(--s-1); }
+  label.oprow{ display:flex; align-items:center; gap:var(--s-2); min-height:var(--h-big); margin:0; padding:var(--s-1) var(--s-3);
+    border:1px solid var(--line); border-radius:var(--r-ctl); background:var(--card); color:var(--fg); font:var(--t-body); cursor:pointer; }
+  label.oprow input{ width:22px; height:22px; flex:none; margin:0; }
+  label.oprow.on{ border-color:var(--accent); background:var(--accent-bg); }
+  label.oprow .r{ margin-left:auto; color:var(--muted); font:var(--t-small); white-space:nowrap; }
+  /* коэффициент строки в проверке — поле прямо в строке, сохраняется вместе с нарядом */
+  input.kin{ width:64px; display:inline-block; min-height:var(--h-sm); padding:0 var(--s-1); text-align:right; margin-left:var(--s-1); }
+  input.kin.chg{ border-color:var(--amber); background:var(--amber-bg); }
   #askbox{ position:fixed; left:0; top:0; right:0; bottom:0; background:var(--scrim); z-index:60; display:flex; align-items:flex-end; }
   #askbox .ab{ width:100%; margin:0; border-radius:var(--r-card) var(--r-card) 0 0; padding:var(--s-3) var(--s-4) var(--s-5); }
   #askbox .abt{ font:var(--t-heading); margin-bottom:var(--s-2); white-space:pre-line; }
@@ -154,10 +164,20 @@ function CARD(e){ return '<div style="padding:var(--s-4);line-height:1.5">'
   <label>Оборудование</label><select id="equip" onchange="fillDetails()"></select>
   <label>Деталь</label><select id="detail" onchange="fillOps()"></select>
   <div id="varbox" style="display:none"><label>Какой товар</label><select id="pvar" onchange="fillOps()"></select></div>
-  <label>Операция</label><select id="op" onchange="calc()"></select>
-  <label>Количество</label><input id="qty" type="number" min="0" inputmode="numeric" oninput="calc()" placeholder="сколько сделано">
+  <div id="sitebox" style="display:none"><label>Участок</label><select id="site" onchange="onSiteChange()"></select></div>
+  <label>Операции — отметьте всё, что сделали с этими деталями</label><div id="ops" class="oplist"></div>
+  <label>Количество деталей</label><input id="qty" type="number" min="0" inputmode="numeric" oninput="calc()" placeholder="сколько деталей прошли эти операции">
   <div class="sum" id="sum">—</div>
   <button class="sec" onclick="addToCart()">＋ Добавить в наряд</button>
+  <div id="devbox" class="card" style="display:none;margin-top:var(--s-4)">
+    <label class="oprow"><input type="checkbox" id="devon" onchange="devTgl()"><span>🧪 Участвовал в разработке нового продукта</span><span class="r" id="devrate"></span></label>
+    <div id="devform" style="display:none">
+      <label>Сколько часов</label><input id="devh" type="number" min="0" max="24" step="0.5" inputmode="decimal" oninput="devCalc()" placeholder="например 2,5">
+      <label>Что делали (необязательно)</label><input id="devnote" maxlength="300" placeholder="прототип, примерка, чертёж…">
+      <div class="sum" id="devsum">—</div>
+      <button class="sec" onclick="addDev()">＋ Добавить часы в наряд</button>
+    </div>
+  </div>
   <div id="cart" style="margin-top:var(--s-3)"></div>
 </div>
 <div id="pane-c" style="display:none">
@@ -590,6 +610,7 @@ function load(){
   }).catch(function(){});
   api({vapi:'data',tgid:TGID}).then(function(d){
     DATA=d||DATA;
+    fillSites(); fillDev();
     MODE = (WANT_CHECK && DATA.canCheck) ? 'master' : 'my';   // роль пришла с сервера
     roleCache({ canCheck: !!DATA.canCheck, canCut: !!DATA.canCut, canQC: !!DATA.canQC, role: DATA.role || '', worker: DATA.worker || '' });
     applyMode();
@@ -688,33 +709,64 @@ function fillVars(){
   // один вариант — выбирать нечего, не отнимаем у рабочего лишний тап
   box.style.display=(pb.order||[]).length>1?'':'none';
 }
+// ── ОПЕРАЦИИ ДЕТАЛИ — ГАЛОЧКАМИ (владелец 09.10.2026). Рабочий, прошедший с 20 деталями шпаклёвку и шлифовку торцов и финиша,
+// раньше вводил деталь четыре раза. Теперь: деталь → отметил операции → одно количество. Список — только своего участка
+// (участок операции с сервера, по умолчанию — родной участок рабочего), иначе у изделия десятки строк.
+var OPS=[];
+function siteKey(){ return 'tw_site_'+(TGID||''); }
+function fillSites(){
+  var box=document.getElementById('sitebox'), sel=document.getElementById('site'); if(!box||!sel) return;
+  var ss=DATA.sites||[]; if(!ss.length){ box.style.display='none'; return; }   // старый сервер — без фильтра
+  var keep=sel.value; if(!keep){ try{ keep=localStorage.getItem(siteKey())||''; }catch(e){} if(!keep) keep=DATA.mySite||''; }
+  sel.innerHTML=opt('','все участки')+ss.map(function(x){ return opt(x); }).join('');
+  sel.value=(keep&&ss.indexOf(keep)>=0)?keep:''; box.style.display='';
+  fillOps();
+}
+function curSite(){ var b=document.getElementById('sitebox'), s=document.getElementById('site'); return (b&&s&&b.style.display!=='none')?s.value:''; }
+function onSiteChange(){ try{ localStorage.setItem(siteKey(), curSite()); }catch(e){} fillOps(); }
+function opsAll(){
+  if(isProdMode()){ var mm=curPModel(); return (mm&&mm.ops)||[]; }
+  var p=curProd(), name=document.getElementById('detail').value; return ((p.details||{})[name]||[]).concat(curRework());
+}
+function opLbl(o){
+  if(o.area) return o.rate>0?(o.rate+' р.'):'бесплатно';
+  return (isProdMode()||opPaid(o))?(o.rate+' р.'):'0 р. · за лист';
+}
 function fillOps(){
   fillVars();
-  if(isProdMode()){
-    var mm=curPModel(), ops=(mm&&mm.ops)||[];
-    document.getElementById('op').innerHTML=ops.map(function(o){ return opt(o.op, o.op+' — '+o.rate+' р.'); }).join('')
-      ||opt('','нет операций упаковки');
-    calc(); return;
-  }
-  var p=curProd(), name=document.getElementById('detail').value; var ops=(p.details||{})[name]||[];
-  document.getElementById('op').innerHTML=ops.map(function(o){ return opt(o.op, o.op+' — '+(opPaid(o)?(o.rate+' р.'):'0 р. — оплата за лист, подайте во вкладке «🪚 Раскрой»')); }).join('')
-    +curRework().map(function(o){ return opt(o.op, '🔁 '+o.op+' — '+(o.rate>0?(o.rate+' р.'):'бесплатно')); }).join(''); calc(); }
+  var box=document.getElementById('ops'); if(!box) return;
+  var all=opsAll(), st=curSite();
+  // переделка и упаковка — всегда: их делает тот, кто нашёл брак / упаковывает, участок у них свой
+  OPS=all.filter(function(o){ return !st || isProdMode() || o.area || !o.site || o.site===st; });
+  var hidden=all.length-OPS.length;
+  box.innerHTML=OPS.length
+    ? OPS.map(function(o,i){ return '<label class="oprow"><input type="checkbox" data-i="'+i+'" onchange="opTgl(this)"><span>'+(o.area?'🔁 ':'')+esc(o.op)+'</span><span class="r">'+esc(opLbl(o))+'</span></label>'; }).join('')
+      +(hidden?'<div class="muted" style="font:var(--t-small)">ещё '+hidden+' оп. на других участках — выберите «все участки»</div>':'')
+    : '<div class="muted">'+(all.length?('У этой детали нет операций участка «'+esc(st)+'» — выберите «все участки».'):(isProdMode()?'Нет операций упаковки.':'Нет операций.'))+'</div>';
+  calc();
+}
+function opTgl(cb){ cb.parentNode.className='oprow'+(cb.checked?' on':''); calc(); }
+function selOps(){
+  var r=[], cs=document.querySelectorAll('#ops input[type=checkbox]');
+  for(var i=0;i<cs.length;i++) if(cs[i].checked) r.push(OPS[Number(cs[i].getAttribute('data-i'))]);
+  return r;
+}
 // «только ЧПУ» и «за лист» = деталь режет станок, человеку платит строка листа. Расценка остаётся
 // (это трудоёмкость), ЗП — нет. ⚠ Эту же деталь надо подавать во вкладке «🪚 Раскрой» ВМЕСТЕ С ЛИСТОМ:
 // поданная обычной формой, она даёт ноль — так и получился наряд Гончара 11.09 на 0 р.
 function opPaid(o){ var p=String((o&&o.pay)||'').toLowerCase(); return !o || (p!=='только чпу' && p!=='за лист'); }
-function curOp(){ var op=document.getElementById('op').value;
-  if(isProdMode()){ var mm=curPModel(); return ((mm&&mm.ops)||[]).filter(function(y){return y.op===op;})[0]||null; }
-  var p=curProd(), name=document.getElementById('detail').value; return ((p.details||{})[name]||[]).concat(curRework()).filter(function(y){return y.op===op;})[0]||null; }
-function curRate(){ var o=curOp(); return o?o.rate:0; }
-function curPaid(){ return opPaid(curOp()); }
-function calc(){ var q=Number(document.getElementById('qty').value)||0, r=curRate(), pd=curPaid(), rw=(curOp()||{}).area;
-  if(rw && q>0){ document.getElementById('sum').textContent = rw==='paint'
-      ? 'Переделка покраски — бесплатно: ошибку маляра перекрашивают без оплаты. Заказ не двигает'
-      : ('ЗП: '+(Math.round(q*r*100)/100)+' руб. ('+q+' × '+r+') — переделка покрашенной детали (доля шлифовки). Потом деталь — маляру на бесплатную перекраску. Заказ не двигает'); return; }
-  document.getElementById('sum').textContent = !(q>0) ? '—'
-    : (pd ? ('ЗП: '+(Math.round(q*r*100)/100)+' руб. ('+q+' × '+r+')')
-          : ('ЗП: 0 руб. — раскрой оплачен листом (работа в заказе зачтётся)')); }
+function calc(){
+  var q=Number(document.getElementById('qty').value)||0, sel=selOps(), el=document.getElementById('sum');
+  if(!sel.length){ el.textContent=q>0?'Отметьте операции':'—'; return; }
+  if(!(q>0)){ el.textContent='Отмечено операций: '+sel.length+' — укажите количество'; return; }
+  var tot=0, notes=[];
+  sel.forEach(function(o){
+    if(o.area==='paint'){ notes.push('переделка покраски — бесплатно'); return; }
+    if(!o.area && !isProdMode() && !opPaid(o)){ notes.push('«'+o.op+'» оплачен листом'); return; }
+    tot+=q*o.rate;
+  });
+  el.textContent='ЗП: '+(Math.round(tot*100)/100)+' руб. ('+q+' шт × '+sel.length+' оп.)'+(notes.length?(' · '+notes.join('; ')):'');
+}
 var CART=[], SHIFT='день';
 var BONUS={premPct:10,premThr:100,nightPct:15};   // как в Config
 // три смены (владелец 02.10.2026): «день» = 1-я, «2 смена» = 2-я, «ночь». Ночная надбавка — только ночью.
@@ -750,11 +802,12 @@ function computeBreakdown(base, night){
 }
 // единый блок «База / Премия / Ночная / Итого» — БЕЗ процентов, только рубли. Виден рабочему, мастеру, директору.
 function bonusBlockHtml(bd){
-  var base=bd.base||0, prem=bd.premium||0, ni=bd.night||0, bon=bd.bonus||0, total=(bd.total!=null)?bd.total:(base+prem+ni+bon);
+  var base=bd.base||0, prem=bd.premium||0, ni=bd.night||0, bon=bd.bonus||0, total=(bd.total!=null)?bd.total:(base+prem+ni+bon+(bd.time||0));
   var rows='<div class="row"><span class="muted">База (сдельно)</span><span>'+base+' р.</span></div>';
   if(prem>0) rows+='<div class="row"><span class="muted">Премия за наряд</span><span class="ok">+'+prem+' р.</span></div>';
   if(ni>0) rows+='<div class="row"><span class="muted">Ночная смена</span><span class="ok">+'+ni+' р.</span></div>';
   if(bd.bonus>0) rows+='<div class="row"><span class="muted">🎁 Премия мастера</span><span class="ok">+'+bd.bonus+' р.</span></div>';
+  if(bd.time>0) rows+='<div class="row"><span class="muted">🧪 Разработка (часы, без надбавок)</span><span class="ok">+'+bd.time+' р.</span></div>';
   rows+='<div class="row" style="margin-top:var(--s-1);border-top:1px solid var(--line);padding-top:var(--s-2)"><b>Итого к оплате</b><b class="ok num" style="font:var(--t-heading)">'+(Math.round(total*100)/100)+' р.</b></div>';
   return '<div style="background:var(--green-bg);border-radius:var(--r-ctl);padding:var(--s-2) var(--s-3);margin:var(--s-2) 0">'+rows+'</div>';
 }
@@ -762,31 +815,47 @@ function wmsg(h){ var m=document.getElementById('wmsg'); if(m) m.innerHTML=h||''
 function addToCart(){
   var worker=curWorker();
   if(!worker){ wmsg('<span class="err">Не выбран рабочий</span>'); return; }
-  var equip=document.getElementById('equip').value, detail=document.getElementById('detail').value, op=document.getElementById('op').value, qty=Number(document.getElementById('qty').value)||0, rate=curRate();
-  if(!op){ wmsg('<span class="err">Выберите операцию</span>'); return; }
+  var equip=document.getElementById('equip').value, detail=document.getElementById('detail').value, qty=Number(document.getElementById('qty').value)||0, sel=selOps();
+  if(!sel.length){ wmsg('<span class="err">Отметьте операции</span>'); return; }
   if(!(qty>0)){ wmsg('<span class="err">Укажите количество</span>'); return; }
   var bs=document.getElementById('batch'), bv=bs.value, bn=bs.options[bs.selectedIndex]?bs.options[bs.selectedIndex].text:'';
   // пустой селектор (заказы ещё грузятся) молча давал batch='' — операция уходила «вне заказа»
   if(!bs.options.length){ wmsg('<span class="err">Список заказов ещё грузится — секунду</span>'); return; }
-  var pd=curPaid();
+  var batch=(bv===FREE?'':bv), batchName=(bv===FREE?'🧰 вне заказа':bn);
   if(isProdMode()){
     var mm=curPModel();
     if(!mm){ wmsg('<span class="err">Выберите товар</span>'); return; }
-    CART.push({equip:equip,detail:mm.detail,op:op,qty:qty,rate:rate,paid:true,sum:Math.round(qty*rate*100)/100,
-               level:'изделие',model:mm.model,label:'📦 '+(mm.model||equip),
-               batch:(bv===FREE?'':bv), batchName:(bv===FREE?'🧰 вне заказа':bn)});
-    document.getElementById('qty').value=''; calc(); wmsg(''); renderCart(); saveDraft(); return;
-  }
-  CART.push({equip:equip,detail:detail,op:op,qty:qty,rate:rate,paid:pd,sum:pd?(Math.round(qty*rate*100)/100):0,
-             batch:(bv===FREE?'':bv), batchName:(bv===FREE?'🧰 вне заказа':bn)});
-  document.getElementById('qty').value=''; calc(); wmsg(''); renderCart(); saveDraft();
+    sel.forEach(function(o){
+      CART.push({equip:equip,detail:mm.detail,op:o.op,qty:qty,rate:o.rate,paid:true,sum:Math.round(qty*o.rate*100)/100,
+                 level:'изделие',model:mm.model,label:'📦 '+(mm.model||equip),batch:batch,batchName:batchName});
+    });
+  } else sel.forEach(function(o){
+    var pd=opPaid(o);
+    CART.push({equip:equip,detail:detail,op:o.op,qty:qty,rate:o.rate,paid:pd,sum:pd?(Math.round(qty*o.rate*100)/100):0,batch:batch,batchName:batchName});
+  });
+  document.getElementById('qty').value=''; fillOps(); wmsg(''); renderCart(); saveDraft();
+}
+// ── РАЗРАБОТКА НОВОГО ПРОДУКТА (владелец 09.10.2026): часы × ставка из «Компания и настройки», на проверку мастеру,
+// без премии и ночной. Строка вне заказа и без детали — готовность заказов не двигает.
+function fillDev(){ var b=document.getElementById('devbox'), r=Number(DATA.devHourRate)||0; if(!b) return; b.style.display=r>0?'':'none'; var e=document.getElementById('devrate'); if(e) e.textContent=r+' р./час'; }
+function devTgl(){ var on=document.getElementById('devon').checked; document.getElementById('devform').style.display=on?'':'none'; document.getElementById('devon').parentNode.className='oprow'+(on?' on':''); devCalc(); }
+function devH(){ return Math.round((Number(String(document.getElementById('devh').value).replace(',','.'))||0)*100)/100; }
+function devCalc(){ var h=devH(), r=Number(DATA.devHourRate)||0; document.getElementById('devsum').textContent=h>0?('ЗП: '+(Math.round(h*r*100)/100)+' руб. ('+h+' ч × '+r+' р.)'):'—'; }
+function addDev(){
+  if(!curWorker()){ wmsg('<span class="err">Не выбран рабочий</span>'); return; }
+  var h=devH(), r=Number(DATA.devHourRate)||0, note=document.getElementById('devnote').value.trim();
+  if(!(h>0&&h<=24)){ wmsg('<span class="err">Часы — больше 0 и не больше 24</span>'); return; }
+  CART.push({dev:1,hours:h,note:note,qty:h,rate:r,paid:true,sum:Math.round(h*r*100)/100,label:'🧪 Разработка нового продукта'+(note?(' — '+note):''),op:'',batch:'',batchName:''});
+  document.getElementById('devh').value=''; document.getElementById('devnote').value=''; document.getElementById('devon').checked=false; devTgl();
+  wmsg(''); renderCart(); saveDraft();
 }
 function rmCart(i){ CART.splice(i,1); renderCart(); saveDraft(); }
 function renderCart(){
   var c=document.getElementById('cart');
   if(!CART.length){ c.innerHTML=''; renderTotals(); return; }
   c.innerHTML='<div class="card"><div class="row"><b>Операции: '+CART.length+'</b><span class="muted">'+esc(shLbl(SHIFT))+'</span></div>'
-    +CART.map(function(x,i){ return '<div class="row" style="border-top:1px solid var(--line);padding-top:var(--s-1)"><span>'+esc(x.label||x.detail)+' · '+esc(x.op)+' · '+x.qty+' шт → '+(x.paid===false?'<span class="muted">0 р. · оплата за лист — подайте во вкладке «🪚 Раскрой» вместе с листом</span>':(x.sum+' р.'))
+    +CART.map(function(x,i){ if(x.dev) return '<div class="row" style="border-top:1px solid var(--line);padding-top:var(--s-1)"><span>'+esc(x.label)+' · '+x.hours+' ч → '+x.sum+' р. <span class="muted" style="font:var(--t-tiny)">без надбавок</span></span><button class="sm sec" onclick="rmCart('+i+')">✕</button></div>';
+      return '<div class="row" style="border-top:1px solid var(--line);padding-top:var(--s-1)"><span>'+esc(x.label||x.detail)+' · '+esc(x.op)+' · '+x.qty+' шт → '+(x.paid===false?'<span class="muted">0 р. · оплата за лист — подайте во вкладке «🪚 Раскрой» вместе с листом</span>':(x.sum+' р.'))
       +' <span class="muted" style="font:var(--t-tiny)">'+esc(x.batchName||'')+'</span></span><button class="sm sec" onclick="rmCart('+i+')">✕</button></div>'; }).join('')
     +'</div>';
   renderTotals();
@@ -805,7 +874,9 @@ function renderTotals(){
   var parts=[];
   if(CART.length) parts.push(CART.length+' оп.');
   if(nSheets) parts.push(nSheets+' лист(ов)'+(nDet?(' · '+nDet+' дет.'):''));
-  var bd=computeBreakdown(total, SHIFT==='ночь');
+  var devSum=0; for(var d=0;d<CART.length;d++) if(CART[d].dev) devSum+=CART[d].sum;   // часы разработки — без надбавок (сервер считает так же)
+  var bd=computeBreakdown(total-devSum, SHIFT==='ночь');
+  if(devSum>0){ bd.time=Math.round(devSum*100)/100; bd.total=Math.round((bd.total+devSum)*100)/100; }
   box.innerHTML='<div class="card"><div class="row"><b>В наряде: '+parts.join(' + ')+'</b><span class="muted">'+esc(shLbl(SHIFT))+'</span></div>'
     +bonusBlockHtml(bd)+(CUTNEEDPICK?'<div class="muted" style="color:var(--amber)">Выберите заказ у отмеченных деталей на вкладке «Раскрой»</div>':'')+'</div>';
   setBar((forOther?('<b style="color:var(--amber)">за '+esc(forWho)+'</b> · '):'')+'<b>'+parts.join(' + ')+'</b> · <b>'+bd.total+' р.</b>'
@@ -913,13 +984,15 @@ function sendWork(){
   twSay('Отправляю наряд мастеру…');
   var worker=curWorker();
   if(!worker){ wmsg('<span class="err">Не выбран рабочий</span>'); return; }
-  var items=CART.map(function(x){ return {equip:x.equip,detail:x.detail,op:x.op,qty:x.qty,batch:x.batch||'',level:x.level||'',model:x.model||''}; });
+  var items=CART.map(function(x){ return x.dev?{dev:1,hours:x.hours,note:x.note||''}
+    :{equip:x.equip,detail:x.detail,op:x.op,qty:x.qty,batch:x.batch||'',level:x.level||'',model:x.model||''}; });
+  var work=items.filter(function(x){ return !x.dev; });   // часы разработки всегда вне заказа — вопрос «точно без заказа?» не про них
   // ⚠ Наряд, целиком ушедший «вне заказа», не двигает выполнение заказа — и это заметили
   // только на проверке, через полдня. Спрашиваем прямо перед отправкой.
-  if(items.length && items.every(function(x){ return !x.batch; })){
+  if(work.length && work.every(function(x){ return !x.batch; })){
     var known=(DATA.batches||[]).length;
     if(!known){ wmsg('<span class="err">Список заказов ещё не загрузился — подождите пару секунд и отправьте снова</span>'); return; }
-    if(!confirm('Все '+items.length+' операций записаны БЕЗ заказа (🧰 вне заказа).\n\n'
+    if(!confirm('Все '+work.length+' операций записаны БЕЗ заказа (🧰 вне заказа).\n\n'
       +'Так они попадут в зарплату, но не в выполнение заказа.\n'
       +'Если работа шла по заказу — отмените и выберите заказ в списке.\n\nВсё равно отправить?')) return;
   }
@@ -1048,7 +1121,8 @@ function loadOtkMine(){
   var el=document.getElementById('otkmine'); if(!el) return;
   api({vapi:'otkmine'}).then(function(r){
     var reps=(r&&r.reports)||[];
-    if(!reps.length){ el.innerHTML=''; return; }
+    if(!reps.length){ keepY(function(){ el.innerHTML=''; }); return; }
+    var y=window.scrollY;
     el.innerHTML=reps.map(function(g){
       var lines=g.lines.map(function(l){
         return '<div class="row" style="border-top:1px solid var(--line);padding-top:var(--s-1)"><span>'+esc(l.detail)+' · '+esc(l.op)+' · '+l.qty+' шт</span><span class="ok">'+l.sum+' р</span></div>';
@@ -1063,6 +1137,7 @@ function loadOtkMine(){
         +'<div class="row" style="margin-top:var(--s-2)"><button onclick="otkAck(\''+esc(g.report)+'\')">✅ Всё верно</button>'
         +'<span class="msg" id="ack-'+esc(g.report)+'"></span></div></div>';
     }).join('');
+    if(Math.abs(window.scrollY-y)>1) window.scrollTo(0,y);
   }).catch(function(){});
 }
 function otkAck(rep){
@@ -1075,7 +1150,7 @@ function otkAck(rep){
 }
 function loadPending(){
   loadOtkMine();
-  var el=document.getElementById('mlist'); el.textContent='Загрузка…';
+  var el=document.getElementById('mlist'); if(!el.children.length) el.textContent='Загрузка…';   // старый список остаётся до ответа — экран не прыгает наверх
   loadRejected();
   // ⚠ ответ общего запроса используем РОВНО ОДИН раз. Раньше он оставался в SCREEN навсегда,
   // и после одобрения/отклонения список рисовался из старого ответа — наряд оставался на месте.
@@ -1174,7 +1249,10 @@ function batchTag(x){
   if(isCutLine(x)) return '<span class="pill warn" title="раскрой листа: оплата за лист. В заказ идут детали, которые с него вышли">🪚 Раскрой</span>';
   return (x && x.free) ? '<span class="pill info" title="работа не по заказу — в ЗП входит, на выполнение заказов не влияет">🧰 вне заказа</span>' : esc((x && x.batch) || '');
 }
-function renderPending(r){
+// ⚠ ПРОКРУТКА НА МЕСТЕ (владелец 09.10.2026): после коэффициента/одобрения список перерисовывается — экран остаётся там, где был
+function keepY(fn){ var y=window.scrollY; try{ fn(); } finally { if(Math.abs(window.scrollY-y)>1) window.scrollTo(0,y); } }
+function renderPending(r){ keepY(function(){ renderPending0(r); }); }
+function renderPending0(r){
   // мастеру видно, сколько работы стоит у контролёра: автоприёмки по таймауту нет и не будет
   try {
     var qb=document.getElementById('qcwait');
@@ -1188,15 +1266,15 @@ function renderPending(r){
     el.innerHTML=reps.map(function(rp){
       var rid=rp.report;
       var lines=rp.lines.map(function(l){
-        var koef=kOf(l.koef), kbadge=(koef!==1)?' <span class="muted" style="font:var(--t-small)">×'+koef+'</span>':'';
+        var koef=kOf(l.koef), kbadge=(!master&&koef!==1)?' <span class="muted" style="font:var(--t-small)">×'+koef+'</span>':'';   // мастеру коэффициент виден в поле строки
         // подрядчик привёз эту операцию «предварительно» (заказ не двигал) — рабочий доделывает, диспетчер ставит ×0,75/×0,5 (владелец 02.10.2026)
         if(master&&l.afterSub>0) kbadge+=' <span class="pill warn" title="по этой детали и операции подрядчик привёз '+l.afterSub+' шт предварительно: заказ не двигал, рабочий доделывает — снижайте только выплату">после подрядчика · предв. '+l.afterSub+' шт — поставьте ×k</span>';
         // ⚠ дубль виден сразу: сверять наряды глазами мастер не должен
         var dupb=l.dup?(' <span class="pill bad" title="'+esc(l.dup)+'">⚠ дубль</span>'):'';
         var acts='';
         if(master){
-          acts=' <button class="sm sec" onclick="lineEditOpen(\''+esc(l.id)+'\',\''+attr(l.detail)+'\',\''+attr(l.op)+'\','+l.qty+',\''+attr(l.kind||'')+'\',\''+attr(l.batchId||'')+'\')" title="изменить строку: деталь, операция, количество, заказ">✏️</button>'
-            +'<button class="sm sec" onclick="setKoef(\''+esc(l.id)+'\','+koef+')" title="коэффициент к сумме">×k</button>'
+          acts=(isDev(l)?' ':' <button class="sm sec" onclick="lineEditOpen(\''+esc(l.id)+'\',\''+attr(l.detail)+'\',\''+attr(l.op)+'\','+l.qty+',\''+attr(l.kind||'')+'\',\''+attr(l.batchId||'')+'\')" title="изменить строку: деталь, операция, количество, заказ">✏️</button>')
+            +'<input class="kin" type="number" step="0.05" min="0" inputmode="decimal" value="'+koef+'" data-rep="'+esc(rid)+'" data-line="'+esc(l.id)+'" data-k0="'+koef+'" oninput="kinChg(this)" title="коэффициент к сумме: 1 — без изменений, 1.2 — +20 %, 0.8 — −20 %. Сохраняется кнопкой «Сохранить» или вместе с «Одобрить»">'
             +'<button class="sm sec" onclick="appr(\''+esc(l.id)+'\',0)" title="убрать эту строку из наряда">✖</button>';
         } else {   // свой наряд на проверке — можно поправить, пока мастер не подтвердил
           acts=' <button class="sm sec" onclick="myEdit(\''+esc(l.id)+'\','+l.qty+')" title="изменить количество">✏️</button>'
@@ -1215,7 +1293,7 @@ function renderPending(r){
             +'<span class="ok">+'+l.sum+' р.'+(master?(' <button class="sm sec" onclick="delJournal(\''+esc(l.id)+'\')" title="убрать премию">🗑</button><span id="jm-'+esc(l.id)+'" class="msg"></span>'):'')+'</span></div></div>';
         }
         return '<div style="border-top:1px solid var(--line);padding-top:var(--s-1)">'
-          +'<div class="row"><span>'+kindBadge(l)+esc(l.detail)+' · '+esc(l.op)+' · '+l.qty+' шт'+kbadge+dupb+'</span>'
+          +'<div class="row"><span>'+kindBadge(l)+lineTxt(l)+kbadge+dupb+'</span>'
           +'<span>'+(l.paid===false?'<span class="muted">0 р. · '+payNote(l)+'</span>'+payFixBtn(master,l,rid):(l.sum+' р.'))+acts+'</span></div>'
           +vsel+'<div id="le-'+esc(l.id)+'"></div></div>';
       }).join('');
@@ -1232,7 +1310,8 @@ function renderPending(r){
       var footer = master
         ? '<div id="bonbox-m-'+bonKey(rid)+'"></div>'
           +'<div class="row" style="margin-top:var(--s-3)" id="acts-m-'+bonKey(rid)+'"><button class="sm sec" onclick="addBonus(\''+esc(rid)+'\',\''+esc(rp.worker)+'\',\'m\')" title="премия рабочему за этот наряд">🎁 + премия</button>'
-          +'<button class="sm" onclick="apprRep(\''+esc(rid)+'\',1)">✅ Одобрить'+(rp.single?'':' наряд')+'</button>'
+          +'<button class="sm sec" onclick="saveKoefs(\''+esc(rid)+'\')" title="записать коэффициенты строк, не одобряя">💾 Сохранить</button>'
+          +'<button class="sm" onclick="apprRep(\''+esc(rid)+'\',1)" title="записать коэффициенты и одобрить">✅ Одобрить'+(rp.single?'':' наряд')+'</button>'
           +'<button class="sm danger sec" onclick="rejectRep(\''+esc(rid)+'\',\''+esc(rp.worker)+'\','+rp.sum+','+rp.lines.length+')" title="отклонить ВЕСЬ наряд">✖ Отклонить наряд</button>'
           +'<span id="rm-'+esc(rid)+'" class="msg"></span></div>'
         : '<div class="row" style="margin-top:var(--s-2)">'
@@ -1254,14 +1333,6 @@ function renderPending(r){
     }).join('');
   })();
 }
-// мастер ставит коэффициент на строку → сумма пересчитывается вверх/вниз
-function setKoef(id,cur){
-  askNum('Коэффициент к сумме этой операции:\n1 = без изменений, 1.2 = +20%, 0.8 = −20%', cur||1, function(k){
-    act({vapi:'setoutputkoef',id:id,koef:k,master:DATA.worker||'мастер'}, null, function(){
-      loadPending(); try{ if(document.getElementById('pane-j').style.display!=='none') loadJournal(); }catch(e){}
-    });
-  }, true);
-}
 function setRepShift(rid,sh){
   act({vapi:'setreportshift',report:rid,shift:sh,master:DATA.worker||'мастер'}, document.getElementById('rm-'+rid));
 }
@@ -1279,16 +1350,39 @@ function setRepDate(rid,cur,after){
   }, 'date');
 }
 function isoOfRu(s){ var p=String(s||'').split('.'); return p.length===3?(p[2]+'-'+p[1]+'-'+p[0]):''; }
-// коэффициент на весь наряд (при проверке/одобрении)
+// ── КОЭФФИЦИЕНТЫ В СТРОКАХ (владелец 09.10.2026): мастер расставляет их в полях наряда и сохраняет одним нажатием —
+// «💾 Сохранить» или вместе с «✅ Одобрить». «Коэффициент наряда» только заполняет поля, запрос уходит при сохранении.
+function kinChg(el){ var v=Number(String(el.value).replace(',','.')); el.className='kin'+((String(el.value).trim()===''||isNaN(v)||Math.abs(v-Number(el.getAttribute('data-k0')))>1e-9)?' chg':''); }
+function kinsOf(rid){ var out=[], cs=document.querySelectorAll('input.kin'); for(var i=0;i<cs.length;i++) if(cs[i].getAttribute('data-rep')===rid) out.push(cs[i]); return out; }
+function repKoefs(rid){
+  var o={}, n=0, cs=kinsOf(rid);
+  for(var i=0;i<cs.length;i++){
+    var v=String(cs[i].value).replace(',','.').trim(), k=v===''?1:Number(v);
+    if(isNaN(k)||k<0) return {err:'Коэффициент — число от 0: например 1, 1,2 или 0,8'};
+    if(Math.abs(k-Number(cs[i].getAttribute('data-k0')))>1e-9){ o[cs[i].getAttribute('data-line')]=k; n++; }
+  }
+  return {koefs:o, n:n};
+}
+function saveKoefs(rid){
+  var r=repKoefs(rid), m=document.getElementById('rm-'+rid);
+  if(r.err){ if(m) m.innerHTML='<span class="err">'+esc(r.err)+'</span>'; return; }
+  if(!r.n){ if(m) m.innerHTML='<span class="muted">коэффициенты не менялись</span>'; return; }
+  act({vapi:'setlinekoefs',report:rid,koefs:JSON.stringify(r.koefs),master:DATA.worker||'мастер'}, m);
+}
 function setRepKoef(rid,cur){
-  askNum('Коэффициент на весь наряд:\n1 = без изменений, 1.2 = +20%, 0.8 = −20%', cur||1, function(k){
-    act({vapi:'setreportkoef',report:rid,koef:k,master:DATA.worker||'мастер'}, document.getElementById('rm-'+rid));
+  askNum('Коэффициент на весь наряд:\n1 = без изменений, 1.2 = +20%, 0.8 = −20%\n(подставится во все строки — сохраните или одобрите наряд)', cur||1, function(k){
+    kinsOf(rid).forEach(function(c){ c.value=k; kinChg(c); });
   }, true);
 }
 function apprRep(rid,ok){
   var m=document.getElementById('rm-'+rid); if(m) m.textContent='…';
   var single=rid.charAt(0)==='_';
   var p=single?{vapi:'approve',id:rid.slice(1),master:DATA.worker||'мастер',ok:ok?1:0}:{vapi:'approvereport',report:rid,master:DATA.worker||'мастер',ok:ok?1:0};
+  if(ok){   // коэффициенты из полей — вместе с одобрением, одной командой
+    var kr=repKoefs(rid);
+    if(kr.err){ if(m) m.innerHTML='<span class="err">'+esc(kr.err)+'</span>'; return; }
+    if(kr.n){ if(single) p.koef=kr.koefs[rid.slice(1)]; else p.koefs=JSON.stringify(kr.koefs); }
+  }
   act(p, m);
 }
 // мастер указывает изделие/цвет для строки выработки (привязка к варианту); пусто = распределить по заказу
@@ -1373,7 +1467,8 @@ function loadRejected(){
   api({vapi:'rejected',days:30}).then(function(r){ REJ=(r&&r.reports)||[]; renderRejected(); }).catch(function(){});
 }
 function toggleRej(){ REJOPEN=!REJOPEN; renderRejected(); }
-function renderRejected(){
+function renderRejected(){ keepY(renderRejected0); }
+function renderRejected0(){
   var el=document.getElementById('rejlist'); if(!el) return;
   if(!REJ.length){ el.innerHTML=''; return; }
   var head='<div class="row" style="margin-top:var(--s-2)"><span class="muted">🗄 Архив отклонённых: '+REJ.length+'</span>'
@@ -1412,7 +1507,7 @@ function setRepShiftJ(rid,sh){
 }
 function loadJournal(){
   var lst=document.getElementById('jlist'), pay=document.getElementById('jpay');
-  lst.textContent='Загрузка…'; pay.innerHTML='';
+  if(!lst.children.length) lst.textContent='Загрузка…';   // как в «Проверке»: без схлопывания списка
   var from=document.getElementById('jfrom').value, to=document.getElementById('jto').value;
   var fromRu=from?from.split('-').reverse().join('.'):'', toRu=to?to.split('-').reverse().join('.'):'';
   var master=isMaster();
@@ -1472,7 +1567,8 @@ function fillJDetails(){
   if(keep){ sel.value=keep; if(!sel.value) sel.value=''; }
 }
 // перерисовка без запроса к серверу: фильтры по заказу, операции и детали применяются к уже полученным строкам
-function renderJournal(){
+function renderJournal(){ keepY(renderJournal0); }
+function renderJournal0(){
   var lst=document.getElementById('jlist'), pay=document.getElementById('jpay');
   // ⚠ правки в журнале — по ПРАВАМ, а не по режиму экрана: директор/диспетчер, открывший журнал
   //    не из «Проверки», иначе не мог поправить ни дату, ни количество (сервер-то его пускает).
@@ -1531,7 +1627,7 @@ function renderJournal(){
           ? kindBadge(it)+esc(it.note||it.detail)
           : (it.kind==='премия')
             ? ('🎁 <b>Премия</b>'+(it.note?(' — '+esc(it.note)):''))
-            : kindBadge(it)+esc(it.detail)+' · '+esc(it.op)+' · '+it.qty+' шт'+kbadge;
+            : kindBadge(it)+lineTxt(it)+kbadge;
         var money = (it.status==='ждёт ОТК')
           ? '<span class="muted">'+it.sum+' р · 🔎 ждёт ОТК</span>'
           : '<span class="'+(it.paid===false?'muted':'ok')+'">'+(it.paid===false?'0 р · '+payNote(it):(it.sum+' р'))+'</span>';
@@ -2208,8 +2304,11 @@ function loadCutLog(){
   }).catch(function(){});
 }
 // бейдж вида строки: раскрой листа / доплата (исторические строки «повременно» тоже показываем)
+// разработка нового продукта — повременка в часах с операцией (09.10.2026): «🧪 Разработка … · 1,5 ч»
+function isDev(it){ return !!it && it.kind==='повременно' && !!it.op && it.op!=='Повременно'; }
+function lineTxt(it){ return isDev(it) ? ('🧪 '+esc(it.detail)+(it.note?(' — '+esc(it.note)):'')+' · '+it.qty+' ч') : (esc(it.detail)+' · '+esc(it.op)+' · '+it.qty+' шт'); }
 function kindBadge(it){
-  if(!it) return '';
+  if(!it||isDev(it)) return '';
   if(it.kind==='подряд') return '<span class="pill warn" title="работу выполнил подрядчик: в зарплату не идёт, платим по акту">🤝 подряд</span> ';
   if(it.kind==='повременно') return '<span class="pill mute" title="доплата за работу по времени">💵 доплата</span> ';
   if(it.kind==='лист') return '<span class="pill info" title="раскрой листа на ЧПУ — оплата за лист">📐 лист</span> ';
