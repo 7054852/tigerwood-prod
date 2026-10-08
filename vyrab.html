@@ -172,7 +172,7 @@ function CARD(e){ return '<div style="padding:var(--s-4);line-height:1.5">'
   <div id="devbox" class="card" style="display:none;margin-top:var(--s-4)">
     <label class="oprow"><input type="checkbox" id="devon" onchange="devTgl()"><span>🧪 Участвовал в разработке нового продукта</span><span class="r" id="devrate"></span></label>
     <div id="devform" style="display:none">
-      <label>Сколько часов</label><input id="devh" type="number" min="0" max="24" step="0.5" inputmode="decimal" oninput="devCalc()" placeholder="например 2,5">
+      <label>Сколько минут</label><input id="devh" type="number" min="1" max="1440" step="1" inputmode="numeric" oninput="devCalc()" placeholder="например 15, 90 (1,5 часа)">
       <label>Что делали (необязательно)</label><input id="devnote" maxlength="300" placeholder="прототип, примерка, чертёж…">
       <div class="sum" id="devsum">—</div>
       <button class="sec" onclick="addDev()">＋ Добавить часы в наряд</button>
@@ -835,17 +835,18 @@ function addToCart(){
   });
   document.getElementById('qty').value=''; fillOps(); wmsg(''); renderCart(); saveDraft();
 }
-// ── РАЗРАБОТКА НОВОГО ПРОДУКТА (владелец 09.10.2026): часы × ставка из «Компания и настройки», на проверку мастеру,
+// ── РАЗРАБОТКА НОВОГО ПРОДУКТА (владелец 09.10.2026): МИНУТЫ × ставка часа / 60 («Компания и настройки»), на проверку мастеру,
 // без премии и ночной. Строка вне заказа и без детали — готовность заказов не двигает.
 function fillDev(){ var b=document.getElementById('devbox'), r=Number(DATA.devHourRate)||0; if(!b) return; b.style.display=r>0?'':'none'; var e=document.getElementById('devrate'); if(e) e.textContent=r+' р./час'; }
+function devMin(m){ var h=Math.floor(m/60), mm=m%60; return h?(h+' ч'+(mm?(' '+mm+' мин'):'')):(m+' мин'); }   // 90 → «1 ч 30 мин»
 function devTgl(){ var on=document.getElementById('devon').checked; document.getElementById('devform').style.display=on?'':'none'; document.getElementById('devon').parentNode.className='oprow'+(on?' on':''); devCalc(); }
-function devH(){ return Math.round((Number(String(document.getElementById('devh').value).replace(',','.'))||0)*100)/100; }
-function devCalc(){ var h=devH(), r=Number(DATA.devHourRate)||0; document.getElementById('devsum').textContent=h>0?('ЗП: '+(Math.round(h*r*100)/100)+' руб. ('+h+' ч × '+r+' р.)'):'—'; }
+function devH(){ return Math.round(Number(String(document.getElementById('devh').value).replace(',','.'))||0); }   // минуты, целые
+function devCalc(){ var m=devH(), r=Number(DATA.devHourRate)||0; document.getElementById('devsum').textContent=m>0?('ЗП: '+(Math.round(m*r/60*100)/100)+' руб. ('+devMin(m)+' × '+r+' р./час)'):'—'; }
 function addDev(){
   if(!curWorker()){ wmsg('<span class="err">Не выбран рабочий</span>'); return; }
-  var h=devH(), r=Number(DATA.devHourRate)||0, note=document.getElementById('devnote').value.trim();
-  if(!(h>0&&h<=24)){ wmsg('<span class="err">Часы — больше 0 и не больше 24</span>'); return; }
-  CART.push({dev:1,hours:h,note:note,qty:h,rate:r,paid:true,sum:Math.round(h*r*100)/100,label:'🧪 Разработка нового продукта'+(note?(' — '+note):''),op:'',batch:'',batchName:''});
+  var m=devH(), r=Number(DATA.devHourRate)||0, note=document.getElementById('devnote').value.trim();
+  if(!(m>0&&m<=1440)){ wmsg('<span class="err">Минуты — целое число от 1 до 1440</span>'); return; }
+  CART.push({dev:1,minutes:m,note:note,qty:m,rate:r,paid:true,sum:Math.round(m*r/60*100)/100,label:'🧪 Разработка нового продукта'+(note?(' — '+note):''),op:'',batch:'',batchName:''});
   document.getElementById('devh').value=''; document.getElementById('devnote').value=''; document.getElementById('devon').checked=false; devTgl();
   wmsg(''); renderCart(); saveDraft();
 }
@@ -854,7 +855,7 @@ function renderCart(){
   var c=document.getElementById('cart');
   if(!CART.length){ c.innerHTML=''; renderTotals(); return; }
   c.innerHTML='<div class="card"><div class="row"><b>Операции: '+CART.length+'</b><span class="muted">'+esc(shLbl(SHIFT))+'</span></div>'
-    +CART.map(function(x,i){ if(x.dev) return '<div class="row" style="border-top:1px solid var(--line);padding-top:var(--s-1)"><span>'+esc(x.label)+' · '+x.hours+' ч → '+x.sum+' р. <span class="muted" style="font:var(--t-tiny)">без надбавок</span></span><button class="sm sec" onclick="rmCart('+i+')">✕</button></div>';
+    +CART.map(function(x,i){ if(x.dev) return '<div class="row" style="border-top:1px solid var(--line);padding-top:var(--s-1)"><span>'+esc(x.label)+' · '+devMin(x.minutes)+' → '+x.sum+' р. <span class="muted" style="font:var(--t-tiny)">без надбавок</span></span><button class="sm sec" onclick="rmCart('+i+')">✕</button></div>';
       return '<div class="row" style="border-top:1px solid var(--line);padding-top:var(--s-1)"><span>'+esc(x.label||x.detail)+' · '+esc(x.op)+' · '+x.qty+' шт → '+(x.paid===false?'<span class="muted">0 р. · оплата за лист — подайте во вкладке «🪚 Раскрой» вместе с листом</span>':(x.sum+' р.'))
       +' <span class="muted" style="font:var(--t-tiny)">'+esc(x.batchName||'')+'</span></span><button class="sm sec" onclick="rmCart('+i+')">✕</button></div>'; }).join('')
     +'</div>';
@@ -984,7 +985,7 @@ function sendWork(){
   twSay('Отправляю наряд мастеру…');
   var worker=curWorker();
   if(!worker){ wmsg('<span class="err">Не выбран рабочий</span>'); return; }
-  var items=CART.map(function(x){ return x.dev?{dev:1,hours:x.hours,note:x.note||''}
+  var items=CART.map(function(x){ return x.dev?{dev:1,minutes:x.minutes,note:x.note||''}
     :{equip:x.equip,detail:x.detail,op:x.op,qty:x.qty,batch:x.batch||'',level:x.level||'',model:x.model||''}; });
   var work=items.filter(function(x){ return !x.dev; });   // часы разработки всегда вне заказа — вопрос «точно без заказа?» не про них
   // ⚠ Наряд, целиком ушедший «вне заказа», не двигает выполнение заказа — и это заметили
@@ -2304,9 +2305,9 @@ function loadCutLog(){
   }).catch(function(){});
 }
 // бейдж вида строки: раскрой листа / доплата (исторические строки «повременно» тоже показываем)
-// разработка нового продукта — повременка в часах с операцией (09.10.2026): «🧪 Разработка … · 1,5 ч»
+// разработка нового продукта — повременка в минутах с операцией (09.10.2026): «🧪 Разработка … · 1 ч 30 мин»
 function isDev(it){ return !!it && it.kind==='повременно' && !!it.op && it.op!=='Повременно'; }
-function lineTxt(it){ return isDev(it) ? ('🧪 '+esc(it.detail)+(it.note?(' — '+esc(it.note)):'')+' · '+it.qty+' ч') : (esc(it.detail)+' · '+esc(it.op)+' · '+it.qty+' шт'); }
+function lineTxt(it){ return isDev(it) ? ('🧪 '+esc(it.detail)+(it.note?(' — '+esc(it.note)):'')+' · '+devMin(Number(it.qty)||0)) : (esc(it.detail)+' · '+esc(it.op)+' · '+it.qty+' шт'); }
 function kindBadge(it){
   if(!it||isDev(it)) return '';
   if(it.kind==='подряд') return '<span class="pill warn" title="работу выполнил подрядчик: в зарплату не идёт, платим по акту">🤝 подряд</span> ';
