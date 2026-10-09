@@ -1354,9 +1354,9 @@ function isoOfRu(s){ var p=String(s||'').split('.'); return p.length===3?(p[2]+'
 // ── КОЭФФИЦИЕНТЫ В СТРОКАХ (владелец 09.10.2026): мастер расставляет их в полях наряда и сохраняет одним нажатием —
 // «💾 Сохранить» или вместе с «✅ Одобрить». «Коэффициент наряда» только заполняет поля, запрос уходит при сохранении.
 function kinChg(el){ var v=Number(String(el.value).replace(',','.')); el.className='kin'+((String(el.value).trim()===''||isNaN(v)||Math.abs(v-Number(el.getAttribute('data-k0')))>1e-9)?' chg':''); }
-function kinsOf(rid){ var out=[], cs=document.querySelectorAll('input.kin'); for(var i=0;i<cs.length;i++) if(cs[i].getAttribute('data-rep')===rid) out.push(cs[i]); return out; }
-function repKoefs(rid){
-  var o={}, n=0, cs=kinsOf(rid);
+function kinsOf(rid,scope){ var root=document.getElementById(scope||'mlist'), out=[], cs=root?root.querySelectorAll('input.kin'):[]; for(var i=0;i<cs.length;i++) if(cs[i].getAttribute('data-rep')===rid) out.push(cs[i]); return out; }
+function repKoefs(rid,scope){
+  var o={}, n=0, cs=kinsOf(rid,scope);
   for(var i=0;i<cs.length;i++){
     var v=String(cs[i].value).replace(',','.').trim(), k=v===''?1:Number(v);
     if(isNaN(k)||k<0) return {err:'Коэффициент — число от 0: например 1, 1,2 или 0,8'};
@@ -1419,10 +1419,28 @@ function delJournal(id){
   });
 }
 // коэффициент/смена из журнала (мастер) — перезагружают журнал
-function setKoefJ(id,cur){
-  askNum('Коэффициент к сумме этой операции:\n1 = без изменений, 1.2 = +20%, 0.8 = −20%', cur||1, function(k){
-    api({vapi:'setoutputkoef',id:id,koef:k,master:DATA.worker||'мастер'}).then(function(r){ if(r&&r.ok){ loadJournal(); } else alert((r&&r.error)||'ошибка'); }).catch(function(){ alert('ошибка сети'); });
+// ── КОЭФФИЦИЕНТЫ В ЖУРНАЛЕ (владелец 09.10.2026): как в «Проверке» — поля в строках, «коэффициент наряда» заполняет все поля
+// (наряд — день рабочего), «💾 Сохранить» пишет одной командой setlinekoefs. Суммы и надбавки наряда пересчитывает сервер.
+function koefCtl(g){
+  if(!DATA.canCheck) return '';
+  var has=g.lines.some(function(L){ return L.kind!=='премия' && L.kind!=='подряд' && !(L.kind==='повременно'&&!isDev(L)); });
+  if(!has) return '';
+  var rid=g.key, id='jk-'+bonKey(rid);
+  return '<div class="row" style="margin-top:var(--s-2);justify-content:flex-start;gap:var(--s-2)">'
+    +'<button class="sm sec" onclick="setRepKoefJ(\''+esc(rid)+'\')" title="подставить один коэффициент во все строки наряда">коэффициент на весь наряд</button>'
+    +'<button class="sm" onclick="saveKoefsJ(\''+esc(rid)+'\')">💾 Сохранить коэффициенты</button><span class="msg" id="'+id+'"></span></div>';
+}
+function setRepKoefJ(rid){
+  var cs=kinsOf(rid,'jlist'), cur=cs.length?(Number(String(cs[0].value).replace(',','.'))||1):1;
+  askNum('Коэффициент на весь наряд (на зарплату за этот день):\n1 = без изменений, 1.2 = +20%, 0.8 = −20%\n(подставится во все строки — затем «💾 Сохранить»)', cur, function(k){
+    cs.forEach(function(c){ c.value=k; kinChg(c); });
   }, true);
+}
+function saveKoefsJ(rid){
+  var r=repKoefs(rid,'jlist'), m=document.getElementById('jk-'+bonKey(rid));
+  if(r.err){ if(m) m.innerHTML='<span class="err">'+esc(r.err)+'</span>'; return; }
+  if(!r.n){ if(m) m.innerHTML='<span class="muted">коэффициенты не менялись</span>'; return; }
+  act({vapi:'setlinekoefs',report:rid,koefs:JSON.stringify(r.koefs),master:DATA.worker||'мастер'}, m, function(){ loadJournal(); });
 }
 // 🎁 премия рабочему за наряд: два поля — за что и сколько. Не сдельная база: надбавки на неё не начисляются.
 function bonKey(rid){ return String(rid).replace(/[^0-9A-Za-zА-Яа-яЁё_-]/g,'_'); }
@@ -1613,18 +1631,18 @@ function renderJournal0(){
     lst.innerHTML=groups.map(function(g){
       var rep=g.lines[0]&&g.lines[0].report||'', gsh=(g.lines[0]&&g.lines[0].shift)||'день', night=(gsh==='ночь');
       var lines=g.lines.map(function(it){
-        var koef=kOf(it.koef), kbadge=(koef!==1)?' <span class="muted" style="font:var(--t-small)">×'+koef+'</span>':'';
+        var koef=kOf(it.koef), kbadge=(!master&&koef!==1)?' <span class="muted" style="font:var(--t-small)">×'+koef+'</span>':'';   // мастеру — поле в строке
         var acts = '';
         if(master){
           var del='<button class="sm sec" onclick="delJournal(\''+esc(it.id)+'\')">🗑</button><span id="jm-'+esc(it.id)+'" class="msg"></span>';
           acts = (it.kind==='подряд')       // сумма подрядчику и долг живут вместе — правим их в реестре
             ? ' <button class="sm sec" onclick="showTab(\'s\')" title="правка и удаление — во вкладке «Подряд», вместе с долгом в Фин.гении">🤝 в реестр</button>'
-            : (it.kind==='повременно')   // у доплаты правится СУММА (кол-во у неё всегда 1)
+            : (it.kind==='повременно' && !isDev(it))   // у доплаты правится СУММА (кол-во у неё всегда 1); у разработки — минуты, как у строки
             ? ' <button class="sm sec" onclick="editTimePay(\''+esc(it.id)+'\','+it.sum+',\''+esc(it.note||'')+'\')" title="изменить сумму">✏️</button>'+del
             : ' <button class="sm sec" onclick="editJournal(\''+esc(it.id)+'\','+it.qty+',\''+esc(it.date)+'\')">✏️</button>'
-              +'<button class="sm sec" onclick="setKoefJ(\''+esc(it.id)+'\','+koef+')" title="коэффициент к сумме">×k</button>'+del;
+              +(it.kind==='премия'?'':'<input class="kin" type="number" step="0.05" min="0" inputmode="decimal" value="'+koef+'" data-rep="'+esc(g.key)+'" data-line="'+esc(it.id)+'" data-k0="'+koef+'" oninput="kinChg(this)" title="коэффициент к сумме: сохраняется кнопкой «💾 Сохранить» у наряда">')+del;
         }
-        var body = (it.kind==='повременно')
+        var body = (it.kind==='повременно' && !isDev(it))
           ? kindBadge(it)+esc(it.note||it.detail)
           : (it.kind==='премия')
             ? ('🎁 <b>Премия</b>'+(it.note?(' — '+esc(it.note)):''))
@@ -1675,7 +1693,7 @@ function renderJournal0(){
           +((g.lines||[]).some(isCutLine)?batchTag({kind:'лист'}):((g.lines[0]&&g.lines[0].free)?batchTag(g.lines[0]):esc(g.batch)))
           +(g.single?'':' · наряд')+' · '+g.lines.length+' оп.</div>'
         +'<div id="bonbox-j-'+bonKey(bonRid)+'"></div>'
-        +shiftCtl+lines+qcNote+bdHtml+'</div>';
+        +shiftCtl+lines+koefCtl(g)+qcNote+bdHtml+'</div>';
     }).join('');
   })();
 }
@@ -1840,12 +1858,14 @@ function renderOtkAdd(){
     +'<label>Заказ<select id="oa_b">'+bopts+'</select></label>'
     +'<label>Оборудование<select id="oa_e" onchange="otkAddDet()">'+eqs.map(function(e){return opt(e);}).join('')+'</select></label>'
     +'<label>Деталь<select id="oa_d" onchange="otkAddOp()"></select></label>'
-    +'<label>Операция<select id="oa_o" onchange="otkAddCalc()"></select></label>'
+    +((DATA.sites&&DATA.sites.length)?('<label>Участок<select id="oa_site" onchange="otkSiteChg()">'+opt('','все участки')+DATA.sites.map(function(x){ return opt(x); }).join('')+'</select></label>'):'')
+    +'<label>Операции — отметьте всё, что принимаете с этими деталями</label><div id="oa_ops" class="oplist"></div>'
     +'<label>Принято, шт<input id="oa_q" type="number" min="0" inputmode="numeric" oninput="otkAddCalc()"></label>'
     +'<label>Не принято (брак), шт<input id="oa_bad" type="number" min="0" inputmode="numeric" value="0"></label>'
     +'<div class="muted" style="font:var(--t-small);margin:var(--s-1) 0">Брак не оплачивается — детали возвращаются рабочему на переделку.</div>'
     +'<div class="sum" id="oa_sum">—</div>'
     +'<div class="row"><button id="oa_go" onclick="otkAddGo()">✅ Внести и принять</button><span class="msg" id="oa_msg"></span></div></div>';
+  var os=document.getElementById('oa_site'); if(os){ var kp=''; try{ kp=localStorage.getItem('tw_osite_'+(TGID||''))||''; }catch(e){} if(kp&&DATA.sites.indexOf(kp)>=0) os.value=kp; }
   otkAddDet();
 }
 function otkAddDet(){
@@ -1853,44 +1873,50 @@ function otkAddDet(){
   document.getElementById('oa_d').innerHTML=(p.order||[]).map(function(n){return opt(n);}).join('')||opt('','нет деталей');
   otkAddOp();
 }
+// ── как форма рабочего (владелец 09.10.2026): деталь → операции галочками (фильтр по участку) → одно количество; сервер вносит все разом
+var OAOPS=[];
+function otkSiteChg(){ try{ localStorage.setItem('tw_osite_'+(TGID||''), (document.getElementById('oa_site')||{}).value||''); }catch(e){} otkAddOp(); }
 function otkAddOp(){
-  var eq=(document.getElementById('oa_e')||{}).value||'', d=(document.getElementById('oa_d')||{}).value||'';
-  var ops=((otkComp()[eq]||{}).details||{})[d]||[];
-  document.getElementById('oa_o').innerHTML=ops.map(function(o){ return opt(o.op,o.op+' — '+o.rate+' р.'); }).join('')||opt('','нет операций');
+  var eq=(document.getElementById('oa_e')||{}).value||'', d=(document.getElementById('oa_d')||{}).value||'', st=(document.getElementById('oa_site')||{}).value||'';
+  var all=((otkComp()[eq]||{}).details||{})[d]||[], box=document.getElementById('oa_ops'); if(!box) return;
+  OAOPS=all.filter(function(o){ return !st || !o.site || o.site===st; });
+  var hidden=all.length-OAOPS.length;
+  box.innerHTML=OAOPS.length
+    ? OAOPS.map(function(o,i){ return '<label class="oprow"><input type="checkbox" data-i="'+i+'" onchange="otkOpTgl(this)"><span>'+esc(o.op)+'</span><span class="r">'+o.rate+' р.</span></label>'; }).join('')
+      +(hidden?'<div class="muted" style="font:var(--t-small)">ещё '+hidden+' оп. на других участках — выберите «все участки»</div>':'')
+    : '<div class="muted">'+(all.length?('У этой детали нет операций участка «'+esc(st)+'» — выберите «все участки».'):'Нет операций.')+'</div>';
   otkAddCalc();
 }
-function otkAddRate(){
-  var eq=(document.getElementById('oa_e')||{}).value||'', d=(document.getElementById('oa_d')||{}).value||'', o=(document.getElementById('oa_o')||{}).value||'';
-  var ops=((otkComp()[eq]||{}).details||{})[d]||[];
-  for(var i=0;i<ops.length;i++) if(ops[i].op===o) return Number(ops[i].rate)||0;
-  return 0;
-}
+function otkOpTgl(cb){ cb.parentNode.className='oprow'+(cb.checked?' on':''); otkAddCalc(); }
+function otkSelOps(){ var r=[], cs=document.querySelectorAll('#oa_ops input[type=checkbox]'); for(var i=0;i<cs.length;i++) if(cs[i].checked) r.push(OAOPS[Number(cs[i].getAttribute('data-i'))]); return r; }
 // только цифры — структуру не трогаем, иначе фокус слетит после каждой цифры
 function otkAddCalc(){
-  var q=Number((document.getElementById('oa_q')||{}).value)||0, r=otkAddRate();
-  var e=document.getElementById('oa_sum'); if(!e) return;
-  e.textContent = (q>0&&r>0) ? (Math.round(q*r*100)/100)+' руб.' : (r>0?'—':'нет расценки');
+  var q=Number((document.getElementById('oa_q')||{}).value)||0, sel=otkSelOps(), e=document.getElementById('oa_sum'); if(!e) return;
+  if(!sel.length){ e.textContent=q>0?'Отметьте операции':'—'; return; }
+  var r=0; sel.forEach(function(o){ r+=Number(o.rate)||0; });
+  e.textContent = q>0 ? ((Math.round(q*r*100)/100)+' руб. ('+q+' шт × '+sel.length+' оп.)') : ('Отмечено операций: '+sel.length);
 }
 function otkAddGo(){
   var w=(document.getElementById('oa_w')||{}).value||'', b=(document.getElementById('oa_b')||{}).value||'';
   var eq=(document.getElementById('oa_e')||{}).value||'', d=(document.getElementById('oa_d')||{}).value||'';
-  var o=(document.getElementById('oa_o')||{}).value||'', q=(document.getElementById('oa_q')||{}).value||'';
+  var sel=otkSelOps(), ops=sel.map(function(x){ return x.op; }), q=(document.getElementById('oa_q')||{}).value||'';
   var bad=(document.getElementById('oa_bad')||{}).value||'0';
   var dt=(document.getElementById('oa_dt')||{}).value||'', sh=(document.getElementById('oa_sh')||{}).value||'день';
   var dru=dt?ruOfIso(dt):todayRu();
   if(!w){ otkMsg('oa_msg','<span class="err">выберите сотрудника</span>'); return; }
+  if(!ops.length){ otkMsg('oa_msg','<span class="err">отметьте операции</span>'); return; }
   if(!(Number(q)>0)){ otkMsg('oa_msg','<span class="err">укажите принятое количество</span>'); return; }
-  if(!confirm('Внести за '+w+' ('+dru+', '+sh+'): '+d+' · '+o+'\nпринято '+q+' шт'+(Number(bad)>0?(', на переделку '+bad+' шт'):'')+'?')) return;
+  if(!confirm('Внести за '+w+' ('+dru+', '+sh+'): '+d+'\nоперации: '+ops.join(', ')+'\nпринято '+q+' шт'+(Number(bad)>0?(', на переделку '+bad+' шт (брак — у операции «'+ops[ops.length-1]+'»)'):'')+'?')) return;
   if(!otkGuard()) return;
   var btn=document.getElementById('oa_go'); if(btn){ btn.disabled=true; btn.textContent='вношу…'; }
-  api({vapi:'otkadd',worker:w,batch:b,equip:eq,detail:d,op:o,qty:q,bad:bad,date:dru,shift:sh}).then(function(r){
+  api({vapi:'otkadd',worker:w,batch:b,equip:eq,detail:d,op:ops[0],ops:JSON.stringify(ops),qty:q,bad:bad,date:dru,shift:sh}).then(function(r){
     OTKBUSY=false; if(btn){ btn.disabled=false; btn.textContent='✅ Внести и принять'; }
     if(!r||!r.ok){ otkMsg('oa_msg','<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'); return; }
     if(OLOGOPEN) otkLogLoad();
-    otkMsg('oa_msg','<span class="ok">✅ внесено за '+esc(dru)+' на '+r.sum+' р.'+(Number(bad)>0?(' · брак '+bad+' шт учтён'):'')+'</span>');
+    otkMsg('oa_msg','<span class="ok">✅ внесено за '+esc(dru)+': '+(r.ops||1)+' оп. на '+r.sum+' р.'+(Number(bad)>0?(' · брак '+bad+' шт учтён'):'')+'</span>');
     var qf=document.getElementById('oa_q'); if(qf) qf.value='';
     var bf=document.getElementById('oa_bad'); if(bf) bf.value='0';
-    otkAddCalc(); loadOtk();
+    otkAddOp(); loadOtk();   // галочки снимаются — следующая деталь с чистого листа
   }).catch(function(){ OTKBUSY=false; if(btn){ btn.disabled=false; btn.textContent='✅ Внести и принять'; } otkMsg('oa_msg','<span class="err">ошибка сети</span>'); });
 }
 function todayRu(){ var n=new Date(); return pad2(n.getDate())+'.'+pad2(n.getMonth()+1)+'.'+n.getFullYear(); }
