@@ -20,7 +20,10 @@
   tr.fresh td{ background:var(--green-bg); transition:background 1.2s; }   /* только что добавленный/сохранённый клиент */
   .fl.got input{ border-color:var(--green); background:var(--green-bg); }   /* поле заполнено «Распознать» */
   .fl.got > span::after{ content:' ✓'; color:var(--green); font-weight:600; }
-  .fl.miss input{ border-color:var(--amber); }   /* важное поле не найдено в реквизитах */
+  .fl.miss input{ border-color:var(--amber); }
+  /* другие расчётные счета (09.10.2026) */
+  .accrow{ border-top:1px dashed var(--line2); padding-top:var(--s-2); margin-top:var(--s-2); }
+  .accrow .row{ grid-column:1 / -1; }   /* важное поле не найдено в реквизитах */
   .fl.miss > span::after{ content:' — не найдено'; color:var(--amber); }
   td{ vertical-align:top; }
   .sm:not(button){ font:var(--t-small); }
@@ -86,6 +89,7 @@
     <div class="row" style="margin-top:var(--s-2)"><button class="gray sm" onclick="parseReq()">🔍 Распознать</button><span class="msg" id="reqMsg"></span></div>
   </div>
   <div class="grid" id="fields"></div>
+  <div id="accBox"></div>
   <div class="row" style="margin-top:var(--s-3)"><button class="green" onclick="save()">💾 Сохранить</button><span class="msg" id="saveMsg"></span></div>
 </div>
 
@@ -272,15 +276,43 @@ function setMkt(m, cur){ CMKT=(m==='ru'||m==='eu')?m:(m==='other'?'eu':'by'); va
   else el('raw').placeholder='ООО «...», УНП…, р/с…, банк, БИК, адрес, тел, e-mail';
   renderFields(cur||collectRaw()); }
 function renderFields(cur){
-  cur=cur||{};
+  cur=cur||{}; ACCS=accsOf(cur['Доп. счета']);
   var fs=(CTYPE==='физлицо')?FL_FIELDS:ulFields();
   var need=(CTYPE!=='физлицо'&&GOT)?(NEED[CMKT]||[]):[];
   el('fields').innerHTML=fs.map(function(f){
     var mark=GOT&&GOT[f[0]]?' got':(need.indexOf(f[0])>=0&&!cur[f[0]]?' miss':'');
     return '<label class="fl '+(f[1]==='full'?'full':'')+mark+'"><span>'+esc(label(f[0]))+'</span><input data-f="'+esc(f[0])+'" value="'+esc(cur[f[0]]||'')+'" autocomplete="off"'+(f[0]==='Страна'?' list="euCountries"':'')+'></label>';
   }).join('');
+  renderAccs();
 }
-function collectRaw(){ var o={}, ins=el('fields').querySelectorAll('input'); for(var i=0;i<ins.length;i++) o[ins[i].getAttribute('data-f')]=ins[i].value.trim(); return o; }
+function collectRaw(){ var o={}, ins=el('fields').querySelectorAll('input'); for(var i=0;i<ins.length;i++) o[ins[i].getAttribute('data-f')]=ins[i].value.trim();
+  if(CTYPE!=='физлицо') o['Доп. счета']=JSON.stringify(accsClean());
+  return o; }
+// ── ДРУГИЕ РАСЧЁТНЫЕ СЧЕТА (09.10.2026): клиент/поставщик выставляет счета на разные р/с (ООО «Мияна»: Белгазпромбанк и ВТБ).
+// Основной — поля «Расчётный счёт / Банк / БИК» выше: его берут договоры и документы. Остальные — списком; «сделать основным» меняет местами.
+var ACCS=[];
+function accsOf(v){ if(v&&typeof v==='object') return v.slice?v.slice():[]; try{ var a=JSON.parse(v||'[]'); return (a&&a.slice)?a:[]; }catch(e){ return []; } }
+function accSync(){ var b=el('accBox'); if(!b) return; var ins=b.querySelectorAll('input[data-a]');
+  for(var i=0;i<ins.length;i++){ var a=ACCS[Number(ins[i].getAttribute('data-a'))]; if(a) a[ins[i].getAttribute('data-k')]=ins[i].value.trim(); } }
+function accsClean(){ accSync(); return ACCS.filter(function(a){ return String(a.acc||'').trim(); }); }
+function renderAccs(){
+  var box=el('accBox'); if(!box) return;
+  if(CTYPE==='физлицо'){ box.innerHTML=''; return; }
+  var inp=function(i,k,lbl,v){ return '<label class="fl"><span>'+esc(lbl)+'</span><input data-a="'+i+'" data-k="'+k+'" value="'+esc(v||'')+'" autocomplete="off"></label>'; };
+  box.innerHTML='<div class="row" style="margin-top:var(--s-3)"><b>Другие расчётные счета</b><span class="sm muted">основной — поля выше, он идёт в договоры</span></div>'
+    +ACCS.map(function(a,i){ return '<div class="grid accrow">'+inp(i,'acc',label('р/с'),a.acc)+inp(i,'bank',label('р/с в'),a.bank)+inp(i,'bic',label('Код банка (БИК)'),a.bic)+inp(i,'note','Примечание',a.note)
+      +'<div class="row"><button class="gray sm" onclick="accMain('+i+')">сделать основным</button><button class="danger sec sm" onclick="accDel('+i+')">✕ убрать</button></div></div>'; }).join('')
+    +'<div class="row" style="margin-top:var(--s-2)"><button class="gray sm" onclick="accAdd()">＋ ещё расчётный счёт</button></div>';
+}
+function accAdd(){ accSync(); ACCS.push({acc:'',bank:'',bic:'',note:''}); renderAccs(); }
+function accDel(i){ accSync(); ACCS.splice(i,1); renderAccs(); }
+function accMain(i){
+  accSync(); var cur=collectRaw(), a=ACCS[i]; if(!a) return;
+  var old={acc:cur['р/с']||'', bank:cur['р/с в']||'', bic:cur['Код банка (БИК)']||'', note:''};
+  cur['р/с']=a.acc||''; cur['р/с в']=a.bank||''; cur['Код банка (БИК)']=a.bic||'';
+  if(old.acc) ACCS[i]=old; else ACCS.splice(i,1);
+  cur['Доп. счета']=JSON.stringify(ACCS); renderFields(cur);
+}
 function collect(){
   var o=collectRaw(); o['Тип']=CTYPE;
   if(EDIT){ if(EDIT['УНП']) o['УНП']=o['УНП']||EDIT['УНП']; if(EDIT['ИНН']) o['ИНН']=EDIT['ИНН']; if(EDIT['ID']) o['ID']=EDIT['ID']; }
@@ -372,6 +404,7 @@ function renderClient(){
   el('ccFw').style.display=ul?'':'none'; el('ccNewC').style.display='';
   var show=(ul?[['Наименование ЮЛ (полное)'],['УНП'],['ИНН'],['КПП'],['ОГРН'],['Юридический адрес'],['Почтовый адрес'],['р/с'],['р/с в'],['Код банка (БИК)'],['В лице'],['Полное ФИО'],['Действует на основании'],['тел'],['e-mail'],['Страна'],['Валюта']]:FL_FIELDS);
   var kv=show.map(function(f){ var v=String(b[f[0]]==null?'':b[f[0]]).trim(); return v?('<span class="k">'+esc(LABELS[f[0]]||f[0])+'</span><span class="v">'+esc(v)+'</span>'):''; }).join('');
+  if(ul) kv+=accsOf(b['Доп. счета']).map(function(a,i){ return '<span class="k">'+(i?'':'Другие счета')+'</span><span class="v">'+esc(a.acc)+(a.bank?(' в '+esc(a.bank)):'')+(a.bic?(', код '+esc(a.bic)):'')+(a.note?(' <span class="muted">— '+esc(a.note)+'</span>'):'')+'</span>'; }).join('');
   var mopts=['by','ru','eu','other'].map(function(x){ return '<option value="'+x+'"'+(x===m?' selected':'')+'>'+esc(MARKET_RU[x])+' ('+CUR[x]+')</option>'; }).join('');
   var h='<div class="card">'
     +'<div class="cname">'+esc(name_(b))+'</div>'
