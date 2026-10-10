@@ -105,6 +105,7 @@
     <div class="grid3">
       <label class="fl" id="w_pct"><span class="sm">Предоплата, %</span><input id="f_pct" type="number" inputmode="decimal" min="0" max="100" oninput="calc()" autocomplete="off"></label>
       <label class="fl" id="w_sum"><span class="sm">Предоплата, EUR</span><input id="f_sum" type="number" inputmode="decimal" min="0" step="0.01" oninput="calc()" autocomplete="off"></label>
+      <label class="fl"><span class="sm">Наш счёт, на который ждём оплату</span><select id="f_acc"><option value="">— первый счёт EUR из реквизитов —</option></select></label>
       <label class="fl"><span class="sm">Срок предоплаты, календ. дней со дня счёта</span><input id="f_pdays" type="number" inputmode="numeric" min="1" autocomplete="off"></label>
       <label class="fl"><span class="sm">Остаток — календ. дней с даты поставки (CMR)</span><input id="f_bdays" type="number" inputmode="numeric" min="1" autocomplete="off"></label>
     </div>
@@ -206,8 +207,11 @@ function fill(){
   el('f_ref').value=t.buyerRef||''; el('f_ship').value=isoDate(t.shipDate); el('f_date').value=D.invoiceDate||'при формировании';
   INC=t.incoterm||'FCA'; el('f_place').value=t.place||''; el('f_place').placeholder=(D.client&&D.client.address)||'адрес покупателя';
   PRE=t.prepayMode||'pct'; el('f_pct').value=t.prepayPct==null?'':t.prepayPct; el('f_sum').value=t.prepaySum?t.prepaySum:''; el('f_pdays').value=t.prepayDays||''; el('f_bdays').value=t.balanceDays||'';
+  // наш счёт для оплаты (10.10.2026): список из реквизитов компании, по умолчанию первый EUR
+  var accs=D.accounts||[]; el('f_acc').innerHTML=accs.length?accs.map(function(a){ return '<option value="'+esc(a.id)+'">'+esc(a.label||a.acc)+'</option>'; }).join(''):'<option value="">— первый счёт EUR из реквизитов —</option>';
+  el('f_acc').value=t.account||''; if(accs.length&&!el('f_acc').value) el('f_acc').value=accs[0].id;
   el('main').className=EDIT?'':'ro';
-  var ins=el('main').querySelectorAll('#s_head input, #s_deliv input, #s_pay input, #s_deliv button, #s_pay button');
+  var ins=el('main').querySelectorAll('#s_head input, #s_deliv input, #s_pay input, #s_pay select, #s_deliv button, #s_pay button');
   for(var i=0;i<ins.length;i++) if(ins[i].id!=='f_date') ins[i].disabled=!EDIT;
   renderHead(); renderRows(); paintInc(); paintPre(); renderDocs(); renderBtns();
 }
@@ -310,7 +314,7 @@ function renderBtns(){
 function collect(){
   return { items:ROWS.filter(function(r){ return String(r.name||r.en||'').trim() || num(r.qty)>0; }).map(function(r){ return { id:r.id||'', sku:r.sku||'', name:String(r.name||'').trim()||String(r.en||'').trim(), en:String(r.en||'').trim(),
       hs:String(r.hs||'').trim(), art:String(r.art||'').trim(), qty:num(r.qty), price:num(r.price) }; }),
-    terms:{ incoterm:INC, place:val('f_place').trim(), buyerRef:val('f_ref').trim(), shipDate:ruDate(val('f_ship')), prepayMode:PRE, prepayPct:val('f_pct'), prepaySum:val('f_sum'), prepayDays:val('f_pdays'), balanceDays:val('f_bdays') } };
+    terms:{ incoterm:INC, place:val('f_place').trim(), buyerRef:val('f_ref').trim(), shipDate:ruDate(val('f_ship')), prepayMode:PRE, prepayPct:val('f_pct'), prepaySum:val('f_sum'), prepayDays:val('f_pdays'), balanceDays:val('f_bdays'), account:val('f_acc') } };
 }
 function validate(d){
   if(!d.items.length) return 'Добавьте позиции счёта';

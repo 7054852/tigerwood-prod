@@ -120,6 +120,7 @@
       </div>
       <div id="invPay">
       <label class="fl"><span class="sm">Договор, к которому счёт</span><select id="invContract" onchange="presetScenario()"></select></label>
+      <label class="fl"><span class="sm">Наш счёт, на который ждём оплату</span><select id="invAcc"><option value="">— по валюте счёта (реквизиты компании) —</option></select></label>
       <label class="fl"><span class="sm" id="totalLbl">Сумма счёта — из позиций (можно изменить)</span><input id="total" type="number" inputmode="decimal" oninput="refreshPreview()" autocomplete="off"></label>
       <label class="fl"><span class="sm">Сценарий оплаты</span>
         <select id="scen" onchange="onScen()">
@@ -380,7 +381,14 @@ function renderInvMarket(){
 }
 function setInvKind(k){ INVKIND=k; renderInvMarket(); if(k==='commercial') fillCommercial(); else refreshPreview(); }
 function loadInvCtx(){
-  get({vapi:'invoicectx', deal:KEY}).then(function(r){ if(!r||!r.ok) return; INVCTX=r; renderInvMarket(); fillInvContracts(); showFrameworks(); }).catch(function(){});
+  get({vapi:'invoicectx', deal:KEY}).then(function(r){ if(!r||!r.ok) return; INVCTX=r; renderInvMarket(); fillInvContracts(); fillAccounts(); showFrameworks(); }).catch(function(){});
+}
+/* наш счёт для оплаты (10.10.2026): список из реквизитов компании (invoicectx.accounts), по умолчанию — первый счёт валюты рынка клиента */
+function fillAccounts(){
+  var sel=el('invAcc'), list=(INVCTX&&INVCTX.accounts)||[], cur=sel.value||(INVCTX&&INVCTX.account)||'';
+  if(!list.length){ sel.innerHTML='<option value="">— по валюте счёта (реквизиты компании) —</option>'; return; }
+  sel.innerHTML=list.map(function(a){ return '<option value="'+esc(a.id)+'">'+esc(a.label||a.acc)+'</option>'; }).join('');
+  sel.value=cur; if(!sel.value) sel.value=list[0].id;
 }
 function showFrameworks(){
   var fw=(INVCTX&&INVCTX.frameworks)||[], e=el('conFw');
@@ -439,13 +447,13 @@ function issueInvoice(){
   if(!DEAL||!DEAL.buyerKey){ setm('imsg','err','Сначала привяжите клиента к сделке'); return; }
   var clean=cleanPos(), total=isEu()?(Number(val('total'))||0):(clean.length?posTotalValue():(Number(val('total'))||0));
   if(total<=0 && !isEu()){ setm('imsg','err','Добавьте позиции или укажите сумму счёта'); return; }
-  var opts={ total:total||'', contractNo:val('invContract'), scenario:val('scen'), prepay:Number(val('prepay'))||0, interim:Number(val('interim'))||0,
+  var opts={ total:total||'', contractNo:val('invContract'), account:val('invAcc'), scenario:val('scen'), prepay:Number(val('prepay'))||0, interim:Number(val('interim'))||0,
     prepayDate:ruDate(val('prepayDate')), afterDays:Number(val('afterDays'))||0, shipDate:ruDate(val('shipDate')), genInvoiceDoc:el('gendoc').checked };
   el('iout').innerHTML='';
   savePosIfChanged('imsg').then(function(ok){ if(!ok) return;
     return run({vapi:'invoicefordeal', deal:KEY, opts:JSON.stringify(opts)}, 'Выставляю счёт…', 'imsg').then(function(r){ if(!r) return;
       setm('imsg','ok','✅ '+(isEu()?'Проформа выставлена':'Счёт выставлен')); var h='';
-      if(r.invoice) h+='<div>🧾 № '+esc(r.invoice.number)+(r.invoice.currency?(' · '+esc(r.invoice.currency)):'')+' — до '+esc(r.invoice.validUntil||'—')+'</div><div class="sm">К оплате: '+esc(r.invoice.paymentText||'')+'</div>'
+      if(r.invoice) h+='<div>🧾 № '+esc(r.invoice.number)+(r.invoice.currency?(' · '+esc(r.invoice.currency)):'')+' — до '+esc(r.invoice.validUntil||'—')+'</div><div class="sm">К оплате: '+esc(r.invoice.paymentText||'')+(r.invoice.account?(' · на счёт '+esc(r.invoice.account)):'')+'</div>'
         +(r.invoice.financeNote?('<div class="sm warn">'+esc(r.invoice.financeNote)+'</div>'):'');
       if(r.invoiceDoc&&r.invoiceDoc.url) h+='<div style="margin-top:var(--s-1)">🧾 Документ: <a href="'+esc(r.invoiceDoc.url)+'" target="_blank" rel="noopener">открыть</a></div>';
       else if(r.invoiceDocError) h+='<div class="sm err">Документ счёта: '+esc(r.invoiceDocError)+'</div>';
