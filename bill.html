@@ -6,7 +6,7 @@
 <script src="tw-theme.js"></script>
 <script src="tw-config.js"></script>
 <script src="tw-items.js"></script>
-<title>Тигервуд — Счёт</title>
+<title>Тигервуд — Счёт на оплату</title>
 <!-- Карточка счёта по сделке (07.10.2026, владелец: «сделка — контейнер, документы правятся в своих карточках»). ?deal=<ключ сделки>.
      Перенесено из блока «Счёт» карточки сделки (sales.html): счёт BY / «Счёт РФ» / проформа Европы по сделке (invoicefordeal) к договору сделки
      или рамочному договору клиента (invoicectx), коммерческий инвойс к проформе (invoicecommercial), предпросмотр графика (schedpreview).
@@ -82,7 +82,7 @@
 <body>
 <div id="twload"><i></i></div>
 <div id="twwait"><div class="wb"><div class="sp"></div><div class="wt" id="twwt">Сохраняю…</div><div class="wh">идёт обмен с сервером — не нажимайте</div></div></div>
-<div class="hi" id="ttl">🧾 Счёт</div>
+<div class="hi" id="ttl">🧾 Счёт на оплату</div>
 <div class="toolbar"><a class="btn sec sm" id="backLink" href="#">← к сделке</a></div>
 <div id="hdr" class="hdr"><div class="t">Счёт…</div><div class="m">загрузка…</div></div>
 <div id="loaderr" class="note bad hide"></div>
@@ -102,7 +102,7 @@
     </div>
   </div>
   <div class="blk" id="s_inv">
-    <div class="h">🧾 Счёт</div>
+    <div class="h">🧾 Счёт на оплату</div>
       <div id="invMarket" class="sm" style="margin-bottom:var(--s-2)"></div>
       <div id="invKindRow" class="hide" style="margin-bottom:var(--s-3)">
         <span class="seg" id="segInv">
@@ -140,7 +140,7 @@
       <label class="fl"><span class="sm">Планируемая дата отгрузки — печатается в счёте (пусто — строки нет)</span><input id="shipDate" type="date" onchange="refreshPreview()" autocomplete="off"></label>
       <div id="preview" class="pvbox"></div>
       <label class="sm" style="display:block;margin-top:var(--s-3)"><input type="checkbox" id="gendoc" checked> сформировать документ счёта из позиций</label>
-      <button class="green block" style="margin-top:var(--s-3)" id="invGo" onclick="issueInvoice()">Выставить счёт</button>
+      <button class="green block" style="margin-top:var(--s-3)" id="invGo" onclick="issueInvoice()">Выставить счёт на оплату</button>
       <div class="msg" id="imsg"></div>
       <div id="iout" style="margin-top:var(--s-2)"></div>
       </div>
@@ -273,8 +273,8 @@ function loadFw(){
     if(!c.isFramework){ loadErr('Это не рамочный договор — счёт выставляется из карточки сделки.'); return; }
     if(!(c.status==='active'||c.status==='signed') || c.expired){ loadErr('Рамочный договор не действует (не сформирован, аннулирован или истёк) — счёт к нему выставить нельзя.'); return; }
     FW=c; el('main').className='';
-    el('ttl').textContent='🧾 Счёт по рамочному № '+(c.number||'');
-    el('hdr').innerHTML='<div class="t">Новый счёт по рамочному договору <a href="'+esc(pageUrl('contract.html','contract',FWID))+'">№ '+esc(c.number||'')+'</a></div>'
+    el('ttl').textContent='🧾 Счёт на оплату по рамочному № '+(c.number||'');
+    el('hdr').innerHTML='<div class="t">Новый счёт на оплату по рамочному договору <a href="'+esc(pageUrl('contract.html','contract',FWID))+'">№ '+esc(c.number||'')+'</a></div>'
       +'<div class="m">'+esc(cl.name||'')+' · при выставлении заведётся сделка-заявка с этими позициями</div>';
     INVCTX={ market:c.market||'by', frameworks:[{ number:c.number, type:c.type||'Рамочный договор', validUntil:c.validUntil||'', status:c.statusRu||'', isFramework:true, prepayPercent:c.prepayPercent }] };
     TWI_CUR=(c.market==='ru')?'RUB':'руб'; POSCHK=false; POS=[{name:'',qty:1,price:''}]; POS0=''; renderPos();
@@ -300,7 +300,7 @@ function loadErr(m){ el('loaderr').className='note bad'; el('loaderr').innerHTML
 function reload(){ load(); }
 function render(){
   var d=DEAL, lc=liveContract(); el('main').className='';
-  el('ttl').textContent='🧾 Счёт · '+dealTitle(d);
+  el('ttl').textContent='🧾 Счёт на оплату · '+dealTitle(d);
   el('hdr').innerHTML='<div class="t">Счёт по сделке <a href="'+esc(pageUrl('sales.html','deal',KEY))+'">'+esc(dealTitle(d))+'</a> '+stagePill(d)+'</div>'
     +'<div class="m">'+esc(d.client||'клиент не указан')+'</div>';
   TWI_CUR=d.currency||'руб'; POSCHK=false; POS=posFromItems(d.items); POS0=posKey(POS);
@@ -377,7 +377,7 @@ function renderInvMarket(){
   el('totalLbl').textContent=eu?'Сумма проформы, EUR — пусто = по ценам EUR прайса':('Сумма счёта, '+invCur()+' — из позиций (можно изменить)');
   el('total').placeholder=eu?'по прайсу EUR':'';
   if(eu && posTotalValue()>0 && Number(val('total'))===posTotalValue()) el('total').value='';
-  el('invGo').textContent=eu?'Выставить проформу':'Выставить счёт';
+  el('invGo').textContent=eu?'Выставить проформу (счёт на оплату)':'Выставить счёт на оплату';
 }
 function setInvKind(k){ INVKIND=k; renderInvMarket(); if(k==='commercial') fillCommercial(); else refreshPreview(); }
 function loadInvCtx(){
