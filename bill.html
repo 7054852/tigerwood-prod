@@ -403,7 +403,8 @@ function fillInvContracts(){
     opts.push('<option value="'+esc(c.number)+'">'+esc(c.type||'Договор')+' № '+esc(c.number)+(fw||c.isFramework?(' — рамочный'+(c.validUntil?(' до '+esc(c.validUntil)):'')):'')+' · '+esc(c.status||'')+'</option>'); }
   ((DEAL&&DEAL.contracts)||[]).forEach(function(c){ if((c.status==='сформирован'||c.status==='подписан') && !c.expired) add(c, false); });
   ((INVCTX&&INVCTX.frameworks)||[]).forEach(function(c){ add(c, true); });
-  sel.innerHTML=opts.join('')+'<option value="">— без договора —</option>';
+  // счёта без договора не бывает (11.10.2026): нет действующего договора — сначала оформить его
+  sel.innerHTML=opts.length?opts.join(''):'<option value="">— нет договора: сначала оформите договор сделки или рамочный —</option>';
   if(cur && seen[cur]) sel.value=cur;
 }
 function fillCommercial(){
@@ -445,6 +446,7 @@ function onScen(){ var s=val('scen'); function show(id,on){ el(id).style.display
 function issueInvoice(){
   if(FW) return issueFw();
   if(!DEAL||!DEAL.buyerKey){ setm('imsg','err','Сначала привяжите клиента к сделке'); return; }
+  if(!val('invContract')){ setm('imsg','err','Счёт выставляется только к договору. Сначала оформите и сформируйте договор: <a href="'+esc(pageUrl('contract.html','contract','new')+'&deal='+encodeURIComponent(KEY))+'">＋ Договор</a>'); return; }
   var clean=cleanPos(), total=isEu()?(Number(val('total'))||0):(clean.length?posTotalValue():(Number(val('total'))||0));
   if(total<=0 && !isEu()){ setm('imsg','err','Добавьте позиции или укажите сумму счёта'); return; }
   var opts={ total:total||'', contractNo:val('invContract'), account:val('invAcc'), scenario:val('scen'), prepay:Number(val('prepay'))||0, interim:Number(val('interim'))||0,
