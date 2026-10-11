@@ -7,6 +7,7 @@
 <script src="tw-config.js"></script>
 <script src="tw-items.js"></script>
 <script src="tw-waybill.js"></script>
+<script src="tw-shipping.js"></script>
 <script src="tw-pay.js"></script>
 <script src="tw-deliv.js"></script>
 <title>Тигервуд — Сделки</title>
@@ -456,9 +457,19 @@ function render(){
   el('invNewLink').className=(closed||d.clientType==='физлицо')?'btn sec sm hide':'btn sec sm';
   renderDealDocs();
   twPay('dealPay', DEAL.pay, { deal: DEAL.id, canCreate: false, onDone: reload });
-  twWaybillBlock(KEY, 'wbBlock', null);
+  // юрлицо РФ / Европы (11.10.2026): отгрузочный комплект (счёт-фактура или инвойс, упаковочный лист, CMR, ТН) — tw-shipping.js; остальным — накладные РБ
+  var exportDeal=(d.market==='ru'||d.market==='eu'||d.market==='other')&&d.clientType!=='физлицо';
+  el('s_ship').querySelector('.h').textContent=exportDeal?'🚚 Отгрузка — экспорт ('+(d.market==='ru'?'Россия':'Европа')+')':'🚚 Отгрузка — накладные';
+  if(exportDeal) twShippingBlock(KEY, 'wbBlock'); else twWaybillBlock(KEY, 'wbBlock', null);
 }
 function billUrl(){ return pageUrl('bill.html','deal',KEY); }
+/** заказ на производство по счёту на оплату (11.10.2026): позиции сделки → новый ПАРТ-N, сделка «в производстве» */
+function orderFromInvoice(no){
+  ask('⚙️ Заказ на производство', '<div>Завести заказ на производство с позициями сделки по счёту <b>№ '+esc(no)+'</b>? Сделка перейдёт «в производство».</div><div class="msg" id="ofim"></div>', function(){
+    run({vapi:'orderfrominvoice', invoice:no}, 'Завожу заказ…', 'ofim').then(function(r){ if(!r) return; hide('askmodal'); info('Заказ заведён', '<div>'+esc(r.num)+' — '+esc(r.name)+' · позиций: '+esc(r.positions)+(r.skipped&&r.skipped.length?'<div class="warn">Без товара каталога, в заказ не вошли: '+esc(r.skipped.join(', '))+'</div>':'')+'</div>'); reload(); });
+    return false;
+  }, 'Завести');
+}
 
 /* ── стадия: заявка → заказ / не состоялась ── */
 function confirmDeal(via){
@@ -530,7 +541,7 @@ function renderDealDocs(){
     h+=twFileCard({ href:v.url, tab:1, tag:twDocTag(vt), title:vt+' № '+v.number, off:!live,
       meta:[v.sum?money(v.sum)+' '+(v.currency||''):'', ci&&v.proforma?'к проформе '+v.proforma:(v.paymentText||''), v.validUntil?'до '+v.validUntil:''].filter(Boolean).join(' · '),
       pills:v.status?'<span class="pill '+(live?'':'muted')+'">'+esc(v.status)+'</span>':'',
-      acts:(live&&!ci)?'<a href="#" onclick="editInvoice('+n+');return false;">изменить</a>':'',
+      acts:(live&&!ci)?'<a href="#" onclick="editInvoice('+n+');return false;">изменить</a>'+((d.stage!=='in_production'&&d.stage!=='shipped')?'<a href="#" onclick="orderFromInvoice('+n+');return false;" title="новый заказ на производство с позициями сделки по этому счёту">→ заказ на производство</a>':''):'',
       del:live?'delDoc(\'invoice\','+JSON.stringify(String(v.number||''))+')':'', delTitle:'Отменить счёт' });
   });
   el('deldocs').innerHTML=h||'<div class="sm">Пока нет договоров и счетов по сделке.</div>';

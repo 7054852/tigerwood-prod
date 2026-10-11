@@ -335,7 +335,7 @@ function listToolbar(){
     meta=plural(p.activeCount||0,'заказ','заказа','заказов')+' в работе · очередь '+money(p.totalLeft)+' ₽ · разгребём за '+cap;
   }
   return '<div class="toolbar"><span class="meta">'+meta+'</span>'
-    +'<div class="end"><button onclick="newBatch()">＋ Новый заказ</button></div></div>';
+    +'<div class="end"><button class="sec" onclick="newBatchFromInvoice()" title="позиции сделки по счёту на оплату">＋ По счёту</button> <button onclick="newBatch()">＋ Новый заказ</button></div></div>';
 }
 // пульс фабрики — плитками темы (те же цифры, что раньше шли строкой)
 function pulseStrip(){
@@ -1407,6 +1407,8 @@ function saveDone(id,sku,mod,v){
     if(m) m.innerHTML=(r&&r.ok)?'<span class="ok">✓ на склад</span>':'<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; setTimeout(reloadDetail,700);
   });
 }
+// заказ по счёту на оплату (11.10.2026): позиции сделки счёта → новый заказ, сделка «в производстве»
+function newBatchFromInvoice(){ var no=prompt('Номер счёта на оплату (например 20261001, R20261001, P20261001):',''); if(no===null||!no.trim()) return; api({vapi:'orderfrominvoice', invoice:no.trim()}).then(function(r){ if(r&&r.ok){ if(r.skipped&&r.skipped.length) alert('Без товара каталога, в заказ не вошли: '+r.skipped.join(', ')); openOrder(r.batchId); } else alert('Ошибка: '+((r&&r.error)||'')); }); }
 function newBatch(){ var nm=prompt('Название заказа (или пусто — авто):',''); if(nm===null) return; api({vapi:'createbatch', name:nm}).then(function(r){ if(r&&r.ok){ openOrder(r.batchId); } else alert('Ошибка'); }); }
 function renameBatch(id,cur){ var nm=prompt('Название партии:',cur||''); if(nm===null||!nm.trim()) return; api({vapi:'renamebatch', batch:id, name:nm.trim()}).then(function(){ if(VIEW==='detail') reloadDetail(); else load(); }); }
 function delBatch(id){ if(!confirm('Удалить заказ со всеми позициями?')) return; api({vapi:'delbatch', batch:id}).then(function(){ backToList(); }); }
