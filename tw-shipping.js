@@ -111,47 +111,42 @@ function twPkPool(){
 function twPkCss(){ if(el('pkcss')) return; var st=document.createElement('style'); st.id='pkcss';
   st.textContent='.pk-grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:var(--s-3);align-items:start}@media(max-width:760px){.pk-grid{grid-template-columns:1fr}}'
     +'.pk-pal{border:2px solid var(--line);border-radius:10px;padding:var(--s-2) var(--s-3);margin-top:var(--s-2);cursor:pointer}.pk-pal.on{border-color:var(--accent);background:var(--accent-bg,var(--card2))}'
-    +'.pk-pal input{cursor:text}.pk-pal .hd{display:flex;align-items:center;gap:var(--s-2);flex-wrap:wrap}.pk-pal .tbl-wrap{max-height:none}.pk-pool{position:sticky;top:0}.pk-pool .tbl-wrap{max-height:48vh}@media(max-width:760px){.pk-pool{position:static}}';
+    +'.pk-pal input{cursor:text}.pk-pal .hd{display:flex;align-items:center;gap:var(--s-2);flex-wrap:wrap}'
+    +'.pk-ln{border-top:1px solid var(--line);padding:var(--s-1) 0}.pk-ln .nm{display:flex;align-items:center;gap:var(--s-2)}.pk-ln .nm span{flex:1;min-width:0}'
+    +'.pk-ln .ins{display:flex;flex-wrap:wrap;gap:var(--s-2);margin-top:4px}.pk-ln .ins label{display:flex;align-items:center;gap:4px;font:var(--t-label);color:var(--muted)}.pk-ln .ins input{width:66px}'
+    +'.pk-pool{position:sticky;top:0}.pk-pool .tbl-wrap{max-height:60vh}@media(max-width:760px){.pk-pool{position:static}}';
   document.head.appendChild(st); }
 function twPkRender(){
   twPkCss();
   var r=TWPK.r, pool=twPkPool(), b=el('pkbody'); if(!b) return;
   if(TWPK.sel>=TWPK.pallets.length) TWPK.sel=TWPK.pallets.length-1; if(TWPK.sel<0) TWPK.sel=0;
   var selNo=TWPK.sel+1, leftAll=pool.reduce(function(s,it){ return s+Math.max(0,it.left); },0);
-  // ── паллеты (слева) ──
+  var inp=function(i,j,k,v,step){ return '<input type="number" min="0" step="'+step+'" data-p="'+i+'" data-l="'+j+'" data-k="'+k+'" value="'+esc(v)+'" onclick="event.stopPropagation()"'+(k==='qty'?' onchange="twPkSync();twPkReweigh('+i+','+j+');twPkRender()"':'')+'>'; };
+  // ── паллеты (слева): строка товара = имя + 4 поля, укладывается в любую ширину ──
   var pals=TWPK.pallets.map(function(p,i){
     var net=0, gross=0, boxes=0, qty=0; p.lines.forEach(function(l){ net+=Number(l.netKg)||0; gross+=Number(l.grossKg)||0; boxes+=Number(l.boxes)||0; qty+=Number(l.qty)||0; });
     var on=(i===TWPK.sel);
-    var rows=p.lines.map(function(l,j){ return '<tr><td>'+esc(l.name)+' <span class="muted">'+esc(l.sku)+'</span></td>'
-      +'<td class="num"><input type="number" min="0" step="1" data-p="'+i+'" data-l="'+j+'" data-k="qty" value="'+esc(l.qty)+'" style="width:64px" onchange="twPkSync();twPkReweigh('+i+','+j+');twPkRender()"></td>'
-      +'<td class="num"><input type="number" min="0" step="1" data-p="'+i+'" data-l="'+j+'" data-k="boxes" value="'+esc(l.boxes)+'" style="width:56px"></td>'
-      +'<td class="num"><input type="number" min="0" step="0.01" data-p="'+i+'" data-l="'+j+'" data-k="netKg" value="'+esc(l.netKg)+'" style="width:72px"></td>'
-      +'<td class="num"><input type="number" min="0" step="0.01" data-p="'+i+'" data-l="'+j+'" data-k="grossKg" value="'+esc(l.grossKg)+'" style="width:72px"></td>'
-      +'<td><button class="ic" title="снять с паллеты" onclick="twPkDel('+i+','+j+');event.stopPropagation()">🗑</button></td></tr>'; }).join('');
-    return '<div class="pk-pal'+(on?' on':'')+'" onclick="twPkSelect('+i+')" title="'+(on?'выбрана: сюда кладём товар':'нажмите, чтобы класть товар на эту паллету')+'">'
-      +'<div class="hd"><b>Паллета '+(i+1)+'</b>'+(on?'<span class="pill ok">выбрана — сюда кладём</span>':'<button class="sm sec" onclick="twPkSelect('+i+');event.stopPropagation()" title="класть товар на эту паллету">выбрать эту</button>')+'<span class="sp"></span>'
+    var rows=p.lines.map(function(l,j){ return '<div class="pk-ln"><div class="nm"><span>'+esc(l.name)+' <span class="muted">'+esc(l.sku)+'</span></span><button class="ic" title="снять с паллеты" onclick="twPkDel('+i+','+j+');event.stopPropagation()">🗑</button></div>'
+      +'<div class="ins"><label>шт '+inp(i,j,'qty',l.qty,1)+'</label><label>кор. '+inp(i,j,'boxes',l.boxes,1)+'</label><label>нетто '+inp(i,j,'netKg',l.netKg,0.01)+'</label><label>брутто '+inp(i,j,'grossKg',l.grossKg,0.01)+'</label></div></div>'; }).join('');
+    return '<div class="pk-pal'+(on?' on':'')+'" onclick="twPkSelect('+i+')">'
+      +'<div class="hd"><b>Паллета '+(i+1)+'</b>'+(on?'<span class="pill ok">сюда кладём</span>':'<button class="sm sec" onclick="twPkSelect('+i+');event.stopPropagation()">выбрать</button>')+'<span class="sp"></span>'
       +'<button class="ic" title="выше" onclick="twPkMove('+i+',-1);event.stopPropagation()">↑</button><button class="ic" title="ниже" onclick="twPkMove('+i+',1);event.stopPropagation()">↓</button>'
-      +(TWPK.pallets.length>1?'<button class="ic" title="убрать паллету (товар вернётся в «что везём»)" onclick="twPkDelPallet('+i+');event.stopPropagation()">✕</button>':'')+'</div><div class="sm muted">'+qty+' шт · '+boxes+' кор · нетто '+money(net)+' · брутто '+money(gross)+' кг</div>'
-      +(rows?'<div class="tbl-wrap"><table class="tbl sm"><thead><tr><th>Товар</th><th class="num">Шт</th><th class="num">Кор.</th><th class="num">Нетто, кг</th><th class="num">Брутто, кг</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>'
-        :'<div class="sm muted" style="margin-top:var(--s-1)">пусто — '+(on?'выберите товар справа и нажмите «→ Паллета '+(i+1)+'»':'выберите паллету, затем товар справа')+'</div>')
-      +'</div>';
+      +(TWPK.pallets.length>1?'<button class="ic" title="убрать паллету" onclick="twPkDelPallet('+i+');event.stopPropagation()">✕</button>':'')+'</div>'
+      +'<div class="sm muted">'+qty+' шт · '+boxes+' кор · нетто '+money(net)+' · брутто '+money(gross)+' кг</div>'
+      +(rows||'<div class="sm muted" style="margin-top:var(--s-1)">пусто</div>')+'</div>';
   }).join('');
   var left='<div><div class="row" style="align-items:center"><b>Паллеты</b><span class="sm muted">'+TWPK.pallets.length+' шт</span><span class="sp"></span><button class="sec sm" onclick="twPkNew()">＋ Паллета</button></div>'+pals+'</div>';
-  // ── что везём (справа) ──
-  var ordSel='<select id="pkord" onchange="twPacking(this.value)" style="max-width:100%"><option value="">— позиции сделки —</option>'
-    +(r.orders||[]).map(function(o){ return '<option value="'+esc(o.id)+'"'+(r.order&&o.id===r.order.id?' selected':'')+'>'+esc(o.num)+' · '+esc(o.name)+'</option>'; }).join('')+'</select>';
+  // ── что везём (справа): товары заказа сделки (нет заказа — позиции сделки), остаток, количество и кнопка на выбранную паллету ──
   var prow=pool.map(function(it,i){
     var over=it.left<0, done=it.left===0;
-    return '<tr'+(over?' style="color:var(--red)"':done?' class="muted"':'')+'><td>'+esc(it.name)+'<div class="muted sm">'+esc(it.sku)+' · всего '+it.qty+(it.placed?' · разложено '+it.placed:'')+'</div></td>'
-      +'<td class="num">'+(over?'<b>лишнее '+(-it.left)+'</b>':done?'✓ всё':('<input type="number" min="1" max="'+it.left+'" step="1" id="pkq'+i+'" value="'+it.left+'" style="width:64px" title="сколько штук положить (остаток '+it.left+')">'))+'</td>'
-      +'<td>'+(it.left>0?'<button class="sm" onclick="twPkAdd(\''+esc(it.productId)+'\','+i+')" title="положить указанное количество на выбранную паллету">→ Паллета '+selNo+'</button>':'')+'</td></tr>'; }).join('');
-  var right='<div class="pk-pool"><div class="row" style="align-items:center"><b>Что везём</b><span class="sm muted">осталось разложить: <b>'+leftAll+'</b> шт</span></div>'
-    +'<div class="sm" style="margin:var(--s-1) 0">Товары из: '+ordSel+'</div>'
-    +'<div class="row" style="align-items:center;margin-bottom:var(--s-1)"><b>Кладём на:</b><select id="pktarget" onchange="twPkSelect(Number(this.value))">'+TWPK.pallets.map(function(p,i){ return '<option value="'+i+'"'+(i===TWPK.sel?' selected':'')+'>Паллета '+(i+1)+(p.lines.length?'':' (пустая)')+'</option>'; }).join('')+'</select><span class="sm muted">или нажмите «выбрать эту» у паллеты слева</span></div>'
-    +'<div class="sm" style="margin-bottom:var(--s-1)">Впишите, сколько штук, и нажмите <b>→ Паллета '+selNo+'</b>. Остальное — на другую паллету: смените её здесь и нажмите снова. Нетто/брутто считаются по карточке товара (нетто и брутто коробки × штук), правятся в строке.</div>'
-    +'<div class="tbl-wrap"><table class="tbl sm"><thead><tr><th>Товар</th><th class="num">Штук</th><th></th></tr></thead><tbody>'+(prow||'<tr><td colspan="3" class="sm muted">в заказе нет товаров каталога</td></tr>')+'</tbody></table></div>'
-    +(leftAll>0?'<div class="row" style="margin-top:var(--s-1)"><button class="gho sm" onclick="twPkAll()">Всё оставшееся — на паллету '+selNo+'</button></div>':'<div class="sm ok" style="margin-top:var(--s-1)">✓ Всё разложено</div>')
-    +'<div class="row" style="margin-top:var(--s-3)"><input list="pkcat" id="pkadd" placeholder="другой товар из каталога: артикул или название" style="flex:1" onchange="twPkAddCatalog(this)"><button class="gho sm" onclick="twPkAddCatalog(el(\'pkadd\'))">＋ на паллету '+selNo+'</button></div>'
+    return '<tr'+(over?' style="color:var(--red)"':done?' class="muted"':'')+'><td>'+esc(it.name)+'<div class="muted sm">'+esc(it.sku)+' · '+it.qty+' шт'+(it.placed?' · разложено '+it.placed:'')+'</div></td>'
+      +'<td class="num">'+(over?'<b>лишнее '+(-it.left)+'</b>':done?'✓':('<input type="number" min="1" max="'+it.left+'" step="1" id="pkq'+i+'" value="'+it.left+'" style="width:64px">'))+'</td>'
+      +'<td>'+(it.left>0?'<button class="sm" onclick="twPkAdd(\''+esc(it.productId)+'\','+i+')">→ Паллета '+selNo+'</button>':'')+'</td></tr>'; }).join('');
+  var right='<div class="pk-pool"><div class="row" style="align-items:center"><b>Что везём</b><span class="sm muted">'+(r.order?esc(r.order.num):'позиции сделки')+' · осталось <b>'+leftAll+'</b> шт</span></div>'
+    +'<div class="row" style="align-items:center;margin:var(--s-1) 0"><span class="sm">Кладём на:</span><select id="pktarget" onchange="twPkSelect(Number(this.value))">'+TWPK.pallets.map(function(p,i){ return '<option value="'+i+'"'+(i===TWPK.sel?' selected':'')+'>Паллета '+(i+1)+(p.lines.length?'':' (пустая)')+'</option>'; }).join('')+'</select></div>'
+    +'<div class="tbl-wrap"><table class="tbl sm"><thead><tr><th>Товар</th><th class="num">Штук</th><th></th></tr></thead><tbody>'+(prow||'<tr><td colspan="3" class="sm muted">нет товаров каталога</td></tr>')+'</tbody></table></div>'
+    +(leftAll>0?'<div class="row" style="margin-top:var(--s-1)"><button class="gho sm" onclick="twPkAll()">Всё оставшееся → Паллета '+selNo+'</button></div>':'<div class="sm ok" style="margin-top:var(--s-1)">✓ Всё разложено</div>')
+    +'<div class="row" style="margin-top:var(--s-2)"><input list="pkcat" id="pkadd" placeholder="другой товар: артикул или название" style="flex:1" onchange="twPkAddCatalog(this)"><button class="gho sm" onclick="twPkAddCatalog(el(\'pkadd\'))">＋ Паллета '+selNo+'</button></div>'
     +'<datalist id="pkcat"></datalist></div>';
   b.innerHTML='<div class="pk-grid">'+left+right+'</div>';
   if(TWPK.products) twPkFillCat(); else get({vapi:'packproducts'}).then(function(x){ if(x&&x.ok){ TWPK.products=x.products||[]; twPkFillCat(); } });
