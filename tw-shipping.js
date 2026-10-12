@@ -18,7 +18,7 @@ function twShRender(){
   h+='<div class="sm" style="margin-bottom:var(--s-2)">Рынок <b>'+esc(r.eu?'Европа':'Россия')+'</b> · счёт на оплату '+(r.payInvoice?'<b>№ '+esc(r.payInvoice)+'</b>':'<span class="warn">не выставлен</span>')
     +' · заказ на производство '+(r.order?'<b>'+esc(r.order.num)+'</b>':'<span class="warn">не заведён</span>')+'</div>';
   h+='<div class="row" style="align-items:center;margin-bottom:var(--s-2)"><span class="sm">🧱 Паллетовка: '+(p.pallets?('<b>'+p.pallets+'</b> паллет · <b>'+p.boxes+'</b> коробок · брутто <b>'+money(p.gross)+'</b> кг'):'<span class="warn">товары не разложены по паллетам</span>')+'</span>'
-    +'<button class="sec sm" onclick="twPacking()">🧱 Паллетовка</button></div>';
+    +'<button class="sec sm" onclick="twPacking()">🧱 Паллетовка</button>'+(p.pallets?'<button class="gho sm" onclick="twPalletSheets()" title="лист на каждую паллету: что на ней лежит — печать на A4">🏷 Листы на паллеты</button>':'')+'</div>';
   h+=(r.docs||[]).map(function(d){
     var pills=d.uploaded?'<span class="pill info">загружен</span>':(d.status==='сформирован'?'<span class="pill ok">'+esc(d.status)+'</span>':'<span class="pill bad">'+esc(d.status)+'</span>');
     var acts=d.docType==='waybill_tn'&&!d.uploaded?'<a href="#" onclick="twWbPdf(\''+esc(d.id)+'\');return false;" title="одна страница A4, без сетки — для печати на бланке">🖨 PDF для печати</a>':'';
@@ -135,7 +135,7 @@ function twPkRender(){
       +'<div class="sm muted">'+qty+' шт · '+boxes+' кор · нетто '+money(net)+' · брутто '+money(gross)+' кг</div>'
       +(rows||'<div class="sm muted" style="margin-top:var(--s-1)">пусто</div>')+'</div>';
   }).join('');
-  var left='<div><div class="row" style="align-items:center"><b>Паллеты</b><span class="sm muted">'+TWPK.pallets.length+' шт</span><span class="sp"></span><button class="sec sm" onclick="twPkNew()">＋ Паллета</button></div>'+pals+'</div>';
+  var left='<div><div class="row" style="align-items:center"><b>Паллеты</b><span class="sm muted">'+TWPK.pallets.length+' шт</span><span class="sp"></span><button class="gho sm" onclick="twPkSync();twPalletSheets(TWPK.pallets)" title="листы на паллеты по тому, что сейчас в окне">🏷 Листы</button><button class="sec sm" onclick="twPkNew()">＋ Паллета</button></div>'+pals+'</div>';
   // ── что везём (справа): товары заказа сделки (нет заказа — позиции сделки), остаток, количество и кнопка на выбранную паллету ──
   var prow=pool.map(function(it,i){
     var over=it.left<0, done=it.left===0;
@@ -172,3 +172,38 @@ function twPkDel(i,j){ twPkSync(); TWPK.pallets[i].lines.splice(j,1); twPkRender
 function twPkDelPallet(i){ if(TWPK.pallets.length<2) return; twPkSync(); TWPK.pallets.splice(i,1); if(TWPK.sel>=TWPK.pallets.length) TWPK.sel=TWPK.pallets.length-1; twPkRender(); }
 function twPkMove(i,d){ twPkSync(); var j=i+d; if(j<0||j>=TWPK.pallets.length) return; var t=TWPK.pallets[i]; TWPK.pallets[i]=TWPK.pallets[j]; TWPK.pallets[j]=t; if(TWPK.sel===i) TWPK.sel=j; else if(TWPK.sel===j) TWPK.sel=i; twPkRender(); }
 function twPkNew(){ twPkSync(); TWPK.pallets.push({ note:'', lines:[] }); TWPK.sel=TWPK.pallets.length-1; twPkRender(); }
+
+/* ── листы на паллеты (владелец 12.10.2026): на каждую паллету клеится лист A4 «что на ней лежит» — по образцу Google-документа «Order: OBJ-…»:
+   Order: <заказ покупателя> · Palet #N · по строкам: артикул / <имя EN> Parts - / <шт> pcs. Шрифты как в образце (Arial 14,7 / 56 / 34,7 / 49,3 pt),
+   на паллете с длинным списком всё уменьшается, пока не поместится на одну страницу (коэффициент считается в окне печати). ── */
+function twPalletSheets(pallets){
+  var w=window.open('', '_blank');   // окно открываем сразу, в клике — иначе браузер сочтёт его всплывающим и заблокирует
+  if(!w){ (typeof oops==='function'?oops:alert)('Браузер не дал открыть окно печати — разрешите всплывающие окна для сайта'); return; }
+  w.document.write('<!doctype html><title>Листы на паллеты</title><body style="font-family:Arial,sans-serif;padding:24px">Готовлю листы…</body>');
+  var ref=TWSH&&TWSH.r&&TWSH.r.payInvoice?get({vapi:'euinvoiceget', invoice:TWSH.r.payInvoice}).then(function(r){ return (r&&r.ok&&r.terms&&r.terms.buyerRef)||''; }).catch(function(){ return ''; }):Promise.resolve('');
+  var pk=pallets?Promise.resolve(pallets):get({vapi:'packget', deal:TWSH.deal}).then(function(r){ return (r&&r.ok&&r.pallets)||[]; });
+  Promise.all([ref,pk]).then(function(a){
+    var order=a[0]||(TWSH&&TWSH.r&&TWSH.r.deal&&TWSH.r.deal.num)||'', list=(a[1]||[]).filter(function(p){ return (p.lines||[]).length; });
+    if(!list.length){ w.document.body.innerHTML='Паллет с товаром нет — сначала разложите товары в «Паллетовке».'; return; }
+    w.document.open(); w.document.write(twPalletSheetsHtml(list, order)); w.document.close();
+  });
+}
+/** HTML окна печати: страницы .pg по паллетам + подгонка размера под одну страницу (отдельно — чтобы проверять без всплывающего окна) */
+function twPalletSheetsHtml(list, order){
+  var pages=list.map(function(p,i){
+    var lines=p.lines.map(function(l){ var nm=String(l.nameEn||l.name||'').trim();
+      return '<div class="ln"><div class="sku">'+esc(l.sku||'')+'</div><div class="nm">'+esc(nm)+' Parts -</div><div class="qty"><b>'+esc(l.qty)+'</b> pcs</div></div>'; }).join('');
+    return '<div class="pg" style="--k:1"><div class="ord">Order: '+esc(order)+'</div><div class="pal">Palet #'+(i+1)+'</div>'+lines+'</div>';
+  }).join('');
+  return '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Листы на паллеты — '+esc(order||'')+'</title><style>'
+    +'@page{size:A4 portrait;margin:15mm}html,body{margin:0;background:#888;font-family:Arial,Helvetica,sans-serif;color:#000}'
+    +'.bar{position:sticky;top:0;background:#fff;padding:10px 16px;border-bottom:1px solid #ccc;font:14px system-ui,sans-serif;display:flex;gap:12px;align-items:center}'
+    +'.bar button{font:inherit;padding:6px 14px}'
+    +'.pg{background:#fff;width:180mm;height:267mm;box-sizing:border-box;padding:0;margin:12px auto;overflow:hidden;font-size:calc(34.67pt * var(--k));line-height:1.25}'
+    +'.ord{font-size:calc(14.67pt * var(--k));margin-bottom:.9em}.pal{font-size:calc(56pt * var(--k));font-weight:bold;line-height:1.1;margin:0 0 .55em}'
+    +'.ln{margin:0 0 .7em}.ln .qty{font-size:calc(49.33pt * var(--k));line-height:1.15}'
+    +'@media print{html,body{background:#fff}.bar{display:none}.pg{margin:0;page-break-after:always;break-after:page}.pg:last-child{page-break-after:auto;break-after:auto}}'
+    +'</style></head><body><div class="bar"><b>Листы на паллеты</b><span>'+list.length+' шт · по одному листу A4 на паллету</span><button onclick="window.print()">🖨 Печать</button></div>'+pages
+    +'<script>(function(){var ps=document.querySelectorAll(".pg");for(var i=0;i<ps.length;i++){var p=ps[i],k=1;while(p.scrollHeight>p.clientHeight+1&&k>0.3){k=Math.round((k-0.04)*100)/100;p.style.setProperty("--k",k);}}})();<\/script></body></html>';
+}
+
