@@ -535,7 +535,8 @@ function renderDetail(){
       +'<div id="wip_'+b.id+'" style="margin-top:var(--s-2)"></div>'
       +'<table class="tbl items" style="margin-top:var(--s-2)"><thead><tr>'
         +'<th class="c-nm">Изделие</th>'
-        +'<th class="num c-n">Заказ</th><th class="num c-n" title="произведено и оприходовано на склад">Готово</th>'
+        +'<th class="num c-n">Заказ</th><th class="num c-n" style="width:96px" title="упаковано по одобренным нарядам (операция «Упаковка») — считается само">Упаковано</th>'
+        +'<th class="num c-n" title="оприходовано на склад готовой продукции — вписывается вручную, из нарядов не считается">Готово</th>'
         +'<th class="num c-n" title="увезено клиенту">Увезено</th><th class="c-x"></th>'
       +'</tr></thead><tbody id="items_'+b.id+'">'+items+'</tbody></table>'
       +'<div class="row" style="margin-top:var(--s-2)"><input list="modlist" id="am_'+b.id+'" placeholder="модель из каталога…" style="min-width:240px"><input class="q" id="aq_'+b.id+'" placeholder="кол-во"><button class="green sm" onclick="addItem(\''+b.id+'\')">＋ добавить модель</button></div>'
@@ -1425,9 +1426,17 @@ function itemRowHtml(it,batchId){
       +'<div class="inm">'+asmBadge+'<b>'+esc(it.model||it.equip||it.sku||'—')+'</b>'
       +(it.sku?('<span class="sku">'+esc(it.sku)+'</span>'):'')+'</div>'+(it.optionsText?('<div class="iopt">'+esc(it.optionsText)+'</div>'):'')+'</td>'
     +'<td class="num"><input class="q" value="'+it.qty+'" onchange="updItem(\''+it.id+'\',this.value)"></td>'
+    +'<td class="num">'+packedCellHtml(it)+'</td>'
     +'<td class="num"><input class="q" value="'+(it.done||0)+'" onchange="saveDone(\''+batchId+'\',\''+esc(it.sku)+'\',\''+esc(it.model)+'\',this.value)"></td>'
     +'<td class="num">'+shipCellHtml(it)+'</td>'
     +'<td class="c-x"><button class="ic" title="убрать" onclick="rmItem(\''+it.id+'\')">🗑</button></td></tr>';
+}
+/** «Упаковано» (12.10.2026): по одобренным нарядам операции изделия; null — у товара нет состава, считать не по чему; сервер ещё старый — поле не пришло */
+function packedCellHtml(it){
+  if(it.packed===undefined) return '';
+  if(it.packed===null) return '<span class="muted" title="у товара нет состава — упаковка по нарядам не считается">—</span>';
+  var p=Number(it.packed)||0, q=Number(it.qty)||0;
+  return p>0 ? ('<b'+(q&&p>=q?' class="ok" title="упаковано всё"':'')+'>'+p+'</b>') : '<span class="muted">0</span>';
 }
 function curBatch(id){ if(DETAIL&&DETAIL.id===id) return DETAIL; for(var i=0;i<BATCHES.length;i++) if(BATCHES[i].id===id) return BATCHES[i]; return null; }
 function renderItems(id){ var b=curBatch(id), tb=$('items_'+id); if(b&&tb) tb.innerHTML=(b.items||[]).map(function(it){ return itemRowHtml(it,id); }).join(''); }
