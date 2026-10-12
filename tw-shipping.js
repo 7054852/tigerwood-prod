@@ -129,7 +129,7 @@ function twPkRender(){
       +'<td class="num"><input type="number" min="0" step="0.01" data-p="'+i+'" data-l="'+j+'" data-k="grossKg" value="'+esc(l.grossKg)+'" style="width:72px"></td>'
       +'<td><button class="ic" title="снять с паллеты" onclick="twPkDel('+i+','+j+');event.stopPropagation()">🗑</button></td></tr>'; }).join('');
     return '<div class="pk-pal'+(on?' on':'')+'" onclick="twPkSelect('+i+')" title="'+(on?'выбрана: сюда кладём товар':'нажмите, чтобы класть товар на эту паллету')+'">'
-      +'<div class="hd"><b>Паллета '+(i+1)+'</b>'+(on?'<span class="pill ok">выбрана — сюда кладём</span>':'<span class="pill muted">выбрать</span>')+'<span class="sp"></span>'
+      +'<div class="hd"><b>Паллета '+(i+1)+'</b>'+(on?'<span class="pill ok">выбрана — сюда кладём</span>':'<button class="sm sec" onclick="twPkSelect('+i+');event.stopPropagation()" title="класть товар на эту паллету">выбрать эту</button>')+'<span class="sp"></span>'
       +'<button class="ic" title="выше" onclick="twPkMove('+i+',-1);event.stopPropagation()">↑</button><button class="ic" title="ниже" onclick="twPkMove('+i+',1);event.stopPropagation()">↓</button>'
       +(TWPK.pallets.length>1?'<button class="ic" title="убрать паллету (товар вернётся в «что везём»)" onclick="twPkDelPallet('+i+');event.stopPropagation()">✕</button>':'')+'</div><div class="sm muted">'+qty+' шт · '+boxes+' кор · нетто '+money(net)+' · брутто '+money(gross)+' кг</div>'
       +(rows?'<div class="tbl-wrap"><table class="tbl sm"><thead><tr><th>Товар</th><th class="num">Шт</th><th class="num">Кор.</th><th class="num">Нетто, кг</th><th class="num">Брутто, кг</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>'
@@ -147,7 +147,8 @@ function twPkRender(){
       +'<td>'+(it.left>0?'<button class="sm" onclick="twPkAdd(\''+esc(it.productId)+'\','+i+')" title="положить указанное количество на выбранную паллету">→ Паллета '+selNo+'</button>':'')+'</td></tr>'; }).join('');
   var right='<div class="pk-pool"><div class="row" style="align-items:center"><b>Что везём</b><span class="sm muted">осталось разложить: <b>'+leftAll+'</b> шт</span></div>'
     +'<div class="sm" style="margin:var(--s-1) 0">Товары из: '+ordSel+'</div>'
-    +'<div class="sm" style="margin-bottom:var(--s-1)">Впишите, сколько штук, и нажмите <b>→ Паллета '+selNo+'</b> (выбранная слева). Остальное положите на другую паллету.</div>'
+    +'<div class="row" style="align-items:center;margin-bottom:var(--s-1)"><b>Кладём на:</b><select id="pktarget" onchange="twPkSelect(Number(this.value))">'+TWPK.pallets.map(function(p,i){ return '<option value="'+i+'"'+(i===TWPK.sel?' selected':'')+'>Паллета '+(i+1)+(p.lines.length?'':' (пустая)')+'</option>'; }).join('')+'</select><span class="sm muted">или нажмите «выбрать эту» у паллеты слева</span></div>'
+    +'<div class="sm" style="margin-bottom:var(--s-1)">Впишите, сколько штук, и нажмите <b>→ Паллета '+selNo+'</b>. Остальное — на другую паллету: смените её здесь и нажмите снова.</div>'
     +'<div class="tbl-wrap"><table class="tbl sm"><thead><tr><th>Товар</th><th class="num">Штук</th><th></th></tr></thead><tbody>'+(prow||'<tr><td colspan="3" class="sm muted">в заказе нет товаров каталога</td></tr>')+'</tbody></table></div>'
     +(leftAll>0?'<div class="row" style="margin-top:var(--s-1)"><button class="gho sm" onclick="twPkAll()">Всё оставшееся — на паллету '+selNo+'</button></div>':'<div class="sm ok" style="margin-top:var(--s-1)">✓ Всё разложено</div>')
     +'<div class="row" style="margin-top:var(--s-3)"><input list="pkcat" id="pkadd" placeholder="другой товар из каталога: артикул или название" style="flex:1" onchange="twPkAddCatalog(this)"><button class="gho sm" onclick="twPkAddCatalog(el(\'pkadd\'))">＋ на паллету '+selNo+'</button></div>'
