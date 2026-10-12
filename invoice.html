@@ -201,7 +201,7 @@ function setKey(k){ if(!k||k===KEY) return; KEY=String(k); var sp=new URLSearchP
 function fill(){
   var t=D.terms||{};
   EDIT=!!(D.can&&D.can.edit);
-  ROWS=(D.items||[]).map(function(it){ return { id:it.id, sku:it.sku||'', name:it.name||'', en:it.en||'', hs:it.hs||'', art:it.art||'', qty:it.qty, price:it.price }; });
+  ROWS=(D.items||[]).map(function(it){ return { id:it.id, sku:it.sku||'', name:it.name||'', en:it.en||'', ru:it.ru||'', hs:it.hs||'', art:it.art||'', qty:it.qty, price:it.price }; });
   PRODS=D.products||[];
   el('prodList').innerHTML=PRODS.map(function(p,i){ return '<option value="'+esc(p.sku+' · '+(p.en||p.name))+'">'+esc(p.name)+(p.eur?(' — '+money(p.eur)+' EUR'):' — нет цены EUR')+'</option>'; }).join('');
   el('f_ref').value=t.buyerRef||''; el('f_ship').value=isoDate(t.shipDate); el('f_date').value=D.invoiceDate||'при формировании';
@@ -236,7 +236,7 @@ function rowHtml(r,i){
   var dis=EDIT?'':' disabled';
   var inp=function(f, cls, ph, type){ return '<input'+(type?' type="'+type+'" inputmode="decimal" step="0.01" min="0"':'')+(cls?' class="'+cls+'"':'')+' value="'+esc(r[f]==null?'':r[f])+'" placeholder="'+esc(ph||'')+'" oninput="setF('+i+',\''+f+'\',this.value)" autocomplete="off"'+dis+'>'; };
   return '<tr id="r'+i+'"><td data-l="№">'+(i+1)+'</td><td data-l="HS-код">'+inp('hs','','9506919000')+'</td><td data-l="Артикул">'+inp('art','','артикул')+'</td>'
-    +'<td data-l="Наименование" class="en">'+inp('en','','Description (EN)')+inp('name','ru','по-русски (для заказа)')+'</td>'
+    +'<td data-l="Наименование" class="en">'+inp('en','','Description (EN)')+inp('ru','ru','по-русски (для документов)')+'</td>'
     +'<td data-l="Кол-во" class="num">'+inp('qty','','0','number')+'</td><td data-l="Цена EUR" class="num">'+inp('price','','0,00','number')+'</td>'
     +'<td data-l="Сумма EUR" class="num" id="s'+i+'">'+money(num(r.qty)*num(r.price))+'</td>'
     +'<td class="tf">'+(EDIT?'<button class="ic rm" title="убрать строку" onclick="rmRow('+i+')">✕</button>':'')+'</td></tr>';
@@ -248,7 +248,7 @@ function renderRows(){
 function setF(i,f,v){ ROWS[i][f]=v; if(f==='qty'||f==='price'){ var s=el('s'+i); if(s) s.textContent=money(num(ROWS[i].qty)*num(ROWS[i].price)); calc(); } }
 function rmRow(i){ ROWS.splice(i,1); renderRows(); }
 function addRow(p){
-  ROWS.push(p?{ sku:p.sku, name:p.name, en:p.en||'', hs:p.hs||'', art:p.sku, qty:1, price:p.eur||'' }:{ sku:'', name:'', en:'', hs:'', art:'', qty:1, price:'' });
+  ROWS.push(p?{ sku:p.sku, name:p.name, en:p.en||'', ru:p.ru||'', hs:p.hs||'', art:p.sku, qty:1, price:p.eur||'' }:{ sku:'', name:'', en:'', ru:'', hs:'', art:'', qty:1, price:'' });
   renderRows();
   var tr=el('r'+(ROWS.length-1)); if(tr){ var x=tr.querySelectorAll('input'); var f=p?(p.eur?x[4]:x[5]):x[2]; if(f){ f.focus(); try{ f.select(); }catch(e){} } }
   setm('itemsMsg', p&&!p.eur?'warn':'', p&&!p.eur?('⚠️ У «'+esc(p.name)+'» нет цены EUR в прайсе — впишите цену'):'');
@@ -263,7 +263,7 @@ function pickProd(v){
 }
 function filterRows(){
   var q=val('f_filter').toLowerCase().trim();
-  ROWS.forEach(function(r,i){ var tr=el('r'+i); if(tr) tr.classList.toggle('hide', !!q && (r.art+' '+r.sku+' '+r.en+' '+r.name+' '+r.hs).toLowerCase().indexOf(q)<0); });
+  ROWS.forEach(function(r,i){ var tr=el('r'+i); if(tr) tr.classList.toggle('hide', !!q && (r.art+' '+r.sku+' '+r.en+' '+r.ru+' '+r.name+' '+r.hs).toLowerCase().indexOf(q)<0); });
 }
 function total(){ var t=0; ROWS.forEach(function(r){ t+=r2(num(r.qty)*num(r.price)); }); return r2(t); }
 
@@ -312,7 +312,7 @@ function renderBtns(){
 
 /* ══════════ действия ══════════ */
 function collect(){
-  return { items:ROWS.filter(function(r){ return String(r.name||r.en||'').trim() || num(r.qty)>0; }).map(function(r){ return { id:r.id||'', sku:r.sku||'', name:String(r.name||'').trim()||String(r.en||'').trim(), en:String(r.en||'').trim(),
+  return { items:ROWS.filter(function(r){ return String(r.name||r.ru||r.en||'').trim() || num(r.qty)>0; }).map(function(r){ return { id:r.id||'', sku:r.sku||'', name:String(r.name||'').trim()||String(r.ru||'').trim()||String(r.en||'').trim(), en:String(r.en||'').trim(), ru:String(r.ru||'').trim(),
       hs:String(r.hs||'').trim(), art:String(r.art||'').trim(), qty:num(r.qty), price:num(r.price) }; }),
     terms:{ incoterm:INC, place:val('f_place').trim(), buyerRef:val('f_ref').trim(), shipDate:ruDate(val('f_ship')), prepayMode:PRE, prepayPct:val('f_pct'), prepaySum:val('f_sum'), prepayDays:val('f_pdays'), balanceDays:val('f_bdays'), account:val('f_acc') } };
 }

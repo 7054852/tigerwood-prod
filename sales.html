@@ -406,6 +406,8 @@ function fillEdit(d){
 /* ── доставка и передача: сводка (правится в договоре); старые поля amoCRM (даты, накладная ЮЛ) — тоже видны, но правятся из диалога накладной ── */
 function renderDelivView(){
   var d=DEAL, h='', inc=function(v,c){ return v===true?'включена в стоимость':(v===false?('оплачивается отдельно'+(c?(' — '+money(c)+' руб'):'')):(c?(money(c)+' руб, отдельно'):'')); };
+  var eu=d.euTerms;   // счёт Европы по рамочному контракту: базис поставки и плановая отгрузка — из счёта (12.10.2026)
+  if(eu){ h+=infoRow('Условия поставки', eu.text); h+=infoRow('Плановая дата отгрузки', eu.shipDate); h+=infoRow('Заказ покупателя', eu.buyerRef); }
   h+=infoRow('Способ доставки', d.deliveryMethod);
   h+=infoRow(/почт/i.test(d.deliveryMethod||'')?'Отделение почты':'Адрес', [d.country, d.region, d.district, d.city, d.deliveryAddress].filter(function(x){ return String(x||'').trim(); }).join(', '));
   h+=infoRow('Срок передачи', d.transferDays!=null?(d.transferDays+' раб. дн. от оплаты'):'');
@@ -462,7 +464,8 @@ function render(){
   el('s_ship').querySelector('.h').textContent=exportDeal?'🚚 Отгрузка — экспорт ('+(d.market==='ru'?'Россия':'Европа')+')':'🚚 Отгрузка — накладные';
   if(exportDeal) twShippingBlock(KEY, 'wbBlock'); else twWaybillBlock(KEY, 'wbBlock', null);
 }
-function billUrl(){ return pageUrl('bill.html','deal',KEY); }
+function billUrl(){ return (DEAL&&DEAL.invoiceDraft)?euInvoiceUrl():pageUrl('bill.html','deal',KEY); }   // черновик счёта Европы живёт на invoice.html
+function euInvoiceUrl(){ var sp=new URLSearchParams(location.search); ['deal','lead','client','contract','framework'].forEach(function(x){ sp.delete(x); }); sp.set('invoice', (DEAL&&DEAL.invoiceDraft&&DEAL.invoiceDraft.key)||KEY); return 'invoice.html?'+sp.toString(); }
 /** заказ на производство по счёту на оплату (11.10.2026): позиции сделки → новый ПАРТ-N, сделка «в производстве» */
 function orderFromInvoice(no){
   ask('⚙️ Заказ на производство', '<div>Завести заказ на производство с позициями сделки по счёту <b>№ '+esc(no)+'</b>? Сделка перейдёт «в производство».</div><div class="msg" id="ofim"></div>', function(){
@@ -528,6 +531,13 @@ function attachSelected(){
 /* ── документы сделки ── */
 function renderDealDocs(){
   var d=DEAL, h='';
+  if(d.basis){ var b=d.basis;   // рамочный договор клиента — основание счёта; подпись/отмена — в его карточке
+    h+=twFileCard({ href:contractUrl(b), tag:twDocTag(b.type), title:b.type+' № '+b.number, meta:[b.date, 'договор клиента — основание счёта', b.validUntil?'до '+b.validUntil:''].filter(Boolean).join(' · '),
+      pills:b.status?'<span class="pill">'+esc(b.status)+'</span>':'', acts:b.url?'<a href="'+esc(b.url)+'" target="_blank" rel="noopener">файл ↗</a>':'' }); }
+  if(d.invoiceDraft){ var v0=d.invoiceDraft;
+    h+=twFileCard({ href:euInvoiceUrl(), tag:twDocTag('Проформа (счёт на оплату)'), title:'Счёт на оплату — черновик',
+      meta:[money(v0.total)+' '+(d.currency||'EUR'), v0.contractNo?'к контракту № '+v0.contractNo:'', v0.prepay<v0.total?('предоплата '+(v0.prepayPct!=null?v0.prepayPct+' % — ':'')+money(v0.prepay)):'оплата 100 %'].filter(Boolean).join(' · '),
+      pills:'<span class="pill muted">черновик</span>', acts:'<a href="'+esc(euInvoiceUrl())+'">открыть и сформировать →</a>' }); }
   (d.contracts||[]).forEach(function(c){
     var n=jq(c.number), live=(c.status!=='аннулирован'&&c.status!=='черновик');
     h+=twFileCard({ href:contractUrl(c), tag:twDocTag(c.type), title:'Договор '+(c.number?'№ '+c.number:'(черновик)'),
