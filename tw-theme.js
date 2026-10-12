@@ -159,6 +159,25 @@
     for(var i=0;i<ts.length;i++){ var t=ts[i], p=t.parentElement;
       t.classList.remove('cards');
       if(!narrow && p && t.offsetParent && t.offsetWidth>p.clientWidth+1) t.classList.add('cards'); }
+    // главный реестр экрана (.tbl-wrap.fill) — на всю оставшуюся высоту окна; на телефоне прокручивается страница
+    var fs=d.querySelectorAll('.tbl-wrap.fill, .tbwrap.fill');
+    for(var j=0;j<fs.length;j++){ var f=fs[j]; if(!f.offsetParent) continue;
+      var top=f.getBoundingClientRect().top+(root.pageYOffset||0);
+      var below=Math.min(120, Math.max(16, Math.round(d.body.getBoundingClientRect().bottom-f.getBoundingClientRect().bottom)));   // что под реестром: поля карточки и страницы (от окна не зависит)
+      var mh=narrow?'none':(Math.max(260, (root.innerHeight||0)-top-below)+'px');
+      if(f.style.maxHeight!==mh) f.style.maxHeight=mh; }   // то же значение не переписываем — иначе наблюдатель за DOM зациклит пересчёт
+    hintButtons();
+  }
+  // подсказка .note.hint прячется за кнопкой «?» в панели перед ней (нет панели — остаётся видимой)
+  function hintButtons(){
+    var hs=d.querySelectorAll('.note.hint:not([data-hb])');
+    for(var i=0;i<hs.length;i++){ (function(h){
+      var tb=h.previousElementSibling; while(tb && !(tb.classList&&tb.classList.contains('toolbar'))) tb=tb.previousElementSibling;
+      h.setAttribute('data-hb','1'); if(!tb){ h.classList.add('show'); return; }
+      var b=d.createElement('button'); b.type='button'; b.className='sec ib'; b.textContent='?'; b.title='Как пользоваться этим экраном';
+      b.onclick=function(){ h.classList.toggle('show'); fitSoon(); };
+      var end=tb.querySelector('.end'); if(end) end.insertBefore(b, end.firstChild); else tb.appendChild(b);
+    })(hs[i]); }
   }
   function fitSoon(){ if(!FIT) FIT=setTimeout(fitTables, 30); }   // не rAF: в скрытом iframe оболочки он не срабатывает
   root.addEventListener('resize', fitSoon);

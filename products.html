@@ -221,11 +221,12 @@ function renderShell(){
     +'<option value="group">по группам</option><option value="equip">по оборудованию</option></select>'
     +'<span class="meta" id="regmeta"></span>'
     +'<div class="end">'
-    +'<button class="btn sec" onclick="load(true);msg(\'⟳ обновляю с сервера…\',1)" title="перечитать с сервера">Обновить</button>'
+    +'<button class="btn sec ib" onclick="load(true);msg(\'⟳ обновляю с сервера…\',1)" title="Обновить — перечитать с сервера">↻</button>'
     +'<span id="regtools" style="display:contents"></span>'
-    +'<button class="btn sec" onclick="doExport(this)" title="выгрузить в Google-таблицу, лист «Прохаб: выгрузка»">⬆️ В Google-реестр</button>'
+    +'<button class="btn sec ib" onclick="doExport(this)" title="Выгрузить в Google-таблицу, лист «Прохаб: выгрузка»">⬆</button>'
     +'<button class="btn pri" onclick="openCard(\'\')">＋ Товар</button>'
     +'</div></div>'
+    +'<div class="note hint">двойной клик по ячейке — правка · клик по артикулу — карточка · клик по заголовку — сортировка</div>'
     +'<div id="msg"></div>'
     +'<div id="tabbody"></div>';
   $('app').innerHTML=h;
@@ -268,6 +269,7 @@ function renderBody(){
   if(TAB==='reg'){
     var ow=b.querySelector('.tbwrap'), st=ow?ow.scrollTop:0, sl=ow?ow.scrollLeft:0, wy=window.scrollY;
     b.innerHTML=regView();
+    if(window.twFitTables) twFitTables();   // высота реестра (.fill) — до возврата прокрутки
     var nw=b.querySelector('.tbwrap'); if(nw){ nw.scrollTop=st; nw.scrollLeft=sl; }
     if(Math.abs(window.scrollY-wy)>1) window.scrollTo(0,wy);
   }
@@ -356,18 +358,17 @@ function regView(){
   // счётчик и кнопки реестра живут в общей панели действий (renderShell)
   regBar('товаров: '+list.length,
     '<span style="position:relative;display:inline-flex">'
-    +'<button class="btn sec" onclick="var m=$(\'colsMenu\');m.style.display=m.style.display===\'none\'?\'\':\'none\'">⚙ колонки</button>'
+    +'<button class="btn sec ib" title="Колонки: что показывать" onclick="var m=$(\'colsMenu\');m.style.display=m.style.display===\'none\'?\'\':\'none\'">⚙</button>'
     +'<span id="colsMenu" style="display:none;position:absolute;top:calc(100% + var(--s-1));right:0;background:var(--card);border:1px solid var(--line);border-radius:var(--r-ctl);box-shadow:var(--shadow-pop);padding:var(--s-2);z-index:20;min-width:170px">'
     +REGCOLS.map(function(c){ return '<label style="display:flex;gap:var(--s-2);align-items:center;padding:var(--s-1) var(--s-2);cursor:pointer;font:var(--t-small)"><input type="checkbox" style="width:auto" '+(HIDE[c.k]?'':'checked')+' onchange="colTgl(\''+c.k+'\')">'+esc(c.t)+'</label>'; }).join('')
     +'</span></span>'
     +(!sorted?(function(){
         var any=Object.keys(CLOSED).some(function(k){return CLOSED[k];});
-        return any?'<button class="btn sec" onclick="CLOSED={};renderBody()" title="раскрыть все группы и оборудование">⊞ развернуть всё</button>'
-                  :'<button class="btn sec" onclick="collapseAll()" title="сжать весь каталог до заголовков">⊟ свернуть всё</button>';
+        return any?'<button class="btn sec ib" onclick="CLOSED={};renderBody()" title="Развернуть всё: раскрыть все группы и оборудование">⊞</button>'
+                  :'<button class="btn sec ib" onclick="collapseAll()" title="Свернуть всё: сжать каталог до заголовков">⊟</button>';
       })():''));
-  var h=chips
-    +'<div class="note">двойной клик по ячейке — правка · клик по артикулу — карточка · клик по заголовку — сортировка</div>';
-  h+='<div class="card tbwrap" style="padding:0"><table class="tbl regtbl"><colgroup>'
+  var h=chips;
+  h+='<div class="card tbwrap fill" style="padding:0"><table class="tbl regtbl"><colgroup>'
     +Array(cols.length+2).join('<col>')+'</colgroup><tr>'
     +'<th style="cursor:default"><input type="checkbox" '+(selN&&selN>=list.length?'checked':'')+' onclick="selAll(this.checked)" title="выбрать все видимые"></th>'
     +cols.map(function(c){
