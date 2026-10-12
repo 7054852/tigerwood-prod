@@ -2333,7 +2333,12 @@ function loadCutLog(){
 // бейдж вида строки: раскрой листа / доплата (исторические строки «повременно» тоже показываем)
 // разработка нового продукта — повременка в минутах с операцией (09.10.2026): «🧪 Разработка … · 1 ч 30 мин»
 function isDev(it){ return !!it && it.kind==='повременно' && !!it.op && it.op!=='Повременно'; }
-function lineTxt(it){ return isDev(it) ? ('🧪 '+esc(it.detail)+(it.note?(' — '+esc(it.note)):'')+' · '+devMin(Number(it.qty)||0)) : (esc(it.detail)+' · '+esc(it.op)+' · '+it.qty+' шт'); }
+/** имя строки для показа (12.10.2026): у операции изделия (упаковка — детали нет) дописываем модель, иначе разные товары одного оборудования
+    выглядят одинаково: «Складная башня Foldable — BK Tower Foldable LAK». Данные строки (l.detail для правки) не трогаем. */
+function lineName(it){ var d=String(it.detail||''), m=String(it.model||'').trim(), p=d.split(' — ');
+  var prod=p.length<2 || p.slice(1).join(' — ').trim()===p[0].trim();   // операция изделия: детали нет или «деталь» — само оборудование («Складная башня Foldable — Складная башня Foldable»)
+  return (m && prod && d.indexOf(m)<0) ? p[0]+' — '+m : d; }
+function lineTxt(it){ return isDev(it) ? ('🧪 '+esc(it.detail)+(it.note?(' — '+esc(it.note)):'')+' · '+devMin(Number(it.qty)||0)) : (esc(lineName(it))+' · '+esc(it.op)+' · '+it.qty+' шт'); }
 function kindBadge(it){
   if(!it||isDev(it)) return '';
   if(it.kind==='подряд') return '<span class="pill warn" title="работу выполнил подрядчик: в зарплату не идёт, платим по акту">🤝 подряд</span> ';
