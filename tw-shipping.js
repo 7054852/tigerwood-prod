@@ -258,6 +258,6 @@ function twBoxStickersHtml(list, part){
     +'.ft{flex:none;display:flex;justify-content:center;align-items:baseline;gap:2mm;font-size:5.2pt;font-weight:500;letter-spacing:.14em}.ft .pt{font-weight:700;color:#555}'
     +'@media print{html,body{background:#fff}.bar{display:none}.wrap{display:block;padding:0}.st{outline:0;margin:0;page-break-after:always;break-after:page}.st:last-child{page-break-after:auto;break-after:auto}}'
     +'</style></head><body><div class="bar"><b>Стикеры на коробки</b><span>'+list.length+' шт · наклейка 40×30 мм, по одной на товар'+(part?' · '+esc(part):'')+'</span><button onclick="window.print()">🖨 Печать</button>'
-    +'<span class="sm">В окне печати: размер бумаги 40×30 мм, без полей и масштаба; копий — сколько коробок</span></div><div class="wrap">'+st+'</div>'
+    +'<span class="sm">Размер страницы 40×30 мм и нулевые поля заданы самой страницей — в окне печати Chrome ничего выбирать не нужно, только число копий</span></div><div class="wrap">'+st+'</div>'
     +'<script>(function(){function fit(){var ss=document.querySelectorAll(".st");for(var i=0;i<ss.length;i++){var s=ss[i],b=s.querySelector(".nm"),k=1;s.style.setProperty("--k",1);while(b.scrollHeight>b.clientHeight+1&&k>0.45){k=Math.round((k-0.04)*100)/100;s.style.setProperty("--k",k);}}}fit();if(document.fonts&&document.fonts.ready)document.fonts.ready.then(fit);})();<\/script></body></html>';
 }
