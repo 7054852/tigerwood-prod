@@ -466,12 +466,23 @@ function render(){
 }
 function billUrl(){ return (DEAL&&DEAL.invoiceDraft)?euInvoiceUrl():pageUrl('bill.html','deal',KEY); }   // черновик счёта Европы живёт на invoice.html
 function euInvoiceUrl(){ var sp=new URLSearchParams(location.search); ['deal','lead','client','contract','framework'].forEach(function(x){ sp.delete(x); }); sp.set('invoice', (DEAL&&DEAL.invoiceDraft&&DEAL.invoiceDraft.key)||KEY); return 'invoice.html?'+sp.toString(); }
-/** заказ на производство по счёту на оплату (11.10.2026): позиции сделки → новый ПАРТ-N, сделка «в производстве» */
+/** заказ на производство по счёту на оплату (11.10.2026): позиции сделки → новый ПАРТ-N, сделка «в производстве».
+    12.10.2026: заказ уже заведён в производстве — выбрать его: сделка привязывается, состав заказа не меняется, расхождения показываем. Заявка при этом становится заказом №N. */
 function orderFromInvoice(no){
-  ask('⚙️ Заказ на производство', '<div>Завести заказ на производство с позициями сделки по счёту <b>№ '+esc(no)+'</b>? Сделка перейдёт «в производство».</div><div class="msg" id="ofim"></div>', function(){
-    run({vapi:'orderfrominvoice', invoice:no}, 'Завожу заказ…', 'ofim').then(function(r){ if(!r) return; hide('askmodal'); info('Заказ заведён', '<div>'+esc(r.num)+' — '+esc(r.name)+' · позиций: '+esc(r.positions)+(r.skipped&&r.skipped.length?'<div class="warn">Без товара каталога, в заказ не вошли: '+esc(r.skipped.join(', '))+'</div>':'')+'</div>'); reload(); });
+  ask('⚙️ Заказ на производство', '<div>Счёт <b>№ '+esc(no)+'</b> → заказ на производство. Сделка перейдёт «в производство»'+(isOrder(DEAL)?'':' и станет заказом №N')+'.</div>'
+    +'<div class="fl" style="margin-top:var(--s-3)"><label>Заказ</label><select id="ofiOrder"><option value="">＋ новый заказ с позициями счёта</option></select></div><div class="msg" id="ofim"></div>', function(){
+    var ord=val('ofiOrder');
+    run({vapi:'orderfrominvoice', invoice:no, order:ord}, ord?'Привязываю к заказу…':'Завожу заказ…', 'ofim').then(function(r){ if(!r) return; hide('askmodal');
+      var row=function(x){ return '<tr><td>'+esc(x.sku)+'</td><td>'+esc(x.name)+'</td><td class="num">'+esc(x.invoice)+'</td><td class="num">'+esc(x.order)+'</td></tr>'; };
+      var df=r.diff||{}, rows=(df.missing||[]).concat(df.extra||[]);
+      info(r.linked?'Сделка привязана к заказу':'Заказ заведён', '<div>'+esc(r.num)+' — '+esc(r.name)+' · позиций счёта: '+esc(r.positions)+(r.dealNum?' · сделка '+esc(r.dealNum):'')+'</div>'
+        +(r.skipped&&r.skipped.length?'<div class="warn">Без товара каталога, в заказ не входят: '+esc(r.skipped.join(', '))+'</div>':'')
+        +(r.linked?(rows.length?'<div class="warn" style="margin-top:var(--s-2)">Состав заказа не менялся. Расхождения счёта и заказа:</div><div class="tbl-wrap"><table class="tbl sm"><thead><tr><th>Артикул</th><th>Товар</th><th class="num">В счёте</th><th class="num">В заказе</th></tr></thead><tbody>'+rows.map(row).join('')+'</tbody></table></div>':'<div class="ok">Позиции счёта и заказа совпадают.</div>'):''));
+      reload(); });
     return false;
-  }, 'Завести');
+  }, 'Готово');
+  get({vapi:'batches'}).then(function(r){ var sel=el('ofiOrder'); if(!sel||!r||!r.batches) return;
+    r.batches.filter(function(b){ return b.status!=='отгружено'; }).forEach(function(b){ var o=document.createElement('option'); o.value=b.num; o.textContent='привязать к '+b.num+' · '+b.name; sel.appendChild(o); }); }).catch(function(){});
 }
 
 /* ── стадия: заявка → заказ / не состоялась ── */
