@@ -94,7 +94,7 @@ function twPacking(orderKey){
       twPkSync();
       var bad=TWPK.pallets.some(function(p){ return p.lines.some(function(l){ return !(Number(l.qty)>0); }); });
       if(bad){ setm('pkmsg','err','У каждой строки паллеты нужно количество больше 0'); return false; }
-      var pallets=TWPK.pallets.filter(function(p){ return p.lines.length; });
+      var pallets=TWPK.pallets.filter(function(p){ return p.lines.length; }).map(function(p){ return { note:p.note, lines:p.lines.map(function(l){ return { productId:l.productId, qty:l.qty, boxes:l.boxes, netKg:l.netKg, grossKg:l.grossKg }; }) }; });
       run({vapi:'packsave', deal:TWSH.deal, data:JSON.stringify({ pallets:pallets })}, 'Сохраняю паллетовку…', 'pkmsg').then(function(x){ if(!x) return; close(); twShRefresh(); });
       return false;
     }, 'Сохранить паллетовку');
@@ -111,7 +111,7 @@ function twPkPool(){
 function twPkCss(){ if(el('pkcss')) return; var st=document.createElement('style'); st.id='pkcss';
   st.textContent='.pk-grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:var(--s-3);align-items:start}@media(max-width:760px){.pk-grid{grid-template-columns:1fr}}'
     +'.pk-pal{border:2px solid var(--line);border-radius:10px;padding:var(--s-2) var(--s-3);margin-top:var(--s-2);cursor:pointer}.pk-pal.on{border-color:var(--accent);background:var(--accent-bg,var(--card2))}'
-    +'.pk-pal input{cursor:text}.pk-pal .hd{display:flex;align-items:center;gap:var(--s-2);flex-wrap:wrap}.pk-pal .tbl-wrap{max-height:none}.pk-pool .tbl-wrap{max-height:52vh}';
+    +'.pk-pal input{cursor:text}.pk-pal .hd{display:flex;align-items:center;gap:var(--s-2);flex-wrap:wrap}.pk-pal .tbl-wrap{max-height:none}.pk-pool{position:sticky;top:0}.pk-pool .tbl-wrap{max-height:48vh}@media(max-width:760px){.pk-pool{position:static}}';
   document.head.appendChild(st); }
 function twPkRender(){
   twPkCss();
@@ -123,7 +123,7 @@ function twPkRender(){
     var net=0, gross=0, boxes=0, qty=0; p.lines.forEach(function(l){ net+=Number(l.netKg)||0; gross+=Number(l.grossKg)||0; boxes+=Number(l.boxes)||0; qty+=Number(l.qty)||0; });
     var on=(i===TWPK.sel);
     var rows=p.lines.map(function(l,j){ return '<tr><td>'+esc(l.name)+' <span class="muted">'+esc(l.sku)+'</span></td>'
-      +'<td class="num"><input type="number" min="0" step="1" data-p="'+i+'" data-l="'+j+'" data-k="qty" value="'+esc(l.qty)+'" style="width:64px" onchange="twPkSync();twPkRender()"></td>'
+      +'<td class="num"><input type="number" min="0" step="1" data-p="'+i+'" data-l="'+j+'" data-k="qty" value="'+esc(l.qty)+'" style="width:64px" onchange="twPkSync();twPkReweigh('+i+','+j+');twPkRender()"></td>'
       +'<td class="num"><input type="number" min="0" step="1" data-p="'+i+'" data-l="'+j+'" data-k="boxes" value="'+esc(l.boxes)+'" style="width:56px"></td>'
       +'<td class="num"><input type="number" min="0" step="0.01" data-p="'+i+'" data-l="'+j+'" data-k="netKg" value="'+esc(l.netKg)+'" style="width:72px"></td>'
       +'<td class="num"><input type="number" min="0" step="0.01" data-p="'+i+'" data-l="'+j+'" data-k="grossKg" value="'+esc(l.grossKg)+'" style="width:72px"></td>'
@@ -148,7 +148,7 @@ function twPkRender(){
   var right='<div class="pk-pool"><div class="row" style="align-items:center"><b>Что везём</b><span class="sm muted">осталось разложить: <b>'+leftAll+'</b> шт</span></div>'
     +'<div class="sm" style="margin:var(--s-1) 0">Товары из: '+ordSel+'</div>'
     +'<div class="row" style="align-items:center;margin-bottom:var(--s-1)"><b>Кладём на:</b><select id="pktarget" onchange="twPkSelect(Number(this.value))">'+TWPK.pallets.map(function(p,i){ return '<option value="'+i+'"'+(i===TWPK.sel?' selected':'')+'>Паллета '+(i+1)+(p.lines.length?'':' (пустая)')+'</option>'; }).join('')+'</select><span class="sm muted">или нажмите «выбрать эту» у паллеты слева</span></div>'
-    +'<div class="sm" style="margin-bottom:var(--s-1)">Впишите, сколько штук, и нажмите <b>→ Паллета '+selNo+'</b>. Остальное — на другую паллету: смените её здесь и нажмите снова.</div>'
+    +'<div class="sm" style="margin-bottom:var(--s-1)">Впишите, сколько штук, и нажмите <b>→ Паллета '+selNo+'</b>. Остальное — на другую паллету: смените её здесь и нажмите снова. Нетто/брутто считаются по карточке товара (нетто и брутто коробки × штук), правятся в строке.</div>'
     +'<div class="tbl-wrap"><table class="tbl sm"><thead><tr><th>Товар</th><th class="num">Штук</th><th></th></tr></thead><tbody>'+(prow||'<tr><td colspan="3" class="sm muted">в заказе нет товаров каталога</td></tr>')+'</tbody></table></div>'
     +(leftAll>0?'<div class="row" style="margin-top:var(--s-1)"><button class="gho sm" onclick="twPkAll()">Всё оставшееся — на паллету '+selNo+'</button></div>':'<div class="sm ok" style="margin-top:var(--s-1)">✓ Всё разложено</div>')
     +'<div class="row" style="margin-top:var(--s-3)"><input list="pkcat" id="pkadd" placeholder="другой товар из каталога: артикул или название" style="flex:1" onchange="twPkAddCatalog(this)"><button class="gho sm" onclick="twPkAddCatalog(el(\'pkadd\'))">＋ на паллету '+selNo+'</button></div>'
@@ -158,9 +158,13 @@ function twPkRender(){
 }
 function twPkFillCat(){ var d=el('pkcat'); if(!d) return; d.innerHTML=(TWPK.products||[]).map(function(p){ return '<option value="'+esc(p.sku)+'">'+esc(p.name)+'</option>'; }).join(''); }
 function twPkSync(){ var ins=(el('pkbody')||document).querySelectorAll('input[data-p]'); for(var i=0;i<ins.length;i++){ var e=ins[i], p=TWPK.pallets[Number(e.getAttribute('data-p'))]; if(!p) continue; var l=p.lines[Number(e.getAttribute('data-l'))]; if(l) l[e.getAttribute('data-k')]=e.value; } }
+function twPkReweigh(i,j){ var l=TWPK.pallets[i]&&TWPK.pallets[i].lines[j]; if(!l) return; if(l.un===undefined){ var u=twPkUnit(l.productId); l.un=u.un; l.ug=u.ug; } twPkWeights(l); }
 function twPkSelect(i){ if(i===TWPK.sel) return; twPkSync(); TWPK.sel=i; twPkRender(); }
-function twPkPut(p, it, n){ var ex=p.lines.filter(function(l){ return l.productId===it.productId; })[0];
-  if(ex){ ex.qty=(Number(ex.qty)||0)+n; ex.boxes=(Number(ex.boxes)||0)+n; } else p.lines.push({ productId:it.productId, sku:it.sku, name:it.name, qty:n, boxes:n, netKg:'', grossKg:'' }); }
+/** вес строки по карточке товара (нетто/брутто коробки × штук); пусто в карточке — поле остаётся пустым, вписывается руками */
+function twPkWeights(l){ var q=Number(l.qty)||0; if(l.un>0) l.netKg=Math.round(l.un*q*100)/100; if(l.ug>0) l.grossKg=Math.round(l.ug*q*100)/100; }
+function twPkUnit(productId){ var all=(TWPK.r.order?TWPK.r.order.items:TWPK.r.dealItems)||[]; var it=all.filter(function(x){ return x.productId===productId; })[0]||(TWPK.products||[]).filter(function(x){ return x.productId===productId; })[0]||{}; return { un:Number(it.unitNet)||0, ug:Number(it.unitGross)||0 }; }
+function twPkPut(p, it, n){ var ex=p.lines.filter(function(l){ return l.productId===it.productId; })[0], u=twPkUnit(it.productId);
+  if(ex){ ex.qty=(Number(ex.qty)||0)+n; ex.boxes=(Number(ex.boxes)||0)+n; ex.un=u.un; ex.ug=u.ug; twPkWeights(ex); } else { var l={ productId:it.productId, sku:it.sku, name:it.name, qty:n, boxes:n, netKg:'', grossKg:'', un:u.un, ug:u.ug }; twPkWeights(l); p.lines.push(l); } }
 function twPkAdd(productId, i){ twPkSync(); var it=twPkPool().filter(function(x){ return x.productId===productId; })[0]; if(!it) return;
   var inp=el('pkq'+i), n=Math.round(Number(inp&&inp.value)||0);
   if(!(n>0)){ setm('pkmsg','err','Впишите, сколько штук положить'); return; }
