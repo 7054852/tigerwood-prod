@@ -18,7 +18,8 @@ function twShRender(){
   h+='<div class="sm" style="margin-bottom:var(--s-2)">Рынок <b>'+esc(r.eu?'Европа':'Россия')+'</b> · счёт на оплату '+(r.payInvoice?'<b>№ '+esc(r.payInvoice)+'</b>':'<span class="warn">не выставлен</span>')
     +' · заказ на производство '+(r.order?'<b>'+esc(r.order.num)+'</b>':'<span class="warn">не заведён</span>')+'</div>';
   h+='<div class="row" style="align-items:center;margin-bottom:var(--s-2)"><span class="sm">🧱 Паллетовка: '+(p.pallets?('<b>'+p.pallets+'</b> паллет · <b>'+p.boxes+'</b> коробок · брутто <b>'+money(p.gross)+'</b> кг'):'<span class="warn">товары не разложены по паллетам</span>')+'</span>'
-    +'<button class="sec sm" onclick="twPacking()">🧱 Паллетовка</button>'+(p.pallets?'<button class="gho sm" onclick="twPalletSheets()" title="лист на каждую паллету: что на ней лежит — печать на A4">🏷 Листы на паллеты</button>':'')+'</div>';
+    +'<button class="sec sm" onclick="twPacking()">🧱 Паллетовка</button>'+(p.pallets?'<button class="gho sm" onclick="twPalletSheets()" title="лист на каждую паллету: что на ней лежит — печать на A4">🏷 Листы на паллеты</button>':'')
+    +'<button class="gho sm" onclick="twBoxStickers()" title="стикер 40×30 мм на коробку для каждого товара заказа — печать на принтере наклеек">🔖 Стикеры на коробки</button></div>';
   h+=(r.docs||[]).map(function(d){
     var pills=d.uploaded?'<span class="pill info">загружен</span>':(d.status==='сформирован'?'<span class="pill ok">'+esc(d.status)+'</span>':'<span class="pill bad">'+esc(d.status)+'</span>');
     var acts=d.docType==='waybill_tn'&&!d.uploaded?'<a href="#" onclick="twWbPdf(\''+esc(d.id)+'\');return false;" title="одна страница A4, без сетки — для печати на бланке">🖨 PDF для печати</a>':'';
@@ -222,4 +223,41 @@ function twPalletSheetsHtml(list, order){
     +'@media print{html,body{background:#fff}.bar{display:none}.pg{margin:0;box-shadow:none;page-break-after:always;break-after:page}.pg:last-child{page-break-after:auto;break-after:auto}.ln .r{-webkit-print-color-adjust:exact;print-color-adjust:exact}}'
     +'</style></head><body><div class="bar"><b>Листы на паллеты</b><span>'+n+' шт · по одному листу A4 на паллету</span><button onclick="window.print()">🖨 Печать</button></div>'+pages
     +'<script>(function(){function fit(){var ps=document.querySelectorAll(".pg");for(var i=0;i<ps.length;i++){var p=ps[i],b=p.querySelector(".lines"),k=1;p.style.setProperty("--k",1);while(b.scrollHeight>b.clientHeight+1&&k>0.28){k=Math.round((k-0.03)*100)/100;p.style.setProperty("--k",k);}}}fit();if(document.fonts&&document.fonts.ready)document.fonts.ready.then(fit);})();<\/script></body></html>';
+}
+
+/* ── стикеры на коробки (владелец 13.10.2026): наклейка 40×30 мм (образцы — 472×354 px при 300 dpi) на каждый товар заказа на производство:
+   артикул · имя EN заглавными + «PARTS» · MADE IN BELARUS · второстепенно номер партии латиницей (ПАРТ-4 → PART4). Печать на принтере наклеек:
+   страница = наклейка, @page 40mm 30mm без полей; имя уменьшается, пока не поместится. Чёрно-белое — термопринтер цвета не печатает. ── */
+function twBoxStickers(){
+  var w=window.open('', '_blank');
+  if(!w){ (typeof oops==='function'?oops:alert)('Браузер не дал открыть окно печати — разрешите всплывающие окна для сайта'); return; }
+  w.document.write('<!doctype html><title>Стикеры на коробки</title><body style="font-family:system-ui,sans-serif;padding:24px">Готовлю стикеры…</body>');
+  get({vapi:'packget', deal:TWSH.deal}).then(function(r){
+    if(!r||!r.ok){ w.document.body.innerHTML=esc(errText(r)); return; }
+    var items=(r.order?r.order.items:r.dealItems)||[], part=r.order?String(r.order.num||'').replace(/^ПАРТ-/,'PART'):'';
+    var seen={}, list=items.filter(function(it){ if(!it.sku||seen[it.sku]) return false; seen[it.sku]=1; return true; });
+    if(!list.length){ w.document.body.innerHTML='В заказе нет товаров каталога — стикеры делать не из чего.'; return; }
+    w.document.open(); w.document.write(twBoxStickersHtml(list, part)); w.document.close();
+  });
+}
+function twBoxStickersHtml(list, part){
+  // модель в скобках «(BK Tower Foldable WHITE)» на стикере не печатаем — как в образцах: таможенное имя + PARTS
+  var st=list.map(function(it){ var nm=String(it.nameEn||it.name||'').replace(/\s*\([^)]*\)\s*$/,'').trim();
+    return '<div class="st" style="--k:1"><div class="sku">'+esc(it.sku)+'</div><div class="nm"><span class="in">'+esc(nm)+' <b>PARTS</b></span></div>'
+      +'<div class="ft"><span>MADE IN BELARUS</span>'+(part?'<span class="pt">'+esc(part)+'</span>':'')+'</div></div>'; }).join('');
+  return '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Стикеры на коробки'+(part?' — '+esc(part):'')+'</title>'
+    +'<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
+    +'<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&display=swap"><style>'
+    +'@page{size:40mm 30mm;margin:0}html,body{margin:0;background:#EEF1F5;color:#000;font-family:Onest,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}'
+    +'.bar{position:sticky;top:0;z-index:2;background:#fff;padding:10px 16px;border-bottom:1px solid #E4E7EC;font:14px/20px Onest,system-ui,sans-serif;display:flex;gap:12px;align-items:center;flex-wrap:wrap}'
+    +'.bar button{font:inherit;font-weight:600;padding:7px 16px;border:0;border-radius:10px;background:#2458C9;color:#fff;cursor:pointer}.bar .sm{color:#667085}'
+    +'.wrap{display:flex;flex-wrap:wrap;gap:12px;padding:16px}'
+    +'.st{background:#fff;width:40mm;height:30mm;box-sizing:border-box;padding:2.2mm 2mm 1.8mm;overflow:hidden;display:flex;flex-direction:column;align-items:center;text-align:center;outline:1px dashed #D0D5DD}'
+    +'.sku{font-size:9.5pt;font-weight:800;letter-spacing:.1em;line-height:1.1;flex:none}'
+    +'.nm{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;font-size:calc(8.6pt * var(--k));font-weight:500;letter-spacing:.06em;line-height:1.22;text-transform:uppercase;padding:1mm 0}.nm b{font-weight:800}'
+    +'.ft{flex:none;display:flex;justify-content:center;align-items:baseline;gap:2mm;font-size:5.2pt;font-weight:500;letter-spacing:.14em}.ft .pt{font-weight:700;color:#555}'
+    +'@media print{html,body{background:#fff}.bar{display:none}.wrap{display:block;padding:0}.st{outline:0;margin:0;page-break-after:always;break-after:page}.st:last-child{page-break-after:auto;break-after:auto}}'
+    +'</style></head><body><div class="bar"><b>Стикеры на коробки</b><span>'+list.length+' шт · наклейка 40×30 мм, по одной на товар'+(part?' · '+esc(part):'')+'</span><button onclick="window.print()">🖨 Печать</button>'
+    +'<span class="sm">В окне печати: размер бумаги 40×30 мм, без полей и масштаба; копий — сколько коробок</span></div><div class="wrap">'+st+'</div>'
+    +'<script>(function(){function fit(){var ss=document.querySelectorAll(".st");for(var i=0;i<ss.length;i++){var s=ss[i],b=s.querySelector(".nm"),k=1;s.style.setProperty("--k",1);while(b.scrollHeight>b.clientHeight+1&&k>0.45){k=Math.round((k-0.04)*100)/100;s.style.setProperty("--k",k);}}}fit();if(document.fonts&&document.fonts.ready)document.fonts.ready.then(fit);})();<\/script></body></html>';
 }
