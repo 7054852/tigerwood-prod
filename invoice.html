@@ -294,8 +294,16 @@ function calc(){
 function renderDocs(){
   var h='', docs=D.docs||[], ci=D.commercials||[];
   if(D.status==='new'||D.status==='draft') h='<div class="sm">Черновик: номера и документа ещё нет — «Сохранить», затем «Сформировать документ» (номер PI-… выдаётся в этот момент).</div>';
-  docs.forEach(function(d){ h+=twFileCard({ href:d.url, tab:1, tag:'PI', title:'Проформа'+(D.number?' № '+D.number:''), meta:[d.date, d.error||''].filter(Boolean).join(' · '), off:d.status==='cancelled',
-    pills:d.status!=='formed'?'<span class="pill '+(d.status==='failed'?'bad':'muted')+'">'+esc(d.status==='failed'?'ошибка':d.status)+'</span>':'' }); });
+  // версии документа (12.10.2026): действующая — последняя сформированная, отмечена; прежние (переформирован: номер, дата, условия) — свёрнуты и помечены «заменён»,
+  // у каждой своё имя файла (в нём номер, под которым она выпускалась) и время
+  var cur=-1; docs.forEach(function(d,i){ if(cur<0 && d.status==='formed') cur=i; });
+  var card=function(d,i){ var isCur=(i===cur), old=(d.status==='formed' && !isCur);
+    return twFileCard({ href:d.url, tab:1, tag:'PI', title:isCur?('Проформа'+(D.number?' № '+D.number:'')):(d.name||'Проформа'),
+      meta:[d.date+(d.at?' '+d.at:''), isCur?(docs.length>1?'последняя версия':''):'', d.error||''].filter(Boolean).join(' · '), off:d.status==='cancelled'||old,
+      pills:isCur?'<span class="pill ok">действующий</span>':old?'<span class="pill muted">заменён</span>':'<span class="pill '+(d.status==='failed'?'bad':'muted')+'">'+esc(d.status==='failed'?'ошибка':d.status==='cancelled'?'удалён':d.status)+'</span>' }); };
+  if(cur>=0) h+=card(docs[cur],cur);
+  var rest=docs.map(function(d,i){ return i===cur?'':card(d,i); }).join('');
+  if(rest) h+=(cur>=0?('<details class="sm" style="margin-top:var(--s-2)"><summary style="cursor:pointer">Прежние версии ('+(docs.length-1)+') — заменены, клиенту не отправлять</summary><div style="margin-top:var(--s-2)">'+rest+'</div></details>'):rest);
   ci.forEach(function(x){ h+=twFileCard({ href:x.url, tab:1, tag:'CI', title:'Коммерческий инвойс № '+x.number, meta:[x.date, money(x.sum)+' EUR'].join(' · '),
     pills:x.status?'<span class="pill">'+esc(x.status)+'</span>':'', off:/аннул/.test(x.status||'') }); });
   if(D.status==='issued' && !docs.length) h+='<div class="sm">Номер выдан, документа нет — нажмите «Сформировать документ» ещё раз (номер тот же).</div>';
