@@ -175,59 +175,51 @@ function twPkNew(){ twPkSync(); TWPK.pallets.push({ note:'', lines:[] }); TWPK.s
 
 /* ── листы на паллеты (владелец 12.10.2026): на каждую паллету клеится лист A4 «что на ней лежит» — по образцу Google-документа «Order: OBJ-…»:
    Order: <заказ покупателя> · Palet #N · по строкам: артикул / <имя EN> Parts - / <шт> pcs. «Parts -» — обязательно (владелец).
-   Дизайн «как сайт» (tigerwood.by): шрифты Unbounded (заголовки, количество) + Onest (текст), логотип-марка tigerwood-mark.svg, палитра сайта
-   (ink #191817, ink-soft #5c5955, border #e6e3de, акцент orange #ff7a00). На паллете с длинным списком всё уменьшается (--k), пока не поместится на одну страницу. ── */
-var TW_MARK=null;
-function twMarkSvg(){   // марка логотипа — текстом, чтобы печаталась без догрузки картинок; лежит рядом с tw-shipping.js
-  if(TW_MARK!==null) return Promise.resolve(TW_MARK);
-  var base=(document.querySelector('script[src*="tw-shipping.js"]')||{}).src||location.href;
-  return fetch(base.replace(/[^\/]*$/,'')+'tigerwood-mark.svg').then(function(r){ return r.ok?r.text():''; }).then(function(t){ TW_MARK=/^\s*<svg/.test(t)?t:''; return TW_MARK; }).catch(function(){ TW_MARK=''; return ''; });
-}
+   Оформление — в общем стиле Прохаба (tw-theme: Onest, --fg #151A24, --muted #667085, --line #E4E7EC, акцент --accent #2458C9 и подложка #EAF0FB),
+   без логотипа и названия компании (владелец 13.10.2026). На паллете с длинным списком всё уменьшается (--k), пока не поместится на одну страницу. ── */
 function twPalletSheets(pallets){
   var w=window.open('', '_blank');   // окно открываем сразу, в клике — иначе браузер сочтёт его всплывающим и заблокирует
   if(!w){ (typeof oops==='function'?oops:alert)('Браузер не дал открыть окно печати — разрешите всплывающие окна для сайта'); return; }
   w.document.write('<!doctype html><title>Листы на паллеты</title><body style="font-family:system-ui,sans-serif;padding:24px">Готовлю листы…</body>');
   var ref=TWSH&&TWSH.r&&TWSH.r.payInvoice?get({vapi:'euinvoiceget', invoice:TWSH.r.payInvoice}).then(function(r){ return (r&&r.ok&&r.terms&&r.terms.buyerRef)||''; }).catch(function(){ return ''; }):Promise.resolve('');
   var pk=pallets?Promise.resolve(pallets):get({vapi:'packget', deal:TWSH.deal}).then(function(r){ return (r&&r.ok&&r.pallets)||[]; });
-  Promise.all([ref,pk,twMarkSvg()]).then(function(a){
+  Promise.all([ref,pk]).then(function(a){
     var order=a[0]||(TWSH&&TWSH.r&&TWSH.r.deal&&TWSH.r.deal.num)||'', list=(a[1]||[]).filter(function(p){ return (p.lines||[]).length; });
     if(!list.length){ w.document.body.innerHTML='Паллет с товаром нет — сначала разложите товары в «Паллетовке».'; return; }
-    w.document.open(); w.document.write(twPalletSheetsHtml(list, order, a[2])); w.document.close();
+    w.document.open(); w.document.write(twPalletSheetsHtml(list, order)); w.document.close();
   });
 }
 /** HTML окна печати: страницы .pg по паллетам + подгонка размера под одну страницу (отдельно — чтобы проверять без всплывающего окна) */
-function twPalletSheetsHtml(list, order, mark){
+function twPalletSheetsHtml(list, order){
   var n=list.length, today=new Date(), dd=function(x){ return (x<10?'0':'')+x; }, date=dd(today.getDate())+'.'+dd(today.getMonth()+1)+'.'+today.getFullYear();
   var pages=list.map(function(p,i){
     var total=0, lines=p.lines.map(function(l){ var nm=String(l.nameEn||l.name||'').trim(), q=Number(l.qty)||0; total+=q;
       return '<div class="ln"><div class="l"><div class="sku">'+esc(l.sku||'')+'</div><div class="nm">'+esc(nm)+' <span class="parts">Parts -</span></div></div>'
         +'<div class="r"><span class="q">'+esc(l.qty)+'</span><span class="u">pcs</span></div></div>'; }).join('');
-    return '<div class="pg" style="--k:1"><div class="hd"><div class="brand">'+(mark||'')+'<span class="wm">Tigerwood</span></div>'
-      +'<div class="ord"><span class="lbl">Order</span><span class="val">'+esc(order)+'</span></div></div>'
-      +'<div class="ttl"><div class="pal">Palet <span class="no">#'+(i+1)+'</span></div><div class="cnt">'+(i+1)+' / '+n+'</div></div>'
+    return '<div class="pg" style="--k:1"><div class="hd"><div><div class="lbl">Order</div><div class="val">'+esc(order)+'</div></div><div class="pill">'+(i+1)+' / '+n+'</div></div>'
+      +'<div class="pal">Palet <span class="no">#'+(i+1)+'</span></div>'
       +'<div class="lines">'+lines+'</div>'
-      +'<div class="ft"><span>Total on pallet: <b>'+total+'</b> pcs</span><span>'+esc(date)+' · tigerwood.by · Made in Belarus</span></div></div>';
+      +'<div class="ft"><span>Total on pallet: <b>'+total+' pcs</b></span><span>'+esc(date)+'</span></div></div>';
   }).join('');
   return '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Листы на паллеты — '+esc(order||'')+'</title>'
     +'<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
-    +'<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Onest:wght@400;500;600;700&display=swap"><style>'
-    +'@page{size:A4 portrait;margin:0}html,body{margin:0;background:#8a8783;color:#191817;font-family:Onest,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}'
-    +'.bar{position:sticky;top:0;z-index:2;background:#fff;padding:10px 16px;border-bottom:1px solid #e6e3de;font:14px Onest,system-ui,sans-serif;display:flex;gap:12px;align-items:center}'
-    +'.bar button{font:inherit;font-weight:600;padding:7px 16px;border:0;border-radius:999px;background:#191817;color:#fff;cursor:pointer}'
-    +'.pg{position:relative;background:#fff;width:210mm;height:297mm;box-sizing:border-box;padding:14mm 16mm 16mm;margin:12px auto;overflow:hidden;display:flex;flex-direction:column}'
-    +'.hd{display:flex;justify-content:space-between;align-items:center;padding-bottom:5mm;border-bottom:1px solid #e6e3de}'
-    +'.brand{display:flex;align-items:center;gap:4mm}.brand svg{width:13mm;height:13mm;color:#191817}.wm{font-family:Unbounded,Onest,sans-serif;font-weight:700;font-size:17pt;letter-spacing:.01em}'
-    +'.ord{text-align:right}.ord .lbl{display:block;font-size:9pt;font-weight:500;letter-spacing:.14em;text-transform:uppercase;color:#5c5955}.ord .val{display:block;font-family:Unbounded,Onest,sans-serif;font-weight:500;font-size:14pt}'
-    +'.ttl{display:flex;align-items:baseline;justify-content:space-between;margin:calc(7mm * var(--k)) 0 calc(5mm * var(--k));padding-bottom:calc(3mm * var(--k));border-bottom:calc(0.9mm * var(--k)) solid #ff7a00}'
-    +'.pal{font-family:Unbounded,Onest,sans-serif;font-weight:800;font-size:calc(58pt * var(--k));line-height:1;letter-spacing:-.01em}.pal .no{color:#ff7a00}'
-    +'.cnt{font-size:calc(12pt * var(--k));font-weight:500;color:#5c5955;letter-spacing:.08em}'
+    +'<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&display=swap"><style>'
+    +'@page{size:A4 portrait;margin:0}html,body{margin:0;background:#EEF1F5;color:#151A24;font-family:Onest,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}'
+    +'.bar{position:sticky;top:0;z-index:2;background:#fff;padding:10px 16px;border-bottom:1px solid #E4E7EC;font:14px/20px Onest,system-ui,sans-serif;display:flex;gap:12px;align-items:center}'
+    +'.bar button{font:inherit;font-weight:600;padding:7px 16px;border:0;border-radius:10px;background:#2458C9;color:#fff;cursor:pointer}'
+    +'.pg{position:relative;background:#fff;width:210mm;height:297mm;box-sizing:border-box;padding:16mm 18mm 16mm;margin:12px auto;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 1px 2px rgba(16,24,40,.05)}'
+    +'.hd{display:flex;justify-content:space-between;align-items:flex-end;padding-bottom:5mm;border-bottom:1px solid #E4E7EC}'
+    +'.lbl{font-size:9pt;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#667085;margin-bottom:1mm}.val{font-size:16pt;font-weight:600}'
+    +'.pill{font-size:10pt;font-weight:600;color:#667085;background:#EEF1F5;border-radius:999px;padding:1.6mm 3.5mm}'
+    +'.pal{font-size:calc(52pt * var(--k));font-weight:800;line-height:1.05;letter-spacing:-.02em;margin:calc(7mm * var(--k)) 0 calc(5mm * var(--k))}.pal .no{color:#2458C9}'
     +'.lines{flex:1;min-height:0}'
-    +'.ln{display:flex;align-items:flex-end;justify-content:space-between;gap:8mm;padding:calc(4.5mm * var(--k)) 0;border-bottom:1px solid #e6e3de}.ln:last-child{border-bottom:0}'
-    +'.ln .l{min-width:0;flex:1}.sku{font-size:calc(13pt * var(--k));font-weight:600;letter-spacing:.12em;color:#5c5955;margin-bottom:calc(1.6mm * var(--k))}'
-    +'.nm{font-size:calc(22pt * var(--k));font-weight:500;line-height:1.2}.nm .parts{color:#5c5955;font-weight:400;white-space:nowrap}'
-    +'.ln .r{display:flex;align-items:baseline;gap:calc(2.5mm * var(--k));white-space:nowrap}.q{font-family:Unbounded,Onest,sans-serif;font-weight:800;font-size:calc(40pt * var(--k));line-height:1}.u{font-size:calc(14pt * var(--k));font-weight:500;color:#5c5955}'
-    +'.ft{display:flex;justify-content:space-between;align-items:center;padding-top:4mm;border-top:1px solid #e6e3de;font-size:10pt;color:#5c5955}.ft b{color:#191817;font-weight:700}'
-    +'@media print{html,body{background:#fff}.bar{display:none}.pg{margin:0;page-break-after:always;break-after:page}.pg:last-child{page-break-after:auto;break-after:auto}}'
+    +'.ln{display:flex;align-items:center;justify-content:space-between;gap:8mm;padding:calc(4.2mm * var(--k)) 0;border-top:1px solid #E4E7EC}'
+    +'.ln .l{min-width:0;flex:1}.sku{font-size:calc(12pt * var(--k));font-weight:600;letter-spacing:.06em;color:#667085;margin-bottom:calc(1.4mm * var(--k))}'
+    +'.nm{font-size:calc(21pt * var(--k));font-weight:600;line-height:1.22}.nm .parts{color:#667085;font-weight:500;white-space:nowrap}'
+    +'.ln .r{display:flex;align-items:baseline;gap:calc(2mm * var(--k));white-space:nowrap;background:#EAF0FB;color:#2458C9;border-radius:calc(3mm * var(--k));padding:calc(2mm * var(--k)) calc(4mm * var(--k))}'
+    +'.q{font-weight:800;font-size:calc(36pt * var(--k));line-height:1;letter-spacing:-.02em}.u{font-size:calc(13pt * var(--k));font-weight:600}'
+    +'.ft{display:flex;justify-content:space-between;align-items:center;padding-top:4mm;border-top:1px solid #E4E7EC;font-size:10pt;color:#667085}.ft b{color:#151A24;font-weight:700}'
+    +'@media print{html,body{background:#fff}.bar{display:none}.pg{margin:0;box-shadow:none;page-break-after:always;break-after:page}.pg:last-child{page-break-after:auto;break-after:auto}.ln .r{-webkit-print-color-adjust:exact;print-color-adjust:exact}}'
     +'</style></head><body><div class="bar"><b>Листы на паллеты</b><span>'+n+' шт · по одному листу A4 на паллету</span><button onclick="window.print()">🖨 Печать</button></div>'+pages
     +'<script>(function(){function fit(){var ps=document.querySelectorAll(".pg");for(var i=0;i<ps.length;i++){var p=ps[i],b=p.querySelector(".lines"),k=1;p.style.setProperty("--k",1);while(b.scrollHeight>b.clientHeight+1&&k>0.28){k=Math.round((k-0.03)*100)/100;p.style.setProperty("--k",k);}}}fit();if(document.fonts&&document.fonts.ready)document.fonts.ready.then(fit);})();<\/script></body></html>';
 }
