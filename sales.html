@@ -570,7 +570,8 @@ function renderDealDocs(){
   el('otherdocs').innerHTML='';
   get({vapi:'dealdocs', deal:KEY}).then(function(r){
     if(r&&r.ok===false){ el('otherdocs').innerHTML='<div class="sm err">Сформированные документы не загрузились: '+esc(errText(r))+'</div>'; return; }
-    var docs=((r&&r.docs)||[]).filter(function(x){ return !/договор|контракт|^ТН$|^ТТН|товарный чек/i.test(String(x.type||'')); });   // накладные и чеки — в блоке «Накладные»
+    var hasInv=(d.invoices||[]).length>0;   // файл счёта уже открыт карточкой счёта выше — второй раз «Проформа / Счёт / Инвойс» не показываем (12.10.2026)
+    var docs=((r&&r.docs)||[]).filter(function(x){ var t=String(x.type||''); return !/договор|контракт|^ТН$|^ТТН|товарный чек/i.test(t) && !(hasInv && /^(счёт|проформа|коммерческий инвойс)/i.test(t)); });   // накладные и чеки — в блоке «Накладные»
     el('otherdocs').innerHTML=docs.length?('<div class="sm" style="font-weight:600;margin:var(--s-2) 0 var(--s-1)">Сформированные документы</div>'
       +docs.map(function(x){ return twFileCard({ href:x.url, tab:1, tag:twDocTag(x.type), title:x.type, meta:x.date||'',
         del:'delOtherDoc('+JSON.stringify(String(x.type))+')', delTitle:'Отменить документ' }); }).join('')):'';
