@@ -103,7 +103,7 @@
 <!-- ═══ НАКЛАДНЫЕ И ДОКУМЕНТЫ (бывшая DocsPanel) ═══ -->
 <div id="tab_docs" class="hide">
   <div class="toolbar">
-    <div class="end"><button class="sec" onclick="loadRegistry();loadBlanksStatus()">Обновить</button><button class="sec" onclick="regCsv()">⬇ CSV</button><button onclick="toggleWb()"><span id="wbico">✍️</span> Выписать накладную</button></div>
+    <div class="end"><button class="sec ib" onclick="loadRegistry();loadBlanksStatus()" title="Обновить">↻</button><button class="sec ib" onclick="regCsv()" title="Скачать реестр в CSV">⬇</button><button onclick="toggleWb()"><span id="wbico">✍️</span> Выписать накладную</button></div>
   </div>
   <div class="note info"><div id="nextBlanks">Следующий свободный бланк — загрузка…</div></div>
 
@@ -122,7 +122,6 @@
     </details>
   </div>
 
-  <div class="sect">Реестр накладных и чеков</div>
   <div class="card">
     <div class="row" style="margin-bottom:var(--s-2);align-items:center">
       <div class="seg" id="rkSeg"><button data-k="" class="on" onclick="regSet('kind','')">Все</button><button data-k="ТН" onclick="regSet('kind','ТН')">ТН</button><button data-k="ТТН" onclick="regSet('kind','ТТН')">ТТН</button><button data-k="ЧЕК" onclick="regSet('kind','ЧЕК')">Чеки</button></div>
@@ -178,7 +177,7 @@
     </div>
     <div class="end"><button class="sec" onclick="loadErip()">Обновить</button><button class="sec" onclick="eripCsv()">⬇ CSV</button></div>
   </div>
-  <div class="note info"><div>Платежи приходят из «Экспресс Платежей» сами (раз в 15 минут). Номер лицевого счёта = номер заказа: по нему видны клиент, накладная и договор.</div></div>
+  <div class="note info hint"><div>Платежи приходят из «Экспресс Платежей» сами (раз в 15 минут). Номер лицевого счёта = номер заказа: по нему видны клиент, накладная и договор.</div></div>
   <div class="card"><div id="epBox" class="sm">Загрузка…</div></div>
 </div>
 
@@ -495,20 +494,21 @@ function loadRegistry(){
     var c=r.counts||{}, rows=REG_ROWS=r.rows||[];
     var head='<div class="row" style="margin-bottom:var(--s-2)"><span class="pill warn">ждут подписи '+(c.issued||0)+'</span><span class="pill ok">подписаны '+(c.signed||0)+'</span><span class="pill info">резерв '+(c.reserved||0)+'</span><span class="pill muted">испорчены '+(c.spoiled||0)+'</span><span class="sm">· показано '+esc(r.count)+'</span></div>';
     if(!rows.length){ box.innerHTML=head+'<div class="empty">Ничего не найдено.</div>'; return; }
-    box.innerHTML=head+'<div class="tbl-wrap"><table class="tbl reg mob adapt"><thead><tr><th>Бланк</th><th>Дата</th><th>Вид</th><th>Клиент</th><th>Заказ</th><th>Договор</th><th class="num">Сумма</th><th>Оплата ЕРИП</th><th>Статус</th><th></th></tr></thead><tbody>'
+    box.innerHTML=head+'<div class="tbl-wrap fill"><table class="tbl reg mob adapt"><thead><tr><th>Бланк / дата</th><th>Клиент</th><th>Заказ</th><th>Договор</th><th class="num">Сумма</th><th>Оплата ЕРИП</th><th>Статус</th><th></th></tr></thead><tbody>'
       +rows.map(function(x, i){
         var st=WB_ST[x.status]||['',''], sum=(x.sum===''||x.sum==null)?'':(typeof x.sum==='number'?money(x.sum)+' <span class="muted">'+esc(x.currency||'BYN')+'</span>':esc(x.sum));
-        var act=(x.docUrl?'<a class="btn sm" href="'+esc(x.docUrl)+'" target="_blank" rel="noopener">открыть</a>':'')
-          +(x.status==='issued'&&x.docId?'<button class="sec sm" onclick="twWbSignDlg(\''+esc(x.docId)+'\',loadRegistry)">⬆ скан</button>':'')
-          +(x.status==='signed'&&x.signedUrl?'<a class="btn sm" href="'+esc(x.signedUrl)+'" target="_blank" rel="noopener">скан ↗</a>':'')
-          +(x.status==='reserved'?'<button class="gho sm" onclick="regUnreserve('+i+')">снять резерв</button>':'')
-          +((x.status==='issued'||x.status==='signed')?'<button class="danger sec sm" onclick="regCancel('+i+')">отменить</button>':'');
+        // 12.10.2026: вид и дата — под номером бланка, действия в один ряд, длинное основание-договор обрезается (целиком — в подсказке)
+        var act=(x.docUrl?'<a href="'+esc(x.docUrl)+'" target="_blank" rel="noopener">файл ↗</a>':'')
+          +(x.status==='issued'&&x.docId?'<button onclick="twWbSignDlg(\''+esc(x.docId)+'\',loadRegistry)" title="загрузить скан подписанной накладной">⬆ скан</button>':'')
+          +(x.status==='signed'&&x.signedUrl?'<a href="'+esc(x.signedUrl)+'" target="_blank" rel="noopener">скан ↗</a>':'')
+          +(x.status==='reserved'?'<button onclick="regUnreserve('+i+')">снять резерв</button>':'')
+          +((x.status==='issued'||x.status==='signed')?'<button class="danger" onclick="regCancel('+i+')" title="Отменить накладную">✕</button>':'');
         return '<tr'+(x.status==='spoiled'?' class="sp"':'')+'>'
-          +'<td data-l="Бланк"><b>'+esc((x.seria?x.seria+' ':'')+x.num)+'</b></td><td data-l="Дата">'+esc(x.date)+'</td><td data-l="Вид">'+esc(x.kind)+'</td>'
+          +'<td data-l="Бланк" style="white-space:nowrap"><b>'+esc((x.seria?x.seria+' ':'')+x.num)+'</b><span class="sub2">'+esc([x.kind, x.date].filter(Boolean).join(' · '))+'</span></td>'
           +'<td data-l="Клиент">'+esc(x.contra)+'</td><td data-l="Заказ">'+(x.dealId&&hasSec('deals')?'<a href="sales.html?deal='+encodeURIComponent(x.dealId)+'">'+esc(x.order||'сделка')+'</a>':esc(x.order))+'</td>'
-          +'<td data-l="Договор">'+esc(x.dogovor)+'</td><td data-l="Сумма" class="num">'+sum+'</td><td data-l="Оплата ЕРИП">'+eripPill(x.erip)+'</td>'
+          +'<td data-l="Договор" class="sm" title="'+esc(x.dogovor)+'"><span style="display:block;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(x.dogovor)+'</span></td><td data-l="Сумма" class="num">'+sum+'</td><td data-l="Оплата ЕРИП">'+eripPill(x.erip)+'</td>'
           +'<td data-l="Статус"><span class="pill '+st[0]+'">'+st[1]+(x.status==='signed'&&x.signedAt?' '+esc(x.signedAt):'')+'</span>'+(x.pay?'<div class="sm">'+esc(x.pay)+'</div>':'')+'</td>'
-          +'<td><div class="row">'+act+'</div></td></tr>';
+          +'<td class="acts2">'+act+'</td></tr>';
       }).join('')+'</tbody></table></div>';
   }).catch(function(e){ box.innerHTML='<span class="err">'+esc(netText(e))+'</span>'; });
 }
