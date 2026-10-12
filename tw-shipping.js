@@ -1,5 +1,5 @@
 /* Отгрузка юрлицам РФ и Европы (владелец 11.10.2026): блок «Отгрузка — экспорт» карточки сделки (sales.html) вместо накладных РБ.
-   shipprep(deal) → рынок, поля окна, бланк ТН, счёт на оплату, итоги упаковки, документы; packget/packsave — окно «Упаковка» (паллеты);
+   shipprep(deal) → рынок, поля окна, бланк ТН, счёт на оплату, итоги упаковки, документы; packget/packsave — окно «Паллетовка» (паллеты);
    shipissue(deal, data) — комплект: счёт-фактура РФ / коммерческий инвойс → упаковочный лист → CMR → ТН; declupload — декларация от декларанта.
    Ждёт от страницы: get, run, ask, hide, el, val, esc, setm, money, ruDate, isoDate, errText, twFileCard. */
 var TWSH=null, TWPK=null;
@@ -17,8 +17,8 @@ function twShRender(){
   var r=TWSH.r, p=r.packing||{}, h='';
   h+='<div class="sm" style="margin-bottom:var(--s-2)">Рынок <b>'+esc(r.eu?'Европа':'Россия')+'</b> · счёт на оплату '+(r.payInvoice?'<b>№ '+esc(r.payInvoice)+'</b>':'<span class="warn">не выставлен</span>')
     +' · заказ на производство '+(r.order?'<b>'+esc(r.order.num)+'</b>':'<span class="warn">не заведён</span>')+'</div>';
-  h+='<div class="row" style="align-items:center;margin-bottom:var(--s-2)"><span class="sm">📦 Упаковка: '+(p.pallets?('<b>'+p.pallets+'</b> паллет · <b>'+p.boxes+'</b> коробок · брутто <b>'+money(p.gross)+'</b> кг'):'<span class="warn">товары не разложены по паллетам</span>')+'</span>'
-    +'<button class="sec sm" onclick="twPacking()">📦 Упаковка</button></div>';
+  h+='<div class="row" style="align-items:center;margin-bottom:var(--s-2)"><span class="sm">🧱 Паллетовка: '+(p.pallets?('<b>'+p.pallets+'</b> паллет · <b>'+p.boxes+'</b> коробок · брутто <b>'+money(p.gross)+'</b> кг'):'<span class="warn">товары не разложены по паллетам</span>')+'</span>'
+    +'<button class="sec sm" onclick="twPacking()">🧱 Паллетовка</button></div>';
   h+=(r.docs||[]).map(function(d){
     var pills=d.uploaded?'<span class="pill info">загружен</span>':(d.status==='сформирован'?'<span class="pill ok">'+esc(d.status)+'</span>':'<span class="pill bad">'+esc(d.status)+'</span>');
     var acts=d.docType==='waybill_tn'&&!d.uploaded?'<a href="#" onclick="twWbPdf(\''+esc(d.id)+'\');return false;" title="одна страница A4, без сетки — для печати на бланке">🖨 PDF для печати</a>':'';
@@ -48,7 +48,7 @@ function twShipDlg(){
     +'<div class="sm" style="margin-top:var(--s-3);font-weight:600">Что выписать</div>'
     +chk('shinv', esc(r.invoiceTitle)+(r.shipInvoice?' — переформировать № '+esc(r.shipInvoice.number):' — новый номер'), true, !r.payInvoice)
     +chk('shpk','Упаковочный лист', !noPack, noPack, noPack?'сначала разложите товары по паллетам':'')
-    +chk('shcmr','CMR', !noPack, noPack, noPack?'нужна упаковка':'')
+    +chk('shcmr','CMR', !noPack, noPack, noPack?'нужна паллетовка':'')
     +chk('shtn','ТН на бланке', true, !opts.length, !opts.length?'нет свободных бланков ТН':'')
     +(opts.length?'<label style="'+L+'"><span style="'+SM+'">🧾 Бланк ТН (номер на бумаге)</span><select id="shbl" style="width:100%">'+opts.join('')+'</select></label>':'')
     +'<div class="sm muted" style="margin-top:var(--s-2)">Порядок: '+esc(r.invoiceTitle)+' → упаковочный лист → CMR (номер ММ/ГГГГ, второй в месяце — /2) → ТН с номером CMR. Повтор переформирует документ под тем же номером.</div>'
@@ -80,63 +80,95 @@ function twDeclDlg(){
   }, 'Загрузить');
 }
 
-/* ── окно «Упаковка»: паллеты и товары на них ── */
+/* ── окно «Паллетовка» (владелец 12.10.2026): слева паллеты — одна из них ВЫБРАНА (подсвечена), справа список «что везём» с остатком;
+   товар кладётся на выбранную паллету тем количеством, которое вписано (по умолчанию — весь остаток), так один товар делится на несколько паллет.
+   «＋ Паллета» создаёт следующую и сразу делает её выбранной. Коробок по умолчанию = штук (у BusyKids 1 изделие = 1 коробка), правится. ── */
 function twPacking(orderKey){
   get({vapi:'packget', deal:TWSH.deal, order:orderKey||''}).then(function(r){
     if(!r||!r.ok){ (typeof oops==='function'?oops:alert)(errText(r)); return; }
-    TWPK={ r:r, pallets:(r.pallets||[]).map(function(p){ return { note:p.note||'', lines:(p.lines||[]).map(function(l){ return { productId:l.productId, sku:l.sku, name:l.name, qty:l.qty, boxes:l.boxes, netKg:l.netKg||'', grossKg:l.grossKg||'' }; }) }; }), products:null };
-    ask('📦 Упаковка — сделка '+esc(r.deal.num||''), '<div id="pkbody"></div><div class="msg" id="pkmsg"></div>', function(){
+    TWPK={ r:r, sel:0, products:null, pallets:(r.pallets||[]).map(function(p){ return { note:p.note||'', lines:(p.lines||[]).map(function(l){ return { productId:l.productId, sku:l.sku, name:l.name, qty:l.qty, boxes:l.boxes, netKg:l.netKg||'', grossKg:l.grossKg||'' }; }) }; }) };
+    if(!TWPK.pallets.length) TWPK.pallets.push({ note:'', lines:[] });   // всегда есть паллета, на которую кладём
+    var dlg=el('askmodal').querySelector('.dlg'); dlg.classList.add('lg');
+    var close=function(){ hide('askmodal'); dlg.classList.remove('lg'); };
+    ask('🧱 Паллетовка — сделка '+esc(r.deal.num||''), '<div id="pkbody"></div><div class="msg" id="pkmsg"></div>', function(){
       twPkSync();
       var bad=TWPK.pallets.some(function(p){ return p.lines.some(function(l){ return !(Number(l.qty)>0); }); });
-      if(bad){ setm('pkmsg','err','У каждой строки паллеты нужно количество'); return false; }
-      run({vapi:'packsave', deal:TWSH.deal, data:JSON.stringify({ pallets:TWPK.pallets })}, 'Сохраняю упаковку…', 'pkmsg').then(function(x){ if(!x) return; hide('askmodal'); twShRefresh(); });
+      if(bad){ setm('pkmsg','err','У каждой строки паллеты нужно количество больше 0'); return false; }
+      var pallets=TWPK.pallets.filter(function(p){ return p.lines.length; });
+      run({vapi:'packsave', deal:TWSH.deal, data:JSON.stringify({ pallets:pallets })}, 'Сохраняю паллетовку…', 'pkmsg').then(function(x){ if(!x) return; close(); twShRefresh(); });
       return false;
-    }, 'Сохранить упаковку');
+    }, 'Сохранить паллетовку');
+    el('askNo').onclick=close;
     twPkRender();
   });
 }
-/** источник товаров: заказ (по умолчанию — заказ сделки) или позиции сделки */
+/** что везём: заказ на производство (по умолчанию — заказ сделки) или позиции сделки; разложено/осталось — по всем паллетам */
 function twPkPool(){
   var r=TWPK.r, src=r.order?r.order.items:r.dealItems, placed={};
   TWPK.pallets.forEach(function(p){ p.lines.forEach(function(l){ placed[l.productId]=(placed[l.productId]||0)+(Number(l.qty)||0); }); });
   return (src||[]).map(function(it){ return { productId:it.productId, sku:it.sku, name:it.name, qty:it.qty, placed:placed[it.productId]||0, left:it.qty-(placed[it.productId]||0) }; });
 }
+function twPkCss(){ if(el('pkcss')) return; var st=document.createElement('style'); st.id='pkcss';
+  st.textContent='.pk-grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:var(--s-3);align-items:start}@media(max-width:760px){.pk-grid{grid-template-columns:1fr}}'
+    +'.pk-pal{border:2px solid var(--line);border-radius:10px;padding:var(--s-2) var(--s-3);margin-top:var(--s-2);cursor:pointer}.pk-pal.on{border-color:var(--accent);background:var(--accent-bg,var(--card2))}'
+    +'.pk-pal input{cursor:text}.pk-pal .hd{display:flex;align-items:center;gap:var(--s-2);flex-wrap:wrap}.pk-pal .tbl-wrap{max-height:none}.pk-pool .tbl-wrap{max-height:52vh}';
+  document.head.appendChild(st); }
 function twPkRender(){
+  twPkCss();
   var r=TWPK.r, pool=twPkPool(), b=el('pkbody'); if(!b) return;
-  var ordSel='<select id="pkord" onchange="twPacking(this.value)" style="max-width:100%"><option value="">— позиции сделки —</option>'
-    +(r.orders||[]).map(function(o){ return '<option value="'+esc(o.id)+'"'+(r.order&&o.id===r.order.id?' selected':'')+'>'+esc(o.num)+' · '+esc(o.name)+'</option>'; }).join('')+'</select>';
-  var h='<div class="sm">Товары из: '+ordSel+'</div>';
-  h+='<div class="tbl-wrap" style="margin-top:var(--s-2)"><table class="tbl sm"><thead><tr><th>Товар</th><th class="num">В заказе</th><th class="num">Разложено</th><th class="num">Осталось</th><th></th></tr></thead><tbody>'
-    +pool.map(function(it,i){ return '<tr'+(it.left<0?' style="color:var(--red)"':'')+'><td>'+esc(it.name)+' <span class="muted">'+esc(it.sku)+'</span></td><td class="num">'+it.qty+'</td><td class="num">'+it.placed+'</td><td class="num"><b>'+it.left+'</b></td>'
-      +'<td>'+(it.left>0?'<button class="gho sm" onclick="twPkAdd(\''+esc(it.productId)+'\')" title="на последнюю паллету">＋ на паллету</button>':'')+'</td></tr>'; }).join('')
-    +'</tbody></table></div>';
-  if(pool.some(function(it){ return it.left>0; })) h+='<div class="row" style="margin-top:var(--s-1)"><button class="gho sm" onclick="twPkAll()">Всё оставшееся — на новую паллету</button></div>';
-  h+=TWPK.pallets.map(function(p,i){
-    var net=0, gross=0, boxes=0; p.lines.forEach(function(l){ net+=Number(l.netKg)||0; gross+=Number(l.grossKg)||0; boxes+=Number(l.boxes)||0; });
+  if(TWPK.sel>=TWPK.pallets.length) TWPK.sel=TWPK.pallets.length-1; if(TWPK.sel<0) TWPK.sel=0;
+  var selNo=TWPK.sel+1, leftAll=pool.reduce(function(s,it){ return s+Math.max(0,it.left); },0);
+  // ── паллеты (слева) ──
+  var pals=TWPK.pallets.map(function(p,i){
+    var net=0, gross=0, boxes=0, qty=0; p.lines.forEach(function(l){ net+=Number(l.netKg)||0; gross+=Number(l.grossKg)||0; boxes+=Number(l.boxes)||0; qty+=Number(l.qty)||0; });
+    var on=(i===TWPK.sel);
     var rows=p.lines.map(function(l,j){ return '<tr><td>'+esc(l.name)+' <span class="muted">'+esc(l.sku)+'</span></td>'
-      +'<td class="num"><input type="number" min="0" step="1" data-p="'+i+'" data-l="'+j+'" data-k="qty" value="'+esc(l.qty)+'" style="width:64px"></td>'
+      +'<td class="num"><input type="number" min="0" step="1" data-p="'+i+'" data-l="'+j+'" data-k="qty" value="'+esc(l.qty)+'" style="width:64px" onchange="twPkSync();twPkRender()"></td>'
       +'<td class="num"><input type="number" min="0" step="1" data-p="'+i+'" data-l="'+j+'" data-k="boxes" value="'+esc(l.boxes)+'" style="width:56px"></td>'
       +'<td class="num"><input type="number" min="0" step="0.01" data-p="'+i+'" data-l="'+j+'" data-k="netKg" value="'+esc(l.netKg)+'" style="width:72px"></td>'
       +'<td class="num"><input type="number" min="0" step="0.01" data-p="'+i+'" data-l="'+j+'" data-k="grossKg" value="'+esc(l.grossKg)+'" style="width:72px"></td>'
-      +'<td><button class="ic" title="убрать" onclick="twPkDel('+i+','+j+')">🗑</button></td></tr>'; }).join('');
-    return '<div class="box" style="margin-top:var(--s-3)"><div class="row" style="align-items:center"><b>Паллета '+(i+1)+'</b><span class="sm muted">'+boxes+' кор · нетто '+money(net)+' · брутто '+money(gross)+' кг</span>'
-      +'<span class="sp"></span><button class="ic" title="выше" onclick="twPkMove('+i+',-1)">↑</button><button class="ic" title="ниже" onclick="twPkMove('+i+',1)">↓</button><button class="ic" title="убрать паллету" onclick="twPkDelPallet('+i+')">✕</button></div>'
-      +'<div class="tbl-wrap"><table class="tbl sm"><thead><tr><th>Товар</th><th class="num">Шт</th><th class="num">Кор.</th><th class="num">Нетто</th><th class="num">Брутто</th><th></th></tr></thead><tbody>'+(rows||'<tr><td colspan="6" class="sm muted">пусто</td></tr>')+'</tbody></table></div>'
-      +'<div class="row" style="margin-top:var(--s-1)"><input list="pkcat" id="pkadd'+i+'" placeholder="товар из каталога: артикул или название" style="flex:1" onchange="twPkAddCatalog('+i+',this)"><button class="gho sm" onclick="twPkAddCatalog('+i+',el(\'pkadd'+i+'\'))">＋ товар</button></div></div>';
+      +'<td><button class="ic" title="снять с паллеты" onclick="twPkDel('+i+','+j+');event.stopPropagation()">🗑</button></td></tr>'; }).join('');
+    return '<div class="pk-pal'+(on?' on':'')+'" onclick="twPkSelect('+i+')" title="'+(on?'выбрана: сюда кладём товар':'нажмите, чтобы класть товар на эту паллету')+'">'
+      +'<div class="hd"><b>Паллета '+(i+1)+'</b>'+(on?'<span class="pill ok">выбрана — сюда кладём</span>':'<span class="pill muted">выбрать</span>')+'<span class="sp"></span>'
+      +'<button class="ic" title="выше" onclick="twPkMove('+i+',-1);event.stopPropagation()">↑</button><button class="ic" title="ниже" onclick="twPkMove('+i+',1);event.stopPropagation()">↓</button>'
+      +(TWPK.pallets.length>1?'<button class="ic" title="убрать паллету (товар вернётся в «что везём»)" onclick="twPkDelPallet('+i+');event.stopPropagation()">✕</button>':'')+'</div><div class="sm muted">'+qty+' шт · '+boxes+' кор · нетто '+money(net)+' · брутто '+money(gross)+' кг</div>'
+      +(rows?'<div class="tbl-wrap"><table class="tbl sm"><thead><tr><th>Товар</th><th class="num">Шт</th><th class="num">Кор.</th><th class="num">Нетто, кг</th><th class="num">Брутто, кг</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+        :'<div class="sm muted" style="margin-top:var(--s-1)">пусто — '+(on?'выберите товар справа и нажмите «→ Паллета '+(i+1)+'»':'выберите паллету, затем товар справа')+'</div>')
+      +'</div>';
   }).join('');
-  h+='<div class="row" style="margin-top:var(--s-3)"><button class="sec sm" onclick="twPkNew()">＋ Паллета</button></div><datalist id="pkcat"></datalist>';
-  b.innerHTML=h;
+  var left='<div><div class="row" style="align-items:center"><b>Паллеты</b><span class="sm muted">'+TWPK.pallets.length+' шт</span><span class="sp"></span><button class="sec sm" onclick="twPkNew()">＋ Паллета</button></div>'+pals+'</div>';
+  // ── что везём (справа) ──
+  var ordSel='<select id="pkord" onchange="twPacking(this.value)" style="max-width:100%"><option value="">— позиции сделки —</option>'
+    +(r.orders||[]).map(function(o){ return '<option value="'+esc(o.id)+'"'+(r.order&&o.id===r.order.id?' selected':'')+'>'+esc(o.num)+' · '+esc(o.name)+'</option>'; }).join('')+'</select>';
+  var prow=pool.map(function(it,i){
+    var over=it.left<0, done=it.left===0;
+    return '<tr'+(over?' style="color:var(--red)"':done?' class="muted"':'')+'><td>'+esc(it.name)+'<div class="muted sm">'+esc(it.sku)+' · всего '+it.qty+(it.placed?' · разложено '+it.placed:'')+'</div></td>'
+      +'<td class="num">'+(over?'<b>лишнее '+(-it.left)+'</b>':done?'✓ всё':('<input type="number" min="1" max="'+it.left+'" step="1" id="pkq'+i+'" value="'+it.left+'" style="width:64px" title="сколько штук положить (остаток '+it.left+')">'))+'</td>'
+      +'<td>'+(it.left>0?'<button class="sm" onclick="twPkAdd(\''+esc(it.productId)+'\','+i+')" title="положить указанное количество на выбранную паллету">→ Паллета '+selNo+'</button>':'')+'</td></tr>'; }).join('');
+  var right='<div class="pk-pool"><div class="row" style="align-items:center"><b>Что везём</b><span class="sm muted">осталось разложить: <b>'+leftAll+'</b> шт</span></div>'
+    +'<div class="sm" style="margin:var(--s-1) 0">Товары из: '+ordSel+'</div>'
+    +'<div class="sm" style="margin-bottom:var(--s-1)">Впишите, сколько штук, и нажмите <b>→ Паллета '+selNo+'</b> (выбранная слева). Остальное положите на другую паллету.</div>'
+    +'<div class="tbl-wrap"><table class="tbl sm"><thead><tr><th>Товар</th><th class="num">Штук</th><th></th></tr></thead><tbody>'+(prow||'<tr><td colspan="3" class="sm muted">в заказе нет товаров каталога</td></tr>')+'</tbody></table></div>'
+    +(leftAll>0?'<div class="row" style="margin-top:var(--s-1)"><button class="gho sm" onclick="twPkAll()">Всё оставшееся — на паллету '+selNo+'</button></div>':'<div class="sm ok" style="margin-top:var(--s-1)">✓ Всё разложено</div>')
+    +'<div class="row" style="margin-top:var(--s-3)"><input list="pkcat" id="pkadd" placeholder="другой товар из каталога: артикул или название" style="flex:1" onchange="twPkAddCatalog(this)"><button class="gho sm" onclick="twPkAddCatalog(el(\'pkadd\'))">＋ на паллету '+selNo+'</button></div>'
+    +'<datalist id="pkcat"></datalist></div>';
+  b.innerHTML='<div class="pk-grid">'+left+right+'</div>';
   if(TWPK.products) twPkFillCat(); else get({vapi:'packproducts'}).then(function(x){ if(x&&x.ok){ TWPK.products=x.products||[]; twPkFillCat(); } });
 }
 function twPkFillCat(){ var d=el('pkcat'); if(!d) return; d.innerHTML=(TWPK.products||[]).map(function(p){ return '<option value="'+esc(p.sku)+'">'+esc(p.name)+'</option>'; }).join(''); }
 function twPkSync(){ var ins=(el('pkbody')||document).querySelectorAll('input[data-p]'); for(var i=0;i<ins.length;i++){ var e=ins[i], p=TWPK.pallets[Number(e.getAttribute('data-p'))]; if(!p) continue; var l=p.lines[Number(e.getAttribute('data-l'))]; if(l) l[e.getAttribute('data-k')]=e.value; } }
-function twPkLast(){ if(!TWPK.pallets.length) TWPK.pallets.push({ note:'', lines:[] }); return TWPK.pallets[TWPK.pallets.length-1]; }
-function twPkAdd(productId){ twPkSync(); var it=twPkPool().filter(function(x){ return x.productId===productId; })[0]; if(!it) return; var p=twPkLast();
-  var ex=p.lines.filter(function(l){ return l.productId===productId; })[0]; if(ex) ex.qty=(Number(ex.qty)||0)+it.left; else p.lines.push({ productId:it.productId, sku:it.sku, name:it.name, qty:it.left, boxes:0, netKg:'', grossKg:'' }); twPkRender(); }
-function twPkAll(){ twPkSync(); var left=twPkPool().filter(function(x){ return x.left>0; }); if(!left.length) return; TWPK.pallets.push({ note:'', lines:left.map(function(it){ return { productId:it.productId, sku:it.sku, name:it.name, qty:it.left, boxes:0, netKg:'', grossKg:'' }; }) }); twPkRender(); }
-function twPkAddCatalog(i, inp){ twPkSync(); var v=String((inp&&inp.value)||'').trim(); if(!v) return; var p=(TWPK.products||[]).filter(function(x){ return x.sku.toLowerCase()===v.toLowerCase()||x.name.toLowerCase()===v.toLowerCase(); })[0];
-  if(!p){ setm('pkmsg','err','Товар «'+v+'» не найден в каталоге — выберите из списка'); return; } TWPK.pallets[i].lines.push({ productId:p.productId, sku:p.sku, name:p.name, qty:1, boxes:0, netKg:'', grossKg:'' }); setm('pkmsg','',''); twPkRender(); }
+function twPkSelect(i){ if(i===TWPK.sel) return; twPkSync(); TWPK.sel=i; twPkRender(); }
+function twPkPut(p, it, n){ var ex=p.lines.filter(function(l){ return l.productId===it.productId; })[0];
+  if(ex){ ex.qty=(Number(ex.qty)||0)+n; ex.boxes=(Number(ex.boxes)||0)+n; } else p.lines.push({ productId:it.productId, sku:it.sku, name:it.name, qty:n, boxes:n, netKg:'', grossKg:'' }); }
+function twPkAdd(productId, i){ twPkSync(); var it=twPkPool().filter(function(x){ return x.productId===productId; })[0]; if(!it) return;
+  var inp=el('pkq'+i), n=Math.round(Number(inp&&inp.value)||0);
+  if(!(n>0)){ setm('pkmsg','err','Впишите, сколько штук положить'); return; }
+  if(n>it.left){ setm('pkmsg','err','«'+it.name+'»: осталось разложить '+it.left+' шт, а вписано '+n); return; }
+  setm('pkmsg','',''); twPkPut(TWPK.pallets[TWPK.sel], it, n); twPkRender(); }
+function twPkAll(){ twPkSync(); var left=twPkPool().filter(function(x){ return x.left>0; }); if(!left.length) return; var p=TWPK.pallets[TWPK.sel]; left.forEach(function(it){ twPkPut(p, it, it.left); }); twPkRender(); }
+function twPkAddCatalog(inp){ twPkSync(); var v=String((inp&&inp.value)||'').trim(); if(!v) return; var p=(TWPK.products||[]).filter(function(x){ return x.sku.toLowerCase()===v.toLowerCase()||x.name.toLowerCase()===v.toLowerCase(); })[0];
+  if(!p){ setm('pkmsg','err','Товар «'+v+'» не найден в каталоге — выберите из списка'); return; } twPkPut(TWPK.pallets[TWPK.sel], p, 1); setm('pkmsg','',''); twPkRender(); }
 function twPkDel(i,j){ twPkSync(); TWPK.pallets[i].lines.splice(j,1); twPkRender(); }
-function twPkDelPallet(i){ twPkSync(); TWPK.pallets.splice(i,1); twPkRender(); }
-function twPkMove(i,d){ twPkSync(); var j=i+d; if(j<0||j>=TWPK.pallets.length) return; var t=TWPK.pallets[i]; TWPK.pallets[i]=TWPK.pallets[j]; TWPK.pallets[j]=t; twPkRender(); }
-function twPkNew(){ twPkSync(); TWPK.pallets.push({ note:'', lines:[] }); twPkRender(); }
+function twPkDelPallet(i){ if(TWPK.pallets.length<2) return; twPkSync(); TWPK.pallets.splice(i,1); if(TWPK.sel>=TWPK.pallets.length) TWPK.sel=TWPK.pallets.length-1; twPkRender(); }
+function twPkMove(i,d){ twPkSync(); var j=i+d; if(j<0||j>=TWPK.pallets.length) return; var t=TWPK.pallets[i]; TWPK.pallets[i]=TWPK.pallets[j]; TWPK.pallets[j]=t; if(TWPK.sel===i) TWPK.sel=j; else if(TWPK.sel===j) TWPK.sel=i; twPkRender(); }
+function twPkNew(){ twPkSync(); TWPK.pallets.push({ note:'', lines:[] }); TWPK.sel=TWPK.pallets.length-1; twPkRender(); }
