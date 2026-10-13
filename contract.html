@@ -154,6 +154,7 @@
           <option value="shipped" id="optShipped">в течение N календарных дней с даты отгрузки</option>
           <option value="ready">до отгрузки — после уведомления о готовности товара</option>
           <option value="accepted" id="optAccepted">в течение N календарных дней со дня подписания накладной</option>
+          <option value="invoice" id="optInvoice">по счёту — размер предоплаты и сроки оплаты каждой партии указываются в счёте</option>
           <option>по графику (рассрочка / отсрочка)</option>
         </select></label>
       <label class="fl" id="w_bdays"><span class="sm" id="lblBdays">Срок остатка, дней</span><input id="f_bdays" type="number" inputmode="numeric" min="1" placeholder="например, 10" oninput="onBalanceDays()" autocomplete="off"><span class="sm" id="bdaysHint"></span></label>
@@ -377,7 +378,7 @@ function isEu(){ var k=curKind(); return mode()==='legal' && !!k && (k.market===
 var KIND_MKT='';
 function kindDefaults(){ var k=curKind(), m=((k&&k.market)||'')+(isFw()?'#fw':''); if(m===KIND_MKT) return; KIND_MKT=m;
   var eu=isEu(), ru=isFca()&&!eu; el('f_prepay').value=ru?(isFw()?70:60):eu?70:80;   // рамочный РФ/Европа — 70/30 по умолчанию (02.10.2026)
-  setSel('f_balance', ru?'ready':'shipped'); el('f_prod').value=ru?15:14;
+  setSel('f_balance', ru?'ready':(isFw()&&!eu?'invoice':'shipped')); el('f_prod').value=ru?15:14;   // рамочный РБ — «по счёту» (13.10.2026)
   el('f_pdays').value=eu?3:5; if(eu){ el('f_bdays').value=7; if(!val('d_delivInc')) el('d_delivInc').value='0'; } }   // EU: по умолчанию FCA
 function schedOn(){ var m=mode(); return m==='retail' ? isInst() : (m==='legal' && !isFw() && val('f_balance')===SCHED_TXT); }
 function defaultValid(){ return isFw()?addDays(todayIso(),365):(todayIso().slice(0,4)+'-12-31'); }
@@ -459,6 +460,7 @@ function fillForm(){
   if(c.prepayPercent!=null&&c.prepayPercent!=='') el('f_prepay').value=c.prepayPercent;
   var tm=c.terms||{}; setSel('f_codMode', tm.codPrepay>0?'pre':'all'); el('f_codPre').value=tm.codPrepay>0?tm.codPrepay:'';
   setSel('f_balance', balanceModeOf(tm.balanceMode, c.balanceCondition, c.balanceDays)); if(tm.prepayDays>0) el('f_pdays').value=tm.prepayDays;
+  if(c.isFramework && (c.market==='by'||!c.market) && !tm.balanceMode && !c.balanceCondition && (c.prepayPercent==null||c.prepayPercent==='')) setSel('f_balance','invoice');   // рамочный РБ без условий (до 13.10.2026) — «по счёту»
   if(c.freightPayer) el('f_freight').value=/клиент/i.test(String(c.freightPayer))?'Клиент':'Мы';
   var t=c.terms||{}; if(t.prodDays) el('f_prod').value=t.prodDays;
   el('f_bdays').value=(c.balanceDays==null)?'':c.balanceDays; el('f_regNo').value=c.currencyRegNo||'';
@@ -574,13 +576,14 @@ function applyMode(){
   vis('s_items', !!m && !fw); vis('s_terms', legal && !fwNoSum()); vis('s_deliv', !!m && !fw); vis('s_sched', (retail && !isFin()) || schedOn());
   // ЮЛ: условия оплаты
   // рамочный РФ/Европа (02.10.2026): условия оплаты контракта правятся здесь — по умолчанию для его счетов (в счёте можно изменить); рамочный РБ — как был, без них
-  var bm=val('f_balance'), pay=legal && !coop && !(fw && fwNoSum());
+  var bm=val('f_balance'), pay=legal && !coop, byInv=bm==='invoice';   // рамочный РБ (13.10.2026): условия оплаты тоже здесь — по умолчанию «по счёту»
+  el('optInvoice').disabled=!fw;   // «по счёту» — только у рамочного: у разового договора условия в самом договоре
   var so=el('f_balance').options; for(var oi=0;oi<so.length;oi++) if(so[oi].text===SCHED_TXT) so[oi].disabled=fw;   // у рамочного графика нет — график в счёте/договоре сделки
   var eu=isEu();   // EU v3: срок изготовления — в Счёте, «со дня подписания накладной» нет (CMR)
   vis('w_bdays', pay && (bm==='shipped'||bm==='accepted')); vis('w_freight', legal && !svc && !fw); vis('w_prod', legal && !(svc||coop) && !fwNoSum() && !eu);
   el('lblPdays').textContent='Срок предоплаты, '+(eu?'календарных':'банковских')+' дней со дня счёта';
   el('optShipped').textContent='в течение N календарных дней с даты '+(eu?'поставки (штамп на CMR)':'отгрузки'); el('optAccepted').disabled=eu;   // рамочный: перевозка — по накладным сделок; срок РБ — 20 раб. дней в тексте
-  vis('w_prepay', pay); vis('w_pdays', pay); vis('w_balance', pay);
+  vis('w_prepay', pay && !byInv); vis('w_pdays', pay && !byInv); vis('w_balance', pay);
   el('lblBdays').textContent=bm==='accepted'?'Срок остатка, календарных дней со дня подписания накладной':'Срок остатка, календарных дней с даты '+(eu?'поставки (CMR)':'отгрузки');
   el('f_balance').disabled=!EDIT; onBalanceDays();
   onMarketFields();
@@ -663,7 +666,8 @@ function onBalanceDays(){
 function onBalance(){ applyMode(); }
 /** режим остатка из договора: terms.balanceMode (v3) или старые тексты/дни (shipped — дни от отгрузки; «готовност»/«до отгрузки» — ready; «накладн» — accepted; график — как есть) */
 function balanceModeOf(mode, cond, days){
-  if(mode==='shipped'||mode==='ready'||mode==='accepted') return mode;
+  if(mode==='shipped'||mode==='ready'||mode==='accepted'||mode==='invoice') return mode;
+  if(/в счёте|в счете/i.test(String(cond||''))) return 'invoice';
   cond=String(cond||''); if(cond===SCHED_TXT) return SCHED_TXT;
   if(/накладн/i.test(cond)) return 'accepted'; if(/готовност|до отгрузки/i.test(cond)) return 'ready';
   return 'shipped';
@@ -920,8 +924,8 @@ function collect(){
   if(retail){ d.amount=posTotalValue(); if(isCod()) d.codPrepay=codPre(); if(isFin()){ d.paymentMappingId=val('f_paymap'); d.legs=[]; } return d; }   // розница: сумма = итог позиций, рынок BYN, «Действует до» — до исполнения (сервер)
   d.validUntil=ruDate(val('f_valid')); d.amount=amountVal();   // рамочный РБ — null внутри amountVal (fwNoSum); РФ/Европа — сумма
   var lbl=k?(k.label||''):'', svc=/услуг/i.test(lbl), coop=/сотрудничеств/i.test(lbl);
-  if(!coop && !(fw && fwNoSum())){ var bm=val('f_balance'), m3=(bm==='shipped'||bm==='ready'||bm==='accepted');
-    d.prepayPercent=Number(val('f_prepay'))||0; d.prepayDays=val('f_pdays'); d.balanceMode=m3?bm:''; d.balanceCondition=m3?'':bm; d.balanceDays=(bm==='shipped'||bm==='accepted')?val('f_bdays'):''; }
+  if(!coop){ var bm=val('f_balance'), m3=(bm==='shipped'||bm==='ready'||bm==='accepted'||bm==='invoice');
+    d.prepayPercent=bm==='invoice'?'':(Number(val('f_prepay'))||0); d.prepayDays=val('f_pdays'); d.balanceMode=m3?bm:''; d.balanceCondition=m3?'':bm; d.balanceDays=(bm==='shipped'||bm==='accepted')?val('f_bdays'):''; }
   if(!svc) d.freightPayer=val('f_freight');
   if(!(svc||coop)) d.terms={ prodDays:Number(val('f_prod'))||0 };
   if(!el('w_creg').classList.contains('hide')){ d.currencyRegNo=val('f_regNo').trim(); d.currencyRegDate=ruDate(val('f_regDate')); }
