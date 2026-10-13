@@ -162,7 +162,7 @@
 <!-- ═══ КОНТРАГЕНТЫ ═══ -->
 <div id="tab_contractors" class="hide">
   <div class="toolbar"><button class="primary" onclick="ctrEdit('')">+ Контрагент</button><input id="ctrQ" type="search" class="search" placeholder="🔎 название или УНП" oninput="ctrRender()"><span class="mut" id="ctrCnt"></span></div>
-  <div class="mut">Поставщики и подрядчики: реквизиты для платежей и документов. Нажмите на название — откроется карточка с долгом, оплатами и документами. Клиенты продаж ведутся в разделе «Клиенты».</div>
+  <div class="mut">Поставщики и подрядчики: реквизиты для платежей и документов. Нажмите на название — откроется карточка с долгом, оплатами и документами. Справочник общий с продажами: компания может быть и клиентом, и поставщиком — «+ Контрагент» и «Изменить» открывают её карточку в разделе «Контрагенты».</div>
   <div id="ctrBox"></div><div id="ctrMsg" class="msg"></div>
 </div>
 
@@ -697,17 +697,10 @@ function ctrRender(){
     +l.map(function(c){ return '<tr><td><a href="#" onclick="contrOpen(CN['+cn(c.name)+']);return false">'+esc(c.name)+'</a>'+(c.sub?' <span class="pill info">подрядчик</span>':'')+(c.note?'<div class="mut">'+esc(c.note)+'</div>':'')+'</td><td class="n">'+esc(c.unp)+'</td><td>'+esc(c.type)+'</td>'
       +'<td class="purp">'+[c.account, c.bank, c.bik?'БИК '+c.bik:''].filter(Boolean).map(esc).join(' · ')+'</td><td class="purp">'+esc(c.addr)+'</td><td class="go"><button class="sec" onclick="ctrEdit(\''+c.id+'\')">Изменить</button></td></tr>'; }).join('')+'</tbody></table></div>';
 }
-function ctrEdit(id){
-  CE=id?byId(CTR,id):null; var c=CE||{}, opt=function(t){ return '<option'+(c.type===t?' selected':'')+'>'+t+'</option>'; };
-  dlgOpen('<h3>'+(CE?'Реквизиты контрагента':'Новый контрагент')+'</h3><div class="form">'+fld('Название', inp('ctName', c.name), 'wide')+fld('УНП', inp('ctUnp', c.unp))+fld('Тип','<select id="ctType"><option value="">авто</option>'+opt('юр')+opt('ИП')+opt('физ')+'</select>')
-    +fld('Расчётный счёт', inp('ctAcc', c.account), 'wide')+fld('Банк', inp('ctBank', c.bank))+fld('БИК', inp('ctBik', c.bik))+fld('Адрес', inp('ctAddr', c.addr), 'wide')+fld('Комментарий', inp('ctNote', c.note), 'wide')+'</div>'
-    +(CE&&(c.phone||c.contact)?'<div class="mut">Контакт: '+esc([c.contact, c.phone].filter(Boolean).join(' · '))+' (ведётся в снабжении)</div>':'')
-    +'<div id="dlgMsg" class="msg"></div><div class="dlg-btns">'+(CE?'<button class="danger sec" style="margin-right:auto" onclick="ctrDel()">Удалить</button>':'')+'<button class="sec" onclick="dlgClose()">Отмена</button><button class="primary" onclick="ctrSave()">Сохранить</button></div>');
-}
-function ctrSave(){ run({vapi:'fincontrsave', data:JSON.stringify({ id:CE?CE.id:undefined, name:v('ctName'), unp:v('ctUnp'), type:v('ctType'), account:v('ctAcc'), bank:v('ctBank'), bik:v('ctBik'), addr:v('ctAddr'), note:v('ctNote') })}, 'Сохраняю контрагента…', 'dlgMsg').then(function(r){ if(!r) return; dlgClose(); ctrLoad(); }); }
-function ctrDel(){ if(!confirm('Удалить контрагента «'+CE.name+'» из справочника? Его расходы и счета останутся, но реквизиты и отметки снабжения по нему пропадут.')) return; run({vapi:'fincontrdel', id:CE.id}, 'Удаляю…', 'dlgMsg').then(function(r){ if(!r) return; dlgClose(); ctrLoad(); }); }
-function cardEdit(id){ if(!id){ oops('Этого контрагента нет в справочнике — добавьте его во вкладке «Контрагенты».'); return; }
-  get({vapi:'fincontractors'}).then(function(r){ CTR=(r&&r.items)||[]; if(!byId(CTR,id)){ oops('Это клиент продаж — его реквизиты правятся в разделе «Клиенты».'); return; } ctrEdit(id); }); }
+/** Карточка и правка — в едином разделе «Контрагенты» (13.10.2026): одна запись на компанию, роли клиент / поставщик / подрядчик. Назад — на эту вкладку. */
+function ctrEdit(id){ var sp=new URLSearchParams(location.search), bk=new URLSearchParams(location.search); ['tab','client','new','role','back'].forEach(function(x){ sp.delete(x); bk.delete(x); }); bk.set('tab','contractors');
+  if(id) sp.set('client', id); else { sp.set('new','1'); sp.set('role','supplier'); } sp.set('back','finance.html?'+bk.toString()); location.href='counterparties.html?'+sp.toString(); }
+function cardEdit(id){ if(!id){ oops('Этого контрагента нет в справочнике — добавьте его во вкладке «Контрагенты».'); return; } ctrEdit(id); }
 
 /* ═══════════ ДОЛГИ И ОТЧЁТЫ ═══════════ */
 var DEBTS=null, DOPEN={};
