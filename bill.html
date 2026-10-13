@@ -86,6 +86,7 @@
 <div class="toolbar"><a class="btn sec sm" id="backLink" href="#">← к сделке</a></div>
 <div id="hdr" class="hdr"><div class="t">Счёт…</div><div class="m">загрузка…</div></div>
 <div id="loaderr" class="note bad hide"></div>
+<div id="invPage" class="hide"></div>
 <div id="main" class="hide">
   <div id="conFw" class="note info hide"></div>
   <div class="blk" id="s_pos">
@@ -216,7 +217,7 @@ function isoDate(s){ s=String(s||''); if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.
 function todayIso(){ var d=new Date(); return new Date(d.getTime()-d.getTimezoneOffset()*6e4).toISOString().slice(0,10); }
 function jq(s){ return esc(JSON.stringify(String(s==null?'':s))); }   // строка в onclick="f(…)"
 /** Ссылка на соседний экран с теми же параметрами (embed=1, twsec — оболочка app.html), без ключей карточек. */
-function pageUrl(page, k, v){ var sp=new URLSearchParams(location.search); ['deal','lead','client','contract','framework'].forEach(function(x){ sp.delete(x); }); sp.set(k, v); return page+'?'+sp.toString(); }
+function pageUrl(page, k, v){ var sp=new URLSearchParams(location.search); ['deal','lead','client','contract','framework','invoice','tab'].forEach(function(x){ sp.delete(x); }); sp.set(k, v); return page+'?'+sp.toString(); }
 
 /* ══════════ стадии, рынки, договоры (сервер отдаёт stage/stageRu, market, isFramework…) ══════════ */
 var STAGE_RU={inquiry:'заявка',order:'заказ',in_production:'в производстве',shipped:'отгружено',lost:'не состоялась',cancelled:'аннулирована'};
@@ -253,9 +254,10 @@ function signContract(number, after){
 
 
 /* ══════════ СЧЁТ ПО СДЕЛКЕ ══════════ */
-var KEY=qp('deal'), FWID=KEY?'':qp('contract'), FW=null, DEAL=null, INVCTX=null, INVKIND='payment', CI=[];
+var INVNO=qp('invoice'), KEY=INVNO?'':qp('deal'), FWID=(KEY||INVNO)?'':qp('contract'), FW=null, DEAL=null, INVCTX=null, INVKIND='payment', CI=[];
 function liveContract(){ var cs=(DEAL&&DEAL.contracts)||[]; for(var i=cs.length-1;i>=0;i--){ var c=cs[i]; if(c.status!=='аннулирован' && c.status!=='черновик') return c; } return null; }
 function load(){
+  if(INVNO){ loadInvoice(); return; }
   if(!KEY && FWID){ loadFw(); return; }
   if(!KEY){ loadErr('Не указана сделка — откройте счёт из карточки сделки.'); return; }
   el('backLink').href=pageUrl('sales.html','deal',KEY);
@@ -263,6 +265,33 @@ function load(){
   get({vapi:'deal', deal:KEY}).then(function(r){ if(!r||!r.ok){ loadErr(errText(r)); return; } DEAL=r.deal; render(); })
     .catch(function(e){ loadErr(netText(e)); });
 }
+/* ── страница выставленного счёта РБ / РФ (?invoice=N): условия, позиции, документ, «Переформировать», «Аннулировать» ── */
+function loadInvoice(){
+  el('backLink').href=pageUrl('salesdocs.html','tab','invoices'); el('backLink').textContent='← к счетам';
+  get({vapi:'invoiceget', invoice:INVNO}).then(function(r){ if(!r||!r.ok){ loadErr(errText(r)); return; } renderInvoice(r.invoice); }).catch(function(e){ loadErr(netText(e)); });
+}
+function renderInvoice(v){
+  var cur=v.currency||'BYN', off=v.cancelled, tot=0;
+  el('ttl').textContent='🧾 Счёт на оплату № '+v.number;
+  el('hdr').innerHTML='<div class="t">Счёт № '+esc(v.number)+' от '+esc(v.date)+' <span class="pill '+(off?'muted':'')+'">'+esc(v.status)+'</span></div><div class="m">'+esc(v.client)+'</div>';
+  var rows=v.items.map(function(it, i){ tot+=it.sum; return '<tr><td class="n" data-l="№">'+(i+1)+'</td><td data-l="Наименование">'+esc(it.name)+(it.full&&it.full!==it.name?'<div class="ot">в каталоге: '+esc(it.full)+'</div>':'')+(it.sku?' <span class="sm">'+esc(it.sku)+'</span>':'')+'</td><td class="n" data-l="Кол-во">'+it.qty+'</td><td class="n" data-l="Цена">'+money(it.price)+'</td><td class="n" data-l="Сумма">'+money(it.sum)+'</td></tr>'; }).join('');
+  var line=function(k, val){ return val?'<div class="row" style="gap:var(--s-3);padding:var(--s-1) 0"><span class="sm" style="flex:0 0 190px">'+k+'</span><span>'+val+'</span></div>':''; };
+  var h='<div class="blk"><div class="h">📄 Документ</div>'+(v.doc?'<div><a href="'+esc(v.doc.url)+'" target="_blank" rel="noopener">'+esc(v.doc.name)+' ↗</a> <span class="sm">сформирован '+esc(v.doc.date)+'</span></div>':'<div class="sm">Документ не сформирован.</div>')
+    +'<div class="row" style="margin-top:var(--s-3)">'+(v.canRerender?'<button class="green sm" onclick="invRerender()">Переформировать документ</button>':'')+(off?'':'<button class="gho sm" onclick="invCancel()">Аннулировать счёт</button>')+'</div>'
+    +'<div class="sm" style="margin-top:var(--s-2)">«Переформировать» собирает документ заново под тем же номером и датой — после правки названия товара, реквизитов клиента или даты договора. Условия оплаты не меняются; чтобы изменить их или позиции — аннулируйте счёт и выставьте новый.</div><div class="msg" id="invPMsg"></div></div>'
+    +'<div class="blk"><div class="h">🧾 Условия</div>'
+      +line('Сумма', '<b>'+money(v.amount)+' '+esc(cur)+'</b>'+(v.received?' · получено '+money(v.received):''))
+      +line('Договор', v.contract?'<a href="'+esc(pageUrl('contract.html','contract',v.contract.id))+'">'+(v.contract.framework?'Рамочный № ':'№ ')+esc(v.contract.number)+'</a> от '+esc(v.contract.date):'')
+      +line('Сделка', '<a href="'+esc(pageUrl('sales.html','deal',v.deal.key))+'">'+esc(v.deal.title||'открыть')+'</a>')
+      +line('Условия оплаты', v.payLines.map(esc).join('<br>'))
+      +line('Срок производства', v.prodDays?v.prodDays+' рабочих дн.':'')+line('Планируемая отгрузка', esc(v.shipDate))+line('Действителен до', esc(v.validUntil))+line('Наш расчётный счёт', esc(v.account))
+      +(off&&v.cancelReason?line('Причина аннулирования', esc(v.cancelReason)):'')+'</div>'
+    +'<div class="blk"><div class="h">📦 Позиции <span class="sp sm">как в документе</span></div><div class="tbl-wrap"><table class="tbl pv mob"><thead><tr><th class="n">№</th><th>Наименование</th><th class="n">Кол-во</th><th class="n">Цена</th><th class="n">Сумма</th></tr></thead><tbody>'+rows
+      +'</tbody><tfoot><tr><td></td><td>Итого</td><td></td><td></td><td class="n"><b>'+money(tot)+'</b></td></tr></tfoot></table></div></div>';
+  el('invPage').innerHTML=h; el('invPage').className=''; el('main').className='hide';
+}
+function invRerender(){ run({vapi:'invoicererender', invoice:INVNO}, 'Формирую документ заново…', 'invPMsg').then(function(r){ if(!r) return; setm('invPMsg','ok','✅ Документ переформирован под тем же номером.'); loadInvoice(); }); }
+function invCancel(){ ask('Аннулировать счёт № '+INVNO+'?', '<div class="sm">Счёт уйдёт из ожидаемых поступлений, его файл — в корзину Диска. Номер повторно не выдаётся.</div>', function(){ run({vapi:'invoicecancel', number:INVNO}, 'Аннулирую счёт…', 'invPMsg').then(function(r){ if(r) loadInvoice(); }); }, 'Аннулировать'); }
 /* ── новая поставка по рамочному (сделки ещё нет) ── */
 function loadFw(){
   el('backLink').href=pageUrl('contract.html','contract',FWID); el('backLink').textContent='← к договору';
