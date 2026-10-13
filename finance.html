@@ -53,6 +53,9 @@
   .ec .t b{ font-variant-numeric:tabular-nums; white-space:nowrap; }
   .ec .b{ color:var(--muted); font:var(--t-small); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .ec.paid{ opacity:.55; }
+  .ec .t i.cal{ font-style:normal; flex:0 0 auto; cursor:pointer; }
+  textarea.paste{ width:100%; font-family:var(--mono, monospace); font-size:12px; }
+  tr.open-row > td{ background:var(--bg2); }
   .ec, .wi{ cursor:pointer; }
   .ec:hover{ border-color:var(--accent); }
   .wi:hover .who{ color:var(--accent-text); }
@@ -106,8 +109,8 @@
   <div class="strip"><div class="kps" id="tiles"></div><div class="wallets" id="wallets"></div></div>
   <div class="seg mtabs" id="mtabs"><button class="on" onclick="mPane('wait')">Ждём денег</button><button onclick="mPane('exp')">Расходы</button></div>
   <div class="bd m-wait" id="bd">
-    <div class="bd-wait"><h3>Ждём денег</h3><div class="mut" id="waitHead"></div><div class="bd-acts" style="margin-top:var(--s-2)"><button class="sec" onclick="incOpen('')">+ Поступление</button></div><div id="waitList"></div></div>
-    <div class="bd-exp"><h3>Расходы по датам</h3><div class="bd-acts"><button class="primary" onclick="expOpen('')">+ Расход</button><button class="sec" onclick="cashOpen()">Наличный расход</button><button class="sec" onclick="schedOpen()">График платежей</button><button class="sec" onclick="actOpen()">Оплата по акту сверки</button><button class="sec" onclick="xferOpen()">Обмен / перевод</button><button class="sec" onclick="periodAdd()">+ Контрольная дата</button><button class="sec" onclick="dupOpen()">Задвоенные строки</button><span class="mut">Карточку можно перетащить на другую дату.</span></div><div class="cols" id="cols"></div></div>
+    <div class="bd-wait"><h3>Ждём денег</h3><div class="mut" id="waitHead"></div><div class="bd-acts" style="margin-top:var(--s-2)"><button class="sec" onclick="incOpen('')">+ Поступление</button><button class="sec" onclick="spreadOpen()">Разнести оплату по графику</button></div><div id="waitList"></div></div>
+    <div class="bd-exp"><h3>Расходы по датам</h3><div class="bd-acts"><button class="primary" onclick="expOpen('')">+ Расход</button><button class="sec" onclick="cashOpen()">Наличный расход</button><button class="sec" onclick="schedOpen()">Графики платежей</button><button class="sec" onclick="actOpen()">Оплата по акту сверки</button><button class="sec" onclick="xferOpen()">Обмен / перевод</button><button class="sec" onclick="periodAdd()">+ Контрольная дата</button><button class="sec" onclick="dupOpen()">Задвоенные строки</button><button class="sec" onclick="nocatOpen()">Проставить статьи</button><span class="mut">Карточку можно перетащить на другую дату.</span></div><div class="cols" id="cols"></div></div>
   </div>
 </div>
 
@@ -174,7 +177,7 @@
   <div class="toolbar"><button class="sec" onclick="docLoad()">Показать сверку</button><label><input type="checkbox" id="docDiff" checked onchange="docRender()"> только с разницей</label></div>
   <div id="docBox"></div>
   <div class="sect">Аналитика за период</div>
-  <div class="toolbar"><label>с <input type="date" id="anFrom"></label><label>по <input type="date" id="anTo"></label><button class="sec" onclick="anLoad()">Показать</button></div>
+  <div class="toolbar"><label>с <input type="date" id="anFrom"></label><label>по <input type="date" id="anTo"></label><button class="sec" onclick="anLoad()">Показать</button><button class="sec" onclick="anRange('m')">Этот месяц</button><button class="sec" onclick="anRange('pm')">Прошлый</button><button class="sec" onclick="anRange('q')">Квартал</button><button class="sec" onclick="anRange('y')">Год</button></div>
   <div id="anBox"></div>
 </div>
 <!-- ═══ СПРАВОЧНИКИ ═══ -->
@@ -182,6 +185,7 @@
   <div class="sect">Курсы валют <small>BYN за единицу</small></div><div class="toolbar"><div id="rateBox" class="wallets" style="border:0;margin:0;padding:0"></div><div class="end"><button class="sec" onclick="ratesUpd()">Обновить по НБ РБ</button></div></div>
   <div class="sect">Кошельки</div><div class="toolbar"><button class="sec" onclick="walOpen('')">+ Кошелёк</button></div><div id="walBox"></div>
   <div class="sect">Типы оплаты <small>комиссия подставляется при получении денег</small></div><div class="toolbar"><button class="sec" onclick="ptOpen('')">+ Тип оплаты</button></div><div id="ptBox"></div>
+  <div class="sect">Доступ к Снабу <small>кто подаёт счета из Telegram и кто их одобряет</small></div><div id="snabBox"></div>
   <div class="sect">Статьи</div><div class="toolbar"><button class="sec" onclick="catOpen('')">+ Статья</button><input id="catQ" type="search" class="search" placeholder="🔎 статья" oninput="renderSettings()"></div><div id="catBox"></div>
   <div id="setMsg" class="msg"></div>
 </div>
@@ -221,7 +225,9 @@ function run(p, say, m){
 }
 function newKey(){ return 'ui-'+Date.now()+'-'+Math.random().toString(36).slice(2,10); }
 
-var REF={ wallets:[], categories:[], paymentTypes:[], defaultWalletId:null }, TAB='';
+var REF={ wallets:[], categories:[], paymentTypes:[], defaultWalletId:null }, TAB='', GOTALL=false;
+/* окна доски открываются и из других вкладок — им нужна загруженная доска (сегодняшняя дата, расходы) */
+function needBoard(fn){ if(typeof B!=='undefined'&&B){ fn(); return; } get({vapi:'finboard'}).then(function(r){ if(r&&r.ok){ B=r; fn(); } else oops(errText(r)); }); }
 function setTab(t){
   TAB=t; var b=el('tabs').querySelectorAll('button'); for(var i=0;i<b.length;i++) b[i].className=b[i].getAttribute('data-tab')===t?'on':'';
   ['board','statement','invoices','salary','recurring','reports','settings'].forEach(function(x){ el('tab_'+x).className=t===x?'':'hide'; });
@@ -251,17 +257,17 @@ function renderBoard(){
   // ── слева: ждём денег (когда ждём = расчётная дата, иначе плановая)
   var when=function(r){ return r.factIso||r.planIso||''; }, pend=B.incomes.filter(function(r){ return !r.got; });
   var late=pend.filter(function(r){ var w=when(r); return w&&w<B.today; }), wait=pend.filter(function(r){ var w=when(r); return w&&w>=B.today; }), nod=pend.filter(function(r){ return !when(r); });
-  var got=B.incomes.filter(function(r){ return r.got&&r.src!=='transfer'; }).sort(function(a,b){ return a.gotDate<b.gotDate?1:-1; }).slice(0,15);
+  var got=B.incomes.filter(function(r){ return r.got&&r.src!=='transfer'; }).sort(function(a,b){ return a.gotDate<b.gotDate?1:-1; }), gotAll=got.length; if(!GOTALL) got=got.slice(0,15);
   var srt=function(a,b){ return when(a)<when(b)?-1:1; }, sum=function(l){ return l.reduce(function(s,r){ return s+r.sum; },0); };
   var item=function(r, cls){ return '<div class="wi '+(cls||'')+'" onclick="incOpen(\''+r.id+'\')"><div class="who" title="'+esc(r.client)+'">'+esc(r.client||'—')+'</div><div class="sum">'+money(r.sum)+'</div><div class="meta">'
     +[r.zakaz, r.got?'получено '+dm(r.gotDate):(when(r)?'срок '+dm(when(r)):'без даты'), r.wallet, r.ptype].filter(Boolean).map(esc).join(' · ')+'</div></div>'; };
   var grp=function(title, list, cls, itemCls){ return list.length?'<div class="grp '+(cls||'')+'"><span>'+title+' · '+list.length+'</span><span>'+money(sum(list))+'</span></div>'+list.map(function(r){ return item(r,itemCls); }).join(''):''; };
   el('waitHead').textContent=pend.length?pend.length+' платежей на '+money(sum(pend))+(late.length?' · просрочено '+late.length:''):'Ожидаемых поступлений нет.';
-  el('waitList').innerHTML=grp('Просрочено', late.sort(srt), 'bad', 'late')+grp('Ждём', wait.sort(srt))+grp('Без даты', nod)+grp('Получено недавно', got);
+  el('waitList').innerHTML=grp('Просрочено', late.sort(srt), 'bad', 'late')+grp('Ждём', wait.sort(srt))+grp('Без даты', nod)+grp('Получено недавно', got)+(gotAll>got.length?'<div class="mut" style="padding:var(--s-2) 0"><a href="#" onclick="GOTALL=true; renderBoard(); return false">показать все '+gotAll+'</a></div>':'');
   // ── справа: расходы по контрольным датам
   var unpaid=B.expenses.filter(function(e){ return !e.paid; }), nodate=unpaid.filter(function(e){ return !e.planIso; });
   var card=function(e){ var meta=[e.contr!==e.name?e.contr:'', e.cat||'без статьи', e.paid?'оплачено '+dm(e.paidDateIso):''].filter(Boolean).join(' · ');
-    return '<div class="ec'+(e.paid?' paid':'')+'" onclick="expOpen(\''+e.id+'\')"'+(e.paid?'':' draggable="true" ondragstart="dragExp(event,\''+e.id+'\')"')+' title="'+esc((e.name||'')+' — '+meta)+'"><div class="t"><span>'+esc(e.name||e.contr||'—')+'</span><b>'+money(e.sum)+'</b></div><div class="b">'+esc(meta)+'</div></div>'; };
+    return '<div class="ec'+(e.paid?' paid':'')+'" onclick="expOpen(\''+e.id+'\')"'+(e.paid?'':' draggable="true" ondragstart="dragExp(event,\''+e.id+'\')"')+' title="'+esc((e.name||'')+' — '+meta)+'"><div class="t"><span>'+esc(e.name||e.contr||'—')+'</span>'+(e.dogovor?'<i class="cal" title="график договора '+esc(e.dogovor)+'" onclick="event.stopPropagation(); schedView(CN['+cn(e.dogovor)+'])">📅</i>':'')+'<b>'+money(e.sum)+'</b></div><div class="b">'+esc(meta)+'</div></div>'; };
   var col=function(title, sub, list, cls, iso){ return '<div class="col '+(cls||'')+'" ondragover="event.preventDefault(); this.classList.add(\'drop\')" ondragleave="this.classList.remove(\'drop\')" ondrop="dropExp(event,\''+(iso||'')+'\')"><div class="ch"><b>'+title+'</b><span class="n">'+money(sum(list))+'</span></div>'+sub+(list.length?list.map(card).join(''):'<div class="empty">нет платежей</div>')+'</div>'; };
   var h=nodate.length?col('Без даты','<div class="bal">срок не назначен</div>',nodate):'';
   B.periods.forEach(function(p){
@@ -290,7 +296,7 @@ function expOpen(id){
     +fld('№ счёта / акта', inp('exNo', e.invNo))+fld('Дата счёта', inp('exNoDate', e.invDateIso, 'd'))+fld('Договор', inp('exDog', e.dogovor))+fld('Примечание', inp('exNote', e.note), 'wide')+'</div>';
   if(EX&&!e.paid) h+='<div class="dl-acts"><div><label>Оплачено — дата</label>'+inp('exPayDate', B.today, 'd')+'</div><div><label>Сумма оплаты (меньше — часть)</label>'+inp('exPaySum', String(e.sum).replace('.',','), 'n')+'</div><button onclick="expPay()">Оплачено</button></div>';
   h+='<div id="dlgMsg" class="msg"></div><div class="dlg-btns">'+(EX?'<button class="danger sec" style="margin-right:auto" onclick="expDel()">Удалить</button>'+(e.paid?'<button class="sec" onclick="expUnpay()">Снять оплату</button>':''):'')
-    +'<button class="sec" onclick="dlgClose()">Отмена</button><button class="primary" onclick="expSave()">Сохранить</button></div>';
+    +(EX&&e.dogovor?'<button class="sec" onclick="schedView(EX.dogovor)">График договора</button>':'')+'<button class="sec" onclick="dlgClose()">Отмена</button><button class="primary" onclick="expSave()">Сохранить</button></div>';
   dlgOpen(h);
 }
 function expData(){ return { name:v('exName'), contr:v('exContr'), categoryId:v('exCat')||null, sum:v('exSum'), walletId:v('exWallet')||null, dateIso:v('exDate'), paidDateIso:v('exPaid'), invNo:v('exNo'), invDateIso:v('exNoDate'), dogovor:v('exDog'), note:v('exNote') }; }
@@ -312,7 +318,7 @@ function incOpen(id){
     +fld('Клиент', inp('inClient', r.client), 'wide')+fld('№ заказа', inp('inZakaz', r.zakaz))+fld('Договор', inp('inDog', r.dogovor))
     +fld('Сумма', inp('inSum', r.sum?String(r.sum).replace('.',','):'', 'n'))+fld('Кошелёк','<select id="inWallet"><option value="">—</option>'+wOpts(r.walletId||'')+'</select>')
     +fld('Статья','<select id="inCat">'+catOpts(cat,'income')+'</select>')+fld('Тип оплаты','<select id="inType" onchange="incPct()">'+types+'</select>')
-    +fld('Срок по плану', inp('inDate', r.planIso, 'd'))+(IN&&r.got?fld('Дата получения', inp('inGot', r.gotDate, 'd')):'')+fld('Примечание', inp('inNote', r.note), 'wide')+'</div>';
+    +fld('Срок по плану', inp('inDate', r.planIso, 'd'))+(IN&&r.got?fld('Дата получения', inp('inGot', r.gotDate, 'd')):'')+fld('Примечание', inp('inNote', r.note), 'wide')+'</div>'+(IN?'':'<label><input type="checkbox" id="inSched" onchange="incSchedToggle()"> несколько платежей по одному заказу (график)</label><div id="inSchedBox" class="hide"></div>');
   if(IN&&!r.got) h+='<div class="dl-acts"><div><label>Получено — дата</label>'+inp('inGotDate', B.today, 'd')+'</div><div><label>Пришло (меньше — часть)</label>'+inp('inGotSum', String(r.sum).replace('.',','), 'n')+'</div><div><label>Комиссия, %</label>'+inp('inComm', '', 'n')+'</div><button onclick="incGot()">Получено</button></div>';
   h+='<div id="dlgMsg" class="msg"></div><div class="dlg-btns">'+(IN?'<button class="danger sec" style="margin-right:auto" onclick="incDel()">Удалить</button>'+(r.got?'<button class="sec" onclick="incUngot()">Снять получение</button>':''):'')
     +'<button class="sec" onclick="dlgClose()">Отмена</button><button class="primary" onclick="incSave()">Сохранить</button></div>';
@@ -320,7 +326,14 @@ function incOpen(id){
 }
 function incPct(){ var s=el('inType'), c=el('inComm'); if(!s||!c) return; var o=s.options[s.selectedIndex], p=o?Number(o.getAttribute('data-pct'))||0:0; c.value=p?String(p).replace('.',','):''; }
 function incData(){ return { client:v('inClient'), zakaz:v('inZakaz'), dogovor:v('inDog'), sum:v('inSum'), walletId:v('inWallet')||null, categoryId:v('inCat')||null, paymentTypeId:v('inType')||null, dateIso:v('inDate'), gotDateIso:v('inGot'), note:v('inNote') }; }
-function incSave(){ var p=IN?{vapi:'finincupdate', id:IN.id, data:JSON.stringify(incData())}:{vapi:'finincadd', data:JSON.stringify(incData()), key:newKey()}; run(p, 'Сохраняю поступление…', 'dlgMsg').then(after); }
+var INS=[];
+function incSchedToggle(){ var on=el('inSched').checked; el('inSchedBox').className=on?'':'hide'; el('inSum').disabled=on; el('inDate').disabled=on; if(on&&!INS.length) INS=[{},{},{}]; incSchedRows(); }
+function incSchedRows(){ el('inSchedBox').innerHTML='<div class="mut">Дата и сумма каждого платежа; пустые строки не учитываются.</div>'+INS.map(function(r, k){ return '<div class="al" style="grid-template-columns:170px 150px auto"><input type="date" value="'+esc(r.dateIso||'')+'" onchange="INS['+k+'].dateIso=this.value"><input inputmode="decimal" placeholder="сумма" value="'+esc(r.sum||'')+'" oninput="INS['+k+'].sum=this.value"><span></span></div>'; }).join('')+'<button class="sec" onclick="INS.push({}); incSchedRows()">+ платёж</button>'; }
+function incSave(){
+  if(!IN&&el('inSched')&&el('inSched').checked){ var rows=INS.filter(function(r){ return r.dateIso&&num(r.sum)>0; }).map(function(r){ return { dateIso:r.dateIso, sum:num(r.sum) }; }), d=incData();
+    if(!rows.length){ setm('dlgMsg','warn','Заполните хотя бы один платёж: дату и сумму.'); return; }
+    run({vapi:'finincschedadd', base:JSON.stringify({ client:d.client, zakaz:d.zakaz, dogovor:d.dogovor, categoryId:d.categoryId, paymentTypeId:d.paymentTypeId, walletId:d.walletId, note:d.note }), rows:JSON.stringify(rows)}, 'Сохраняю график поступлений…', 'dlgMsg').then(function(r){ if(r){ INS=[]; after(r); } }); return; }
+  var p=IN?{vapi:'finincupdate', id:IN.id, data:JSON.stringify(incData())}:{vapi:'finincadd', data:JSON.stringify(incData()), key:newKey()}; run(p, 'Сохраняю поступление…', 'dlgMsg').then(after); }
 function incGot(){
   var w=v('inWallet'); if(!w){ setm('dlgMsg','warn','Выберите кошелёк, на который пришли деньги.'); return; }
   run({vapi:'finincreceive', id:IN.id, data:JSON.stringify({ received:num(v('inGotSum')), walletId:w, gotDateIso:v('inGotDate'), paymentTypeId:v('inType')||null, commPct:num(v('inComm')) }), key:newKey()}, 'Записываю получение…', 'dlgMsg').then(after);
@@ -650,8 +663,10 @@ function contrOpen(name){
       +(r.docBalance.length?'<div class="sect">Оплачено и закрыто документами</div><table class="reg"><thead><tr><th>Валюта</th><th class="num">Оплачено</th><th class="num">По документам</th><th class="num">Разница</th></tr></thead><tbody>'+r.docBalance.map(function(x){ return '<tr><td>'+x.cur+'</td><td class="num">'+money(x.paid)+'</td><td class="num">'+money(x.docs)+'</td><td class="num"'+(Math.abs(x.diff)>=0.01?' style="color:var(--red)"':'')+'>'+money(x.diff)+'</td></tr>'; }).join('')+'</tbody></table>':'')
       +(r.docsNote?'<div class="note warn">'+esc(r.docsNote)+'</div>':'')
       +(r.history.length?'<div class="sect">Последние оплаты</div><table class="reg"><tbody>'+r.history.map(function(x){ return '<tr><td class="n">'+dmy(x.paidDateIso)+'</td><td>'+esc(x.name)+' <span class="mut">'+esc(x.cat)+'</span></td><td class="mut">'+esc(x.wallet)+'</td><td class="num">'+money(x.sum)+'</td></tr>'; }).join('')+'</tbody></table>':'')
-      +'<div class="dlg-btns"><button class="sec" onclick="dlgClose()">Закрыть</button></div>'); });
+      +'<div class="dlg-btns"><button class="sec" style="margin-right:auto" onclick="dlgClose()">Закрыть</button><button class="sec" onclick="cardExp(CN['+cn(r.name)+'])">+ Расход</button>'+(m.unpaid.length?'<button class="primary" onclick="cardAct(CN['+cn(r.name)+'])">Оплатить по акту сверки</button>':'')+'</div>'); });
 }
+function cardExp(name){ dlgClose(); needBoard(function(){ expOpen(''); el('exContr').value=name; }); }
+function cardAct(name){ dlgClose(); needBoard(function(){ actOpen(name); }); }
 var DOCS=null;
 function docLoad(){ el('docBox').innerHTML='<div class="mut">Читаю документы…</div>'; get({vapi:'findocsbalance'}).then(function(r){ if(!r||!r.ok){ el('docBox').innerHTML='<div class="note warn">'+esc(errText(r))+'</div>'; return; } DOCS=r.items; docRender(); }, function(e){ el('docBox').innerHTML='<div class="note warn">Лист документов не ответил: '+esc(String(e&&e.message||e))+'</div>'; }); }
 function docRender(){
@@ -663,15 +678,28 @@ function docRender(){
 }
 
 /* ═══════════ ДОЛГИ И ОТЧЁТЫ ═══════════ */
+var DEBTS=null, DOPEN={};
 function repLoad(){
-  get({vapi:'findebts'}).then(function(r){ if(!r||!r.ok){ noAccess(r); return; }
-    var tbl=function(l, who){ return l.length?'<div class="tbl-wrap"><table class="reg"><thead><tr><th>'+who+'</th><th class="num">Сумма, BYN</th><th class="num">Просрочено</th><th>Платежей</th><th>Ближайший срок</th></tr></thead><tbody>'
-      +l.map(function(a){ return '<tr><td>'+(a.contr&&a.contr!=='—'?'<a href="#" onclick="contrOpen(CN['+cn(a.contr)+']);return false">'+esc(a.label)+'</a>':esc(a.label))+(a.client&&a.client!==a.label?' <span class="mut">'+esc(a.client)+'</span>':'')+(a.cur&&a.cur!=='BYN'&&!a.multiCur?' <span class="mut">'+money(a.native)+' '+a.cur+'</span>':'')+'</td><td class="num">'+money(a.byn)+'</td><td class="num">'+(a.overdueByn?'<span style="color:var(--red)">'+money(a.overdueByn)+'</span>':'')+'</td><td class="n">'+a.count+'</td><td class="n">'+dmy(a.nearest)+'</td></tr>'; }).join('')+'</tbody></table></div>':'<div class="empty">Долгов нет.</div>'; };
-    el('dbRecvSum').textContent=money(r.receivables.total)+(r.receivables.overdue?' · просрочено '+money(r.receivables.overdue):''); el('dbRecv').innerHTML=tbl(r.receivables.items,'Клиент / заказ');
-    el('dbPaySum').textContent=money(r.payables.total)+(r.payables.overdue?' · просрочено '+money(r.payables.overdue):''); el('dbPay').innerHTML=tbl(r.payables.items,'Контрагент / договор'); });
-  if(!el('anFrom').value){ var t=(B&&B.today)||new Date().toISOString().slice(0,10); el('anFrom').value=t.slice(0,8)+'01'; el('anTo').value=t; }
-  anLoad();
+  get({vapi:'findebts'}).then(function(r){ if(!r||!r.ok){ noAccess(r); return; } DEBTS=r; debtRender(); });
+  if(!el('anFrom').value) anRange('m'); else anLoad();
 }
+function debtToggle(k){ DOPEN[k]=!DOPEN[k]; debtRender(); }
+function debtRender(){
+  var r=DEBTS, tbl=function(l, who, side){ return l.length?'<div class="tbl-wrap"><table class="reg"><thead><tr><th>'+who+'</th><th class="num">Сумма, BYN</th><th class="num">Просрочено</th><th>Платежей</th><th>Ближайший срок</th></tr></thead><tbody>'
+    +l.map(function(a, k){ var id=side+k, dog=a.key&&a.key.indexOf('d:')===0?a.key.slice(2):'';
+      return '<tr style="cursor:pointer" onclick="debtToggle(\''+id+'\')"><td>'+(DOPEN[id]?'▾ ':'▸ ')+esc(a.label)+(a.client&&a.client!==a.label?' <span class="mut">'+esc(a.client)+'</span>':'')+(a.cur&&a.cur!=='BYN'&&!a.multiCur?' <span class="mut">'+money(a.native)+' '+a.cur+'</span>':'')+'</td><td class="num">'+money(a.byn)+'</td><td class="num">'+(a.overdueByn?'<span style="color:var(--red)">'+money(a.overdueByn)+'</span>':'')+'</td><td class="n">'+a.count+'</td><td class="n">'+dmy(a.nearest)+'</td></tr>'
+        +(DOPEN[id]?'<tr class="open-row"><td colspan="5"><table class="reg"><tbody>'+a.rows.slice().sort(function(x,y){ return (x.dateIso||'9999')<(y.dateIso||'9999')?-1:1; }).map(function(x){ return '<tr><td class="n"'+(x.dateIso&&x.dateIso<r.today?' style="color:var(--red)"':'')+'>'+(dmy(x.dateIso)||'без срока')+'</td><td>'+esc(x.name)+'</td><td class="num">'+money(x.sum)+(x.cur!=='BYN'?' '+x.cur:'')+'</td></tr>'; }).join('')+'</tbody></table>'
+          +(side==='p'?'<div class="toolbar">'+(a.contr&&a.contr!=='—'?'<button class="sec" onclick="contrOpen(CN['+cn(a.contr)+'])">Карточка контрагента</button>':'')+(dog?'<button class="sec" onclick="schedView(CN['+cn(dog)+'])">График договора</button>':'')+'<select id="dbCat_'+k+'" style="max-width:260px">'+catOpts('','expense')+'</select><button class="sec" onclick="debtCat('+k+')">Сменить статью всем платежам</button></div>':'')+'</td></tr>':''); }).join('')+'</tbody></table></div>':'<div class="empty">Долгов нет.</div>'; };
+  el('dbRecvSum').textContent=money(r.receivables.total)+(r.receivables.overdue?' · просрочено '+money(r.receivables.overdue):''); el('dbRecv').innerHTML=tbl(r.receivables.items,'Клиент / заказ','r');
+  el('dbPaySum').textContent=money(r.payables.total)+(r.payables.overdue?' · просрочено '+money(r.payables.overdue):''); el('dbPay').innerHTML=tbl(r.payables.items,'Контрагент / договор','p');
+}
+function debtCat(k){ var a=DEBTS.payables.items[k], c=v('dbCat_'+k); if(!c){ oops('Выберите статью из списка.'); return; }
+  run({vapi:'fincatbulk', group:a.key, category:c}, 'Меняю статью…').then(function(r){ if(r) alert('Статья проставлена платежам: '+r.changed+' (включая оплаченные).'); }); }
+function anRange(k){ var t=(typeof B!=='undefined'&&B&&B.today)||new Date().toISOString().slice(0,10), y=Number(t.slice(0,4)), m=Number(t.slice(5,7)), p2=function(n){ return (n<10?'0':'')+n; }, last=function(yy,mm){ return new Date(Date.UTC(yy,mm,0)).getUTCDate(); }, f, to=t;
+  if(k==='pm'){ var pm=m===1?12:m-1, py=m===1?y-1:y; f=py+'-'+p2(pm)+'-01'; to=py+'-'+p2(pm)+'-'+p2(last(py,pm)); }
+  else if(k==='q'){ var q0=Math.floor((m-1)/3)*3+1; f=y+'-'+p2(q0)+'-01'; }
+  else if(k==='y') f=y+'-01-01'; else f=t.slice(0,8)+'01';
+  el('anFrom').value=f; el('anTo').value=to; anLoad(); }
 function anLoad(){
   get({vapi:'finanalytics', from:v('anFrom'), to:v('anTo')}).then(function(r){
     if(!r||!r.ok){ el('anBox').innerHTML='<div class="note warn">'+esc(errText(r))+'</div>'; return; }
@@ -680,6 +708,8 @@ function anLoad(){
       +(r.movement.valid?tile('Было на начало', money(r.movement.opening))+tile('Стало на конец', money(r.movement.closing)):'')+'</div></div>'
       +'<div class="bd" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><div class="card"><h3 style="margin:0 0 var(--s-2);font:var(--t-heading)">Расходы по направлениям</h3>'+napr(r.byNapr)+'</div><div class="card" style="margin-top:0"><h3 style="margin:0 0 var(--s-2);font:var(--t-heading)">Приходы</h3>'+napr(r.incByNapr)
       +'<h3 style="margin:var(--s-4) 0 var(--s-2);font:var(--t-heading)">По месяцам</h3><table class="reg"><thead><tr><th>Месяц</th><th class="num">Приход</th><th class="num">Расход</th></tr></thead><tbody>'+r.months.map(function(m){ return '<tr><td class="n">'+m.ym+'</td><td class="num">'+money(m.inc)+'</td><td class="num">'+money(m.exp)+'</td></tr>'; }).join('')+'</tbody></table></div></div>'
+      +'<div class="bd" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr);margin-top:var(--s-4)"><div class="card" style="margin-top:0"><h3 style="margin:0 0 var(--s-2);font:var(--t-heading)">Расходы по кошелькам</h3><table class="reg"><tbody>'+r.wallets.map(function(w){ return '<tr><td>'+esc(w.wallet)+'</td><td class="num">'+money(w.sum)+'</td></tr>'; }).join('')+'</tbody></table></div>'
+      +'<div class="card" style="margin-top:0"><h3 style="margin:0 0 var(--s-2);font:var(--t-heading)">Кому платили больше всего</h3>'+r.contractors.slice(0,15).map(function(c){ return '<details><summary>'+(c.contr&&c.contr!=='—'?'<a href="#" onclick="contrOpen(CN['+cn(c.contr)+']);return false">'+esc(c.contr)+'</a>':'без контрагента')+' <span class="n" style="float:right">'+money(c.sum)+'</span></summary><table class="reg">'+c.statyi.map(function(x){ return '<tr><td class="mut">'+esc(x.statya)+'</td><td class="num">'+money(x.sum)+'</td></tr>'; }).join('')+'</table></details>'; }).join('')+'</div></div>'
       +(r.closure.valid?'<div class="sect">Оплачено без закрывающих документов <small>оплаты с '+dmy(r.closure.startIso)+', в BYN</small></div>'+(r.closure.items.length?'<div class="tbl-wrap"><table class="reg"><thead><tr><th>Контрагент</th><th class="num">Оплачено</th><th class="num">По документам</th><th class="num">Не закрыто</th></tr></thead><tbody>'
         +r.closure.items.map(function(x){ return '<tr><td><a href="#" onclick="contrOpen(CN['+cn(x.contr)+']);return false">'+esc(x.contr)+'</a></td><td class="num">'+money(x.paid)+'</td><td class="num">'+money(x.doced)+'</td><td class="num" style="color:var(--red)">'+money(x.diff)+'</td></tr>'; }).join('')+'</tbody></table></div>':'<div class="empty">Все оплаты закрыты документами.</div>')
         :'<div class="mut" style="margin-top:var(--s-3)">'+esc(r.closure.note||'')+'</div>'); });
@@ -693,25 +723,95 @@ function cashOpen(){
 }
 function cashGo(){ run({vapi:'fincashexp', data:JSON.stringify({ name:v('csName'), categoryId:v('csCat')||null, sum:v('csSum'), walletId:v('csWallet')||null, dateIso:v('csDate'), spender:v('csWho'), reimb:v('csOwn')==='1', note:v('csNote') }), key:newKey()}, 'Записываю расход…', 'dlgMsg').then(after); }
 var SC=null;
+/* графики платежей по договорам (лизинг, кредит): список договоров → график → правка */
+function parseSchedule(text){
+  var out=[]; (text||'').split(/\r?\n/).forEach(function(line){
+    var dm_=line.match(/(\d{1,2})[.\/](\d{1,2})[.\/](\d{4})/); if(!dm_) return;
+    var rest=line.replace(dm_[0],' ');
+    /* пробел — разделитель тысяч только между группами по три цифры: «4  20.08.2026  900» — это 900, а не 4900 */
+    var cents=rest.match(/\d{1,3}(?:[  ]\d{3})*[.,]\d{2}(?!\d)/g), pick;
+    if(cents&&cents.length) pick=cents[cents.length-1]; else { var ints=rest.match(/\d{1,3}(?:[  ]\d{3})+|\d+/g); if(!ints||!ints.length) return; pick=ints[ints.length-1]; }
+    var sum=Math.round((Number(String(pick).replace(/[  ]/g,'').replace(',','.'))||0)*100)/100; if(!(sum>0)) return;
+    out.push({ dateIso:dm_[3]+'-'+(dm_[2].length<2?'0':'')+dm_[2]+'-'+(dm_[1].length<2?'0':'')+dm_[1], sum:sum });
+  }); return out;
+}
 function schedOpen(){
-  SC={ rows:[{dateIso:'',sum:''}] };
-  dlgOpen('<h3>График платежей по договору</h3><div class="form">'+fld('№ договора','<input id="scDog" onchange="schedLoad()">')+fld('Назначение', inp('scName',''))+fld('Контрагент', inp('scContr',''))+fld('Статья','<select id="scCat">'+catOpts('','expense')+'</select>')+fld('Кошелёк','<select id="scWallet"><option value="">—</option>'+wOpts(REF.defaultWalletId)+'</select>')+'</div>'
-    +'<div class="mut" id="scHint">Введите номер договора: если график уже есть, он откроется для правки. Оплаченные платежи не меняются.</div><div id="scRows"></div><button class="sec" onclick="SC.rows.push({dateIso:\'\',sum:\'\'}); schedRows()">+ платёж</button>'+dlgFoot('schedGo()','Сохранить график'));
+  get({vapi:'finschedcontracts'}).then(function(r){ var l=(r&&r.items)||[];
+    dlgOpen('<h3>Графики платежей</h3><div class="mut">Лизинг, кредит, рассрочка поставщику — платежи по одному договору. Нажмите на договор, чтобы увидеть весь график.</div>'
+      +(l.length?'<table class="reg"><thead><tr><th>Договор</th><th>Что</th><th class="num">Осталось</th><th>Ближайший</th></tr></thead><tbody>'+l.map(function(g){ return '<tr style="cursor:pointer" onclick="schedView(CN['+cn(g.dogovor)+'])"><td><a href="#" onclick="return false">'+esc(g.dogovor)+'</a></td><td>'+esc(g.name)+(g.contr&&g.contr!==g.name?' <span class="mut">'+esc(g.contr)+'</span>':'')+'</td>'
+        +'<td class="num">'+(g.leftN?money(g.leftSum)+' <span class="mut">· '+g.leftN+' из '+g.n+'</span>':'<span class="mut">выплачен</span>')+'</td><td class="n"'+(g.nextIso&&g.nextIso<r.today?' style="color:var(--red)"':'')+'>'+dmy(g.nextIso)+'</td></tr>'; }).join('')+'</tbody></table>':'<div class="empty">Графиков пока нет.</div>')
+      +'<div class="dlg-btns"><button class="sec" onclick="dlgClose()">Закрыть</button><button class="primary" onclick="schedNew()">+ Новый график</button></div>'); });
+}
+function schedView(dog){ get({vapi:'finschedlist', dogovor:dog}).then(function(r){ if(!r||!r.ok){ oops(errText(r)); return; } SC={ dog:dog, base:r.base, items:r.items, edit:false, rows:[] }; schedRender(); }); }
+function schedRender(){
+  var today=(typeof B!=='undefined'&&B&&B.today)||new Date().toISOString().slice(0,10), it=SC.items, t={ n:0, sum:0, pn:0, ps:0, ln:0, ls:0, on:0, os:0, next:null };
+  it.forEach(function(x){ t.n++; t.sum+=x.sum; if(x.paid){ t.pn++; t.ps+=x.sum; } else { t.ln++; t.ls+=x.sum; if(x.dateIso&&x.dateIso<today){ t.on++; t.os+=x.sum; } else if(!t.next) t.next=x; } });
+  var head='<h3>График договора '+esc(SC.dog)+'</h3>'+(SC.base?'<div class="mut">'+[SC.base.name, SC.base.contr, SC.base.cat].filter(Boolean).map(esc).join(' · ')+'</div>':'')
+    +'<div class="strip" style="margin-top:var(--s-3)"><div class="kps">'+tile('Всего', money(t.sum), 'платежей: '+t.n)+tile('Оплачено', money(t.ps), 'платежей: '+t.pn)+tile('Осталось', money(t.ls), 'платежей: '+t.ln)+(t.on?tile('Просрочено', money(t.os), 'платежей: '+t.on, 'bad'):'')+(t.next?tile('Следующий платёж', dmy(t.next.dateIso), money(t.next.sum)):'')+'</div></div>';
+  if(!SC.edit){
+    var left=t.sum;
+    dlgOpen(head+(it.length?'<div class="tbl-wrap"><table class="reg"><thead><tr><th>№</th><th>Дата</th><th class="num">Сумма</th><th>Состояние</th><th class="num">Останется после</th></tr></thead><tbody>'+it.map(function(x, i){ left=r2(left-x.sum); var od=!x.paid&&x.dateIso&&x.dateIso<today;
+      return '<tr'+(x.paid?' class="sp"':'')+'><td class="n">'+(i+1)+'</td><td class="n">'+dmy(x.dateIso)+'</td><td class="num">'+money(x.sum)+'</td><td>'+(x.paid?'<span class="pill ok">оплачен</span>':od?'<span class="pill bad">просрочен</span>':'<span class="mut">ждёт</span>')+(x.schedule||x.paid?'':' <span class="mut">вне графика</span>')+'</td><td class="num mut">'+money(left<0?0:left)+'</td></tr>'; }).join('')+'</tbody></table></div>':'<div class="empty">По этому договору платежей нет.</div>')
+      +'<div class="dlg-btns"><button class="sec" style="margin-right:auto" onclick="schedOpen()">‹ Все графики</button><button class="sec" onclick="dlgClose()">Закрыть</button><button class="primary" onclick="schedEdit(true)">Править / загрузить новый график</button></div>');
+    return;
+  }
+  var paid=it.filter(function(x){ return x.paid; }), other=it.filter(function(x){ return !x.paid&&!x.schedule; });
+  dlgOpen(head+'<div class="toolbar"><label>Сдвинуть все даты на <input id="scShift" inputmode="numeric" value="0" style="width:70px"> дней</label><button class="sec" onclick="schedShift()">Сдвинуть</button><div class="end"><button class="sec" onclick="el(\'scPasteBox\').className=\'\'">Загрузить новый график</button></div></div>'
+    +schedPasteBox('Вставьте строки из файла графика — они заменят все неоплаченные платежи (оплаченные сохранятся).', 'Применить замену')
+    +'<div class="mut">Неоплаченные платежи графика (дата · сумма):</div><div id="scRows"></div><button class="sec" onclick="SC.rows.push({dateIso:\'\',sum:\'\'}); schedRows()">+ платёж</button>'
+    +(other.length?'<div class="mut" style="margin-top:var(--s-3)">Вне графика (обычные счета с этим договором, правятся на доске): '+other.map(function(x){ return dmy(x.dateIso)+' — '+money(x.sum); }).join('; ')+'</div>':'')
+    +(paid.length?'<div class="mut" style="margin-top:var(--s-3)">Оплаченные (не меняются): '+paid.map(function(x){ return dmy(x.dateIso)+' — '+money(x.sum); }).join('; ')+'</div>':'')
+    +'<div id="dlgMsg" class="msg"></div><div class="dlg-btns"><button class="sec" style="margin-right:auto" onclick="schedEdit(false)">‹ К графику</button><button class="danger sec" onclick="schedDelAll()">Удалить весь график</button><button class="primary" onclick="schedSaveGo()">Сохранить</button></div>');
   schedRows();
 }
-function schedRows(){ el('scRows').innerHTML=SC.rows.map(function(r, k){ return '<div class="al" style="grid-template-columns:170px 150px auto auto">'+(r.paid?'<span class="n">'+dmy(r.dateIso)+'</span><span class="n">'+money(r.sum)+'</span><span class="pill ok">оплачен</span><span></span>'
-  :'<input type="date" value="'+esc(r.dateIso)+'" onchange="SC.rows['+k+'].dateIso=this.value"><input inputmode="decimal" placeholder="сумма" value="'+esc(String(r.sum).replace('.',','))+'" oninput="SC.rows['+k+'].sum=this.value"><span></span><button class="sec" onclick="SC.rows.splice('+k+',1); schedRows()">×</button>')+'</div>'; }).join(''); }
-function schedLoad(){ var d=v('scDog').trim(); if(!d) return; get({vapi:'finschedlist', dogovor:d}).then(function(r){ if(!r||!r.ok||!r.items.length){ SC.exists=false; el('scHint').textContent='Договора с таким номером ещё нет — будет создан новый график.'; return; }
-  SC.exists=true; SC.rows=r.items.filter(function(i){ return i.paid||i.schedule; }).map(function(i){ return { dateIso:i.dateIso, sum:i.sum, paid:i.paid }; }); el('scName').value=r.base.name; el('scContr').value=r.base.contr; el('scCat').value=r.base.categoryId||''; el('scWallet').value=r.base.walletId||'';
-  el('scHint').textContent='График найден: '+r.items.length+' платежей. Правьте неоплаченные строки и сохраните.'; schedRows(); }); }
-function schedGo(){ var d=v('scDog').trim(), rows=SC.rows.filter(function(r){ return !r.paid; }).map(function(r){ return { dateIso:r.dateIso, sum:r.sum }; });
-  if(!d){ setm('dlgMsg','warn','Укажите номер договора.'); return; }
-  run(SC.exists?{vapi:'finschedsave', dogovor:d, rows:JSON.stringify(rows)}:{vapi:'finschedadd', base:JSON.stringify({ name:v('scName'), contr:v('scContr'), categoryId:v('scCat')||null, walletId:v('scWallet')||null, dogovor:d }), rows:JSON.stringify(rows)}, 'Сохраняю график…', 'dlgMsg').then(after); }
+function schedPasteBox(hint, btn){ return '<div id="scPasteBox" class="hide"><div class="mut">'+hint+' Из каждой строки берутся дата и последняя сумма.</div><textarea id="scPaste" class="paste" rows="6" oninput="schedPasteInfo()" placeholder="20.05.2026   858,35"></textarea><div class="toolbar"><button class="sec" onclick="schedPasteGo()">'+btn+'</button><span class="mut" id="scPasteInfo"></span></div></div>'; }
+function schedPasteInfo(){ var r=parseSchedule(v('scPaste')), t=r.reduce(function(s,x){ return s+x.sum; },0); el('scPasteInfo').textContent=r.length?'распознано платежей: '+r.length+' на '+money(r2(t))+' · с '+dmy(r[0].dateIso)+' по '+dmy(r[r.length-1].dateIso):'пока ничего не распознано — нужны строки с датой и суммой'; }
+function schedPasteGo(){ var r=parseSchedule(v('scPaste')); if(!r.length){ setm('dlgMsg','warn','Не распознал ни одной строки с датой и суммой.'); return; } SC.rows=r; el('scPasteBox').className='hide'; schedRows(); }
+function schedEdit(on){ SC.edit=on; if(on) SC.rows=SC.items.filter(function(x){ return !x.paid&&x.schedule; }).map(function(x){ return { dateIso:x.dateIso, sum:x.sum }; }); schedRender(); }
+function schedRows(){ el('scRows').innerHTML=SC.rows.map(function(r, k){ return '<div class="al" style="grid-template-columns:170px 150px auto auto"><input type="date" value="'+esc(r.dateIso)+'" onchange="SC.rows['+k+'].dateIso=this.value"><input inputmode="decimal" placeholder="сумма" value="'+esc(String(r.sum).replace('.',','))+'" oninput="SC.rows['+k+'].sum=this.value"><span></span><button class="sec" onclick="SC.rows.splice('+k+',1); schedRows()">×</button></div>'; }).join(''); }
+function schedShift(){ var d=parseInt(v('scShift'),10)||0; if(!d) return; SC.rows.forEach(function(r){ if(!r.dateIso) return; var t=new Date(r.dateIso+'T00:00:00Z'); t.setUTCDate(t.getUTCDate()+d); r.dateIso=t.toISOString().slice(0,10); }); schedRows(); }
+function schedClean(){ return SC.rows.filter(function(r){ return r.dateIso&&num(r.sum)>0; }).map(function(r){ return { dateIso:r.dateIso, sum:num(r.sum) }; }); }
+function schedReload(){ if(TAB==='board') loadBoard(); else if(TAB==='reports') repLoad(); }
+function schedSaveGo(){ run({vapi:'finschedsave', dogovor:SC.dog, rows:JSON.stringify(schedClean())}, 'Сохраняю график…', 'dlgMsg').then(function(r){ if(!r) return; schedReload(); schedView(SC.dog); }); }
+function schedDelAll(){ if(!confirm('Удалить все неоплаченные платежи графика по договору '+SC.dog+'? Оплаченные останутся.')) return; run({vapi:'finschedsave', dogovor:SC.dog, rows:'[]'}, 'Удаляю график…', 'dlgMsg').then(function(r){ if(!r) return; schedReload(); schedView(SC.dog); }); }
+function schedNew(){
+  SC={ dog:'', rows:[{dateIso:'',sum:''}], isNew:true };
+  dlgOpen('<h3>Новый график платежей</h3><div class="form">'+fld('№ договора', inp('scDog',''))+fld('Назначение', inp('scName',''))+fld('Контрагент', inp('scContr',''))+fld('Статья','<select id="scCat">'+catOpts('','expense')+'</select>')+fld('Кошелёк','<select id="scWallet"><option value="">—</option>'+wOpts(REF.defaultWalletId)+'</select>')+'</div>'
+    +'<div class="toolbar"><button class="sec" onclick="el(\'scPasteBox\').className=\'\'">Вставить график из файла лизинга / кредита</button></div>'+schedPasteBox('Скопируйте строки из файла графика (можно целиком) и вставьте сюда.', 'Подставить платежи')
+    +'<div id="scRows"></div><button class="sec" onclick="SC.rows.push({dateIso:\'\',sum:\'\'}); schedRows()">+ платёж</button>'+dlgFoot('schedNewGo()','Сохранить график'));
+  schedRows();
+}
+function schedNewGo(){ var d=v('scDog').trim(), rows=schedClean();
+  if(!d){ setm('dlgMsg','warn','Укажите номер договора.'); return; } if(!rows.length){ setm('dlgMsg','warn','Добавьте хотя бы один платёж: дату и сумму.'); return; }
+  run({vapi:'finschedadd', base:JSON.stringify({ name:v('scName'), contr:v('scContr'), categoryId:v('scCat')||null, walletId:v('scWallet')||null, dogovor:d }), rows:JSON.stringify(rows)}, 'Сохраняю график…', 'dlgMsg').then(function(r){ if(!r) return; schedReload(); schedView(d); }); }
+/* расходы без статьи: подсказка — статья, которую чаще всего ставили этому контрагенту */
+var NC=[];
+function nocatOpen(){ get({vapi:'finnocat'}).then(function(r){ NC=(r&&r.items)||[];
+  dlgOpen('<h3>Проставить статьи</h3>'+(NC.length?'<div class="mut">Расходы без статьи: '+NC.length+'. Подсказка по прошлым платежам контрагента уже подставлена — проверьте и сохраните разом.</div><div class="tbl-wrap" style="max-height:55vh;overflow:auto"><table class="reg"><thead><tr><th>Дата</th><th>Расход</th><th class="num">Сумма</th><th>Статья</th></tr></thead><tbody>'
+    +NC.map(function(x, k){ return '<tr><td class="n">'+dmy(x.dateIso)+'</td><td>'+esc(x.name)+(x.contr&&x.contr!==x.name?' <span class="mut">'+esc(x.contr)+'</span>':'')+(x.note?'<div class="mut">'+esc(x.note.slice(0,90))+'</div>':'')+'</td><td class="num">'+money(x.sum)+'</td><td><select id="nc_'+k+'">'+catOpts(x.hint,'expense')+'</select></td></tr>'; }).join('')+'</tbody></table></div>'+dlgFoot('nocatGo()','Сохранить статьи')
+    :'<div class="empty">У всех расходов статья проставлена.</div><div class="dlg-btns"><button onclick="dlgClose()">Закрыть</button></div>')); }); }
+function nocatGo(){ var items=NC.map(function(x, k){ return { id:x.id, categoryId:v('nc_'+k) }; }).filter(function(x){ return x.categoryId; });
+  if(!items.length){ setm('dlgMsg','warn','Выберите статью хотя бы одному расходу.'); return; } run({vapi:'finnocatsave', items:JSON.stringify(items)}, 'Проставляю статьи…', 'dlgMsg').then(function(r){ if(!r) return; dlgClose(); if(TAB==='board') loadBoard(); }); }
+/* разнос одного платежа по графику заявки вручную */
+var SPR=null;
+function spreadOpen(){ dlgOpen('<h3>Разнести оплату по графику заявки</h3><div class="mut">Клиент заплатил одной суммой, а в плане по заказу несколько сроков: укажите заказ и разложите платёж по срокам.</div><div class="toolbar"><label>№ заказа <input id="sprZak" placeholder="2517"></label><button class="sec" onclick="spreadScan()">Показать</button></div><div id="sprBody"></div><div id="dlgMsg" class="msg"></div><div class="dlg-btns"><button class="sec" onclick="dlgClose()">Закрыть</button><button class="primary hide" id="sprGo" onclick="spreadGo()">Разнести</button></div>'); }
+function spreadScan(){ var z=v('sprZak').trim(); if(!z) return; get({vapi:'finspreadscan', zakaz:z}).then(function(S){ SPR=S; var b=el('sprBody'); el('sprGo').className='primary hide';
+  if(!S||!S.ok||(!S.pending.length&&!S.received.length)){ b.innerHTML='<div class="empty">По заказу '+esc(z)+' строк не нашлось.</div>'; return; }
+  var sug={}; (S.suggestion.alloc||[]).forEach(function(a){ sug[a.incId]=a.pay; });
+  b.innerHTML='<div class="mut">Заказ '+esc(S.zakaz)+' · в ожидании '+money(S.planSum)+' · получено '+money(S.gotSum)+'</div>'
+    +(S.received.length?'<div class="form">'+fld('Какой платёж разносим','<select id="sprSrc">'+S.received.map(function(r){ return '<option value="'+r.incId+'">'+esc(r.client)+' · '+money(r.sum)+' · '+dmy(r.gotIso)+(r.wallet?' · '+esc(r.wallet):'')+'</option>'; }).join('')+'</select>','wide')+'</div>'
+      +(S.pending.length?'<div class="mut">Сколько отнести на каждый срок:</div>'+S.pending.map(function(p, i){ return '<div class="al" style="grid-template-columns:1fr 130px"><span>'+(p.planIso?dmy(p.planIso):'без срока')+' · '+esc(p.client)+(p.stage?' · '+esc(p.stage):'')+' · план <b>'+money(p.sum)+'</b></span><input id="spr_'+i+'" inputmode="decimal" value="'+String(sug[p.incId]||0).replace('.',',')+'"></div>'; }).join('')+(S.suggestion.unallocated>0?'<div class="mut">Не легло на график: '+money(S.suggestion.unallocated)+' — переплата сверх плана.</div>':''):'<div class="empty">Плановых строк по заказу нет — раскладывать не на что.</div>')
+      :'<div class="note warn">Полученных денег по заказу нет. Сначала проведите приход (выписка или «Получено» на строке), потом возвращайтесь сюда.</div>');
+  if(S.received.length&&S.pending.length) el('sprGo').className='primary'; }); }
+function spreadGo(){ var al=[]; SPR.pending.forEach(function(p, i){ var x=num(v('spr_'+i)); if(x>0) al.push({ incId:p.incId, sum:x }); });
+  if(!al.length){ setm('dlgMsg','warn','Ни на один срок ничего не отнесено.'); return; }
+  run({vapi:'finspreadapply', data:JSON.stringify({ zakaz:SPR.zakaz, srcId:v('sprSrc'), allocations:al })}, 'Раскладываю платёж…', 'dlgMsg').then(function(r){ if(!r) return; dlgClose(); loadBoard(); }); }
 var AC=null;
-function actOpen(){ get({vapi:'finactcontrs'}).then(function(r){ if(!r||!r.ok) return; AC={ list:r.items };
+function actOpen(pre){ get({vapi:'finactcontrs'}).then(function(r){ if(!r||!r.ok) return; AC={ list:r.items };
   dlgOpen('<h3>Оплата по акту сверки</h3><div class="mut">Одна сумма гасит счета контрагента по порядку, старые первыми. Не хватило на счёт — он оплачивается частично; осталось лишнее — это аванс.</div><div class="form">'
     +fld('Контрагент','<select id="acContr" onchange="actInv()"><option value="">— выберите —</option>'+AC.list.filter(function(a){ return a.count; }).map(function(a){ return '<option value="'+esc(a.contr)+'">'+esc(a.contr)+' · '+a.count+' на '+money(a.sum)+'</option>'; }).join('')+'</select>', 'wide')
-    +fld('Сумма оплаты', inp('acSum','', 'n'))+fld('Дата оплаты', inp('acDate', B.today, 'd'))+fld('Кошелёк','<select id="acWallet">'+wOpts(REF.defaultWalletId)+'</select>')+fld('№ акта', inp('acNo',''))+'</div><div id="acInv"></div>'+dlgFoot('actGo()','Провести оплату')); }); }
+    +fld('Сумма оплаты', inp('acSum','', 'n'))+fld('Дата оплаты', inp('acDate', B.today, 'd'))+fld('Кошелёк','<select id="acWallet">'+wOpts(REF.defaultWalletId)+'</select>')+fld('№ акта', inp('acNo',''))+'</div><div id="acInv"></div>'+dlgFoot('actGo()','Провести оплату'));
+  if(pre){ var o=el('acContr').options; for(var i=0;i<o.length;i++) if(o[i].value.toLowerCase().replace(/[^a-zа-яё0-9]/g,'')===String(pre).toLowerCase().replace(/[^a-zа-яё0-9]/g,'')){ el('acContr').selectedIndex=i; actInv(); break; } } }); }
 function actInv(){ var c=v('acContr'); if(!c){ el('acInv').innerHTML=''; return; } get({vapi:'finactinvoices', contr:c}).then(function(r){ AC.inv=(r&&r.items)||[];
   el('acInv').innerHTML=AC.inv.map(function(x, k){ return '<div class="drow" style="display:flex;gap:var(--s-2);padding:var(--s-1) 0;border-top:1px solid var(--line)"><input type="checkbox" id="ac_k'+k+'" checked><span style="flex:1">'+esc(x.name)+(x.invNo?' №'+esc(x.invNo):'')+' <span class="mut">'+dmy(x.invDateIso||x.planIso)+'</span></span><b class="n">'+money(x.sum)+'</b></div>'; }).join(''); }); }
 function actGo(){ var ids=(AC.inv||[]).filter(function(x, k){ return el('ac_k'+k).checked; }).map(function(x){ return x.id; });
@@ -733,7 +833,11 @@ function dupGo(){ var pick=function(l, pre){ return l.filter(function(x, k){ ret
 
 /* ═══════════ СПРАВОЧНИКИ ═══════════ */
 var SET=null, CE=null, WE=null, PE=null;
-function setLoad(){ get({vapi:'finsettings'}).then(function(r){ if(!r||!r.ok){ noAccess(r); return; } SET=r; renderSettings(); }); }
+function setLoad(){ get({vapi:'finsettings'}).then(function(r){ if(!r||!r.ok){ noAccess(r); return; } SET=r; renderSettings(); }); get({vapi:'finsnabaccess'}).then(snabRender); }
+function snabRender(r){ if(!r||!r.ok){ el('snabBox').innerHTML='<div class="mut">'+esc(errText(r))+'</div>'; return; }
+  var box=function(p, role){ return '<input type="checkbox"'+(p[role]?' checked':'')+' onchange="snabSet(\''+p.id+'\',\''+role+'\',this.checked)">'; };
+  el('snabBox').innerHTML='<div class="tbl-wrap"><table class="reg"><thead><tr><th>Сотрудник</th><th>Подаёт счета</th><th>Одобряет</th></tr></thead><tbody>'+r.people.map(function(p){ return '<tr><td>'+(p.name?esc(p.name):'<span class="mut">нет в «Сотрудниках» · Telegram '+esc(p.id)+'</span>')+'</td><td>'+box(p,'submit')+'</td><td>'+box(p,'approve')+'</td></tr>'; }).join('')+'</tbody></table></div><div class="mut">Одобряющий может и подавать. В списке — сотрудники с привязанным Telegram.</div>'; }
+function snabSet(id, role, on){ run({vapi:'finsnabaccessset', who:id, role:role, on:on?1:0}, 'Сохраняю доступ…', 'setMsg').then(function(r){ if(r) snabRender(r); else get({vapi:'finsnabaccess'}).then(snabRender); }); }
 function refsReload(){ return get({vapi:'finrefs'}).then(function(r){ if(r&&r.ok) REF=r; }); }
 function renderSettings(){
   el('rateBox').innerHTML=SET.rates.length?SET.rates.map(function(r){ return '<span>'+r.currency+' <b>'+String(r.rate).replace('.',',')+'</b> <span class="mut">'+dm(r.date)+(r.source==='deal'?' · курс сделки':r.source==='manual'?' · вручную':'')+'</span></span>'; }).join(''):'<span class="mut">курсов нет</span>';
