@@ -95,6 +95,7 @@
   <button data-tab="statement" onclick="setTab('statement')">Выписка</button>
   <button data-tab="salary" onclick="setTab('salary')">Зарплата</button>
   <button data-tab="recurring" onclick="setTab('recurring')">Регулярные</button>
+  <button data-tab="reports" onclick="setTab('reports')">Долги и отчёты</button>
   <button data-tab="settings" onclick="setTab('settings')">Справочники</button>
 </div>
 <div id="noacc" class="note warn hide"></div>
@@ -105,7 +106,7 @@
   <div class="seg mtabs" id="mtabs"><button class="on" onclick="mPane('wait')">Ждём денег</button><button onclick="mPane('exp')">Расходы</button></div>
   <div class="bd m-wait" id="bd">
     <div class="bd-wait"><h3>Ждём денег</h3><div class="mut" id="waitHead"></div><div class="bd-acts" style="margin-top:var(--s-2)"><button class="sec" onclick="incOpen('')">+ Поступление</button></div><div id="waitList"></div></div>
-    <div class="bd-exp"><h3>Расходы по датам</h3><div class="bd-acts"><button class="primary" onclick="expOpen('')">+ Расход</button><button class="sec" onclick="xferOpen()">Обмен / перевод</button><button class="sec" onclick="periodAdd()">+ Контрольная дата</button><span class="mut">Карточку можно перетащить на другую дату.</span></div><div class="cols" id="cols"></div></div>
+    <div class="bd-exp"><h3>Расходы по датам</h3><div class="bd-acts"><button class="primary" onclick="expOpen('')">+ Расход</button><button class="sec" onclick="cashOpen()">Наличный расход</button><button class="sec" onclick="schedOpen()">График платежей</button><button class="sec" onclick="actOpen()">Оплата по акту сверки</button><button class="sec" onclick="xferOpen()">Обмен / перевод</button><button class="sec" onclick="periodAdd()">+ Контрольная дата</button><button class="sec" onclick="dupOpen()">Задвоенные строки</button><span class="mut">Карточку можно перетащить на другую дату.</span></div><div class="cols" id="cols"></div></div>
   </div>
 </div>
 
@@ -145,6 +146,14 @@
   <div class="toolbar"><button class="primary" onclick="tplOpen('')">+ Шаблон</button><button class="sec" onclick="tplRun()">Создать карточки на ближайшие месяцы</button>
     <span class="mut">Карточки создаются сами раз в несколько часов; срок на выходной переносится на рабочий день раньше.</span></div>
   <div id="tplBox"></div><div id="tplMsg" class="msg"></div>
+</div>
+<!-- ═══ ДОЛГИ И ОТЧЁТЫ ═══ -->
+<div id="tab_reports" class="hide">
+  <div class="sect">Нам должны <small id="dbRecvSum"></small></div><div id="dbRecv"></div>
+  <div class="sect">Мы должны <small id="dbPaySum"></small></div><div id="dbPay"></div>
+  <div class="sect">Аналитика за период</div>
+  <div class="toolbar"><label>с <input type="date" id="anFrom"></label><label>по <input type="date" id="anTo"></label><button class="sec" onclick="anLoad()">Показать</button></div>
+  <div id="anBox"></div>
 </div>
 <!-- ═══ СПРАВОЧНИКИ ═══ -->
 <div id="tab_settings" class="hide">
@@ -193,9 +202,9 @@ function newKey(){ return 'ui-'+Date.now()+'-'+Math.random().toString(36).slice(
 var REF={ wallets:[], categories:[], paymentTypes:[], defaultWalletId:null }, TAB='';
 function setTab(t){
   TAB=t; var b=el('tabs').querySelectorAll('button'); for(var i=0;i<b.length;i++) b[i].className=b[i].getAttribute('data-tab')===t?'on':'';
-  ['board','statement','salary','recurring','settings'].forEach(function(x){ el('tab_'+x).className=t===x?'':'hide'; });
+  ['board','statement','salary','recurring','reports','settings'].forEach(function(x){ el('tab_'+x).className=t===x?'':'hide'; });
   try{ history.replaceState(null,'',location.pathname+'?tab='+t+(qp('embed')?'&embed=1':'')+(qp('srv')?'&srv='+qp('srv'):'')); }catch(e){}
-  if(t==='board') loadBoard(); else if(t==='statement') stRefresh(); else if(t==='salary') salLoad(); else if(t==='recurring') tplLoad(); else setLoad();
+  if(t==='board') loadBoard(); else if(t==='statement') stRefresh(); else if(t==='salary') salLoad(); else if(t==='recurring') tplLoad(); else if(t==='reports') repLoad(); else setLoad();
 }
 function wName(id){ for(var i=0;i<REF.wallets.length;i++) if(REF.wallets[i].id===id) return REF.wallets[i].name; return ''; }
 function wOpts(sel, filter){ return REF.wallets.filter(filter||function(){return true;}).map(function(w){ return '<option value="'+w.id+'"'+(w.id===sel?' selected':'')+'>'+esc(w.name)+(w.currency!=='BYN'?' ('+w.currency+')':'')+'</option>'; }).join(''); }
@@ -539,6 +548,73 @@ function tplToggle(id, on){ run({vapi:'fintemplatetoggle', id:id, on:on?1:0}, '�
 function tplDel(){ if(!confirm('Удалить шаблон «'+TP.name+'»? Уже созданные карточки останутся.')) return; run({vapi:'fintemplatedel', id:TP.id}, 'Удаляю…', 'dlgMsg').then(function(r){ if(!r) return; dlgClose(); TPL=r.items; renderTpl(); }); }
 function tplRun(){ run({vapi:'finrecurrun'}, 'Создаю карточки…', 'tplMsg').then(function(r){ if(r) setm('tplMsg','ok', r.created?'Создано карточек: '+r.created+'.':'Новых карточек нет — на ближайшие месяцы всё уже создано.'); }); }
 
+/* ═══════════ ДОЛГИ И ОТЧЁТЫ ═══════════ */
+function repLoad(){
+  get({vapi:'findebts'}).then(function(r){ if(!r||!r.ok){ noAccess(r); return; }
+    var tbl=function(l, who){ return l.length?'<div class="tbl-wrap"><table class="reg"><thead><tr><th>'+who+'</th><th class="num">Сумма, BYN</th><th class="num">Просрочено</th><th>Платежей</th><th>Ближайший срок</th></tr></thead><tbody>'
+      +l.map(function(a){ return '<tr><td>'+esc(a.label)+(a.client&&a.client!==a.label?' <span class="mut">'+esc(a.client)+'</span>':'')+(a.cur&&a.cur!=='BYN'&&!a.multiCur?' <span class="mut">'+money(a.native)+' '+a.cur+'</span>':'')+'</td><td class="num">'+money(a.byn)+'</td><td class="num">'+(a.overdueByn?'<span style="color:var(--red)">'+money(a.overdueByn)+'</span>':'')+'</td><td class="n">'+a.count+'</td><td class="n">'+dmy(a.nearest)+'</td></tr>'; }).join('')+'</tbody></table></div>':'<div class="empty">Долгов нет.</div>'; };
+    el('dbRecvSum').textContent=money(r.receivables.total)+(r.receivables.overdue?' · просрочено '+money(r.receivables.overdue):''); el('dbRecv').innerHTML=tbl(r.receivables.items,'Клиент / заказ');
+    el('dbPaySum').textContent=money(r.payables.total)+(r.payables.overdue?' · просрочено '+money(r.payables.overdue):''); el('dbPay').innerHTML=tbl(r.payables.items,'Контрагент / договор'); });
+  if(!el('anFrom').value){ var t=(B&&B.today)||new Date().toISOString().slice(0,10); el('anFrom').value=t.slice(0,8)+'01'; el('anTo').value=t; }
+  anLoad();
+}
+function anLoad(){
+  get({vapi:'finanalytics', from:v('anFrom'), to:v('anTo')}).then(function(r){
+    if(!r||!r.ok){ el('anBox').innerHTML='<div class="note warn">'+esc(errText(r))+'</div>'; return; }
+    var napr=function(l){ return l.length?l.map(function(n){ return '<details><summary>'+esc(n.napr)+' <span class="n" style="float:right">'+money(n.sum)+'</span></summary><table class="reg">'+n.statyi.map(function(x){ return '<tr><td class="mut">'+esc(x.statya)+'</td><td class="num">'+money(x.sum)+'</td></tr>'; }).join('')+'</table></details>'; }).join(''):'<div class="empty">Нет операций за период.</div>'; };
+    el('anBox').innerHTML='<div class="strip"><div class="kps">'+tile('Приход', money(r.incTotal), r.transfers.in?'в т. ч. переводы между своими '+money(r.transfers.in):'')+tile('Расход', money(r.expTotal), r.transfers.out?'в т. ч. переводы между своими '+money(r.transfers.out):'')+tile('Итог периода', money(r.net), '', r.net<0?'bad':'')
+      +(r.movement.valid?tile('Было на начало', money(r.movement.opening))+tile('Стало на конец', money(r.movement.closing)):'')+'</div></div>'
+      +'<div class="bd" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><div class="card"><h3 style="margin:0 0 var(--s-2);font:var(--t-heading)">Расходы по направлениям</h3>'+napr(r.byNapr)+'</div><div class="card" style="margin-top:0"><h3 style="margin:0 0 var(--s-2);font:var(--t-heading)">Приходы</h3>'+napr(r.incByNapr)
+      +'<h3 style="margin:var(--s-4) 0 var(--s-2);font:var(--t-heading)">По месяцам</h3><table class="reg"><thead><tr><th>Месяц</th><th class="num">Приход</th><th class="num">Расход</th></tr></thead><tbody>'+r.months.map(function(m){ return '<tr><td class="n">'+m.ym+'</td><td class="num">'+money(m.inc)+'</td><td class="num">'+money(m.exp)+'</td></tr>'; }).join('')+'</tbody></table></div></div>'
+      +'<div class="mut" style="margin-top:var(--s-3)">'+esc(r.closure.note||'')+'</div>'; });
+}
+/* ── инструменты доски: наличный расход, график, акт сверки, задвоенные ── */
+function cashOpen(){
+  dlgOpen('<h3>Расход наличными</h3><div class="form">'+fld('На что', inp('csName',''), 'wide')+fld('Статья','<select id="csCat">'+catOpts('','expense')+'</select>')+fld('Сумма', inp('csSum','', 'n'))
+    +fld('Наличный кошелёк','<select id="csWallet">'+wOpts('',function(w){ return w.isCash; })+'</select>')+fld('Дата', inp('csDate', B.today, 'd'))+fld('Кто платил', inp('csWho',''))
+    +fld('Платил своими','<select id="csOwn"><option value="0">нет — из кассы</option><option value="1">да — возместить сотруднику</option></select>')+fld('Примечание', inp('csNote',''), 'wide')+'</div>'
+    +'<div class="mut">Из кассы спишется не больше, чем в ней есть: остальное станет долгом тому, кто платил.</div>'+dlgFoot('cashGo()','Записать'));
+}
+function cashGo(){ run({vapi:'fincashexp', data:JSON.stringify({ name:v('csName'), categoryId:v('csCat')||null, sum:v('csSum'), walletId:v('csWallet')||null, dateIso:v('csDate'), spender:v('csWho'), reimb:v('csOwn')==='1', note:v('csNote') }), key:newKey()}, 'Записываю расход…', 'dlgMsg').then(after); }
+var SC=null;
+function schedOpen(){
+  SC={ rows:[{dateIso:'',sum:''}] };
+  dlgOpen('<h3>График платежей по договору</h3><div class="form">'+fld('№ договора','<input id="scDog" onchange="schedLoad()">')+fld('Назначение', inp('scName',''))+fld('Контрагент', inp('scContr',''))+fld('Статья','<select id="scCat">'+catOpts('','expense')+'</select>')+fld('Кошелёк','<select id="scWallet"><option value="">—</option>'+wOpts(REF.defaultWalletId)+'</select>')+'</div>'
+    +'<div class="mut" id="scHint">Введите номер договора: если график уже есть, он откроется для правки. Оплаченные платежи не меняются.</div><div id="scRows"></div><button class="sec" onclick="SC.rows.push({dateIso:\'\',sum:\'\'}); schedRows()">+ платёж</button>'+dlgFoot('schedGo()','Сохранить график'));
+  schedRows();
+}
+function schedRows(){ el('scRows').innerHTML=SC.rows.map(function(r, k){ return '<div class="al" style="grid-template-columns:170px 150px auto auto">'+(r.paid?'<span class="n">'+dmy(r.dateIso)+'</span><span class="n">'+money(r.sum)+'</span><span class="pill ok">оплачен</span><span></span>'
+  :'<input type="date" value="'+esc(r.dateIso)+'" onchange="SC.rows['+k+'].dateIso=this.value"><input inputmode="decimal" placeholder="сумма" value="'+esc(String(r.sum).replace('.',','))+'" oninput="SC.rows['+k+'].sum=this.value"><span></span><button class="sec" onclick="SC.rows.splice('+k+',1); schedRows()">×</button>')+'</div>'; }).join(''); }
+function schedLoad(){ var d=v('scDog').trim(); if(!d) return; get({vapi:'finschedlist', dogovor:d}).then(function(r){ if(!r||!r.ok||!r.items.length){ SC.exists=false; el('scHint').textContent='Договора с таким номером ещё нет — будет создан новый график.'; return; }
+  SC.exists=true; SC.rows=r.items.filter(function(i){ return i.paid||i.schedule; }).map(function(i){ return { dateIso:i.dateIso, sum:i.sum, paid:i.paid }; }); el('scName').value=r.base.name; el('scContr').value=r.base.contr; el('scCat').value=r.base.categoryId||''; el('scWallet').value=r.base.walletId||'';
+  el('scHint').textContent='График найден: '+r.items.length+' платежей. Правьте неоплаченные строки и сохраните.'; schedRows(); }); }
+function schedGo(){ var d=v('scDog').trim(), rows=SC.rows.filter(function(r){ return !r.paid; }).map(function(r){ return { dateIso:r.dateIso, sum:r.sum }; });
+  if(!d){ setm('dlgMsg','warn','Укажите номер договора.'); return; }
+  run(SC.exists?{vapi:'finschedsave', dogovor:d, rows:JSON.stringify(rows)}:{vapi:'finschedadd', base:JSON.stringify({ name:v('scName'), contr:v('scContr'), categoryId:v('scCat')||null, walletId:v('scWallet')||null, dogovor:d }), rows:JSON.stringify(rows)}, 'Сохраняю график…', 'dlgMsg').then(after); }
+var AC=null;
+function actOpen(){ get({vapi:'finactcontrs'}).then(function(r){ if(!r||!r.ok) return; AC={ list:r.items };
+  dlgOpen('<h3>Оплата по акту сверки</h3><div class="mut">Одна сумма гасит счета контрагента по порядку, старые первыми. Не хватило на счёт — он оплачивается частично; осталось лишнее — это аванс.</div><div class="form">'
+    +fld('Контрагент','<select id="acContr" onchange="actInv()"><option value="">— выберите —</option>'+AC.list.filter(function(a){ return a.count; }).map(function(a){ return '<option value="'+esc(a.contr)+'">'+esc(a.contr)+' · '+a.count+' на '+money(a.sum)+'</option>'; }).join('')+'</select>', 'wide')
+    +fld('Сумма оплаты', inp('acSum','', 'n'))+fld('Дата оплаты', inp('acDate', B.today, 'd'))+fld('Кошелёк','<select id="acWallet">'+wOpts(REF.defaultWalletId)+'</select>')+fld('№ акта', inp('acNo',''))+'</div><div id="acInv"></div>'+dlgFoot('actGo()','Провести оплату')); }); }
+function actInv(){ var c=v('acContr'); if(!c){ el('acInv').innerHTML=''; return; } get({vapi:'finactinvoices', contr:c}).then(function(r){ AC.inv=(r&&r.items)||[];
+  el('acInv').innerHTML=AC.inv.map(function(x, k){ return '<div class="drow" style="display:flex;gap:var(--s-2);padding:var(--s-1) 0;border-top:1px solid var(--line)"><input type="checkbox" id="ac_k'+k+'" checked><span style="flex:1">'+esc(x.name)+(x.invNo?' №'+esc(x.invNo):'')+' <span class="mut">'+dmy(x.invDateIso||x.planIso)+'</span></span><b class="n">'+money(x.sum)+'</b></div>'; }).join(''); }); }
+function actGo(){ var ids=(AC.inv||[]).filter(function(x, k){ return el('ac_k'+k).checked; }).map(function(x){ return x.id; });
+  run({vapi:'finactpay', data:JSON.stringify({ ids:ids, amount:v('acSum'), dateIso:v('acDate'), walletId:v('acWallet'), actNo:v('acNo') }), key:newKey()}, 'Провожу оплату по акту…', 'dlgMsg').then(function(r){ if(!r) return; dlgClose(); loadBoard(); alert('Закрыто счетов: '+r.closed+(r.partial?', частично оплачен ещё один на '+money(r.partial):'')+(r.advance?', аванс поставщику '+money(r.advance):'')+'.'); }); }
+var DP=null;
+function dupOpen(){ Promise.all([get({vapi:'finexpdups'}), get({vapi:'finincdups'}), get({vapi:'finspreadtodo'})]).then(function(a){ DP={ exp:(a[0]&&a[0].pairs)||[], inc:(a[1]&&a[1].pairs)||[], sp:(a[2]&&a[2].todo)||[] };
+  var sec=function(title, rows){ return rows.length?'<div class="grp"><span>'+title+'</span></div>'+rows.join(''):''; }, row=function(id, text, sum, basis){ return '<div style="display:flex;gap:var(--s-2);padding:var(--s-2) 0;border-top:1px solid var(--line)"><input type="checkbox" id="'+id+'" checked><span style="flex:1">'+text+'<div class="mut">'+basis+'</div></span><b class="n">'+sum+'</b></div>'; };
+  var h=sec('Расходы: карточка плана и оплата про одно и то же', DP.exp.map(function(p, k){ return row('dp_e'+k, esc(p.plan.name||p.plan.contr)+' <span class="mut">срок '+dm(p.plan.planIso)+' ↔ оплата '+dm(p.paid.paidIso)+'</span>', money(p.factSum)+(p.factSum!==p.sum?' <span class="mut">план '+money(p.sum)+'</span>':''), p.basis); }))
+    +sec('Поступления: «ждём» и «получено» про одну оплату', DP.inc.map(function(p, k){ return row('dp_i'+k, esc(p.pend.client||p.pend.zakaz)+' <span class="mut">'+esc(p.pend.zakaz)+' ↔ '+esc(p.got.client)+' от '+dm(p.got.gotIso)+'</span>', money(p.sum), p.basis); }))
+    +sec('Платёж пришёл одной суммой — разложить по графику заявки', DP.sp.map(function(t, k){ return row('dp_s'+k, 'Заявка '+esc(t.zakaz)+' · '+esc(t.planClient)+' <span class="mut">пришло от «'+esc(t.srcClient)+'» '+dm(t.srcIso)+'</span>', money(t.srcSum), t.alloc.map(function(x){ return dm(x.planIso)+': '+money(x.pay)+(x.full?'':' из '+money(x.planSum)); }).join(', ')+(t.unallocated?' · не разложено '+money(t.unallocated):'')); }));
+  dlgOpen('<h3>Задвоенные строки</h3>'+(h?'<div class="mut">Отмеченные пары будут склеены: плановая строка станет оплаченной, вторая — убрана. Остатки кошельков при этом не меняются.</div>'+h+'<div id="dlgMsg" class="msg"></div><div class="dlg-btns"><button class="sec" onclick="dlgClose()">Отмена</button><button class="primary" onclick="dupGo()">Склеить отмеченные</button></div>':'<div class="empty">Задвоенных строк не найдено.</div><div class="dlg-btns"><button onclick="dlgClose()">Закрыть</button></div>')); }); }
+function dupGo(){ var pick=function(l, pre){ return l.filter(function(x, k){ return el(pre+k).checked; }); }, ek=pick(DP.exp,'dp_e').map(function(p){ return p.key; }), ik=pick(DP.inc,'dp_i').map(function(p){ return p.key; }), sp=pick(DP.sp,'dp_s'), msg=[];
+  var step=function(p, say){ return function(prev){ return p?run(p, say, 'dlgMsg').then(function(r){ if(r) msg.push(say.replace('…','')+': '+(r.done!==undefined?r.done:'готово')+(r.skipped&&r.skipped.length?' (пропущено '+r.skipped.length+')':'')); return r; }):Promise.resolve(prev); }; };
+  var chain=Promise.resolve();
+  if(ek.length) chain=chain.then(step({vapi:'finexpdupapply', keys:JSON.stringify(ek)}, 'Склеиваю расходы…'));
+  if(ik.length) chain=chain.then(step({vapi:'finincdupapply', keys:JSON.stringify(ik)}, 'Склеиваю поступления…'));
+  sp.forEach(function(t){ chain=chain.then(step({vapi:'finspreadapply', data:JSON.stringify({ zakaz:t.zakaz, srcId:t.srcId, allocations:t.alloc.map(function(x){ return { incId:x.incId, sum:x.pay }; }) })}, 'Раскладываю платёж по заявке '+t.zakaz+'…')); });
+  chain.then(function(){ dlgClose(); loadBoard(); if(msg.length) alert(msg.join('\n')); }); }
+
 /* ═══════════ СПРАВОЧНИКИ ═══════════ */
 var SET=null, CE=null, WE=null, PE=null;
 function setLoad(){ get({vapi:'finsettings'}).then(function(r){ if(!r||!r.ok){ noAccess(r); return; } SET=r; renderSettings(); }); }
@@ -577,7 +653,7 @@ function ptSave(){ run({vapi:'finptypesave', data:JSON.stringify({ id:PE?PE.id:u
 
 get({vapi:'finrefs'}).then(function(r){
   if(!r||!r.ok){ noAccess(r); return; }
-  REF=r; var t0=qp('tab'); setTab(['statement','salary','recurring','settings'].indexOf(t0)>=0?t0:'board');
+  REF=r; var t0=qp('tab'); setTab(['statement','salary','recurring','reports','settings'].indexOf(t0)>=0?t0:'board');
 }, function(e){ el('noacc').className='note warn'; el('noacc').textContent='Сервер не ответил: '+((e&&e.message)||e); });
 </script>
 </body>
