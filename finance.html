@@ -53,6 +53,18 @@
   .ec .t b{ font-variant-numeric:tabular-nums; white-space:nowrap; }
   .ec .b{ color:var(--muted); font:var(--t-small); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .ec.paid{ opacity:.55; }
+  .ec, .wi{ cursor:pointer; }
+  .ec:hover{ border-color:var(--accent); }
+  .wi:hover .who{ color:var(--accent-text); }
+  .ec[draggable=true]{ cursor:grab; }
+  .col.drop{ outline:2px dashed var(--accent); outline-offset:-2px; }
+  .bd-acts{ display:flex; gap:var(--s-2); flex-wrap:wrap; margin:0 0 var(--s-3); align-items:center; }
+  .bd-acts .mut{ margin-left:auto; }
+  .dl-acts{ display:flex; gap:var(--s-2); flex-wrap:wrap; margin-top:var(--s-3); padding-top:var(--s-3); border-top:1px solid var(--line); align-items:end; }
+  .dl-acts > div{ flex:1 1 130px; }
+  .dl-acts label{ display:block; font:var(--t-small); color:var(--muted); margin-bottom:2px; }
+  .dl-acts input, .dl-acts select{ width:100%; }
+  .form .wide{ grid-column:1 / -1; }
   .mtabs{ display:none; }
   @media (max-width:760px){
     .bd{ grid-template-columns:minmax(0,1fr); }
@@ -89,8 +101,8 @@
   <div class="strip"><div class="kps" id="tiles"></div><div class="wallets" id="wallets"></div></div>
   <div class="seg mtabs" id="mtabs"><button class="on" onclick="mPane('wait')">Ждём денег</button><button onclick="mPane('exp')">Расходы</button></div>
   <div class="bd m-wait" id="bd">
-    <div class="bd-wait"><h3>Ждём денег</h3><div class="mut" id="waitHead"></div><div id="waitList"></div></div>
-    <div class="bd-exp"><h3>Расходы по датам</h3><div class="mut" style="margin-bottom:var(--s-3)">Колонка — контрольная дата: что платим к ней и сколько останется после.</div><div class="cols" id="cols"></div></div>
+    <div class="bd-wait"><h3>Ждём денег</h3><div class="mut" id="waitHead"></div><div class="bd-acts" style="margin-top:var(--s-2)"><button class="sec" onclick="incOpen('')">+ Поступление</button></div><div id="waitList"></div></div>
+    <div class="bd-exp"><h3>Расходы по датам</h3><div class="bd-acts"><button class="primary" onclick="expOpen('')">+ Расход</button><button class="sec" onclick="xferOpen()">Обмен / перевод</button><button class="sec" onclick="periodAdd()">+ Контрольная дата</button><span class="mut">Карточку можно перетащить на другую дату.</span></div><div class="cols" id="cols"></div></div>
   </div>
 </div>
 
@@ -187,7 +199,7 @@ function renderBoard(){
   var late=pend.filter(function(r){ var w=when(r); return w&&w<B.today; }), wait=pend.filter(function(r){ var w=when(r); return w&&w>=B.today; }), nod=pend.filter(function(r){ return !when(r); });
   var got=B.incomes.filter(function(r){ return r.got&&r.src!=='transfer'; }).sort(function(a,b){ return a.gotDate<b.gotDate?1:-1; }).slice(0,15);
   var srt=function(a,b){ return when(a)<when(b)?-1:1; }, sum=function(l){ return l.reduce(function(s,r){ return s+r.sum; },0); };
-  var item=function(r, cls){ return '<div class="wi '+(cls||'')+'"><div class="who" title="'+esc(r.client)+'">'+esc(r.client||'—')+'</div><div class="sum">'+money(r.sum)+'</div><div class="meta">'
+  var item=function(r, cls){ return '<div class="wi '+(cls||'')+'" onclick="incOpen(\''+r.id+'\')"><div class="who" title="'+esc(r.client)+'">'+esc(r.client||'—')+'</div><div class="sum">'+money(r.sum)+'</div><div class="meta">'
     +[r.zakaz, r.got?'получено '+dm(r.gotDate):(when(r)?'срок '+dm(when(r)):'без даты'), r.wallet, r.ptype].filter(Boolean).map(esc).join(' · ')+'</div></div>'; };
   var grp=function(title, list, cls, itemCls){ return list.length?'<div class="grp '+(cls||'')+'"><span>'+title+' · '+list.length+'</span><span>'+money(sum(list))+'</span></div>'+list.map(function(r){ return item(r,itemCls); }).join(''):''; };
   el('waitHead').textContent=pend.length?pend.length+' платежей на '+money(sum(pend))+(late.length?' · просрочено '+late.length:''):'Ожидаемых поступлений нет.';
@@ -195,15 +207,83 @@ function renderBoard(){
   // ── справа: расходы по контрольным датам
   var unpaid=B.expenses.filter(function(e){ return !e.paid; }), nodate=unpaid.filter(function(e){ return !e.planIso; });
   var card=function(e){ var meta=[e.contr!==e.name?e.contr:'', e.cat||'без статьи', e.paid?'оплачено '+dm(e.paidDateIso):''].filter(Boolean).join(' · ');
-    return '<div class="ec'+(e.paid?' paid':'')+'" title="'+esc((e.name||'')+' — '+meta)+'"><div class="t"><span>'+esc(e.name||e.contr||'—')+'</span><b>'+money(e.sum)+'</b></div><div class="b">'+esc(meta)+'</div></div>'; };
-  var col=function(title, sub, list, cls){ return '<div class="col '+(cls||'')+'"><div class="ch"><b>'+title+'</b><span class="n">'+money(sum(list))+'</span></div>'+sub+(list.length?list.map(card).join(''):'<div class="empty">нет платежей</div>')+'</div>'; };
+    return '<div class="ec'+(e.paid?' paid':'')+'" onclick="expOpen(\''+e.id+'\')"'+(e.paid?'':' draggable="true" ondragstart="dragExp(event,\''+e.id+'\')"')+' title="'+esc((e.name||'')+' — '+meta)+'"><div class="t"><span>'+esc(e.name||e.contr||'—')+'</span><b>'+money(e.sum)+'</b></div><div class="b">'+esc(meta)+'</div></div>'; };
+  var col=function(title, sub, list, cls, iso){ return '<div class="col '+(cls||'')+'" ondragover="event.preventDefault(); this.classList.add(\'drop\')" ondragleave="this.classList.remove(\'drop\')" ondrop="dropExp(event,\''+(iso||'')+'\')"><div class="ch"><b>'+title+'</b><span class="n">'+money(sum(list))+'</span></div>'+sub+(list.length?list.map(card).join(''):'<div class="empty">нет платежей</div>')+'</div>'; };
   var h=nodate.length?col('Без даты','<div class="bal">срок не назначен</div>',nodate):'';
   B.periods.forEach(function(p){
     var list=B.expenses.filter(function(e){ return e.planIso===p.iso&&(!e.paid||p.iso>=B.today); });
-    h+=col(p.label, '<div class="bal">останется <b class="'+(p.balance<0?'neg':'')+'">'+money(p.balance)+'</b>'+(p.incomeCount?' · <span class="plus">ждём +'+money(p.incomeSum)+'</span>':'')+'</div>', list, p.iso<B.today?'past':'');
+    h+=col(p.label, '<div class="bal">останется <b class="'+(p.balance<0?'neg':'')+'">'+money(p.balance)+'</b>'+(p.incomeCount?' · <span class="plus">ждём +'+money(p.incomeSum)+'</span>':'')+'</div>', list, p.iso<B.today?'past':'', p.iso);
   });
   el('cols').innerHTML=h||'<div class="empty">Плановых расходов нет.</div>';
 }
+
+/* ── правка доски: расходы ── */
+function byId(list, id){ for(var i=0;i<list.length;i++) if(list[i].id===id) return list[i]; return null; }
+function fld(label, html, cls){ return '<div'+(cls?' class="'+cls+'"':'')+'><label>'+label+'</label>'+html+'</div>'; }
+function inp(id, val, type, extra){ return '<input id="'+id+'" '+(type==='n'?'inputmode="decimal"':type==='d'?'type="date"':'')+' value="'+esc(val==null?'':val)+'"'+(extra||'')+'>'; }
+function v(id){ var e=el(id); return e?e.value:''; }
+function after(r, text){ if(!r) return; dlgClose(); loadBoard(); }
+function dragExp(ev, id){ ev.dataTransfer.setData('text/plain', id); }
+function dropExp(ev, iso){ ev.preventDefault(); var c=ev.currentTarget; c.classList.remove('drop'); var id=ev.dataTransfer.getData('text/plain'), e=id&&byId(B.expenses,id);
+  if(!e||e.planIso===iso) return; run({vapi:'finexpmove', id:id, date:iso}, 'Переношу…').then(function(r){ if(r) loadBoard(); }); }
+var EX=null;
+function expOpen(id){
+  EX=id?byId(B.expenses,id):null; var e=EX||{ walletId:REF.defaultWalletId, planIso:B.today };
+  var h='<h3>'+(EX?(e.paid?'Оплаченный расход':'Расход'):'Новый расход')+'</h3><div class="form">'
+    +fld('Назначение', inp('exName', e.name), 'wide')+fld('Контрагент', inp('exContr', e.contr))+fld('Статья','<select id="exCat">'+catOpts(e.categoryId||'','expense')+'</select>')
+    +fld('Сумма', inp('exSum', e.sum?String(e.sum).replace('.',','):'', 'n'))+fld('Кошелёк','<select id="exWallet"><option value="">—</option>'+wOpts(e.walletId||'')+'</select>')
+    +fld('Срок оплаты', inp('exDate', e.planIso, 'd'))+(EX&&!e.paid?'':fld(EX?'Дата оплаты':'Уже оплачен — дата оплаты', inp('exPaid', e.paidDateIso, 'd')))
+    +fld('№ счёта / акта', inp('exNo', e.invNo))+fld('Дата счёта', inp('exNoDate', e.invDateIso, 'd'))+fld('Договор', inp('exDog', e.dogovor))+fld('Примечание', inp('exNote', e.note), 'wide')+'</div>';
+  if(EX&&!e.paid) h+='<div class="dl-acts"><div><label>Оплачено — дата</label>'+inp('exPayDate', B.today, 'd')+'</div><div><label>Сумма оплаты (меньше — часть)</label>'+inp('exPaySum', String(e.sum).replace('.',','), 'n')+'</div><button onclick="expPay()">Оплачено</button></div>';
+  h+='<div id="dlgMsg" class="msg"></div><div class="dlg-btns">'+(EX?'<button class="danger sec" style="margin-right:auto" onclick="expDel()">Удалить</button>'+(e.paid?'<button class="sec" onclick="expUnpay()">Снять оплату</button>':''):'')
+    +'<button class="sec" onclick="dlgClose()">Отмена</button><button class="primary" onclick="expSave()">Сохранить</button></div>';
+  dlgOpen(h);
+}
+function expData(){ return { name:v('exName'), contr:v('exContr'), categoryId:v('exCat')||null, sum:v('exSum'), walletId:v('exWallet')||null, dateIso:v('exDate'), paidDateIso:v('exPaid'), invNo:v('exNo'), invDateIso:v('exNoDate'), dogovor:v('exDog'), note:v('exNote') }; }
+function expSave(){ var p=EX?{vapi:'finexpupdate', id:EX.id, data:JSON.stringify(expData())}:{vapi:'finexpadd', data:JSON.stringify(expData()), key:newKey()}; run(p, 'Сохраняю расход…', 'dlgMsg').then(after); }
+function expPay(){
+  var amt=num(v('exPaySum')), w=v('exWallet'); if(!w){ setm('dlgMsg','warn','Выберите кошелёк, с которого оплачено.'); return; }
+  var p=amt>0&&amt<EX.sum-0.004?{vapi:'finexppartial', id:EX.id, amount:amt, date:v('exPayDate'), wallet:w, key:newKey()}:{vapi:'finexppaid', id:EX.id, paid:1, date:v('exPayDate'), wallet:w, key:newKey()};
+  run(p, 'Отмечаю оплату…', 'dlgMsg').then(after);
+}
+function expUnpay(){ run({vapi:'finexppaid', id:EX.id, paid:0}, 'Снимаю оплату…', 'dlgMsg').then(after); }
+function expDel(){ if(!confirm('Удалить расход «'+(EX.name||EX.contr)+'» на '+money(EX.sum)+'?'+(EX.paid?' Он оплачен — остаток кошелька вернётся.':''))) return; run({vapi:'finexpcancel', id:EX.id, reason:'удалено с доски'}, 'Удаляю…', 'dlgMsg').then(after); }
+/* ── правка доски: поступления ── */
+var IN=null;
+function incOpen(id){
+  IN=id?byId(B.incomes,id):null; var r=IN||{ walletId:REF.defaultWalletId };
+  var types='<option value="">—</option>'+REF.paymentTypes.map(function(t){ return '<option value="'+t.id+'" data-pct="'+t.pct+'"'+(t.name===r.ptype?' selected':'')+'>'+esc(t.name)+'</option>'; }).join('');
+  var cat=''; REF.categories.forEach(function(c){ if(c.name===r.statya) cat=c.id; });
+  var h='<h3>'+(IN?(r.got?'Полученное поступление':'Ждём денег'):'Новое ожидаемое поступление')+'</h3>'+(IN&&r.src==='hub_deal'?'<div class="mut">План по сделке: сумму и сроки ведёт сделка — при пересчёте плана ручные правки неоплаченных строк заменятся.</div>':'')+'<div class="form">'
+    +fld('Клиент', inp('inClient', r.client), 'wide')+fld('№ заказа', inp('inZakaz', r.zakaz))+fld('Договор', inp('inDog', r.dogovor))
+    +fld('Сумма', inp('inSum', r.sum?String(r.sum).replace('.',','):'', 'n'))+fld('Кошелёк','<select id="inWallet"><option value="">—</option>'+wOpts(r.walletId||'')+'</select>')
+    +fld('Статья','<select id="inCat">'+catOpts(cat,'income')+'</select>')+fld('Тип оплаты','<select id="inType" onchange="incPct()">'+types+'</select>')
+    +fld('Срок по плану', inp('inDate', r.planIso, 'd'))+(IN&&r.got?fld('Дата получения', inp('inGot', r.gotDate, 'd')):'')+fld('Примечание', inp('inNote', r.note), 'wide')+'</div>';
+  if(IN&&!r.got) h+='<div class="dl-acts"><div><label>Получено — дата</label>'+inp('inGotDate', B.today, 'd')+'</div><div><label>Пришло (меньше — часть)</label>'+inp('inGotSum', String(r.sum).replace('.',','), 'n')+'</div><div><label>Комиссия, %</label>'+inp('inComm', '', 'n')+'</div><button onclick="incGot()">Получено</button></div>';
+  h+='<div id="dlgMsg" class="msg"></div><div class="dlg-btns">'+(IN?'<button class="danger sec" style="margin-right:auto" onclick="incDel()">Удалить</button>'+(r.got?'<button class="sec" onclick="incUngot()">Снять получение</button>':''):'')
+    +'<button class="sec" onclick="dlgClose()">Отмена</button><button class="primary" onclick="incSave()">Сохранить</button></div>';
+  dlgOpen(h); incPct();
+}
+function incPct(){ var s=el('inType'), c=el('inComm'); if(!s||!c) return; var o=s.options[s.selectedIndex], p=o?Number(o.getAttribute('data-pct'))||0:0; c.value=p?String(p).replace('.',','):''; }
+function incData(){ return { client:v('inClient'), zakaz:v('inZakaz'), dogovor:v('inDog'), sum:v('inSum'), walletId:v('inWallet')||null, categoryId:v('inCat')||null, paymentTypeId:v('inType')||null, dateIso:v('inDate'), gotDateIso:v('inGot'), note:v('inNote') }; }
+function incSave(){ var p=IN?{vapi:'finincupdate', id:IN.id, data:JSON.stringify(incData())}:{vapi:'finincadd', data:JSON.stringify(incData()), key:newKey()}; run(p, 'Сохраняю поступление…', 'dlgMsg').then(after); }
+function incGot(){
+  var w=v('inWallet'); if(!w){ setm('dlgMsg','warn','Выберите кошелёк, на который пришли деньги.'); return; }
+  run({vapi:'finincreceive', id:IN.id, data:JSON.stringify({ received:num(v('inGotSum')), walletId:w, gotDateIso:v('inGotDate'), paymentTypeId:v('inType')||null, commPct:num(v('inComm')) }), key:newKey()}, 'Записываю получение…', 'dlgMsg').then(after);
+}
+function incUngot(){ run({vapi:'finincunreceive', id:IN.id}, 'Снимаю получение…', 'dlgMsg').then(after); }
+function incDel(){ if(!confirm('Удалить поступление «'+(IN.client||IN.zakaz)+'» на '+money(IN.sum)+'?')) return; run({vapi:'fininccancel', id:IN.id, reason:'удалено с доски'}, 'Удаляю…', 'dlgMsg').then(after); }
+/* ── обмен / перевод и контрольные даты ── */
+function xferOpen(){
+  dlgOpen('<h3>Обмен или перевод между кошельками</h3><div class="form">'+fld('Откуда','<select id="xfFrom">'+wOpts(REF.defaultWalletId)+'</select>')+fld('Списано', inp('xfFromAmt','', 'n'))
+    +fld('Куда','<select id="xfTo">'+wOpts('')+'</select>')+fld('Зачислено', inp('xfToAmt','', 'n'))+fld('Дата', inp('xfDate', B.today, 'd'))+'</div>'
+    +'<div class="mut">Перевод в одной валюте — суммы равны. Обмен — сколько списано в одной валюте и сколько зачислено в другой.</div>'+dlgFoot('xferGo()','Провести'));
+}
+function xferGo(){ var a=num(v('xfFromAmt')), b=num(v('xfToAmt'))||a; run({vapi:'finexchange', data:JSON.stringify({ fromWalletId:v('xfFrom'), toWalletId:v('xfTo'), fromAmount:a, toAmount:b, dateIso:v('xfDate') }), key:newKey()}, 'Провожу…', 'dlgMsg').then(after); }
+function periodAdd(){
+  dlgOpen('<h3>Контрольная дата</h3><div class="mut">Колонка доски: к этой дате видно, сколько денег останется после запланированных оплат.</div><div class="form">'+fld('Дата', inp('pdDate', B.today, 'd'))+'</div>'+dlgFoot('periodGo()','Добавить'));
+}
+function periodGo(){ run({vapi:'finperiod', date:v('pdDate'), on:1}, 'Добавляю дату…', 'dlgMsg').then(after); }
 
 /* ═══════════ ВЫПИСКА ═══════════ */
 /* разбор файла банка — как в Фин.гении (Panel.html statementParse): строка операции = дата ДД.ММ.ГГГГ в первой колонке; дебет — 8-я, кредит — 9-я */
