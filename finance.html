@@ -93,6 +93,9 @@
 <div class="tabs" id="tabs">
   <button data-tab="board" onclick="setTab('board')">Доска</button>
   <button data-tab="statement" onclick="setTab('statement')">Выписка</button>
+  <button data-tab="salary" onclick="setTab('salary')">Зарплата</button>
+  <button data-tab="recurring" onclick="setTab('recurring')">Регулярные</button>
+  <button data-tab="settings" onclick="setTab('settings')">Справочники</button>
 </div>
 <div id="noacc" class="note warn hide"></div>
 
@@ -130,6 +133,26 @@
 
   <div class="sect">Разнесённые строки <small>последние 60</small></div>
   <div id="doneBox"></div>
+</div>
+
+<!-- ═══ ЗАРПЛАТА ═══ -->
+<div id="tab_salary" class="hide">
+  <div class="note hint">Выплата зарплаты банком приходит из выписки одной суммой. Здесь она раскладывается по людям и отделам — сумма выплаты при этом не меняется.</div>
+  <div id="salSum" class="mut" style="margin-bottom:var(--s-3)"></div><div id="salBox"></div><div id="salMsg" class="msg"></div>
+</div>
+<!-- ═══ РЕГУЛЯРНЫЕ ═══ -->
+<div id="tab_recurring" class="hide">
+  <div class="toolbar"><button class="primary" onclick="tplOpen('')">+ Шаблон</button><button class="sec" onclick="tplRun()">Создать карточки на ближайшие месяцы</button>
+    <span class="mut">Карточки создаются сами раз в несколько часов; срок на выходной переносится на рабочий день раньше.</span></div>
+  <div id="tplBox"></div><div id="tplMsg" class="msg"></div>
+</div>
+<!-- ═══ СПРАВОЧНИКИ ═══ -->
+<div id="tab_settings" class="hide">
+  <div class="sect">Курсы валют <small>BYN за единицу</small></div><div class="toolbar"><div id="rateBox" class="wallets" style="border:0;margin:0;padding:0"></div><div class="end"><button class="sec" onclick="ratesUpd()">Обновить по НБ РБ</button></div></div>
+  <div class="sect">Кошельки</div><div class="toolbar"><button class="sec" onclick="walOpen('')">+ Кошелёк</button></div><div id="walBox"></div>
+  <div class="sect">Типы оплаты <small>комиссия подставляется при получении денег</small></div><div class="toolbar"><button class="sec" onclick="ptOpen('')">+ Тип оплаты</button></div><div id="ptBox"></div>
+  <div class="sect">Статьи</div><div class="toolbar"><button class="sec" onclick="catOpen('')">+ Статья</button><input id="catQ" type="search" class="search" placeholder="🔎 статья" oninput="renderSettings()"></div><div id="catBox"></div>
+  <div id="setMsg" class="msg"></div>
 </div>
 
 <div class="dlg-bg" id="dlg" style="display:none" onclick="if(event.target===this) dlgClose()"><div class="dlg md"><div id="dlgB"></div></div></div>
@@ -170,9 +193,9 @@ function newKey(){ return 'ui-'+Date.now()+'-'+Math.random().toString(36).slice(
 var REF={ wallets:[], categories:[], paymentTypes:[], defaultWalletId:null }, TAB='';
 function setTab(t){
   TAB=t; var b=el('tabs').querySelectorAll('button'); for(var i=0;i<b.length;i++) b[i].className=b[i].getAttribute('data-tab')===t?'on':'';
-  el('tab_board').className=t==='board'?'':'hide'; el('tab_statement').className=t==='statement'?'':'hide';
+  ['board','statement','salary','recurring','settings'].forEach(function(x){ el('tab_'+x).className=t===x?'':'hide'; });
   try{ history.replaceState(null,'',location.pathname+'?tab='+t+(qp('embed')?'&embed=1':'')+(qp('srv')?'&srv='+qp('srv'):'')); }catch(e){}
-  if(t==='board') loadBoard(); else stRefresh();
+  if(t==='board') loadBoard(); else if(t==='statement') stRefresh(); else if(t==='salary') salLoad(); else if(t==='recurring') tplLoad(); else setLoad();
 }
 function wName(id){ for(var i=0;i<REF.wallets.length;i++) if(REF.wallets[i].id===id) return REF.wallets[i].name; return ''; }
 function wOpts(sel, filter){ return REF.wallets.filter(filter||function(){return true;}).map(function(w){ return '<option value="'+w.id+'"'+(w.id===sel?' selected':'')+'>'+esc(w.name)+(w.currency!=='BYN'?' ('+w.currency+')':'')+'</option>'; }).join(''); }
@@ -464,9 +487,97 @@ function unpost(id){
   run({vapi:'finunpost', line:id}, 'Снимаю разнос…', 'incMsg').then(function(r){ if(!r) return; setm('incMsg','ok','Разнос снят — строка снова ждёт разноса.'); stRefresh(); });
 }
 
+/* ═══════════ ЗАРПЛАТА ═══════════ */
+var SAL=null, SP=null;
+function salLoad(){ get({vapi:'finsalary'}).then(function(r){ if(!r||!r.ok){ noAccess(r); return; } SAL=r; renderSal(); }); }
+function renderSal(){
+  var sm=SAL.summary; el('salSum').textContent=SAL.items.length?('Выплат: '+SAL.items.length+(sm.unsplit?' · не разнесено '+sm.unsplit+' на '+money(sm.unsplitSum):' · всё разнесено')+(sm.unchecked?' · не проверено '+sm.unchecked:'')):'';
+  if(!SAL.items.length){ el('salBox').innerHTML='<div class="empty">Выплат зарплаты пока нет.</div>'; return; }
+  var pill={ 'не разнесена':'bad', 'частично':'warn', 'не проверена':'info', 'разнесена':'ok' };
+  el('salBox').innerHTML='<div class="tbl-wrap"><table class="reg"><thead><tr><th>Дата</th><th>Кошелёк</th><th>Реестр</th><th class="num">Сумма</th><th>Состояние</th><th>Кому</th><th></th></tr></thead><tbody>'
+    +SAL.items.map(function(x, i){ return '<tr><td class="n">'+dmy(x.dateIso)+'</td><td>'+esc(x.wallet)+'</td><td>'+esc(x.contr)+'</td><td class="num">'+money(x.total)+'</td><td><span class="pill '+pill[x.status]+'">'+x.status+'</span>'+(x.rem>0.004&&x.parts.length?' <span class="mut">остаток '+money(x.rem)+'</span>':'')+'</td>'
+      +'<td class="purp">'+esc(x.parts.map(function(p){ return p.emp+' '+money(p.sum); }).join(', '))+'</td><td class="go"><button class="sec" onclick="salOpen('+i+')">Разнести</button></td></tr>'; }).join('')+'</tbody></table></div>';
+}
+function salOpen(i){
+  SP={ it:SAL.items[i], rows:SAL.items[i].parts.map(function(p){ return { dept:p.dept, emp:p.emp, sum:p.sum }; }) }; if(!SP.rows.length) SP.rows.push({dept:'рабочие',emp:'',sum:0});
+  dlgOpen('<h3>Выплата '+money(SP.it.total)+' от '+dmy(SP.it.dateIso)+'</h3><div class="mut">'+esc(SP.it.contr)+' · '+esc(SP.it.wallet)+'</div><div id="spHint" class="mut" style="margin:var(--s-2) 0">Ищу подходящие ведомости…</div>'
+    +'<datalist id="spEmps">'+SAL.employees.map(function(e){ return '<option value="'+esc(e.name)+'">'; }).join('')+'</datalist><div id="spRows"></div>'
+    +'<button class="sec" onclick="SP.rows.push({dept:\'рабочие\',emp:\'\',sum:0}); salRows()">+ строка</button><div id="spIdent" class="ident"></div>'
+    +'<div id="dlgMsg" class="msg"></div><div class="dlg-btns"><button class="danger sec" style="margin-right:auto" onclick="SP.rows=[]; salSave()">Отменить разнесение</button><button class="sec" onclick="dlgClose()">Отмена</button><button class="primary" onclick="salSave()">Сохранить</button></div>');
+  salRows();
+  get({vapi:'finsalaryhint', id:SP.it.id}).then(function(r){ var h=el('spHint'); if(!h) return;
+    if(!r||!r.ok||!r.cands.length){ h.textContent=r&&r.error?r.error:'Подходящих ведомостей не нашлось — разнесите вручную.'; return; }
+    SP.cands=r.cands; h.innerHTML='По ведомостям: '+r.cands.map(function(c, k){ return '<button class="sec" onclick="salUse('+k+')">'+esc(c.kind)+' '+esc(c.period)+', '+c.mode+' '+money(c.sum)+(c.exact?' ✓':'')+'</button>'; }).join(' '); });
+}
+function salUse(k){ SP.rows=SP.cands[k].lines.map(function(l){ return { dept:l.dept, emp:l.emp, sum:l.sum }; }); salRows(); }
+function salRows(){
+  el('spRows').innerHTML=SP.rows.map(function(r, k){ return '<div class="al" style="grid-template-columns:150px 1fr 120px auto"><select onchange="SP.rows['+k+'].dept=this.value">'+SAL.depts.map(function(d){ return '<option'+(d===r.dept?' selected':'')+'>'+d+'</option>'; }).join('')+'</select>'
+    +'<input list="spEmps" placeholder="сотрудник" value="'+esc(r.emp)+'" onchange="salEmp('+k+',this.value)"><input inputmode="decimal" placeholder="сумма" value="'+(r.sum?String(r.sum).replace('.',','):'')+'" oninput="SP.rows['+k+'].sum=num(this.value); salIdent()"><button class="sec" onclick="SP.rows.splice('+k+',1); salRows()">×</button></div>'; }).join('');
+  salIdent();
+}
+function salEmp(k, name){ SP.rows[k].emp=name; for(var i=0;i<SAL.employees.length;i++) if(SAL.employees[i].name===name&&SAL.employees[i].dept){ SP.rows[k].dept=SAL.employees[i].dept; salRows(); break; } }
+function salIdent(){ var s=r2(SP.rows.reduce(function(t,r){ return t+(Number(r.sum)||0); },0)), d=r2(SP.it.total-s), b=el('spIdent'); b.className='ident '+(d<-0.004?'bad':Math.abs(d)<0.005?'ok':''); b.textContent='Разнесено '+money(s)+' из '+money(SP.it.total)+(d>0.004?' — останется не разнесено '+money(d):d<-0.004?' — больше выплаты на '+money(-d):' — вся выплата.'); }
+function salSave(){ run({vapi:'finsalarysplit', id:SP.it.id, parts:JSON.stringify(SP.rows.filter(function(r){ return Number(r.sum)>0; }))}, 'Сохраняю разнесение…', 'dlgMsg').then(function(r){ if(!r) return; dlgClose(); SAL=r.sal; renderSal(); setm('salMsg','ok','Сохранено.'+(r.rem>0.004?' Не разнесено '+money(r.rem)+'.':'')); }); }
+
+/* ═══════════ РЕГУЛЯРНЫЕ ═══════════ */
+var TPL=[], TP=null;
+function tplLoad(){ get({vapi:'fintemplates'}).then(function(r){ if(!r||!r.ok){ noAccess(r); return; } TPL=r.items; renderTpl(); }); }
+function renderTpl(){
+  if(!TPL.length){ el('tplBox').innerHTML='<div class="empty">Шаблонов нет. Регулярный платёж — аренда, связь, подписки: карточка расхода появляется каждый месяц сама.</div>'; return; }
+  el('tplBox').innerHTML='<div class="tbl-wrap"><table class="reg"><thead><tr><th>Назначение</th><th>Контрагент</th><th>Статья</th><th class="num">Сумма</th><th>Кошелёк</th><th>День</th><th>Работает</th><th></th></tr></thead><tbody>'
+    +TPL.map(function(t, i){ return '<tr><td>'+esc(t.name)+'</td><td>'+esc(t.contr)+'</td><td>'+esc(t.cat)+'</td><td class="num">'+money(t.sum)+'</td><td>'+esc(t.wallet)+'</td><td class="n">'+t.day+'</td>'
+      +'<td><input type="checkbox"'+(t.active?' checked':'')+' onchange="tplToggle(\''+t.id+'\',this.checked)"></td><td class="go"><button class="sec" onclick="tplOpen(\''+t.id+'\')">Изменить</button></td></tr>'; }).join('')+'</tbody></table></div>';
+}
+function tplOpen(id){
+  TP=id?byId(TPL,id):null; var t=TP||{ walletId:REF.defaultWalletId, day:20, active:true };
+  dlgOpen('<h3>'+(TP?'Шаблон регулярного платежа':'Новый регулярный платёж')+'</h3><div class="form">'+fld('Назначение', inp('tpName', t.name), 'wide')+fld('Контрагент', inp('tpContr', t.contr))+fld('Статья','<select id="tpCat">'+catOpts(t.categoryId||'','expense')+'</select>')
+    +fld('Сумма', inp('tpSum', t.sum?String(t.sum).replace('.',','):'', 'n'))+fld('Кошелёк','<select id="tpWallet"><option value="">—</option>'+wOpts(t.walletId||'')+'</select>')+fld('День месяца', inp('tpDay', t.day, 'n'))+'</div>'
+    +'<div class="mut">Уже созданные карточки не меняются: новая сумма и день — со следующих месяцев.</div><div id="dlgMsg" class="msg"></div><div class="dlg-btns">'+(TP?'<button class="danger sec" style="margin-right:auto" onclick="tplDel()">Удалить шаблон</button>':'')+'<button class="sec" onclick="dlgClose()">Отмена</button><button class="primary" onclick="tplSave()">Сохранить</button></div>');
+}
+function tplSave(){ run({vapi:'fintemplatesave', data:JSON.stringify({ id:TP?TP.id:undefined, name:v('tpName'), contr:v('tpContr'), categoryId:v('tpCat')||null, sum:v('tpSum'), walletId:v('tpWallet')||null, day:v('tpDay'), active:TP?TP.active:true })}, 'Сохраняю шаблон…', 'dlgMsg').then(function(r){ if(!r) return; dlgClose(); TPL=r.items; renderTpl(); }); }
+function tplToggle(id, on){ run({vapi:'fintemplatetoggle', id:id, on:on?1:0}, 'Сохраняю…', 'tplMsg').then(function(r){ if(r){ TPL=r.items; renderTpl(); } else tplLoad(); }); }
+function tplDel(){ if(!confirm('Удалить шаблон «'+TP.name+'»? Уже созданные карточки останутся.')) return; run({vapi:'fintemplatedel', id:TP.id}, 'Удаляю…', 'dlgMsg').then(function(r){ if(!r) return; dlgClose(); TPL=r.items; renderTpl(); }); }
+function tplRun(){ run({vapi:'finrecurrun'}, 'Создаю карточки…', 'tplMsg').then(function(r){ if(r) setm('tplMsg','ok', r.created?'Создано карточек: '+r.created+'.':'Новых карточек нет — на ближайшие месяцы всё уже создано.'); }); }
+
+/* ═══════════ СПРАВОЧНИКИ ═══════════ */
+var SET=null, CE=null, WE=null, PE=null;
+function setLoad(){ get({vapi:'finsettings'}).then(function(r){ if(!r||!r.ok){ noAccess(r); return; } SET=r; renderSettings(); }); }
+function refsReload(){ return get({vapi:'finrefs'}).then(function(r){ if(r&&r.ok) REF=r; }); }
+function renderSettings(){
+  el('rateBox').innerHTML=SET.rates.length?SET.rates.map(function(r){ return '<span>'+r.currency+' <b>'+String(r.rate).replace('.',',')+'</b> <span class="mut">'+dm(r.date)+(r.source==='deal'?' · курс сделки':r.source==='manual'?' · вручную':'')+'</span></span>'; }).join(''):'<span class="mut">курсов нет</span>';
+  el('walBox').innerHTML='<div class="tbl-wrap"><table class="reg"><thead><tr><th>Кошелёк</th><th>Валюта</th><th>Вид</th><th class="num">Стартовый остаток</th><th></th></tr></thead><tbody>'+SET.wallets.map(function(w){ return '<tr><td>'+esc(w.name)+'</td><td>'+w.currency+'</td><td>'+(w.isCash?'наличные':'счёт')+'</td><td class="num">'+money(w.start)+'</td><td class="go"><button class="sec" onclick="walOpen(\''+w.id+'\')">Изменить</button></td></tr>'; }).join('')+'</tbody></table></div>';
+  el('ptBox').innerHTML='<div class="tbl-wrap"><table class="reg"><thead><tr><th>Тип оплаты</th><th class="num">Комиссия, %</th><th></th></tr></thead><tbody>'+SET.paymentTypes.filter(function(t){ return t.active; }).map(function(t){ return '<tr><td>'+esc(t.name)+'</td><td class="num">'+String(t.pct).replace('.',',')+'</td><td class="go"><button class="sec" onclick="ptOpen(\''+t.id+'\')">Изменить</button></td></tr>'; }).join('')+'</tbody></table></div>';
+  var q=(v('catQ')||'').toLowerCase(), cats=SET.categories.filter(function(c){ return !q||c.name.toLowerCase().indexOf(q)>=0; });
+  el('catBox').innerHTML='<div class="tbl-wrap"><table class="reg"><thead><tr><th>Статья</th><th>Вид</th><th>Направление</th><th>Деятельность</th><th>Документ</th><th></th></tr></thead><tbody>'+cats.map(function(c){ return '<tr'+(c.active?'':' class="sp"')+'><td>'+esc(c.name)+(c.active?'':' <span class="pill mute">выключена</span>')+'</td><td>'+(c.kind==='income'?'доход':'расход')+'</td><td>'+esc(c.group)+'</td><td>'+esc(c.activity)+'</td><td>'+(c.doc?'требуется':'не требуется')+'</td><td class="go"><button class="sec" onclick="catOpen(\''+c.id+'\')">Изменить</button></td></tr>'; }).join('')+'</tbody></table></div>';
+}
+function setDone(r){ if(!r) return; dlgClose(); setLoad(); refsReload(); }
+function ratesUpd(){ run({vapi:'finratesupdate'}, 'Запрашиваю курсы НБ РБ…', 'setMsg').then(function(r){ if(!r) return; setm('setMsg', r.failed.length?'warn':'ok', 'Обновлено: '+(r.updated.join(', ')||'—')+(r.failed.length?'. Не ответили: '+r.failed.join(', ')+' — остался прежний курс':'')+(r.kept.length?'. Курс сделки не меняется: '+r.kept.join(', '):'')+'.'); setLoad(); }); }
+function catOpen(id){
+  CE=id?byId(SET.categories,id):null; var c=CE||{ kind:'expense', doc:true, active:true };
+  var opt=function(list, sel){ return '<option value="">—</option>'+list.map(function(x){ return '<option'+(x===sel?' selected':'')+'>'+esc(x)+'</option>'; }).join(''); };
+  dlgOpen('<h3>'+(CE?'Статья':'Новая статья')+'</h3><div class="form">'+fld('Название', inp('ctName', c.name), 'wide')+(CE?'':fld('Вид','<select id="ctKind"><option value="expense">расход</option><option value="income">доход</option></select>'))
+    +fld('Направление','<select id="ctGroup">'+opt(SET.groups, c.group)+'</select>')+fld('Вид деятельности','<select id="ctAct">'+opt(SET.activities, c.activity)+'</select>')
+    +fld('Закрывающий документ','<select id="ctDoc"><option value="1"'+(c.doc?' selected':'')+'>требуется</option><option value="0"'+(c.doc?'':' selected')+'>не требуется</option></select>')
+    +(CE?fld('Используется','<select id="ctOn"><option value="1"'+(c.active?' selected':'')+'>да</option><option value="0"'+(c.active?'':' selected')+'>выключена</option></select>'):'')+'</div>'
+    +(CE&&c.system?'<div class="mut">На эту статью опирается автоматика — переименовать можно, выключить нельзя.</div>':'')+dlgFoot('catSave()','Сохранить'));
+}
+function catSave(){ var d={ name:v('ctName'), group:v('ctGroup'), activity:v('ctAct'), doc:v('ctDoc')==='1' };
+  run(CE?{vapi:'fincatupdate', id:CE.id, data:JSON.stringify(Object.assign(d,{ active:v('ctOn')==='1' }))}:{vapi:'fincatadd', data:JSON.stringify(Object.assign(d,{ kind:v('ctKind') }))}, 'Сохраняю статью…', 'dlgMsg').then(setDone); }
+function walOpen(id){
+  WE=id?byId(SET.wallets,id):null; var w=WE||{ currency:'BYN' };
+  dlgOpen('<h3>'+(WE?'Кошелёк':'Новый кошелёк')+'</h3><div class="form">'+fld('Название', inp('wlName', w.name), 'wide')+fld('Валюта', inp('wlCur', w.currency))+fld('Вид','<select id="wlCash"><option value="0">счёт в банке</option><option value="1"'+(w.isCash?' selected':'')+'>наличные</option></select>')
+    +(WE?'':fld('Стартовый остаток', inp('wlStart','', 'n')))+'</div><div class="mut">'+(WE?'Стартовый остаток задаётся один раз при создании: дальше остаток считается из поступлений и расходов.':'Стартовый остаток — сколько денег в кошельке на момент начала учёта.')+'</div>'+dlgFoot('walSave()','Сохранить'));
+}
+function walSave(){ run({vapi:'finwalletsave', data:JSON.stringify({ id:WE?WE.id:undefined, name:v('wlName'), currency:v('wlCur'), isCash:v('wlCash')==='1', start:v('wlStart') })}, 'Сохраняю кошелёк…', 'dlgMsg').then(setDone); }
+function ptOpen(id){
+  PE=id?byId(SET.paymentTypes,id):null; var t=PE||{};
+  dlgOpen('<h3>'+(PE?'Тип оплаты':'Новый тип оплаты')+'</h3><div class="form">'+fld('Название', inp('ptName', t.name))+fld('Комиссия, %', inp('ptPct', t.pct?String(t.pct).replace('.',','):'', 'n'))+'</div>'+dlgFoot('ptSave()','Сохранить'));
+}
+function ptSave(){ run({vapi:'finptypesave', data:JSON.stringify({ id:PE?PE.id:undefined, name:v('ptName'), pct:v('ptPct') })}, 'Сохраняю…', 'dlgMsg').then(setDone); }
+
 get({vapi:'finrefs'}).then(function(r){
   if(!r||!r.ok){ noAccess(r); return; }
-  REF=r; setTab(qp('tab')==='statement'?'statement':'board');
+  REF=r; var t0=qp('tab'); setTab(['statement','salary','recurring','settings'].indexOf(t0)>=0?t0:'board');
 }, function(e){ el('noacc').className='note warn'; el('noacc').textContent='Сервер не ответил: '+((e&&e.message)||e); });
 </script>
 </body>
