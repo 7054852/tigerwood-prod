@@ -303,7 +303,7 @@ function expOpen(id){
     +fld('Срок оплаты', inp('exDate', e.planIso, 'd'))+(EX&&!e.paid?'':fld(EX?'Дата оплаты':'Уже оплачен — дата оплаты', inp('exPaid', e.paidDateIso, 'd')))
     +fld('№ счёта / акта', inp('exNo', e.invNo))+fld('Дата счёта', inp('exNoDate', e.invDateIso, 'd'))+fld('Договор', inp('exDog', e.dogovor))+fld('Примечание', inp('exNote', e.note), 'wide')+'</div>';
   if(EX&&!e.paid) h+='<div class="dl-acts"><div><label>Оплачено — дата</label>'+inp('exPayDate', B.today, 'd')+'</div><div><label>Сумма оплаты (меньше — часть)</label>'+inp('exPaySum', String(e.sum).replace('.',','), 'n')+'</div><button onclick="expPay()">Оплачено</button></div>';
-  h+='<div id="dlgMsg" class="msg"></div><div class="dlg-btns">'+(EX?'<button class="danger sec" style="margin-right:auto" onclick="expDel()">Удалить</button>'+(e.paid?'<button class="sec" onclick="expUnpay()">Снять оплату</button>':''):'')
+  h+='<div id="dlgMsg" class="msg"></div><div class="dlg-btns">'+(EX?(e.transferId?'<button class="danger sec" style="margin-right:auto" onclick="xferCancel(EX.transferId)">Отменить обмен / перевод</button>':'<button class="danger sec" style="margin-right:auto" onclick="expDel()">Удалить</button>')+(e.paid?'<button class="sec" onclick="expUnpay()">Снять оплату</button>':''):'')
     +(EX&&e.dogovor?'<button class="sec" onclick="schedView(EX.dogovor)">График договора</button>':'')+'<button class="sec" onclick="dlgClose()">Отмена</button><button class="primary" onclick="expSave()">Сохранить</button></div>';
   dlgOpen(h);
 }
@@ -328,7 +328,7 @@ function incOpen(id){
     +fld('Статья','<select id="inCat">'+catOpts(cat,'income')+'</select>')+fld('Тип оплаты','<select id="inType" onchange="incPct()">'+types+'</select>')
     +fld('Срок по плану', inp('inDate', r.planIso, 'd'))+(IN&&r.got?fld('Дата получения', inp('inGot', r.gotDate, 'd')):'')+fld('Примечание', inp('inNote', r.note), 'wide')+'</div>'+(IN?'':'<label><input type="checkbox" id="inSched" onchange="incSchedToggle()"> несколько платежей по одному заказу (график)</label><div id="inSchedBox" class="hide"></div>');
   if(IN&&!r.got) h+='<div class="dl-acts"><div><label>Получено — дата</label>'+inp('inGotDate', B.today, 'd')+'</div><div><label>Пришло (меньше — часть)</label>'+inp('inGotSum', String(r.sum).replace('.',','), 'n')+'</div><div><label>Комиссия, %</label>'+inp('inComm', '', 'n')+'</div><button onclick="incGot()">Получено</button></div>';
-  h+='<div id="dlgMsg" class="msg"></div><div class="dlg-btns">'+(IN?'<button class="danger sec" style="margin-right:auto" onclick="incDel()">Удалить</button>'+(r.got?'<button class="sec" onclick="incUngot()">Снять получение</button>':''):'')
+  h+='<div id="dlgMsg" class="msg"></div><div class="dlg-btns">'+(IN?(r.transferId?'<button class="danger sec" style="margin-right:auto" onclick="xferCancel(IN.transferId)">Отменить обмен / перевод</button>':'<button class="danger sec" style="margin-right:auto" onclick="incDel()">Удалить</button>')+(r.got?'<button class="sec" onclick="incUngot()">Снять получение</button>':''):'')
     +'<button class="sec" onclick="dlgClose()">Отмена</button><button class="primary" onclick="incSave()">Сохранить</button></div>';
   dlgOpen(h); incPct();
 }
@@ -355,6 +355,7 @@ function xferOpen(){
     +'<div class="mut">Перевод в одной валюте — суммы равны. Обмен — сколько списано в одной валюте и сколько зачислено в другой.</div>'+dlgFoot('xferGo()','Провести'));
 }
 function xferGo(){ var a=num(v('xfFromAmt')), b=num(v('xfToAmt'))||a; run({vapi:'finexchange', data:JSON.stringify({ fromWalletId:v('xfFrom'), toWalletId:v('xfTo'), fromAmount:a, toAmount:b, dateIso:v('xfDate') }), key:newKey()}, 'Провожу…', 'dlgMsg').then(after); }
+function xferCancel(id){ if(!confirm('Отменить обмен / перевод целиком? Обе его стороны будут отменены, остатки обоих кошельков вернутся.')) return; run({vapi:'fintransfercancel', id:id, reason:'отменён с доски'}, 'Отменяю перевод…', 'dlgMsg').then(after); }
 function periodAdd(){
   dlgOpen('<h3>Контрольная дата</h3><div class="mut">Колонка доски: к этой дате видно, сколько денег останется после запланированных оплат.</div><div class="form">'+fld('Дата', inp('pdDate', B.today, 'd'))+'</div>'+dlgFoot('periodGo()','Добавить'));
 }
