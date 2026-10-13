@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="tw-theme.js"></script>
+<script src="tw-config.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<title>Тигервуд — Финансы</title>
+<!-- «Финансы» (М6): замена панели «Финансовый гений». ?tab=board|statement.
+     Доска — две панели рядом (решение владельца 13.10.2026): слева липкая «Ждём денег», справа расходы по контрольным датам; на телефоне — две вкладки.
+     Выписка — загрузка файла банка (разбор на странице, как в Фин.гении), разнос расходов по плану и приходов; каждую проводку можно снять.
+     Сервер: prohub/src/finance/routes.ts (vapi fin*). -->
+<style>
+  .hide{ display:none !important; }
+  td.num, th.num{ text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .msg{ margin-top:var(--s-2); }
+  .n{ font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .mut{ color:var(--muted); font:var(--t-small); }
+  /* сводка — одна компактная полоса: цифры важны, но экран нужен доске */
+  .strip{ background:var(--card); border:1px solid var(--line); border-radius:var(--r-card); padding:var(--s-3) var(--s-4); margin-bottom:var(--s-4); }
+  .kps{ display:flex; gap:var(--s-3) var(--s-6); flex-wrap:wrap; }
+  .kp .t{ font:var(--t-label); text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+  .kp .v{ font:var(--t-heading); font-size:20px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .kp .v small, .kp .s{ font:var(--t-small); color:var(--muted); font-weight:400; }
+  .kp .v.bad{ color:var(--red); }
+  .wallets{ display:flex; gap:var(--s-1) var(--s-4); flex-wrap:wrap; margin-top:var(--s-3); padding-top:var(--s-2); border-top:1px solid var(--line); font:var(--t-small); color:var(--muted); }
+  .wallets b{ color:var(--fg); font-variant-numeric:tabular-nums; font-weight:600; }
+  /* ── доска: две панели рядом ── */
+  .bd{ display:grid; grid-template-columns:320px minmax(0,1fr); gap:var(--s-4); align-items:start; }
+  .bd-wait{ position:sticky; top:var(--s-3); max-height:calc(100vh - var(--s-6)); overflow:auto; background:var(--card); border:1px solid var(--line); border-radius:var(--r-card); padding:var(--s-4); }
+  .bd-wait h3, .bd-exp h3{ font:var(--t-heading); margin:0 0 var(--s-1); }
+  .grp{ font:var(--t-label); text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:var(--s-4) 0 var(--s-2); display:flex; justify-content:space-between; }
+  .grp.bad{ color:var(--red); }
+  .wi{ padding:var(--s-2) 0; border-top:1px solid var(--line); display:grid; grid-template-columns:minmax(0,1fr) auto; gap:2px var(--s-2); }
+  .wi .who{ font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .wi .sum{ font-weight:600; font-variant-numeric:tabular-nums; }
+  .wi .meta{ grid-column:1 / -1; color:var(--muted); font:var(--t-small); }
+  .wi.late .meta{ color:var(--red); }
+  .bd-exp{ min-width:0; }
+  .cols{ display:flex; gap:var(--s-3); overflow-x:auto; padding-bottom:var(--s-2); align-items:flex-start; overscroll-behavior-x:contain; }
+  .col{ flex:0 0 250px; background:var(--bg2); border:1px solid var(--line); border-radius:var(--r-card); padding:var(--s-3); }
+  .col.past{ border-color:var(--red); }
+  .col .ch{ display:flex; justify-content:space-between; align-items:baseline; gap:var(--s-2); }
+  .col .ch b{ font:var(--t-heading); }
+  .col .bal{ font:var(--t-small); color:var(--muted); margin:2px 0 var(--s-2); }
+  .col .bal b{ color:var(--fg); font-variant-numeric:tabular-nums; }
+  .col .bal b.neg{ color:var(--red); }
+  .col .plus{ color:var(--green); }
+  .ec{ background:var(--card); border:1px solid var(--line); border-radius:var(--r-ctl); padding:var(--s-2) var(--s-3); margin-top:var(--s-2); }
+  .ec .t{ display:flex; justify-content:space-between; gap:var(--s-2); font-weight:600; }
+  .ec .t span{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+  .ec .t b{ font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .ec .b{ color:var(--muted); font:var(--t-small); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .ec.paid{ opacity:.55; }
+  .mtabs{ display:none; }
+  @media (max-width:760px){
+    .bd{ grid-template-columns:minmax(0,1fr); }
+    .bd-wait{ position:static; max-height:none; }
+    .mtabs{ display:inline-flex; margin-bottom:var(--s-3); }
+    .bd.m-wait .bd-exp, .bd.m-exp .bd-wait{ display:none; }
+  }
+  /* ── выписка ── */
+  table.reg select, table.reg input{ width:100%; min-width:120px; }
+  table.reg td.purp{ max-width:340px; color:var(--muted); font:var(--t-small); }
+  table.reg td.go{ white-space:nowrap; text-align:right; }
+  table.reg td.go button{ margin:2px 0 2px var(--s-1); }
+  .al{ display:grid; grid-template-columns:1fr 130px auto; gap:var(--s-2); margin-top:var(--s-2); align-items:center; }
+  .form{ display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:var(--s-3); margin:var(--s-3) 0; }
+  .form label{ display:block; font:var(--t-small); color:var(--muted); margin-bottom:2px; }
+  .form input, .form select{ width:100%; }
+  .ident{ font:var(--t-small); margin-top:var(--s-2); }
+  .ident.ok{ color:var(--green); } .ident.bad{ color:var(--red); }
+</style>
+</head>
+<body>
+<div id="twload"><i></i></div>
+<div id="twwait"><div class="wb"><div class="sp"></div><div class="wt" id="twwt">Сохраняю…</div><div class="wh">идёт обмен с сервером — не нажимайте</div></div></div>
+<div class="hi">💰 Финансы</div>
+<div class="sub">Остаток и прогноз, план расходов и поступлений, банковская выписка.</div>
+<div class="tabs" id="tabs">
+  <button data-tab="board" onclick="setTab('board')">Доска</button>
+  <button data-tab="statement" onclick="setTab('statement')">Выписка</button>
+</div>
+<div id="noacc" class="note warn hide"></div>
+
+<!-- ═══ ДОСКА ═══ -->
+<div id="tab_board" class="hide">
+  <div class="strip"><div class="kps" id="tiles"></div><div class="wallets" id="wallets"></div></div>
+  <div class="seg mtabs" id="mtabs"><button class="on" onclick="mPane('wait')">Ждём денег</button><button onclick="mPane('exp')">Расходы</button></div>
+  <div class="bd m-wait" id="bd">
+    <div class="bd-wait"><h3>Ждём денег</h3><div class="mut" id="waitHead"></div><div id="waitList"></div></div>
+    <div class="bd-exp"><h3>Расходы по датам</h3><div class="mut" style="margin-bottom:var(--s-3)">Колонка — контрольная дата: что платим к ней и сколько останется после.</div><div class="cols" id="cols"></div></div>
+  </div>
+</div>
+
+<!-- ═══ ВЫПИСКА ═══ -->
+<div id="tab_statement" class="hide">
+  <div class="card">
+    <div class="toolbar">
+      <label>Счёт выписки <select id="stWallet"></select></label>
+      <input type="file" id="stFile" accept=".xlsx,.xls">
+      <button class="primary" onclick="stUpload()">Загрузить выписку</button>
+      <div class="end"><button class="sec" onclick="stRefresh()">Обновить</button></div>
+    </div>
+    <div class="mut">Файл выгрузки из банка (Excel). Строки, которые уже загружены, пропускаются — один и тот же файл можно загружать повторно.</div>
+    <div id="stMsg" class="msg"></div>
+  </div>
+
+  <div class="sect">Расходы к разносу <small id="expCnt"></small></div>
+  <div id="expBox"></div>
+  <div class="toolbar"><button class="primary hide" id="expGo" onclick="expApply()">Провести отмеченные</button><span class="mut hide" id="expHint">Отмеченные строки закроют карточки плана или создадут новые расходы. Остаток счёта изменится ровно на их сумму.</span></div>
+  <div id="expMsg" class="msg"></div>
+
+  <div class="sect">Приходы к разносу <small id="incCnt"></small></div>
+  <div id="incBox"></div>
+  <div id="incMsg" class="msg"></div>
+
+  <div class="sect">Разнесённые строки <small>последние 60</small></div>
+  <div id="doneBox"></div>
+</div>
+
+<div class="dlg-bg" id="dlg" style="display:none" onclick="if(event.target===this) dlgClose()"><div class="dlg md"><div id="dlgB"></div></div></div>
+<div class="dlg-bg" id="oopsmodal" style="display:none;z-index:60"><div class="dlg sm"><h3>Не получилось</h3><div id="oopsB"></div><div class="dlg-btns"><button onclick="el('oopsmodal').style.display='none'">Понятно</button></div></div></div>
+
+<script>
+var BASE=(window.TW_CFG&&TW_CFG.hub)||'https://prohub.tigerwood.by/exec', APP='tw7prod';
+function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]+)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
+function twTok(){ try{ return qp('tok')||localStorage.getItem('tw_tok')||''; }catch(e){ return qp('tok')||''; } }
+(function(){ var t=qp('tok'); if(t){ try{ localStorage.setItem('tw_tok',t); }catch(e){} } })();
+function el(id){ return document.getElementById(id); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+function money(n){ n=Number(n)||0; return n.toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,' '); }
+function dm(iso){ return iso?iso.slice(8,10)+'.'+iso.slice(5,7):''; }
+function dmy(iso){ return iso?iso.slice(8,10)+'.'+iso.slice(5,7)+'.'+iso.slice(0,4):''; }
+function setm(m, cls, html){ if(typeof m==='string') m=el(m); if(!m) return; m.className='msg '+(cls||''); m.innerHTML=html||''; }
+function oops(t){ el('oopsB').textContent=t||'Сервер не ответил — повторите.'; el('oopsmodal').style.display='flex'; }
+function twAuthWall(r){
+  if(r&&r.needAuth){ document.body.innerHTML='<div style="padding:var(--s-6);font:var(--t-body);color:var(--fg)"><div style="font:var(--t-title);margin-bottom:var(--s-3)">🔒 Нужен вход</div><div>'+esc(r.error||'Откройте сервис из бота @TWOtchbot или войдите по личному коду.')+'</div></div>'; return new Promise(function(){}); }
+  return r;
+}
+function qs(p){ var t=twTok(); if(t) p.tok=t; p.app=APP; return Object.keys(p).map(function(k){ return k+'='+encodeURIComponent(p[k]==null?'':p[k]); }).join('&'); }
+var LD=0; function loadOn(){ LD++; el('twload').style.display='block'; } function loadOff(){ LD=Math.max(0,LD-1); if(!LD) el('twload').style.display='none'; }
+function done(pr){ return pr.then(function(r){ loadOff(); return r.json(); }, function(e){ loadOff(); throw e; }).then(twAuthWall); }
+function get(p){ loadOn(); return done(fetch(BASE+'?'+qs(p))); }
+function post(p){ loadOn(); return done(fetch(BASE,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body:qs(p)})); }
+function errText(r){ return (r&&(r.error||r.message))||'Сервер не ответил — повторите.'; }
+var BUSY=0;
+/* запись: одна за раз, с понятной ошибкой. Ключ повтора — чтобы обрыв связи и повторное нажатие не провели платёж дважды. */
+function run(p, say, m){
+  if(BUSY) return Promise.resolve(null); BUSY=1;
+  el('twwt').textContent=say||'Сохраняю…'; el('twwait').style.display='flex';
+  return post(p).then(function(r){ BUSY=0; el('twwait').style.display='none'; if(!r||(!r.ok&&!r.warn&&!r.mismatch)){ var t=errText(r); setm(m,'err','⚠️ '+esc(t)); oops(t); return null; } return r; },
+    function(e){ BUSY=0; el('twwait').style.display='none'; var t='Связь оборвалась: '+((e&&e.message)||e)+'. Проверьте интернет и нажмите «Обновить» — если строка уже разнесена, повторять не нужно.'; setm(m,'err','⚠️ '+esc(t)); oops(t); return null; });
+}
+function newKey(){ return 'ui-'+Date.now()+'-'+Math.random().toString(36).slice(2,10); }
+
+var REF={ wallets:[], categories:[], paymentTypes:[], defaultWalletId:null }, TAB='';
+function setTab(t){
+  TAB=t; var b=el('tabs').querySelectorAll('button'); for(var i=0;i<b.length;i++) b[i].className=b[i].getAttribute('data-tab')===t?'on':'';
+  el('tab_board').className=t==='board'?'':'hide'; el('tab_statement').className=t==='statement'?'':'hide';
+  try{ history.replaceState(null,'',location.pathname+'?tab='+t+(qp('embed')?'&embed=1':'')+(qp('srv')?'&srv='+qp('srv'):'')); }catch(e){}
+  if(t==='board') loadBoard(); else stRefresh();
+}
+function wName(id){ for(var i=0;i<REF.wallets.length;i++) if(REF.wallets[i].id===id) return REF.wallets[i].name; return ''; }
+function wOpts(sel, filter){ return REF.wallets.filter(filter||function(){return true;}).map(function(w){ return '<option value="'+w.id+'"'+(w.id===sel?' selected':'')+'>'+esc(w.name)+(w.currency!=='BYN'?' ('+w.currency+')':'')+'</option>'; }).join(''); }
+function catOpts(sel, kind){ return '<option value="">— статья —</option>'+REF.categories.filter(function(c){ return c.kind===kind; }).map(function(c){ return '<option value="'+c.id+'"'+(c.id===sel?' selected':'')+'>'+esc(c.name)+'</option>'; }).join(''); }
+
+/* ═══════════ ДОСКА ═══════════ */
+var B=null;
+function loadBoard(){ get({vapi:'finboard'}).then(function(r){ if(!r||!r.ok){ noAccess(r); return; } B=r; renderBoard(); }, function(e){ setm('noacc','warn','⚠️ '+esc(String(e&&e.message||e))); el('noacc').className='note warn'; }); }
+function noAccess(r){ el('noacc').className='note warn'; el('noacc').textContent=errText(r); }
+function tile(t, v, sub, cls){ return '<div class="kp"><div class="t">'+t+'</div><div class="v'+(cls?' '+cls:'')+'">'+v+'</div>'+(sub?'<div class="s">'+sub+'</div>':'')+'</div>'; }
+function mPane(p){ el('bd').className='bd m-'+p; var b=el('mtabs').querySelectorAll('button'); b[0].className=p==='wait'?'on':''; b[1].className=p==='exp'?'on':''; }
+function renderBoard(){
+  var f=B.figures;
+  el('tiles').innerHTML=tile('Остаток сейчас', money(B.cashNow)+' <small>BYN</small>')
+    +tile('Ждём денег', money(f.inWait), f.inWaitAll!==f.inWait?'всего '+money(f.inWaitAll):'до '+dmy(f.horizon))
+    +tile('К оплате', money(f.toPay), f.toPayAll!==f.toPay?'всего, с дальними '+money(f.toPayAll):'до '+dmy(f.horizon))
+    +tile('Прогноз остатка', money(f.forecast), 'на '+dmy(f.horizon), f.forecast<0?'bad':'')
+    +(f.ovrIn?tile('Нам просрочили', money(f.ovrIn), 'срок прошёл, денег нет', 'bad'):'')
+    +(f.ovrPay?tile('Мы просрочили', money(f.ovrPay), 'срок оплаты прошёл', 'bad'):'');
+  el('wallets').innerHTML=B.wallets.filter(function(w){ return w.sum; }).map(function(w){ return '<span>'+esc(w.name)+' <b>'+money(w.sum)+(w.cur!=='BYN'?' '+w.cur:'')+'</b></span>'; }).join('')
+    +(B.rateMissing&&B.rateMissing.length?'<span class="pill warn">нет курса: '+esc(B.rateMissing.join(', '))+'</span>':'');
+  // ── слева: ждём денег (когда ждём = расчётная дата, иначе плановая)
+  var when=function(r){ return r.factIso||r.planIso||''; }, pend=B.incomes.filter(function(r){ return !r.got; });
+  var late=pend.filter(function(r){ var w=when(r); return w&&w<B.today; }), wait=pend.filter(function(r){ var w=when(r); return w&&w>=B.today; }), nod=pend.filter(function(r){ return !when(r); });
+  var got=B.incomes.filter(function(r){ return r.got&&r.src!=='transfer'; }).sort(function(a,b){ return a.gotDate<b.gotDate?1:-1; }).slice(0,15);
+  var srt=function(a,b){ return when(a)<when(b)?-1:1; }, sum=function(l){ return l.reduce(function(s,r){ return s+r.sum; },0); };
+  var item=function(r, cls){ return '<div class="wi '+(cls||'')+'"><div class="who" title="'+esc(r.client)+'">'+esc(r.client||'—')+'</div><div class="sum">'+money(r.sum)+'</div><div class="meta">'
+    +[r.zakaz, r.got?'получено '+dm(r.gotDate):(when(r)?'срок '+dm(when(r)):'без даты'), r.wallet, r.ptype].filter(Boolean).map(esc).join(' · ')+'</div></div>'; };
+  var grp=function(title, list, cls, itemCls){ return list.length?'<div class="grp '+(cls||'')+'"><span>'+title+' · '+list.length+'</span><span>'+money(sum(list))+'</span></div>'+list.map(function(r){ return item(r,itemCls); }).join(''):''; };
+  el('waitHead').textContent=pend.length?pend.length+' платежей на '+money(sum(pend))+(late.length?' · просрочено '+late.length:''):'Ожидаемых поступлений нет.';
+  el('waitList').innerHTML=grp('Просрочено', late.sort(srt), 'bad', 'late')+grp('Ждём', wait.sort(srt))+grp('Без даты', nod)+grp('Получено недавно', got);
+  // ── справа: расходы по контрольным датам
+  var unpaid=B.expenses.filter(function(e){ return !e.paid; }), nodate=unpaid.filter(function(e){ return !e.planIso; });
+  var card=function(e){ var meta=[e.contr!==e.name?e.contr:'', e.cat||'без статьи', e.paid?'оплачено '+dm(e.paidDateIso):''].filter(Boolean).join(' · ');
+    return '<div class="ec'+(e.paid?' paid':'')+'" title="'+esc((e.name||'')+' — '+meta)+'"><div class="t"><span>'+esc(e.name||e.contr||'—')+'</span><b>'+money(e.sum)+'</b></div><div class="b">'+esc(meta)+'</div></div>'; };
+  var col=function(title, sub, list, cls){ return '<div class="col '+(cls||'')+'"><div class="ch"><b>'+title+'</b><span class="n">'+money(sum(list))+'</span></div>'+sub+(list.length?list.map(card).join(''):'<div class="empty">нет платежей</div>')+'</div>'; };
+  var h=nodate.length?col('Без даты','<div class="bal">срок не назначен</div>',nodate):'';
+  B.periods.forEach(function(p){
+    var list=B.expenses.filter(function(e){ return e.planIso===p.iso&&(!e.paid||p.iso>=B.today); });
+    h+=col(p.label, '<div class="bal">останется <b class="'+(p.balance<0?'neg':'')+'">'+money(p.balance)+'</b>'+(p.incomeCount?' · <span class="plus">ждём +'+money(p.incomeSum)+'</span>':'')+'</div>', list, p.iso<B.today?'past':'');
+  });
+  el('cols').innerHTML=h||'<div class="empty">Плановых расходов нет.</div>';
+}
+
+/* ═══════════ ВЫПИСКА ═══════════ */
+/* разбор файла банка — как в Фин.гении (Panel.html statementParse): строка операции = дата ДД.ММ.ГГГГ в первой колонке; дебет — 8-я, кредит — 9-я */
+function statementParse(aoa){
+  var out=[], dateRe=/^(\d{2})\.(\d{2})\.(\d{4})$/;
+  function n(x){ return Number(String(x==null?'':x).replace(/[\s ]/g,'').replace(',','.'))||0; }
+  for(var i=0;i<aoa.length;i++){
+    var row=aoa[i]||[], c1=String(row[0]==null?'':row[0]).trim(), m=dateRe.exec(c1);
+    if(!m) continue;
+    var debit=n(row[7]), credit=n(row[8]);
+    if(debit<=0 && credit<=0) continue;
+    out.push({ dateIso:m[3]+'-'+m[2]+'-'+m[1], docNo:String(row[1]==null?'':row[1]).trim(), unp:String(row[5]==null?'':row[5]).trim(), debit:debit, credit:credit,
+      account:String(row[3]==null?'':row[3]).trim().replace(/\s+/g,''), bik:String(row[4]==null?'':row[4]).trim(), contr:String(row[9]==null?'':row[9]).trim(), purpose:String(row[10]==null?'':row[10]).trim() });
+  }
+  return out;
+}
+function stUpload(){
+  var fi=el('stFile'), w=el('stWallet').value;
+  if(!fi.files||!fi.files[0]){ setm('stMsg','warn','Выберите файл выписки.'); return; }
+  if(!w){ setm('stMsg','warn','Выберите счёт, по которому выгружена выписка.'); return; }
+  if(typeof XLSX==='undefined'){ setm('stMsg','err','Не загрузилась библиотека чтения Excel — проверьте интернет и откройте страницу заново.'); return; }
+  setm('stMsg','','Читаю файл…');
+  var rd=new FileReader();
+  rd.onload=function(e){
+    var rows;
+    try{
+      var wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'}), ws=wb.Sheets[wb.SheetNames[0]], er=0, ec=0;
+      // банк занижает размер листа (!ref) — пересчитываем настоящий диапазон по всем ячейкам, иначе видна только шапка
+      Object.keys(ws).forEach(function(k){ if(k.charAt(0)==='!') return; var c=XLSX.utils.decode_cell(k); if(c.r>er)er=c.r; if(c.c>ec)ec=c.c; });
+      ws['!ref']=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:er,c:ec}});
+      rows=statementParse(XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:''}));
+    }catch(err){ setm('stMsg','err','Не разобрать файл: '+esc(err.message)); return; }
+    if(!rows.length){ setm('stMsg','warn','В файле не нашлось строк операций — это точно выписка из банка?'); return; }
+    run({vapi:'finstmtupload', wallet:w, file:fi.files[0].name, rows:JSON.stringify(rows)}, 'Загружаю '+rows.length+' строк…', 'stMsg').then(function(r){
+      if(!r) return;
+      setm('stMsg','ok','Готово: добавлено '+r.added+', уже были '+r.skipped+(r.contrAdded||r.contrUnp?' · контрагенты: новых '+r.contrAdded+', дописан УНП '+r.contrUnp:'')+'.'); fi.value=''; stRefresh();
+    });
+  };
+  rd.readAsArrayBuffer(fi.files[0]);
+}
+var EXP=[], INC=null, IREC=[];
+function stRefresh(){
+  el('stWallet').innerHTML=wOpts(el('stWallet').value||REF.defaultWalletId);
+  get({vapi:'finreconpreview'}).then(function(r){ if(!r||!r.ok){ noAccess(r); return; } EXP=r.plan; renderExp(); });
+  Promise.all([get({vapi:'finincomepreview'}), get({vapi:'finincreconpreview'})]).then(function(a){ if(a[0]&&a[0].ok){ INC=a[0]; IREC=(a[1]&&a[1].plan)||[]; renderInc(); } });
+  get({vapi:'finstmtlist', limit:400}).then(function(r){ if(r&&r.items) renderDone(r.items.filter(function(x){ return x.posting; }).slice(0,60)); });
+}
+var ACT={ match:'закрыть карточку', partial:'частичная оплата', recognize:'новый расход', create:'новый расход', ambiguous:'выбрать карточку' };
+function renderExp(){
+  el('expCnt').textContent=EXP.length?EXP.length+' строк':'';
+  if(!EXP.length){ el('expBox').innerHTML='<div class="empty">Все расходные строки выписки разнесены.</div>'; el('expGo').className='primary hide'; el('expHint').className='mut hide'; return; }
+  var h='<div class="tbl-wrap"><table class="reg"><thead><tr><th></th><th>Дата</th><th>Контрагент</th><th class="num">Сумма</th><th>Что сделать</th><th>Статья</th><th>Назначение</th></tr></thead><tbody>';
+  EXP.forEach(function(p, i){
+    var auto=p.action==='match'||p.action==='recognize'||p.action==='partial', what='';
+    if(p.action==='match') what='<span class="pill ok">'+ACT.match+'</span> '+esc(p.expName)+(p.sumFix?' <span class="mut">план '+money(p.planSum)+'</span>':'')+'<div class="mut">'+esc(p.basis)+'</div>';
+    else if(p.action==='partial') what='<span class="pill info">'+ACT.partial+'</span> '+esc(p.expName)+'<div class="mut">план '+money(p.planSum)+', останется '+money(p.rest)+'</div>';
+    else if(p.action==='recognize') what=p.hoz?'<span class="pill info">перевод на наличный кошелёк</span><div class="mut">хозрасходы — не расход, а выдача наличных</div>':'<span class="pill ok">'+ACT.recognize+'</span><div class="mut">распознано по назначению</div>';
+    else if(p.action==='ambiguous') what='<select id="ex_c'+i+'"><option value="">— выберите карточку —</option>'+p.candidates.map(function(c){ return '<option value="'+c.expId+'">'+esc(c.name)+' · '+money(c.sum)+(c.planIso?' · '+dm(c.planIso):'')+'</option>'; }).join('')+'<option value="new">новый расход</option></select>';
+    else what='<span class="pill mute">'+ACT.create+'</span>';
+    var cat=p.categoryId||p.hintCategoryId||'';
+    h+='<tr><td><input type="checkbox" id="ex_k'+i+'"'+(auto?' checked':'')+'></td><td class="n">'+dm(p.dateIso)+'</td><td>'+esc(p.contr)+'</td><td class="num">'+money(p.sum)+'</td><td>'+what+'</td>'
+      +'<td>'+(p.hoz?'<span class="mut">перевод</span>':'<select id="ex_s'+i+'">'+catOpts(cat,'expense')+'</select>')+'</td><td class="purp">'+esc(p.purpose)+'</td></tr>';
+  });
+  el('expBox').innerHTML=h+'</tbody></table></div>'; el('expGo').className='primary'; el('expHint').className='mut';
+}
+function expApply(){
+  var dec=[], bad='';
+  EXP.forEach(function(p, i){
+    if(!el('ex_k'+i).checked) return;
+    var d={ lineId:p.lineId, action:p.action, expId:p.expId||undefined, categoryId:(el('ex_s'+i)&&el('ex_s'+i).value)||undefined };
+    if(p.action==='ambiguous'){ var v=el('ex_c'+i).value; if(!v){ bad='В строке «'+p.contr+' '+money(p.sum)+'» выберите карточку или «новый расход».'; return; } if(v==='new'){ d.action='create'; } else { d.action='match'; d.expId=v; } }
+    dec.push(d);
+  });
+  if(bad){ setm('expMsg','warn',esc(bad)); return; }
+  if(!dec.length){ setm('expMsg','warn','Отметьте строки, которые нужно провести.'); return; }
+  run({vapi:'finreconapply', decisions:JSON.stringify(dec), key:newKey()}, 'Провожу '+dec.length+' строк…', 'expMsg').then(function(r){
+    if(!r) return;
+    setm('expMsg', r.skipped&&r.skipped.length?'warn':'ok', 'Проведено '+r.done+'.'+(r.skipped&&r.skipped.length?' Не проведено '+r.skipped.length+': '+esc(r.skipped.map(function(s){ return s.why; }).filter(function(v,i,a){ return a.indexOf(v)===i; }).join('; '))+'.':''));
+    stRefresh();
+  });
+}
+/* ── приходы ── */
+function renderInc(){
+  var n=INC.erip.length+INC.exchange.length+INC.cashback.length+INC.other.length; el('incCnt').textContent=n?n+' строк':'';
+  if(!n){ el('incBox').innerHTML='<div class="empty">Все приходы выписки разнесены.</div>'; return; }
+  var recBy={}; IREC.forEach(function(p){ recBy[p.lineId]=p; });
+  var h='<div class="tbl-wrap"><table class="reg"><thead><tr><th>Дата</th><th>Вид</th><th class="num">Сумма</th><th>Подсказка</th><th>Назначение</th><th></th></tr></thead><tbody>';
+  var row=function(x, kind, sum, hint, btn){ h+='<tr><td class="n">'+dm(x.dateIso)+'</td><td>'+kind+'</td><td class="num">'+money(sum)+'</td><td>'+hint+'</td><td class="purp">'+esc(x.purpose)+'</td><td class="go">'+btn+'</td></tr>'; };
+  INC.erip.forEach(function(x, i){ row(x,'<span class="pill info">ЕРИП</span>',x.net,'брутто '+money(x.brutto)+', комиссия '+money(x.commission)+(x.registry.length?'<div class="mut">в реестре ЕРИП '+x.registry.length+' оплат на '+money(x.registry.reduce(function(s,p){return s+p.sum;},0))+'</div>':''),'<button class="sec" onclick="eripOpen('+i+')">Разложить по заказам</button>'); });
+  INC.exchange.forEach(function(x, i){ row(x,'<span class="pill mute">продажа валюты</span>',x.byn,x.sold?'продано '+money(x.sold)+' по '+x.rate:'сумма валюты не разобрана','<button class="sec" onclick="xchOpen('+i+')">Провести обмен</button>'); });
+  INC.cashback.forEach(function(x, i){ row(x,'<span class="pill mute">возврат наличных</span>',x.sum,esc(x.contr),'<button class="sec" onclick="cbOpen('+i+')">Провести возврат</button>'); });
+  INC.other.forEach(function(x, i){
+    var p=recBy[x.id], hint=esc(x.contr)+(x.clientHint?'<div class="mut">'+esc(x.clientHint)+'</div>':''), btn='<button class="sec" onclick="othOpen('+i+')">Новое поступление</button>';
+    if(p&&(p.action==='match'||p.action==='suggest'||p.action==='partial')){
+      hint='<span class="pill '+(p.action==='match'?'ok':'info')+'">'+(p.action==='partial'?'часть заявки':'заявка')+' '+esc(p.cand.zakaz)+'</span> '+esc(p.cand.client)+' · '+money(p.cand.sum)+'<div class="mut">'+esc(p.basis)+(p.action==='partial'?', останется '+money(p.rest):'')+'</div>';
+      btn='<button class="primary" onclick="recApply(\''+x.id+'\',\''+p.cand.incId+'\')">Закрыть план</button> '+btn;
+    } else if(p&&p.action==='ambiguous'){
+      hint='<select id="rc_'+i+'"><option value="">— заявка —</option>'+p.candidates.map(function(c){ return '<option value="'+c.incId+'">'+esc(c.zakaz)+' · '+esc(c.client)+' · '+money(c.sum)+'</option>'; }).join('')+'</select>';
+      btn='<button onclick="var v=el(\'rc_'+i+'\').value; if(v) recApply(\''+x.id+'\',v);">Закрыть план</button> '+btn;
+    }
+    row(x,'<span class="pill mute">поступление</span>',x.sum,hint,btn);
+  });
+  el('incBox').innerHTML=h+'</tbody></table></div>';
+}
+function recApply(lineId, incId){
+  run({vapi:'finincreconapply', decisions:JSON.stringify([{lineId:lineId, incId:incId}]), key:newKey()}, 'Закрываю план…', 'incMsg').then(function(r){
+    if(!r) return; setm('incMsg', r.done?'ok':'warn', r.done?'План закрыт оплатой из выписки.':'Не проведено: '+esc((r.skipped[0]||{}).why||'')+'.'); stRefresh(); });
+}
+function dlgOpen(html){ el('dlgB').innerHTML=html; el('dlg').style.display='flex'; }
+function dlgClose(){ el('dlg').style.display='none'; }
+function dlgFoot(go, label){ return '<div id="dlgMsg" class="msg"></div><div class="dlg-btns"><button class="sec" onclick="dlgClose()">Отмена</button><button class="primary" onclick="'+go+'">'+label+'</button></div>'; }
+/* ЕРИП: одна строка выписки = несколько заказов минус комиссия. Тождество проверяется и здесь, и на сервере. */
+var ER=null;
+function eripOpen(i){
+  ER=INC.erip[i]; var rows=ER.registry.length?ER.registry.map(function(p){ return { zakaz:p.zakaz, sum:p.sum, paymentNo:p.paymentNo, dealId:p.dealId, payer:p.payer }; }):[{zakaz:'',sum:ER.brutto}];
+  ER.rows=rows;
+  dlgOpen('<h3>ЕРИП за '+dmy(ER.dateIso)+': пришло '+money(ER.net)+'</h3><div class="mut">Разложите сумму по заказам. Заказы минус комиссия должны дать ровно сумму выписки.</div>'
+    +'<div id="erRows"></div><button class="sec" onclick="ER.rows.push({zakaz:\'\',sum:0}); eripRows()">+ заказ</button>'
+    +'<div class="form"><div><label>Комиссия ЕРИП</label><input id="erComm" inputmode="decimal" value="'+String(ER.commission).replace('.',',')+'" oninput="eripIdent()"></div></div><div id="erIdent" class="ident"></div>'+dlgFoot('eripGo(false)','Провести'));
+  eripRows();
+}
+function eripRows(){
+  el('erRows').innerHTML=ER.rows.map(function(r, k){ return '<div class="al"><input placeholder="№ заказа" value="'+esc(r.zakaz)+'" oninput="ER.rows['+k+'].zakaz=this.value"'+(r.payer?' title="'+esc(r.payer)+'"':'')+'>'
+    +'<input inputmode="decimal" placeholder="сумма" value="'+(r.sum?String(r.sum).replace('.',','):'')+'" oninput="ER.rows['+k+'].sum=num(this.value); eripIdent()"><button class="sec" onclick="ER.rows.splice('+k+',1); eripRows()">×</button></div>'; }).join('');
+  eripIdent();
+}
+function num(s){ return Number(String(s==null?'':s).replace(/[\s ]/g,'').replace(',','.'))||0; }
+function r2(x){ return Math.round(x*100)/100; }
+function eripIdent(){
+  var g=r2(ER.rows.reduce(function(s,r){ return s+(Number(r.sum)||0); },0)), c=num(el('erComm').value), d=r2(g-c-ER.net), box=el('erIdent');
+  box.className='ident '+(Math.abs(d)<0.011?'ok':'bad'); box.textContent='Заказы '+money(g)+' − комиссия '+money(c)+' = '+money(g-c)+(Math.abs(d)<0.011?' — сходится с выпиской.':' — расхождение с выпиской '+money(d)+'.');
+}
+function eripGo(force){
+  var data={ lineId:ER.id, allocations:ER.rows.filter(function(r){ return Number(r.sum)>0; }), commission:num(el('erComm').value), force:!!force };
+  run({vapi:'fineripapply', data:JSON.stringify(data), key:newKey()}, 'Провожу ЕРИП…', 'dlgMsg').then(function(r){
+    if(!r) return;
+    if(r.mismatch){ setm('dlgMsg','err','⚠️ '+esc(r.error)); return; }
+    if(r.warn){ setm('dlgMsg','warn','По заявкам уже есть полученная оплата: '+esc(r.already.map(function(a){ return a.zakaz+' — '+money(a.sum)+' от '+dm(a.gotIso); }).join('; '))+'. Если это следующий платёж рассрочки — <button onclick="eripGo(true)">провести всё равно</button>'); return; }
+    dlgClose(); setm('incMsg','ok','ЕРИП разнесён: заказы '+money(r.gross)+', комиссия '+money(r.commission)+'.'); stRefresh();
+  });
+}
+var OT=null;
+function othOpen(i){
+  OT=INC.other[i];
+  dlgOpen('<h3>Поступление '+money(OT.sum)+' от '+dmy(OT.dateIso)+'</h3><div class="mut">'+esc(OT.purpose)+'</div><div class="form">'
+    +'<div><label>Клиент</label><input id="otClient" value="'+esc(OT.clientHint||OT.contr)+'"></div><div><label>№ заказа</label><input id="otZakaz"></div>'
+    +'<div><label>Статья</label><select id="otCat">'+catOpts('','income')+'</select></div>'
+    +'<div><label>Тип оплаты</label><select id="otType"><option value="">—</option>'+REF.paymentTypes.map(function(t){ return '<option value="'+t.id+'">'+esc(t.name)+'</option>'; }).join('')+'</select></div>'
+    +'<div><label>Комиссия банка, если удержана</label><input id="otComm" inputmode="decimal" placeholder="0"></div></div>'
+    +'<div class="mut">С комиссией клиент заплатил больше, чем пришло: поступление запишется на полную сумму, комиссия — расходом.</div>'+dlgFoot('othGo()','Провести'));
+}
+function othGo(){
+  var c=num(el('otComm').value), data={ lineId:OT.id, client:el('otClient').value, zakaz:el('otZakaz').value, categoryId:el('otCat').value||null, paymentTypeId:el('otType').value||null, commission:c, brutto:c?r2(OT.sum+c):null };
+  run({vapi:'finotherincome', data:JSON.stringify(data), key:newKey()}, 'Записываю поступление…', 'dlgMsg').then(function(r){ if(!r) return; dlgClose(); setm('incMsg','ok','Поступление записано.'); stRefresh(); });
+}
+var XC=null;
+function xchOpen(i){
+  XC=INC.exchange[i];
+  dlgOpen('<h3>Продажа валюты: зачислено '+money(XC.byn)+'</h3><div class="mut">'+esc(XC.purpose)+'</div><div class="form"><div><label>С какого валютного счёта продано</label><select id="xcFrom">'+wOpts('',function(w){ return w.currency!=='BYN'; })+'</select></div>'
+    +'<div><label>Сколько валюты продано</label><input id="xcAmt" inputmode="decimal" value="'+(XC.sold?String(XC.sold).replace('.',','):'')+'"></div></div>'+dlgFoot('xchGo()','Провести обмен'));
+}
+function xchGo(){ run({vapi:'finexchangestmt', data:JSON.stringify({lineId:XC.id, fromWalletId:el('xcFrom').value, fromAmount:num(el('xcAmt').value)}), key:newKey()}, 'Провожу обмен…', 'dlgMsg').then(function(r){ if(!r) return; dlgClose(); setm('incMsg','ok','Обмен проведён: '+money(r.fromAmount)+' → '+money(r.toAmount)+'.'); stRefresh(); }); }
+var CB=null;
+function cbOpen(i){
+  CB=INC.cashback[i];
+  dlgOpen('<h3>Возврат наличных '+money(CB.sum)+'</h3><div class="mut">'+esc(CB.purpose)+'</div><div class="form"><div><label>С какого наличного кошелька вернули</label><select id="cbFrom">'+wOpts('',function(w){ return w.isCash; })+'</select></div></div>'+dlgFoot('cbGo()','Провести'));
+}
+function cbGo(){ run({vapi:'fincashback', data:JSON.stringify({lineId:CB.id, fromWalletId:el('cbFrom').value}), key:newKey()}, 'Провожу возврат…', 'dlgMsg').then(function(r){ if(!r) return; dlgClose(); setm('incMsg','ok','Возврат наличных проведён.'); stRefresh(); }); }
+/* ── разнесённые: можно снять ── */
+function renderDone(items){
+  if(!items.length){ el('doneBox').innerHTML='<div class="empty">Разнесённых строк пока нет.</div>'; return; }
+  el('doneBox').innerHTML='<div class="tbl-wrap"><table class="reg"><thead><tr><th>Дата</th><th>Контрагент</th><th class="num">Сумма</th><th>Разнесена</th><th>Назначение</th><th></th></tr></thead><tbody>'
+    +items.map(function(x){ return '<tr><td class="n">'+dm(x.dateIso)+'</td><td>'+esc(x.contr)+'</td><td class="num">'+(x.dir==='Расход'?'−':'+')+money(x.sum)+'</td><td>'+esc(x.status.replace(/^разнесена\s*[→,]\s*/,''))+'</td><td class="purp">'+esc(x.purpose)+'</td>'
+      +'<td class="acts2"><button class="danger" onclick="unpost(\''+x.id+'\')">Снять разнос</button></td></tr>'; }).join('')+'</tbody></table></div>';
+}
+function unpost(id){
+  if(!confirm('Снять разнос строки? Созданные ею записи будут отменены, закрытые карточки вернутся в план, остаток счёта изменится обратно.')) return;
+  run({vapi:'finunpost', line:id}, 'Снимаю разнос…', 'incMsg').then(function(r){ if(!r) return; setm('incMsg','ok','Разнос снят — строка снова ждёт разноса.'); stRefresh(); });
+}
+
+get({vapi:'finrefs'}).then(function(r){
+  if(!r||!r.ok){ noAccess(r); return; }
+  REF=r; setTab(qp('tab')==='statement'?'statement':'board');
+}, function(e){ el('noacc').className='note warn'; el('noacc').textContent='Сервер не ответил: '+((e&&e.message)||e); });
+</script>
+</body>
+</html>
