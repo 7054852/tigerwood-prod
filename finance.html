@@ -97,6 +97,7 @@
   <button data-tab="board" onclick="setTab('board')">Доска</button>
   <button data-tab="statement" onclick="setTab('statement')">Выписка</button>
   <button data-tab="invoices" onclick="setTab('invoices')">Счета</button>
+  <button data-tab="contractors" onclick="setTab('contractors')">Контрагенты</button>
   <button data-tab="salary" onclick="setTab('salary')">Зарплата</button>
   <button data-tab="recurring" onclick="setTab('recurring')">Регулярные</button>
   <button data-tab="reports" onclick="setTab('reports')">Долги и отчёты</button>
@@ -156,6 +157,13 @@
   <div id="crWrap" class="hide"><div class="sect">Наличные отчёты на подтверждении <small>из Telegram</small></div><div id="crBox"></div></div>
   <div class="sect">Реестр счетов <small id="invRegCnt"></small></div><div id="invReg"></div>
   <div class="toolbar"><button class="sec hide" id="invMore" onclick="invPage()">Показать ещё</button></div>
+</div>
+
+<!-- ═══ КОНТРАГЕНТЫ ═══ -->
+<div id="tab_contractors" class="hide">
+  <div class="toolbar"><button class="primary" onclick="ctrEdit('')">+ Контрагент</button><input id="ctrQ" type="search" class="search" placeholder="🔎 название или УНП" oninput="ctrRender()"><span class="mut" id="ctrCnt"></span></div>
+  <div class="mut">Поставщики и подрядчики: реквизиты для платежей и документов. Нажмите на название — откроется карточка с долгом, оплатами и документами. Клиенты продаж ведутся в разделе «Клиенты».</div>
+  <div id="ctrBox"></div><div id="ctrMsg" class="msg"></div>
 </div>
 
 <!-- ═══ ЗАРПЛАТА ═══ -->
@@ -230,9 +238,9 @@ var REF={ wallets:[], categories:[], paymentTypes:[], defaultWalletId:null }, TA
 function needBoard(fn){ if(typeof B!=='undefined'&&B){ fn(); return; } get({vapi:'finboard'}).then(function(r){ if(r&&r.ok){ B=r; fn(); } else oops(errText(r)); }); }
 function setTab(t){
   TAB=t; var b=el('tabs').querySelectorAll('button'); for(var i=0;i<b.length;i++) b[i].className=b[i].getAttribute('data-tab')===t?'on':'';
-  ['board','statement','invoices','salary','recurring','reports','settings'].forEach(function(x){ el('tab_'+x).className=t===x?'':'hide'; });
+  ['board','statement','invoices','contractors','salary','recurring','reports','settings'].forEach(function(x){ el('tab_'+x).className=t===x?'':'hide'; });
   try{ history.replaceState(null,'',location.pathname+'?tab='+t+(qp('embed')?'&embed=1':'')+(qp('srv')?'&srv='+qp('srv'):'')); }catch(e){}
-  if(t==='board') loadBoard(); else if(t==='statement') stRefresh(); else if(t==='invoices') invLoad(); else if(t==='salary') salLoad(); else if(t==='recurring') tplLoad(); else if(t==='reports') repLoad(); else setLoad();
+  if(t==='board') loadBoard(); else if(t==='statement') stRefresh(); else if(t==='invoices') invLoad(); else if(t==='contractors') ctrLoad(); else if(t==='salary') salLoad(); else if(t==='recurring') tplLoad(); else if(t==='reports') repLoad(); else setLoad();
 }
 function wName(id){ for(var i=0;i<REF.wallets.length;i++) if(REF.wallets[i].id===id) return REF.wallets[i].name; return ''; }
 function wOpts(sel, filter){ return REF.wallets.filter(filter||function(){return true;}).map(function(w){ return '<option value="'+w.id+'"'+(w.id===sel?' selected':'')+'>'+esc(w.name)+(w.currency!=='BYN'?' ('+w.currency+')':'')+'</option>'; }).join(''); }
@@ -663,7 +671,7 @@ function contrOpen(name){
       +(r.docBalance.length?'<div class="sect">Оплачено и закрыто документами</div><table class="reg"><thead><tr><th>Валюта</th><th class="num">Оплачено</th><th class="num">По документам</th><th class="num">Разница</th></tr></thead><tbody>'+r.docBalance.map(function(x){ return '<tr><td>'+x.cur+'</td><td class="num">'+money(x.paid)+'</td><td class="num">'+money(x.docs)+'</td><td class="num"'+(Math.abs(x.diff)>=0.01?' style="color:var(--red)"':'')+'>'+money(x.diff)+'</td></tr>'; }).join('')+'</tbody></table>':'')
       +(r.docsNote?'<div class="note warn">'+esc(r.docsNote)+'</div>':'')
       +(r.history.length?'<div class="sect">Последние оплаты</div><table class="reg"><tbody>'+r.history.map(function(x){ return '<tr><td class="n">'+dmy(x.paidDateIso)+'</td><td>'+esc(x.name)+' <span class="mut">'+esc(x.cat)+'</span></td><td class="mut">'+esc(x.wallet)+'</td><td class="num">'+money(x.sum)+'</td></tr>'; }).join('')+'</tbody></table>':'')
-      +'<div class="dlg-btns"><button class="sec" style="margin-right:auto" onclick="dlgClose()">Закрыть</button><button class="sec" onclick="cardExp(CN['+cn(r.name)+'])">+ Расход</button>'+(m.unpaid.length?'<button class="primary" onclick="cardAct(CN['+cn(r.name)+'])">Оплатить по акту сверки</button>':'')+'</div>'); });
+      +'<div class="dlg-btns"><button class="sec" style="margin-right:auto" onclick="dlgClose()">Закрыть</button><button class="sec" onclick="cardEdit(\''+esc(r.id||'')+'\')">Реквизиты</button><button class="sec" onclick="cardExp(CN['+cn(r.name)+'])">+ Расход</button>'+(m.unpaid.length?'<button class="primary" onclick="cardAct(CN['+cn(r.name)+'])">Оплатить по акту сверки</button>':'')+'</div>'); });
 }
 function cardExp(name){ dlgClose(); needBoard(function(){ expOpen(''); el('exContr').value=name; }); }
 function cardAct(name){ dlgClose(); needBoard(function(){ actOpen(name); }); }
@@ -676,6 +684,29 @@ function docRender(){
     +l.map(function(g){ return g.rows.map(function(x, k){ return '<tr><td>'+(k?'':'<a href="#" onclick="contrOpen(CN['+cn(g.contr)+']);return false">'+esc(g.contr)+'</a>')+'</td><td>'+esc(x.dogovor)+'</td><td>'+x.cur+'</td><td class="num">'+money(x.paid)+'</td><td class="num">'+money(x.docs)+'</td><td class="num"'+(Math.abs(x.diff)>=0.01?' style="color:var(--red)"':'')+'>'+money(x.diff)+'</td></tr>'; }).join(''); }).join('')
     +'</tbody></table></div><div class="mut">Разница больше нуля — оплачено, а накладной или акта нет; меньше нуля — документ есть, оплаты нет.</div>';
 }
+
+/* ═══════════ КОНТРАГЕНТЫ ═══════════ */
+var CTR=[], CE=null;
+function ctrLoad(){ return get({vapi:'fincontractors'}).then(function(r){ if(!r||!r.ok){ noAccess(r); return; } CTR=r.items; ctrRender(); }); }
+function ctrRender(){
+  var q=(v('ctrQ')||'').toLowerCase(), l=CTR.filter(function(c){ return !q||c.name.toLowerCase().indexOf(q)>=0||c.unp.indexOf(q)>=0; });
+  el('ctrCnt').textContent='всего '+CTR.length+(q?' · найдено '+l.length:'');
+  if(!l.length){ el('ctrBox').innerHTML='<div class="empty">'+(q?'Ничего не найдено.':'Контрагентов нет.')+'</div>'; return; }
+  el('ctrBox').innerHTML='<div class="tbl-wrap"><table class="reg"><thead><tr><th>Контрагент</th><th>УНП</th><th>Тип</th><th>Счёт и банк</th><th>Адрес</th><th></th></tr></thead><tbody>'
+    +l.map(function(c){ return '<tr><td><a href="#" onclick="contrOpen(CN['+cn(c.name)+']);return false">'+esc(c.name)+'</a>'+(c.sub?' <span class="pill info">подрядчик</span>':'')+(c.note?'<div class="mut">'+esc(c.note)+'</div>':'')+'</td><td class="n">'+esc(c.unp)+'</td><td>'+esc(c.type)+'</td>'
+      +'<td class="purp">'+[c.account, c.bank, c.bik?'БИК '+c.bik:''].filter(Boolean).map(esc).join(' · ')+'</td><td class="purp">'+esc(c.addr)+'</td><td class="go"><button class="sec" onclick="ctrEdit(\''+c.id+'\')">Изменить</button></td></tr>'; }).join('')+'</tbody></table></div>';
+}
+function ctrEdit(id){
+  CE=id?byId(CTR,id):null; var c=CE||{}, opt=function(t){ return '<option'+(c.type===t?' selected':'')+'>'+t+'</option>'; };
+  dlgOpen('<h3>'+(CE?'Реквизиты контрагента':'Новый контрагент')+'</h3><div class="form">'+fld('Название', inp('ctName', c.name), 'wide')+fld('УНП', inp('ctUnp', c.unp))+fld('Тип','<select id="ctType"><option value="">авто</option>'+opt('юр')+opt('ИП')+opt('физ')+'</select>')
+    +fld('Расчётный счёт', inp('ctAcc', c.account), 'wide')+fld('Банк', inp('ctBank', c.bank))+fld('БИК', inp('ctBik', c.bik))+fld('Адрес', inp('ctAddr', c.addr), 'wide')+fld('Комментарий', inp('ctNote', c.note), 'wide')+'</div>'
+    +(CE&&(c.phone||c.contact)?'<div class="mut">Контакт: '+esc([c.contact, c.phone].filter(Boolean).join(' · '))+' (ведётся в снабжении)</div>':'')
+    +'<div id="dlgMsg" class="msg"></div><div class="dlg-btns">'+(CE?'<button class="danger sec" style="margin-right:auto" onclick="ctrDel()">Удалить</button>':'')+'<button class="sec" onclick="dlgClose()">Отмена</button><button class="primary" onclick="ctrSave()">Сохранить</button></div>');
+}
+function ctrSave(){ run({vapi:'fincontrsave', data:JSON.stringify({ id:CE?CE.id:undefined, name:v('ctName'), unp:v('ctUnp'), type:v('ctType'), account:v('ctAcc'), bank:v('ctBank'), bik:v('ctBik'), addr:v('ctAddr'), note:v('ctNote') })}, 'Сохраняю контрагента…', 'dlgMsg').then(function(r){ if(!r) return; dlgClose(); ctrLoad(); }); }
+function ctrDel(){ if(!confirm('Удалить контрагента «'+CE.name+'» из справочника? Его расходы и счета останутся, но реквизиты и отметки снабжения по нему пропадут.')) return; run({vapi:'fincontrdel', id:CE.id}, 'Удаляю…', 'dlgMsg').then(function(r){ if(!r) return; dlgClose(); ctrLoad(); }); }
+function cardEdit(id){ if(!id){ oops('Этого контрагента нет в справочнике — добавьте его во вкладке «Контрагенты».'); return; }
+  get({vapi:'fincontractors'}).then(function(r){ CTR=(r&&r.items)||[]; if(!byId(CTR,id)){ oops('Это клиент продаж — его реквизиты правятся в разделе «Клиенты».'); return; } ctrEdit(id); }); }
 
 /* ═══════════ ДОЛГИ И ОТЧЁТЫ ═══════════ */
 var DEBTS=null, DOPEN={};
@@ -873,7 +904,7 @@ function ptSave(){ run({vapi:'finptypesave', data:JSON.stringify({ id:PE?PE.id:u
 
 get({vapi:'finrefs'}).then(function(r){
   if(!r||!r.ok){ noAccess(r); return; }
-  REF=r; var t0=qp('tab'); setTab(['statement','invoices','salary','recurring','reports','settings'].indexOf(t0)>=0?t0:'board');
+  REF=r; var t0=qp('tab'); setTab(['statement','invoices','contractors','salary','recurring','reports','settings'].indexOf(t0)>=0?t0:'board');
 }, function(e){ el('noacc').className='note warn'; el('noacc').textContent='Сервер не ответил: '+((e&&e.message)||e); });
 </script>
 </body>
