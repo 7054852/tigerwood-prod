@@ -450,6 +450,10 @@ function renderInc(){
     if(p&&(p.action==='match'||p.action==='suggest'||p.action==='partial')){
       hint='<span class="pill '+(p.action==='match'?'ok':'info')+'">'+(p.action==='partial'?'часть заявки':'заявка')+' '+esc(p.cand.zakaz)+'</span> '+esc(p.cand.client)+' · '+money(p.cand.sum)+'<div class="mut">'+esc(p.basis)+(p.action==='partial'?', останется '+money(p.rest):'')+'</div>';
       btn='<button class="primary" onclick="recApply(\''+x.id+'\',\''+p.cand.incId+'\')">Закрыть план</button> '+btn;
+    } else if(p&&p.action==='spread'){   // один платёж — на несколько строк плана (счета одного договора); сверх — переплата (14.10.2026)
+      hint='<span class="pill info">по счетам</span> <span class="mut">'+esc(p.basis)+'</span>'+p.allocations.map(function(a){ return '<div>'+esc(a.inv||a.zakaz)+' · '+esc(a.stage||'')+' '+money(a.pay)+(a.rest>0.009?' <span class="mut">(останется '+money(a.rest)+')</span>':'')+'</div>'; }).join('')
+        +(p.over>0.009?'<div class="mut">переплата '+money(p.over)+'</div>':'');
+      btn='<button class="primary" onclick="recSpread('+i+')">Разнести по счетам</button> '+btn;
     } else if(p&&p.action==='ambiguous'){
       hint='<select id="rc_'+i+'"><option value="">— заявка —</option>'+p.candidates.map(function(c){ return '<option value="'+c.incId+'">'+esc(c.zakaz)+' · '+esc(c.client)+' · '+money(c.sum)+'</option>'; }).join('')+'</select>';
       btn='<button onclick="var v=el(\'rc_'+i+'\').value; if(v) recApply(\''+x.id+'\',v);">Закрыть план</button> '+btn;
@@ -457,6 +461,11 @@ function renderInc(){
     row(x,'<span class="pill mute">поступление</span>',x.sum,hint,btn);
   });
   el('incBox').innerHTML=h+'</tbody></table></div>';
+}
+function recSpread(i){
+  var x=INC.other[i], p=IREC.filter(function(q){ return q.lineId===x.id; })[0]; if(!p) return;
+  run({vapi:'finincreconapply', decisions:JSON.stringify([{lineId:x.id, allocations:p.allocations.map(function(a){ return {incId:a.incId, sum:a.pay}; })}]), key:newKey()}, 'Разношу платёж по счетам…', 'incMsg').then(function(r){
+    if(!r) return; setm('incMsg', r.done?'ok':'warn', r.done?'Платёж разнесён по счетам: оплата видна в счетах, сделках, договоре и карточке клиента.':'Не проведено: '+esc((r.skipped[0]||{}).why||'')+'.'); stRefresh(); });
 }
 function recApply(lineId, incId){
   run({vapi:'finincreconapply', decisions:JSON.stringify([{lineId:lineId, incId:incId}]), key:newKey()}, 'Закрываю план…', 'incMsg').then(function(r){
