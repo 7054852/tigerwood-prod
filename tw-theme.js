@@ -49,6 +49,8 @@
     contracts:'<path d="M14 3H6v18h12V7z"/><path d="M14 3v4h4"/><path d="M9 13h6M9 17h4"/>',
     docs:'<path d="M4 4h10l6 6v10H4z"/><path d="M14 4v6h6"/>',
     price:'<path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1.3"/>',
+    pricing:'<ellipse cx="9" cy="6" rx="5.5" ry="2.2"/><path d="M3.5 6v4.5c0 1.2 2.5 2.2 5.5 2.2s5.5-1 5.5-2.2V6"/><path d="M3.5 10.5V15c0 1.2 2.5 2.2 5.5 2.2"/><path d="M13 20l3-3.5 2.2 2L21.5 14"/>',
+    finance:'<path d="M3.5 7.5h15a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-15z"/><path d="M3.5 7.5V6a2 2 0 0 1 2-2H16v3.5"/><path d="M15 12.5h5.5v4H15a2 2 0 0 1 0-4z"/><circle cx="15.8" cy="14.5" r=".6"/>',
     products:'<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/>',
     catalog:'<path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/>',
     ops:'<path d="M4 6h10M4 12h16M4 18h8"/><circle cx="17" cy="6" r="2"/><circle cx="15" cy="18" r="2"/>',
