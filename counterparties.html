@@ -435,7 +435,7 @@ function openClient(){
   el('ccBody').innerHTML='<div class="center">Загрузка карточки…</div>';
   get({vapi:'counterparty', id:CKEY}).then(function(r){
     if(!r||!r.ok){ ccErr('Карточка не загрузилась: '+errText(r)); return; }
-    CC=r; CAN=r.can||CAN; if(!CC_TAB || (CC_TAB==='fin'&&!r.buyer.supplier) || (CC_TAB==='sales'&&!r.buyer.client)) CC_TAB=r.buyer.client?'sales':'fin'; renderClient();
+    CC=r; CAN=r.can||CAN; if(!CC_TAB || (CC_TAB==='sales'&&!r.buyer.client)) CC_TAB=r.buyer.client?'sales':'fin'; renderClient();
   }).catch(function(e){ ccErr(netText(e)); });
 }
 function ccErr(t){ el('ccBody').innerHTML=''; el('ccErr').className='note bad'; el('ccErr').innerHTML='<div>⚠️ '+esc(t)+'</div>'; }
@@ -462,7 +462,7 @@ function renderClient(){
   h+=similarHtml(r.similar||[]);
   h+='<div class="chips" style="margin:var(--s-4) 0 var(--s-3)">'
     +'<span class="chip'+(CC_TAB==='sales'?' on':'')+'" role="button" tabindex="0" onclick="setTab(\'sales\')">Продажи</span>'
-    +'<span class="chip'+(CC_TAB==='fin'?' on':'')+'" role="button" tabindex="0" onclick="setTab(\'fin\')">Закупки и финансы</span></div>';
+    +'<span class="chip'+(CC_TAB==='fin'?' on':'')+'" role="button" tabindex="0" onclick="setTab(\'fin\')">Деньги</span></div>';
   if(CC_TAB==='fin'){ el('ccBody').innerHTML=h+'<div id="finBody"><div class="center">Загрузка…</div></div>'; loadFin(); return; }
   h+='<div class="tiles">'
     +tile('Сделок', tot.deals, tot.inquiries?('из них заявок: '+esc(tot.inquiries)):'')
@@ -514,7 +514,7 @@ function mergeAsk(cid, name){
     function(){ run({vapi:'counterpartymerge', winner:b.cid, loser:cid}, 'Объединяю записи…').then(function(r){ if(!r) return;
       if(r.sheetNote) info('Объединено', '<div>'+esc(r.sheetNote)+'</div>'); openClient(); }); }, 'Объединить');
 }
-/* ── вкладка «Закупки и финансы»: долг, неоплаченные счета, сверка оплат с документами, последние оплаты (fincontrcard) ── */
+/* ── вкладка «Деньги»: поступления от клиента (14.10.2026) и, у поставщика, долг, неоплаченные счета, сверка с документами, оплаты (fincontrcard) ── */
 function loadFin(){
   if(FIN){ renderFin(); return; }
   var b=(CC&&CC.buyer)||{};
@@ -525,8 +525,26 @@ function loadFin(){
     FIN=r; renderFin();
   }).catch(function(e){ if(el('finBody')) el('finBody').innerHTML='<div class="note bad"><div>'+esc(netText(e))+'</div></div>'; });
 }
+function curs(o){ o=o||{}; var k=Object.keys(o); return k.length?k.map(function(c){ return money(o[c])+' '+esc(c); }).join(' + '):'0'; }
+/** поступления от клиента: сколько пришло, сколько ждём (по валютам, без пересчёта), ожидаемые по сроку и последние полученные */
+function incomesHtml(ic){
+  var wait=ic.wait||[], got=ic.got||[], today=todayIso();
+  var h='<div class="sect">Поступления от клиента</div><div class="tiles">'+tile('Получено', curs(ic.gotNative), (ic.gotCount||0)+' платеж.')+tile('Ждём', curs(ic.waitNative), wait.length?(wait.length+' строк плана'):'')
+    +tile('Из них просрочено', curs(ic.overdueNative), '')+'</div>';
+  h+='<div class="card"><div class="tbl-wrap"><table class="tbl sm mob"><thead><tr><th>Срок</th><th>Заказ / договор</th><th>Что</th><th class="num">Сумма</th></tr></thead><tbody>'
+    +(wait.length?wait.map(function(x){ var late=x.planIso&&x.planIso<today; return '<tr><td data-l="Срок" class="sm'+(late?' err':'')+'">'+esc(ruDate(x.planIso)||'без срока')+(late?' · просрочено':'')+'</td><td data-l="Заказ / договор" class="sm">'+esc(x.zakaz)+'</td>'
+        +'<td data-l="Что" class="sm">'+esc(x.note)+'</td><td data-l="Сумма" class="num">'+money(x.sum)+' '+esc(x.cur)+'</td></tr>'; }).join(''):'<tr><td colspan="4" class="sm muted">Ничего не ждём.</td></tr>')
+    +'</tbody></table></div></div>';
+  h+='<div class="sect">Получено <span class="n">'+(ic.gotCount||0)+'</span></div><div class="card"><div class="tbl-wrap"><table class="tbl sm mob"><thead><tr><th>Дата</th><th>Заказ / договор</th><th>Что</th><th>Кошелёк</th><th class="num">Сумма</th></tr></thead><tbody>'
+    +(got.length?got.map(function(x){ return '<tr><td data-l="Дата" class="sm">'+esc(ruDate(x.gotIso))+'</td><td data-l="Заказ / договор" class="sm">'+esc(x.zakaz)+'</td><td data-l="Что" class="sm">'+esc(x.note)+'</td>'
+        +'<td data-l="Кошелёк" class="sm">'+esc(x.wallet)+'</td><td data-l="Сумма" class="num">'+money(x.sum)+' '+esc(x.cur)+'</td></tr>'; }).join(''):'<tr><td colspan="5" class="sm muted">Поступлений не было.</td></tr>')
+    +'</tbody></table></div>'+((ic.gotCount||0)>got.length?'<div class="sm muted" style="margin-top:var(--s-2)">Показаны последние '+got.length+'.</div>':'')+'</div>';
+  return h;
+}
 function renderFin(){
-  var r=FIN, m=r.money||{}, nat=Object.keys(m.owedNative||{}).filter(function(c){ return c!=='BYN'; }).map(function(c){ return money(m.owedNative[c])+' '+esc(c); }).join(' + ');
+  var r=FIN, b=(CC&&CC.buyer)||{}, ic=r.incomes||{}, hasInc=(ic.gotCount||0)+((ic.wait||[]).length);
+  if(!b.supplier){ el('finBody').innerHTML=incomesHtml(ic); return; }
+  var m=r.money||{}, nat=Object.keys(m.owedNative||{}).filter(function(c){ return c!=='BYN'; }).map(function(c){ return money(m.owedNative[c])+' '+esc(c); }).join(' + ');
   var h='<div class="tiles">'+tile('Мы должны, BYN', money(m.owed), nat?('в валюте: '+nat):'')+tile('Из них просрочено', money(m.overdue), '')+tile('Авансы поставщику', money(m.advance), '')+'</div>';
   h+='<div class="sect">Неоплаченные счета <span class="n">'+(m.unpaid||[]).length+'</span></div><div class="card"><div class="tbl-wrap"><table class="tbl sm mob"><thead><tr><th>Счёт</th><th>За что</th><th>Статья</th><th>Срок</th><th class="num">Сумма</th></tr></thead><tbody>'
     +((m.unpaid||[]).length?m.unpaid.map(function(e){ return '<tr><td data-l="Счёт">'+esc(e.invNo||'—')+(e.invDateIso?(' <span class="sm muted">от '+esc(ruDate(e.invDateIso))+'</span>'):'')+'</td><td data-l="За что" class="sm">'+esc(e.name)+'</td><td data-l="Статья" class="sm">'+esc(e.cat)+'</td>'
@@ -540,6 +558,7 @@ function renderFin(){
     +((r.history||[]).length?r.history.map(function(e){ return '<tr><td data-l="Дата" class="sm">'+esc(ruDate(e.paidDateIso))+'</td><td data-l="За что" class="sm">'+esc(e.name)+(e.invNo?(' <span class="muted">сч. '+esc(e.invNo)+'</span>'):'')+'</td><td data-l="Статья" class="sm">'+esc(e.cat)+'</td>'
         +'<td data-l="Кошелёк" class="sm">'+esc(e.wallet)+'</td><td data-l="Сумма" class="num">'+money(e.sum)+'</td></tr>'; }).join(''):'<tr><td colspan="5" class="sm muted">Оплат не было.</td></tr>')
     +'</tbody></table></div></div>';
+  if(b.client||hasInc) h=incomesHtml(ic)+'<div class="sect" style="margin-top:var(--s-5)">Закупки</div>'+h;
   el('finBody').innerHTML=h;
 }
 function invKind(v){ if(v.kind==='commercial') return 'коммерческий инвойс'; if(v.market==='eu'||v.market==='other') return 'проформа'; return v.kindRu==='на оплату'||!v.kindRu?'счёт':v.kindRu; }

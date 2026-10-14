@@ -240,24 +240,41 @@ function twBoxStickers(){
     w.document.open(); w.document.write(twBoxStickersHtml(list, part)); w.document.close();
   });
 }
+/** Имя на стикере: таможенное имя без модели в скобках (как в образцах) + исполнение из скобок, если в имени его нет:
+ *  «… Activity Stand (BK Tower Foldable LAK)» → «… Activity Stand LAK» — как уже пишется WHITE (владелец 14.10.2026). */
+var TW_FINISH=/\b(LAK|WP|WHITE|BLUE|PINK|BROWN|GRAY|GREY|BLACK|DARK|NATURAL)\b/gi;
+function twStickerName(en){
+  var s=String(en||''), m=/\s*\(([^)]*)\)\s*$/.exec(s), main=s.replace(/\s*\([^)]*\)\s*$/,'').trim();
+  if(!m || new RegExp(TW_FINISH.source,'i').test(main)) return main;   // исполнение уже в имени (WHITE, BLUE) — как есть; «WHITE+LAK» не превращаем в «WHITE LAK»
+  var t=m[1].match(new RegExp(TW_FINISH.source,'i'));
+  return t?main+' '+t[0].toUpperCase():main;
+}
 function twBoxStickersHtml(list, part){
-  // модель в скобках «(BK Tower Foldable WHITE)» на стикере не печатаем — как в образцах: таможенное имя + PARTS
-  var st=list.map(function(it){ var nm=String(it.nameEn||it.name||'').replace(/\s*\([^)]*\)\s*$/,'').trim();
-    return '<div class="st" style="--k:1"><div class="sku">'+esc(it.sku)+'</div><div class="nm"><span class="in">'+esc(nm)+' <b>PARTS</b></span></div>'
-      +'<div class="ft"><span>MADE IN BELARUS</span>'+(part?'<span class="pt">'+esc(part)+'</span>':'')+'</div></div>'; }).join('');
+  var st=list.map(function(it, i){ var nm=twStickerName(it.nameEn||it.name);
+    return '<div class="cell"><div class="st" id="st'+i+'" data-sku="'+esc(it.sku)+'" style="--k:1"><div class="sku">'+esc(it.sku)+'</div><div class="nm"><span class="in">'+esc(nm)+' <b>PARTS</b></span></div>'
+      +'<div class="ft"><span>MADE IN BELARUS</span>'+(part?'<span class="pt">'+esc(part)+'</span>':'')+'</div></div>'
+      +'<div class="cap"><span>'+esc(it.internal||it.name||'')+'</span><button onclick="pdfOne('+i+')" title="скачать этот стикер файлом PDF 40×30 мм">⬇ PDF</button></div></div>'; }).join('');
   return '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Стикеры на коробки'+(part?' — '+esc(part):'')+'</title>'
     +'<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
     +'<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&display=swap"><style>'
     +'@page{size:40mm 30mm;margin:0}html,body{margin:0;background:#EEF1F5;color:#000;font-family:Onest,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}'
     +'.bar{position:sticky;top:0;z-index:2;background:#fff;padding:10px 16px;border-bottom:1px solid #E4E7EC;font:14px/20px Onest,system-ui,sans-serif;display:flex;gap:12px;align-items:center;flex-wrap:wrap}'
     +'.bar button{font:inherit;font-weight:600;padding:7px 16px;border:0;border-radius:10px;background:#2458C9;color:#fff;cursor:pointer}.bar .sm{color:#667085}'
-    +'.wrap{display:flex;flex-wrap:wrap;gap:12px;padding:16px}'
+    +'.wrap{display:flex;flex-wrap:wrap;gap:16px 12px;padding:16px}.cell{width:40mm}'
+    +'.cap{margin-top:6px;font:12px/16px Onest,system-ui,sans-serif;color:#344054;display:flex;flex-direction:column;gap:4px;align-items:flex-start}'
+    +'.cap button{font:inherit;font-weight:600;padding:3px 10px;border:1px solid #D0D5DD;border-radius:8px;background:#fff;color:#2458C9;cursor:pointer}'
     +'.st{background:#fff;width:40mm;height:30mm;box-sizing:border-box;padding:2.2mm 2mm 1.8mm;overflow:hidden;display:flex;flex-direction:column;align-items:center;text-align:center;outline:1px dashed #D0D5DD}'
     +'.sku{font-size:9.5pt;font-weight:800;letter-spacing:.1em;line-height:1.1;flex:none}'
     +'.nm{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;font-size:calc(8.6pt * var(--k));font-weight:500;letter-spacing:.06em;line-height:1.22;text-transform:uppercase;padding:1mm 0}.nm b{font-weight:800}'
     +'.ft{flex:none;display:flex;justify-content:center;align-items:baseline;gap:2mm;font-size:5.2pt;font-weight:500;letter-spacing:.14em}.ft .pt{font-weight:700;color:#555}'
-    +'@media print{html,body{background:#fff}.bar{display:none}.wrap{display:block;padding:0}.st{outline:0;margin:0;page-break-after:always;break-after:page}.st:last-child{page-break-after:auto;break-after:auto}}'
+    +'@media print{html,body{background:#fff}.bar,.cap{display:none}.cell{width:auto}.wrap{display:block;padding:0}.st{outline:0;margin:0;page-break-after:always;break-after:page}.st:last-child{page-break-after:auto;break-after:auto}}'
     +'</style></head><body><div class="bar"><b>Стикеры на коробки</b><span>'+list.length+' шт · наклейка 40×30 мм, по одной на товар'+(part?' · '+esc(part):'')+'</span><button onclick="window.print()">🖨 Печать</button>'
     +'<span class="sm">Размер страницы 40×30 мм и нулевые поля заданы самой страницей — в окне печати Chrome ничего выбирать не нужно, только число копий</span></div><div class="wrap">'+st+'</div>'
-    +'<script>(function(){function fit(){var ss=document.querySelectorAll(".st");for(var i=0;i<ss.length;i++){var s=ss[i],b=s.querySelector(".nm"),k=1;s.style.setProperty("--k",1);while(b.scrollHeight>b.clientHeight+1&&k>0.45){k=Math.round((k-0.04)*100)/100;s.style.setProperty("--k",k);}}}fit();if(document.fonts&&document.fonts.ready)document.fonts.ready.then(fit);})();<\/script></body></html>';
+    +'<script>(function(){function fit(){var ss=document.querySelectorAll(".st");for(var i=0;i<ss.length;i++){var s=ss[i],b=s.querySelector(".nm"),k=1;s.style.setProperty("--k",1);while(b.scrollHeight>b.clientHeight+1&&k>0.45){k=Math.round((k-0.04)*100)/100;s.style.setProperty("--k",k);}}}fit();if(document.fonts&&document.fonts.ready)document.fonts.ready.then(fit);})();'
+    +'var LIBS=null;function libs(){if(LIBS)return LIBS;function js(u){return new Promise(function(ok,no){var s=document.createElement("script");s.src=u;s.onload=ok;s.onerror=function(){no(new Error("не загрузилась библиотека "+u))};document.head.appendChild(s);});}'
+    +'LIBS=js("https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js").then(function(){return js("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");});LIBS.catch(function(){LIBS=null;});return LIBS;}'
+    +'function pdfOne(i){var el=document.getElementById("st"+i);libs().then(function(){el.style.outline="0";return html2canvas(el,{scale:8,backgroundColor:"#fff"});})'
+    +'.then(function(cv){el.style.outline="";var doc=new jspdf.jsPDF({unit:"mm",format:[40,30],orientation:"landscape"});doc.addImage(cv.toDataURL("image/png"),"PNG",0,0,40,30,undefined,"FAST");doc.save((el.getAttribute("data-sku")||"sticker")+".pdf");})'
+    +'.catch(function(e){el.style.outline="";alert("PDF не получился: "+(e&&e.message||e));});}'
+    +'<\/script></body></html>';
 }
