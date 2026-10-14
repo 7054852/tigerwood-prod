@@ -532,16 +532,20 @@ function incomesHtml(ic){
   var inv=ic.invoices||[], pays=ic.payments||[], other=ic.waitOther||[], today=todayIso(), payT={};
   pays.forEach(function(p){ payT[p.cur]=(payT[p.cur]||0)+p.sum; });
   var h='<div class="sect">Деньги от клиента</div><div class="tiles">'+tile('Получено', curs(payT), pays.length+' '+plural(pays.length,['платёж','платежа','платежей']))
-    +tile('Ждём', curs(ic.waitNative), '')+tile('Из них просрочено', curs(ic.overdueNative), '')+'</div>';
+    +tile('Ждём предоплату', curs(ic.prepayLeftNative), 'сроков нет — внесёт и запускаем')+tile('Остаток после отгрузки', curs(ic.afterShipNative), 'наступит, когда отгрузим')
+    +tile('Просрочено', curs(ic.overdueNative), 'остаток по отгруженному')+'</div>';
+  // предоплата: внесено / сколько осталось, без сроков; остаток — после отгрузки (до неё не просрочка); внесено больше предоплаты — переплата сверх неё
   if(inv.length) h+='<div class="sect">Счета <span class="n">'+inv.length+'</span></div><div class="card"><div class="tbl-wrap"><table class="tbl sm mob"><thead><tr><th>Счёт</th><th>Договор</th>'
-    +'<th class="num">Сумма</th><th class="num">Оплачено</th><th class="num">Осталось</th><th>Срок</th></tr></thead><tbody>'
-    +(inv.length?inv.map(function(v){ var c=' '+esc(v.cur);
+    +'<th class="num">Сумма</th><th class="num">Оплачено</th><th>Предоплата</th><th>Остаток</th></tr></thead><tbody>'
+    +inv.map(function(v){ var c=' '+esc(v.cur), full=v.left<=0.009;
+      var pre=v.prepay==null?(v.prepayLeft>0.009?'осталось <b>'+money(v.prepayLeft)+c+'</b>':'<span class="pill ok">внесена</span>')
+        :(v.prepayLeft>0.009?'внесено '+money(v.prepay-v.prepayLeft)+' из '+money(v.prepay)+c+'<div>осталось <b>'+money(v.prepayLeft)+c+'</b></div>':'<span class="pill ok">внесена</span> <span class="muted">'+money(v.prepay)+c+'</span>');
+      var bal=full?'<span class="pill ok">оплачен</span>':v.balanceLeft<=0.009?'—':(v.shipped?'<b>'+money(v.balanceLeft)+c+'</b>'+(v.dueIso?'<div'+(v.overdue?' class="err"':'')+'>до '+esc(ruDate(v.dueIso))+(v.overdue?' · просрочено':'')+'</div>':'')
+        :money(v.balanceLeft)+c+'<div class="muted">после отгрузки</div>');
       return '<tr><td data-l="Счёт"><b>'+esc(v.number)+'</b> <span class="muted">от '+esc(ruDate(v.dateIso))+'</span></td><td data-l="Договор">'+esc(v.contract||'—')+'</td>'
         +'<td data-l="Сумма" class="num">'+money(v.sum)+c+'</td>'
-        +'<td data-l="Оплачено" class="num">'+money(v.paid)+c+(v.before?'<div class="muted">из них '+money(v.before)+' — до начала учёта</div>':'')+'</td>'
-        +'<td data-l="Осталось" class="num">'+(v.left>0.009?'<b>'+money(v.left)+c+'</b>':'<span class="pill ok">оплачен</span>')+'</td>'
-        +'<td data-l="Срок"'+(v.overdue?' class="err"':'')+'>'+(v.left>0.009?(esc(ruDate(v.dueIso)||'—')+(v.overdue?' · просрочено':'')):'')+'</td></tr>'; }).join('')
-      :'')
+        +'<td data-l="Оплачено" class="num">'+money(v.paid)+c+(v.over?'<div class="muted">сверх предоплаты '+money(v.over)+'</div>':'')+(v.before?'<div class="muted">из них '+money(v.before)+' — до начала учёта</div>':'')+'</td>'
+        +'<td data-l="Предоплата">'+pre+'</td><td data-l="Остаток">'+bal+'</td></tr>'; }).join('')
     +'</tbody></table></div></div>';
   if(other.length) h+='<div class="sect">Ждём'+(inv.length?' без счёта':' по заказам')+'</div><div class="card"><div class="tbl-wrap"><table class="tbl sm mob"><thead><tr><th>Срок</th><th>Заказ</th><th>Что</th><th class="num">Сумма</th></tr></thead><tbody>'
     +other.map(function(x){ var late=x.planIso&&x.planIso<today; return '<tr><td data-l="Срок"'+(late?' class="err"':'')+'>'+esc(ruDate(x.planIso)||'без срока')+'</td><td data-l="Заказ">'+esc(x.zakaz)+'</td><td data-l="Что">'+esc(x.note)+'</td><td data-l="Сумма" class="num">'+money(x.sum)+' '+esc(x.cur)+'</td></tr>'; }).join('')
