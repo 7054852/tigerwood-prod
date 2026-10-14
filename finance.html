@@ -446,7 +446,7 @@ function renderInc(){
   INC.exchange.forEach(function(x, i){ row(x,'<span class="pill mute">продажа валюты</span>',x.byn,x.sold?'продано '+money(x.sold)+' по '+x.rate:'сумма валюты не разобрана','<button class="sec" onclick="xchOpen('+i+')">Провести обмен</button>'); });
   INC.cashback.forEach(function(x, i){ row(x,'<span class="pill mute">возврат наличных</span>',x.sum,esc(x.contr),'<button class="sec" onclick="cbOpen('+i+')">Провести возврат</button>'); });
   INC.other.forEach(function(x, i){
-    var p=recBy[x.id], hint=esc(x.contr)+(x.clientHint?'<div class="mut">'+esc(x.clientHint)+'</div>':''), btn='<button class="sec" onclick="othOpen('+i+')">Новое поступление</button>';
+    var p=recBy[x.id], hint=esc(x.contr)+(x.clientHint?'<div class="mut">'+esc(x.clientHint)+'</div>':''), btn='<button class="sec" onclick="byContrOpen('+i+')" title="один платёж по одному или нескольким договорам: сколько на какой — указываете вы">По договорам</button> <button class="sec" onclick="othOpen('+i+')">Новое поступление</button>';
     if(p&&(p.action==='match'||p.action==='suggest'||p.action==='partial')){
       hint='<span class="pill '+(p.action==='match'?'ok':'info')+'">'+(p.action==='partial'?'часть заявки':'заявка')+' '+esc(p.cand.zakaz)+'</span> '+esc(p.cand.client)+' · '+money(p.cand.sum)+'<div class="mut">'+esc(p.basis)+(p.action==='partial'?', останется '+money(p.rest):'')+'</div>';
       btn='<button class="primary" onclick="recApply(\''+x.id+'\',\''+p.cand.incId+'\')">Закрыть план</button> '+btn;
@@ -461,6 +461,37 @@ function renderInc(){
     row(x,'<span class="pill mute">поступление</span>',x.sum,hint,btn);
   });
   el('incBox').innerHTML=h+'</tbody></table></div>';
+}
+/* ── разнос прихода по договорам (владелец 14.10.2026): договор — контейнер оплат; один платёж может быть по нескольким договорам,
+   сколько на какой — указывает человек; внутри договора сервер кладёт по строкам плана (раньше срок — раньше), сверх — аванс договора ── */
+var BC=null;
+function byContrOpen(i){
+  var x=INC.other[i];
+  get({vapi:'finincbycontract', line:x.id}).then(function(r){
+    if(!r||!r.ok){ oops(errText(r)); return; }
+    BC=r; var L=r.line, cs=r.contracts||[];
+    if(!r.counterparty){ oops('Плательщик «'+(L.contr||'')+'» не найден в контрагентах — заведите его или проведите как «Новое поступление».'); return; }
+    if(!cs.length){ oops('У «'+r.counterparty.name+'» нет действующих договоров — проведите как «Новое поступление».'); return; }
+    dlgOpen('<h3>Платёж '+money(L.sum)+' от '+dmy(L.dateIso)+' — по договорам</h3><div class="mut">'+esc(r.counterparty.name)+' · '+esc(L.purpose)+'</div>'
+      +'<div class="tbl-wrap" style="margin-top:var(--s-3)"><table class="reg"><thead><tr><th>Договор</th><th class="num">Должен</th><th class="num">Внесено</th><th class="num">Осталось</th><th class="num">Сумма на договор</th></tr></thead><tbody>'
+      +cs.map(function(c, j){ return '<tr><td><b>'+(c.isFramework?'Рамочный ':'')+'№ '+esc(c.number)+'</b> <span class="mut">'+esc(c.currency)+(c.prelim?' · предварительно':'')+'</span></td><td class="num">'+money(c.obligation)+'</td><td class="num">'+money(c.paid)+'</td>'
+        +'<td class="num">'+(c.left>0.009?money(c.left):c.advance>0.009?'<span class="mut">аванс '+money(c.advance)+'</span>':'<span class="pill ok">оплачен</span>')+'</td>'
+        +'<td class="num"><input id="bc_'+j+'" inputmode="decimal" style="width:120px;text-align:right" value="'+(cs.length===1?money(L.sum).replace(/ /g,''):'')+'" oninput="bcSum()"></td></tr>'; }).join('')
+      +'</tbody></table></div><div class="mut" id="bcTot" style="margin-top:var(--s-2)"></div>'
+      +'<div class="mut">Внутри договора деньги лягут на ожидаемые суммы по порядку сроков; что сверх — останется на договоре авансом и зачтётся в следующий счёт.</div>'
+      +dlgFoot('byContrGo()','Провести по договорам'));
+    bcSum();
+  });
+}
+function bcSum(){ var t=0; (BC.contracts||[]).forEach(function(c, j){ t+=num(v('bc_'+j)); }); var d=Math.round((BC.line.sum-t)*100)/100;
+  el('bcTot').innerHTML='Разложено '+money(t)+' из '+money(BC.line.sum)+(Math.abs(d)>0.004?' — <span class="err">'+(d>0?'не хватает '+money(d):'лишних '+money(-d))+'</span>':' <span class="ok">✓</span>'); }
+function byContrGo(){
+  var parts=[]; (BC.contracts||[]).forEach(function(c, j){ var x=num(v('bc_'+j)); if(x>0) parts.push({ contractId:c.id, sum:x }); });
+  var t=parts.reduce(function(a,p){ return a+p.sum; },0);
+  if(Math.abs(t-BC.line.sum)>0.004){ setm('dlgMsg','warn','Сумма по договорам должна совпасть с платежом: '+money(BC.line.sum)+'.'); return; }
+  run({vapi:'finincreconapply', decisions:JSON.stringify([{lineId:BC.line.id, contracts:parts}]), key:newKey()}, 'Провожу по договорам…', 'dlgMsg').then(function(r){
+    if(!r) return; if(!r.done){ setm('dlgMsg','warn','Не проведено: '+esc((r.skipped[0]||{}).why||'')+'.'); return; }
+    dlgClose(); setm('incMsg','ok','Платёж проведён по договорам: оплата видна в договорах, счетах, сделках и карточке клиента.'); stRefresh(); });
 }
 function recSpread(i){
   var x=INC.other[i], p=IREC.filter(function(q){ return q.lineId===x.id; })[0]; if(!p) return;
