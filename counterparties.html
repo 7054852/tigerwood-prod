@@ -54,9 +54,11 @@
 
 <!-- ═══ СПРАВОЧНИК ═══ -->
 <div id="vList">
+<div class="toolbar"><span class="seg" id="segRole">
+  <button data-v="client" onclick="setRole('client')">Клиенты</button><button data-v="supplier" onclick="setRole('supplier')">Поставщики</button><button data-v="sub" onclick="setRole('sub')">Подрядчики</button><button data-v="" onclick="setRole('')">Все</button>
+</span><input type="hidden" id="fr"></div>
 <div class="toolbar">
   <input id="q" type="search" class="search" placeholder="🔎 наименование, ФИО, УНП, телефон" oninput="renderList()" autocomplete="off">
-  <select id="fr" onchange="renderList()" title="Кто это для нас"><option value="">все роли</option><option value="client">клиенты</option><option value="supplier">поставщики</option><option value="sub">подрядчики</option></select>
   <select id="ft" onchange="renderList()"><option value="">все</option><option value="ul">юрлица и ИП</option><option value="fl">физлица</option></select>
   <select id="fm" onchange="renderList()" title="Рынок"><option value="">все рынки</option><option value="by">Беларусь</option><option value="ru">Россия</option><option value="eu">Европа</option><option value="other">другое</option></select>
   <span class="meta" id="cnt"></span>
@@ -267,7 +269,12 @@ function load(){
     BUYERS=r.items||[]; CAN=r.can||CAN; el('addBtn').style.display=CAN.edit?'':'none'; renderList();
   }).catch(function(e){ el('list').innerHTML='<tr><td colspan="8" class="err">'+esc(netText(e))+'</td></tr>'; });
 }
-function renderList(){
+/** кто в списке: клиенты / поставщики / подрядчики / все; выбор помнится на этом устройстве */
+function setRole(v){ el('fr').value=v||''; try{ localStorage.setItem('tw_cp_role', el('fr').value); }catch(e){} markRole(); renderList(); }
+function markRole(){ var v=el('fr').value, bs=document.querySelectorAll('#segRole button'), n={'':BUYERS.length,client:0,supplier:0,sub:0};
+  BUYERS.forEach(function(b){ if(b.client) n.client++; if(b.supplier) n.supplier++; if(b.sub) n.sub++; });
+  for(var i=0;i<bs.length;i++){ var k=bs[i].getAttribute('data-v'); bs[i].className=k===v?'on':''; bs[i].textContent=bs[i].textContent.replace(/\s\d+$/,'')+(BUYERS.length?' '+n[k]:''); } }
+function renderList(){ markRole();
   var q=(el('q').value||'').toLowerCase().trim(), ft=el('ft').value, fm=el('fm').value, fr=el('fr').value;
   var rows=BUYERS.filter(function(b){
     var t=typeOf(b); if(ft==='ul'&&t==='физлицо') return false; if(ft==='fl'&&t!=='физлицо') return false;
@@ -406,7 +413,7 @@ function goBackTo(key){ var p=BACK.split('?'), sp=new URLSearchParams(p[1]||'');
 function route(){
   CKEY=qp('client'); el('backBar').className=BACK?'toolbar':'toolbar hide';
   if(BACK && BACK.indexOf('contract.html')!==0){ el('backBtn').textContent=BACK.indexOf('finance.html')===0?'← Назад в финансы':'← Назад'; el('backHint').textContent=''; }
-  if(!ROLE0){ ROLE0=1; var r0=qp('role'); if(r0==='client'||r0==='supplier'||r0==='sub') el('fr').value=r0; }
+  if(!ROLE0){ ROLE0=1; var r0=qp('role'); if(!r0){ try{ r0=localStorage.getItem('tw_cp_role')||''; }catch(e){} } if(r0==='client'||r0==='supplier'||r0==='sub') el('fr').value=r0; markRole(); }
   if(qp('new')==='1' && !NEW_DONE && !CKEY){ NEW_DONE=true;   // «+ Создать клиента» из договора: тип и ФИО/название уже введены там
     openAdd(); var t=qp('type'); if(t==='физлицо'||t==='юрлицо'||t==='ИП') setType(t);
     var sp0=new URLSearchParams(location.search), nm=sp0.get('name')||'', ph='';   // телефон — из контакта лида amoCRM («Оформить в Прохабе», 06.10.2026), через sessionStorage
