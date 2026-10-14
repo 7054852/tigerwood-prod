@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="tw-theme.js"></script>
 <script src="tw-config.js"></script>
+<script src="tw-money.js"></script>
 <title>Тигервуд — Контрагенты</title>
 <!-- С 13.10.2026 — единый раздел «Контрагенты» (бывший clients.html): одна карточка на компанию, роли галочками (клиент / поставщик / подрядчик),
      вкладки «Продажи» и «Закупки и финансы», объединение записей одной компании. Сервер: core/counterpartyRoutes.ts (counterparties, counterparty,
@@ -529,13 +530,21 @@ function curs(o){ o=o||{}; var k=Object.keys(o); return k.length?k.map(function(
 /** Деньги от клиента (владелец 14.10.2026: «ничего не понимаю» — раньше были строки плана, нарезанные разносом):
  *  СЧЕТА — сумма, оплачено, осталось, срок; ПЛАТЕЖИ — сколько пришло одним днём на кошелёк и на какие счета пошло. */
 function incomesHtml(ic){
-  var inv=ic.invoices||[], pays=ic.payments||[], other=ic.waitOther||[], today=todayIso(), payT={};
+  var cts=ic.contracts||[], pays=ic.payments||[], other=ic.waitOther||[], today=todayIso(), payT={}, T={pre:{},ship:{},late:{},adv:{}};
   pays.forEach(function(p){ payT[p.cur]=(payT[p.cur]||0)+p.sum; });
+  cts.forEach(function(m){ var add=function(k,v){ if(v>0.009) T[k][m.currency]=(T[k][m.currency]||0)+v; }; add('pre',m.prepayLeft); add('ship',m.afterShip); add('late',m.overdue); add('adv',m.advance); });
+  // счета, у которых нет договора в списке (старые) — отдельной таблицей, как раньше
+  var inInv={}; cts.forEach(function(m){ m.supplies.forEach(function(s){ inInv[s.invoice]=1; }); });
+  var inv=(ic.invoices||[]).filter(function(v){ return !inInv[v.number]; });
   var h='<div class="sect">Деньги от клиента</div><div class="tiles">'+tile('Получено', curs(payT), pays.length+' '+plural(pays.length,['платёж','платежа','платежей']))
-    +tile('Ждём предоплату', curs(ic.prepayLeftNative), 'сроков нет — внесёт и запускаем')+tile('Остаток после отгрузки', curs(ic.afterShipNative), 'наступит, когда отгрузим')
-    +tile('Просрочено', curs(ic.overdueNative), 'остаток по отгруженному')+'</div>';
+    +tile('Ждём предоплату', curs(T.pre), 'сроков нет — внесёт и запускаем')+tile('Остаток после отгрузки', curs(T.ship), 'наступит, когда отгрузим')
+    +(Object.keys(T.adv).length?tile('Аванс', curs(T.adv), 'зачтётся в следующий счёт'):tile('Просрочено', curs(T.late), 'остаток по отгруженному'))+'</div>';
+  // договор — контейнер оплат (14.10.2026): по каждому — что должен всего, внесено, осталось; внутри — поставки
+  if(cts.length) h+='<div class="sect">Договоры <span class="n">'+cts.length+'</span></div>'+cts.map(function(m){
+    return '<div class="card" style="margin-bottom:var(--s-3)"><div class="row" style="justify-content:space-between;margin-bottom:var(--s-3)"><div><a href="'+esc(pageUrl('contract.html','contract',m.id))+'"><b>'+(m.isFramework?'Рамочный ':'Договор ')+'№ '+esc(m.number)+'</b></a> <span class="muted">от '+esc(ruDate(m.contractDateIso))+'</span></div>'
+      +'<span class="pill'+(m.left>0.009?'':' ok')+'">'+(m.left>0.009?'осталось '+money(m.left)+' '+esc(m.currency):m.advance>0.009?'аванс '+money(m.advance)+' '+esc(m.currency):'оплачен')+'</span></div>'+twMoneyHtml(m)+'</div>'; }).join('');
   // предоплата: внесено / сколько осталось, без сроков; остаток — после отгрузки (до неё не просрочка); внесено больше предоплаты — переплата сверх неё
-  if(inv.length) h+='<div class="sect">Счета <span class="n">'+inv.length+'</span></div><div class="card"><div class="tbl-wrap"><table class="tbl sm mob"><thead><tr><th>Счёт</th><th>Договор</th>'
+  if(inv.length) h+='<div class="sect">Счета без договора <span class="n">'+inv.length+'</span></div><div class="card"><div class="tbl-wrap"><table class="tbl sm mob"><thead><tr><th>Счёт</th><th>Договор</th>'
     +'<th class="num">Сумма</th><th class="num">Оплачено</th><th>Предоплата</th><th>Остаток</th></tr></thead><tbody>'
     +inv.map(function(v){ var c=' '+esc(v.cur), full=v.left<=0.009;
       var pre=v.prepay==null?(v.prepayLeft>0.009?'осталось <b>'+money(v.prepayLeft)+c+'</b>':'<span class="pill ok">внесена</span>')
