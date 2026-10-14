@@ -13,6 +13,9 @@ function twWaybill(dealKey, kind, onDone){
     TWWB=p; TWWB.__kind=kind; TWWB.__deal=dealKey;
     var items=p.items||[];
     var miss=(p.missing&&p.missing.length)?('<div class="note warn"><div>⚠ Не хватает для накладной: '+esc(p.missing.join(', '))+'</div></div>'):'';
+    // не рамочный договор: ТН должна сходиться с суммой договора (владелец 14.10.2026 — предупреждаем, не запрещаем; частичная отгрузка — по сумме ТН)
+    var cc=p.contractCheck; if(cc) miss+='<div class="note warn"><div>⚠ Договор № '+esc(cc.contract)+' на '+twWbMoney(cc.amount)+', а накладные в сумме дадут '+twWbMoney(cc.issued+cc.current)
+      +(cc.issued?' (уже выписано '+twWbMoney(cc.issued)+' + эта '+twWbMoney(cc.current)+')':'')+' — '+(cc.diff>0?'больше':'меньше')+' на '+twWbMoney(Math.abs(cc.diff))+'. Если это частичная отгрузка — так и должно быть; иначе проверьте позиции и цены.</div></div>';
     // строки накладной (07.10.2026): комплект — одной строкой (места/масса комплекса), остальное — своими строками; 0 — подсветка
     var rows=items.map(function(it,i){
       var z=function(v){ return Number(v)>0?'':' style="border-color:var(--red);background:var(--red-bg)"'; };
