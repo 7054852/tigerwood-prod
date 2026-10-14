@@ -256,11 +256,13 @@ function renderBoard(){
     +(B.rateMissing&&B.rateMissing.length?'<span class="pill warn">нет курса: '+esc(B.rateMissing.join(', '))+'</span>':'');
   // ── слева: ждём денег (когда ждём = расчётная дата, иначе плановая)
   var when=function(r){ return r.factIso||r.planIso||''; }, pend=B.incomes.filter(function(r){ return !r.got; });
-  var late=pend.filter(function(r){ var w=when(r); return w&&w<B.today; }), wait=pend.filter(function(r){ var w=when(r); return w&&w>=B.today; }), nod=pend.filter(function(r){ return !when(r); });
+  // просрочку решает сервер (late): предоплата по счёту без срока, остаток — после отгрузки; старый сервер без late — по дате
+  var isLate=function(r){ var w=when(r); return r.late!=null?r.late:!!(w&&w<B.today); };
+  var late=pend.filter(isLate), wait=pend.filter(function(r){ return when(r)&&!isLate(r); }), nod=pend.filter(function(r){ return !when(r); });
   var got=B.incomes.filter(function(r){ return r.got&&r.src!=='transfer'; }).sort(function(a,b){ return a.gotDate<b.gotDate?1:-1; }), gotAll=got.length; if(!GOTALL) got=got.slice(0,15);
   var srt=function(a,b){ return when(a)<when(b)?-1:1; }, sum=function(l){ return l.reduce(function(s,r){ return s+r.sum; },0); };
   var item=function(r, cls){ return '<div class="wi '+(cls||'')+'" onclick="incOpen(\''+r.id+'\')"><div class="who" title="'+esc(r.client)+'">'+esc(r.client||'—')+'</div><div class="sum">'+money(r.sum)+'</div><div class="meta">'
-    +[r.zakaz, r.got?'получено '+dm(r.gotDate):(when(r)?'срок '+dm(when(r)):'без даты'), r.wallet, r.ptype].filter(Boolean).map(esc).join(' · ')+'</div></div>'; };
+    +[r.zakaz, r.got?'получено '+dm(r.gotDate):(when(r)?(when(r)<B.today&&r.late===false?'по счёту: срок не наступил':'срок '+dm(when(r))):'без даты'), r.wallet, r.ptype].filter(Boolean).map(esc).join(' · ')+'</div></div>'; };
   var grp=function(title, list, cls, itemCls){ return list.length?'<div class="grp '+(cls||'')+'"><span>'+title+' · '+list.length+'</span><span>'+money(sum(list))+'</span></div>'+list.map(function(r){ return item(r,itemCls); }).join(''):''; };
   el('waitHead').textContent=pend.length?pend.length+' платежей на '+money(sum(pend))+(late.length?' · просрочено '+late.length:''):'Ожидаемых поступлений нет.';
   el('waitList').innerHTML=grp('Просрочено', late.sort(srt), 'bad', 'late')+grp('Ждём', wait.sort(srt))+grp('Без даты', nod)+grp('Получено недавно', got)+(gotAll>got.length?'<div class="mut" style="padding:var(--s-2) 0"><a href="#" onclick="GOTALL=true; renderBoard(); return false">показать все '+gotAll+'</a></div>':'');
