@@ -27,16 +27,25 @@
   .wallets{ display:flex; gap:var(--s-1) var(--s-4); flex-wrap:wrap; margin-top:var(--s-3); padding-top:var(--s-2); border-top:1px solid var(--line); font:var(--t-small); color:var(--muted); }
   .wallets b{ color:var(--fg); font-variant-numeric:tabular-nums; font-weight:600; }
   /* ── доска: две панели рядом ── */
-  .bd{ display:grid; grid-template-columns:320px minmax(0,1fr); gap:var(--s-4); align-items:start; }
+  .bd{ display:grid; grid-template-columns:380px minmax(0,1fr); gap:var(--s-4); align-items:start; }
   .bd-wait{ position:sticky; top:var(--s-3); max-height:calc(100vh - var(--s-6)); overflow:auto; background:var(--card); border:1px solid var(--line); border-radius:var(--r-card); padding:var(--s-4); }
   .bd-wait h3, .bd-exp h3{ font:var(--t-heading); margin:0 0 var(--s-1); }
   .grp{ font:var(--t-label); text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:var(--s-4) 0 var(--s-2); display:flex; justify-content:space-between; }
   .grp.bad{ color:var(--red); }
-  .wi{ padding:var(--s-2) 0; border-top:1px solid var(--line); display:grid; grid-template-columns:minmax(0,1fr) auto; gap:2px var(--s-2); }
+  /* «Ждём денег» (владелец 15.10.2026): день — заголовком с итогом, строка — кто · кошелёк · сумма, под ней заказ и счёт */
+  .wd{ display:flex; justify-content:space-between; align-items:baseline; gap:var(--s-2); margin:var(--s-3) 0 2px; padding-bottom:2px; border-bottom:1px solid var(--line); font-weight:600; }
+  .wd .dow{ color:var(--muted); font-weight:500; font:var(--t-small); margin-left:4px; }
+  .wd .s{ color:var(--muted); font-weight:500; font-variant-numeric:tabular-nums; }
+  .wd.late{ color:var(--red); }
+  .wi{ padding:6px 0; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:3px var(--s-2); align-items:center; cursor:pointer; border-radius:6px; }
+  .wi:hover{ background:var(--bg2); }
   .wi .who{ font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .wi .sum{ font-weight:600; font-variant-numeric:tabular-nums; }
-  .wi .meta{ grid-column:1 / -1; color:var(--muted); font:var(--t-small); }
-  .wi.late .meta{ color:var(--red); }
+  .wi .sum{ font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .wi .meta{ grid-column:1 / -1; color:var(--muted); font:var(--t-small); display:flex; align-items:center; gap:6px; min-width:0; }
+  .wi .meta span.tx{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .wi .meta b{ font-weight:600; color:var(--fg); }
+  .wc{ display:inline-flex; align-items:center; gap:5px; font:var(--t-small); color:var(--muted); white-space:nowrap; padding:1px 7px; border:1px solid var(--line); border-radius:999px; background:var(--card); }
+  .wc i{ width:7px; height:7px; border-radius:50%; display:inline-block; }
   .bd-exp{ min-width:0; }
   .cols{ display:flex; gap:var(--s-3); overflow-x:auto; padding-bottom:var(--s-2); align-items:flex-start; overscroll-behavior-x:contain; }
   .col{ flex:0 0 250px; background:var(--bg2); border:1px solid var(--line); border-radius:var(--r-card); padding:var(--s-3); }
@@ -234,6 +243,9 @@ function setTab(t){
   try{ history.replaceState(null,'',location.pathname+'?tab='+t+(qp('embed')?'&embed=1':'')+(qp('srv')?'&srv='+qp('srv'):'')); }catch(e){}
   if(t==='board') loadBoard(); else if(t==='statement') stRefresh(); else if(t==='invoices') invLoad(); else if(t==='salary') salLoad(); else if(t==='recurring') tplLoad(); else if(t==='reports') repLoad(); else setLoad();
 }
+var WCOL=['#2458C9','#2E9E5B','#D9822B','#8E44AD','#C0392B','#16A085','#B7950B','#7F8C8D'];
+/** кошелёк цветной меткой: один цвет на кошелёк, по его месту в справочнике — глаз запоминает цвет быстрее названия */
+function walletChip(name){ if(!name) return ''; var i=0; for(var k=0;k<(REF.wallets||[]).length;k++) if(REF.wallets[k].name===name){ i=k; break; } return '<span class="wc" title="кошелёк / счёт, куда ждём деньги"><i style="background:'+WCOL[i%WCOL.length]+'"></i>'+esc(name)+'</span>'; }
 function wName(id){ for(var i=0;i<REF.wallets.length;i++) if(REF.wallets[i].id===id) return REF.wallets[i].name; return ''; }
 function wOpts(sel, filter){ return REF.wallets.filter(filter||function(){return true;}).map(function(w){ return '<option value="'+w.id+'"'+(w.id===sel?' selected':'')+'>'+esc(w.name)+(w.currency!=='BYN'?' ('+w.currency+')':'')+'</option>'; }).join(''); }
 function catOpts(sel, kind){ return '<option value="">— статья —</option>'+REF.categories.filter(function(c){ return c.kind===kind; }).map(function(c){ return '<option value="'+c.id+'"'+(c.id===sel?' selected':'')+'>'+esc(c.name)+'</option>'; }).join(''); }
@@ -261,11 +273,19 @@ function renderBoard(){
   var late=pend.filter(isLate), wait=pend.filter(function(r){ return when(r)&&!isLate(r); }), nod=pend.filter(function(r){ return !when(r); });
   var got=B.incomes.filter(function(r){ return r.got&&r.src!=='transfer'; }).sort(function(a,b){ return a.gotDate<b.gotDate?1:-1; }), gotAll=got.length; if(!GOTALL) got=got.slice(0,15);
   var srt=function(a,b){ return when(a)<when(b)?-1:1; }, sum=function(l){ return l.reduce(function(s,r){ return s+r.sum; },0); };
-  var item=function(r, cls){ return '<div class="wi '+(cls||'')+'" onclick="incOpen(\''+r.id+'\')"><div class="who" title="'+esc(r.client)+'">'+esc(r.client||'—')+'</div><div class="sum">'+money(r.sum)+'</div><div class="meta">'
-    +[r.zakaz, r.got?'получено '+dm(r.gotDate):(when(r)?(when(r)<B.today&&r.late===false?'по счёту: срок не наступил':'срок '+dm(when(r))):'без даты'), r.wallet, r.ptype].filter(Boolean).map(esc).join(' · ')+'</div></div>'; };
-  var grp=function(title, list, cls, itemCls){ return list.length?'<div class="grp '+(cls||'')+'"><span>'+title+' · '+list.length+'</span><span>'+money(sum(list))+'</span></div>'+list.map(function(r){ return item(r,itemCls); }).join(''):''; };
+  // строка: кто · кошелёк (цветная метка — один цвет на кошелёк) · сумма; ниже — заказ, счёт и его часть, тип оплаты
+  var invOf=function(r){ var m=/счёт ([A-Z]{0,2}-?\d[\d-]*)(?: · (предоплата|остаток[^·]*|оплата[^·]*))?/.exec(r.note||''); return m?('счёт <b>'+esc(m[1])+'</b>'+(m[2]?' · '+esc(m[2].trim()):'')):''; };
+  var item=function(r, cls){ return '<div class="wi '+(cls||'')+'" onclick="incOpen(\''+r.id+'\')"><div class="who" title="'+esc(r.client)+'">'+esc(r.client||'—')+'</div><div class="sum">'+money(r.sum)+'</div>'
+    +'<div class="meta">'+walletChip(r.wallet)+'<span class="tx">'+[r.zakaz?'<b>'+esc(r.zakaz)+'</b>':'', invOf(r), r.ptype&&r.ptype!=='Безналичный'?esc(r.ptype):''].filter(Boolean).join(' · ')+'</span></div></div>'; };
+  var DOW=['вс','пн','вт','ср','чт','пт','сб'], dow=function(iso){ var d=new Date(iso+'T00:00:00'); return isNaN(d)?'':DOW[d.getDay()]; };
+  var byDay=function(list, key){ var out=[], map={}; list.forEach(function(r){ var k=key(r)||''; if(!map[k]){ map[k]={iso:k, rows:[]}; out.push(map[k]); } map[k].rows.push(r); }); return out; };
+  var grp=function(title, list, cls, itemCls, key){ if(!list.length) return ''; var h='<div class="grp '+(cls||'')+'"><span>'+title+' · '+list.length+'</span><span>'+money(sum(list))+'</span></div>';
+    byDay(list, key).forEach(function(g){ h+='<div class="wd '+(itemCls||'')+'"><span>'+(g.iso?dm(g.iso)+'<span class="dow">'+dow(g.iso)+'</span>':'без даты')+'</span><span class="s">'+money(sum(g.rows))+'</span></div>'+g.rows.map(function(r){ return item(r,itemCls); }).join(''); });
+    return h; };
+  // строки счетов, чей срок ещё не наступил (предоплата без срока, остаток до отгрузки), — своей группой, не вперемешку с датами
+  var byInv=wait.filter(function(r){ return r.late===false&&when(r)<B.today; }), due=wait.filter(function(r){ return byInv.indexOf(r)<0; });
   el('waitHead').textContent=pend.length?pend.length+' платежей на '+money(sum(pend))+(late.length?' · просрочено '+late.length:''):'Ожидаемых поступлений нет.';
-  el('waitList').innerHTML=grp('Просрочено', late.sort(srt), 'bad', 'late')+grp('Ждём', wait.sort(srt))+grp('Без даты', nod)+grp('Получено недавно', got)+(gotAll>got.length?'<div class="mut" style="padding:var(--s-2) 0"><a href="#" onclick="GOTALL=true; renderBoard(); return false">показать все '+gotAll+'</a></div>':'');
+  el('waitList').innerHTML=grp('Просрочено', late.sort(srt), 'bad', 'late', when)+grp('Ждём', due.sort(srt), '', '', when)+grp('По счетам — срок не наступил', byInv.sort(srt), '', '', function(r){ return ''; })+grp('Без даты', nod, '', '', function(){ return ''; })+grp('Получено недавно', got, '', '', function(r){ return r.gotDate; })+(gotAll>got.length?'<div class="mut" style="padding:var(--s-2) 0"><a href="#" onclick="GOTALL=true; renderBoard(); return false">показать все '+gotAll+'</a></div>':'');
   // ── справа: расходы по контрольным датам
   var unpaid=B.expenses.filter(function(e){ return !e.paid; }), nodate=unpaid.filter(function(e){ return !e.planIso; });
   var card=function(e){ var meta=[e.contr!==e.name?e.contr:'', e.cat||'без статьи', e.paid?'оплачено '+dm(e.paidDateIso):''].filter(Boolean).join(' · ');
