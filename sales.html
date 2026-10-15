@@ -120,8 +120,8 @@
   </div>
   <div class="card"><div class="tbl-wrap fill">
     <table class="tbl mob adapt">
-      <thead><tr><th>№</th><th>Создано</th><th>Клиент</th><th>Канал</th><th class="num">Сумма</th><th>Стадия</th><th>Клиент привязан</th><th>Источник</th><th></th></tr></thead>
-      <tbody id="rows"><tr><td colspan="9" class="sm">Загрузка…</td></tr></tbody>
+      <thead><tr><th>№</th><th>Создано</th><th>Клиент</th><th>Канал</th><th class="num">Сумма</th><th>Стадия</th><th>Производство</th><th>Клиент привязан</th><th>Источник</th><th></th></tr></thead>
+      <tbody id="rows"><tr><td colspan="10" class="sm">Загрузка…</td></tr></tbody>
     </table>
   </div></div>
 </div>
@@ -336,7 +336,7 @@ function renderList(){
     return !q || [x.num,x.inquiryNum,x.id,x.client,x.manager,x.type,x.clientType].join(' ').toLowerCase().indexOf(q)>=0;
   });
   el('cnt').textContent='всего: '+DEALS.length+(d.length!==DEALS.length?(' · показано: '+d.length):'')+(noStage?' · сервер ещё не отдаёт стадию — фильтр по стадии не работает':'');
-  if(!DEALS.length){ el('rows').innerHTML='<tr><td colspan="9" class="sm">Пока нет сделок. Создайте первую кнопкой «Создать сделку» или подтяните из amoCRM.</td></tr>'; return; }
+  if(!DEALS.length){ el('rows').innerHTML='<tr><td colspan="10" class="sm">Пока нет сделок. Создайте первую кнопкой «Создать сделку» или подтяните из amoCRM.</td></tr>'; return; }
   if(!d.length){ el('rows').innerHTML='<tr><td colspan="9" class="sm">Ничего не найдено.</td></tr>'; return; }
   el('rows').innerHTML=d.map(function(x){
     var src=x.source==='amoCRM'?'<span class="pill info">amoCRM</span>':(x.source==='сайт'?'<span class="pill acc">сайт</span>':'<span class="pill">'+esc(x.source||'—')+'</span>');
@@ -348,7 +348,8 @@ function renderList(){
       +'<td data-l="Клиент">'+esc(x.client||'—')+'</td>'
       +'<td data-l="Канал" class="sm">'+esc(x.type||'')+(x.clientType?' · '+esc(x.clientType):'')+'</td>'
       +'<td data-l="Сумма" class="num">'+money(x.sum)+' <span class="muted">'+esc(!x.currency||x.currency==='BYN'?'руб':x.currency)+'</span></td>'   // валюта у каждой суммы: руб (BYN), EUR, RUB (владелец 12.10.2026)
-      +'<td data-l="Стадия">'+stagePill(x)+(x.prodOrder?' <span class="pill mute" title="заказ на производство">'+esc(x.prodOrder.num)+'</span>':'')+'</td>'
+      +'<td data-l="Стадия">'+stagePill(x)+'</td>'
+      +'<td data-l="Производство">'+(x.prodOrder?'<a href="'+esc(pageUrl('production.html','batch',x.prodOrder.id))+'" onclick="event.stopPropagation()" title="заказ на производство — открыть">🏭 '+esc(x.prodOrder.num)+(x.prodOrder.name?' <span class="muted">'+esc(x.prodOrder.name)+'</span>':'')+'</a>':'<span class="muted">—</span>')+'</td>'
       +'<td data-l="Клиент привязан">'+buyer+'</td>'
       +'<td data-l="Источник">'+src+'</td>'
       +'<td style="white-space:nowrap" onclick="event.stopPropagation()"><button class="sm" onclick="cardOf('+id+')">Открыть →</button>'
