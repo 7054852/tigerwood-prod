@@ -268,6 +268,7 @@ function load(silent){
     if(silent && document.activeElement && /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
     render();
     if(!MODELS.length) loadModels();
+    var b0=qp('batch'); if(b0 && !LINK_DONE){ LINK_DONE=1; openOrder(b0); }   // переход из сделки: ?batch=ПАРТ-N
   }).catch(function(e){ if(!silent) app.innerHTML='<div class="center err">Ошибка загрузки: '+esc(e.message||e)+'</div>'; });
 }
 function loadModels(){
@@ -288,6 +289,18 @@ function itemName(it){ return [it.equip,it.model].filter(Boolean).join(' · ')||
 function catUrl(x){ var f='find='+encodeURIComponent(x||'')+'&tok='+encodeURIComponent(twTok()||''); return (window.TW_CFG&&TW_CFG.srv!=='gas') ? 'catalog.html?'+f : BASE+'?page=catalog&'+f; }   // каталог с фокусом на изделие: через Прохаб — новый экран, иначе панель хаба
 
 function render(){ if(VIEW==='detail'&&CUR){ if(DETAIL&&DETAIL.id===CUR) renderDetail(); else loadDetail(CUR); } else { renderList(); } }
+/* ── у одной работы два имени (владелец 14.10.2026): ПАРТ-N в цехе, №N у продаж. Заказ показывает свои сделки; отгрузка и документы — в сделке ── */
+function pageUrl(page, k, v){ var sp=new URLSearchParams(location.search); ['batch','deal'].forEach(function(x){ sp.delete(x); }); sp.set(k, v); return page+'?'+sp.toString(); }
+function dealsChips(b){ return (b.deals||[]).map(function(d){ return '<span class="pill info" title="сделка продаж">'+esc(d.num)+(d.client?' · '+esc(d.client):'')+'</span>'; }).join(''); }
+function dealsLine(b){
+  var ds=b.deals; if(!ds) return '';   // старый сервер — без связи
+  if(!ds.length) return '<div class="muted" style="margin-top:var(--s-2)">Продажа: сделка не привязана — отгрузочные документы выписываются из сделки (раздел «Сделки» → заказ на производство по счёту).</div>';
+  return '<div class="row" style="margin-top:var(--s-2);gap:var(--s-2);flex-wrap:wrap"><span class="muted">Продажа:</span>'+ds.map(function(d){
+    var u=pageUrl('sales.html','deal',d.id);
+    return '<a href="'+esc(u)+'" style="font-weight:600">'+esc(d.num)+'</a>'+(d.client?' <span>'+esc(d.client)+'</span>':'')+(d.invoice?' <span class="muted">· счёт '+esc(d.invoice)+'</span>':'')
+      +' <a class="btn sm sec" href="'+esc(u)+'" title="накладные, инвойсы, упаковочные листы, CMR — в карточке сделки">📄 Отгрузка и документы</a>'; }).join('<span class="muted">·</span>')+'</div>';
+}
+var LINK_DONE=0;
 function openOrder(id){ VIEW='detail'; CUR=id; DETAIL=null; app.innerHTML='<div class="center muted">Загрузка заказа…</div>'; window.scrollTo(0,0); if(!MODELS.length) loadModels(); loadDetail(id); }
 var DETAIL_STATUSES=[];
 function backToList(){ VIEW='list'; CUR=null; DETAIL=null; load(); }
@@ -422,6 +435,7 @@ function renderList(){
       +(b.top?'<span class="pill warn">🎯 делать сейчас</span> ':'')
       +'<span class="bnum">'+esc(b.num)+'</span>'
       +'<span style="font-weight:600">'+esc(b.name)+'</span>'
+      +dealsChips(b)
       +statusPill(b.status)
       +(prio?'<span class="pill prio bad">🔥 срочно</span>':'')
       +'<span style="flex:1"></span>'
@@ -529,6 +543,7 @@ function renderDetail(){
         +' <a href="javascript:void(0)" onclick="setDeadline(\''+b.id+'\',\''+esc(b.plan||'')+'\')" title="изменить срок" style="text-decoration:none">✎</a>'
         +' <a href="javascript:void(0)" onclick="deadlineLog(\''+b.id+'\')" title="история изменений срока" style="text-decoration:none">🕘</a></span>'
       +'</div>'
+      +dealsLine(b)
       +shipBadgeHtml(b)
       +'<div id="ship_'+b.id+'" style="margin-top:var(--s-2)"></div>'
       +'<div id="slog_'+b.id+'" style="margin-top:var(--s-2)"></div>'

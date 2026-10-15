@@ -348,7 +348,7 @@ function renderList(){
       +'<td data-l="Клиент">'+esc(x.client||'—')+'</td>'
       +'<td data-l="Канал" class="sm">'+esc(x.type||'')+(x.clientType?' · '+esc(x.clientType):'')+'</td>'
       +'<td data-l="Сумма" class="num">'+money(x.sum)+' <span class="muted">'+esc(!x.currency||x.currency==='BYN'?'руб':x.currency)+'</span></td>'   // валюта у каждой суммы: руб (BYN), EUR, RUB (владелец 12.10.2026)
-      +'<td data-l="Стадия">'+stagePill(x)+'</td>'
+      +'<td data-l="Стадия">'+stagePill(x)+(x.prodOrder?' <span class="pill mute" title="заказ на производство">'+esc(x.prodOrder.num)+'</span>':'')+'</td>'
       +'<td data-l="Клиент привязан">'+buyer+'</td>'
       +'<td data-l="Источник">'+src+'</td>'
       +'<td style="white-space:nowrap" onclick="event.stopPropagation()"><button class="sm" onclick="cardOf('+id+')">Открыть →</button>'
@@ -432,7 +432,8 @@ function render(){
   if(d.stage==='inquiry') acts+='<button class="sm" onclick="confirmDeal(\'manual\')" title="клиент принял решение — выдать №N и отправить в план производства">Подтвердить заказ</button>'
     +'<button class="sm sec" onclick="confirmDeal(\'payment_manual\')" title="деньги пришли, а банк ещё не подтянулся">Оплата подтверждена</button>'
     +'<button class="sm sec" onclick="lostDeal()">Не состоялась</button>';
-  el('hdr').innerHTML='<div class="t">'+esc(title)+' '+stagePill(d)+(d.clientType?(' <span class="pill">'+esc(d.clientType)+'</span>'):'')+'</div>'
+  var po=d.prodOrder?(' <a class="pill info" href="'+esc(pageUrl('production.html','batch',d.prodOrder.id))+'" title="заказ на производство — так эта работа называется в цехе">🏭 '+esc(d.prodOrder.num)+(d.prodOrder.name?' '+esc(d.prodOrder.name):'')+'</a>'):'';
+  el('hdr').innerHTML='<div class="t">'+esc(title)+' '+stagePill(d)+po+(d.clientType?(' <span class="pill">'+esc(d.clientType)+'</span>'):'')+'</div>'
     +'<div class="sum">'+money(d.sum||0)+' '+esc(d.currency||'руб')+pay+'</div>'
     +'<div class="meta"><span><b>Канал:</b> '+esc(d.type||'—')+'</span><span><b>Менеджер:</b> '+esc(d.manager||'—')+'</span>'
       +(d.date?('<span><b>Дата:</b> '+esc(d.date)+'</span>'):'')+(d.source?('<span><b>Источник:</b> '+esc(d.source)+'</span>'):'')+(amoLink?('<span>'+amoLink+'</span>'):'')+site+conf+lost
