@@ -18,13 +18,16 @@
   .n{ font-variant-numeric:tabular-nums; white-space:nowrap; }
   .mut{ color:var(--muted); font:var(--t-small); }
   /* сводка — одна компактная полоса: цифры важны, но экран нужен доске */
-  .strip{ background:var(--card); border:1px solid var(--line); border-radius:var(--r-card); padding:var(--s-3) var(--s-4); margin-bottom:var(--s-4); }
-  .kps{ display:flex; gap:var(--s-3) var(--s-6); flex-wrap:wrap; }
-  .kp .t{ font:var(--t-label); text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
-  .kp .v{ font:var(--t-heading); font-size:20px; font-variant-numeric:tabular-nums; white-space:nowrap; }
-  .kp .v small, .kp .s{ font:var(--t-small); color:var(--muted); font-weight:400; }
+  /* показатели и кошельки — одной полосой над доской (правило «сетка сразу под панелью», 16.10.2026): подпись + число, расшифровка мелко, подробности в title */
+  .strip{ display:flex; flex-wrap:wrap; gap:var(--s-2) var(--s-5); align-items:baseline; background:var(--card); border:1px solid var(--line); border-radius:var(--r-card); padding:var(--s-2) var(--s-3); margin-bottom:var(--s-3); font:var(--t-small); color:var(--muted); }
+  .kps, .wallets{ display:contents; }
+  .kp{ white-space:nowrap; }
+  .kp .t, .kp .s{ display:inline; }
+  .kp .v{ display:inline; font:var(--t-body); font-weight:700; color:var(--fg); font-variant-numeric:tabular-nums; margin:0 4px; }
+  .kp .v small{ font:var(--t-small); color:var(--muted); font-weight:400; }
   .kp .v.bad{ color:var(--red); }
-  .wallets{ display:flex; gap:var(--s-1) var(--s-4); flex-wrap:wrap; margin-top:var(--s-3); padding-top:var(--s-2); border-top:1px solid var(--line); font:var(--t-small); color:var(--muted); }
+  .wallets span{ white-space:nowrap; }
+  .wallets span:first-child::before{ content:''; display:inline-block; width:1px; height:12px; background:var(--line); margin-right:var(--s-4); vertical-align:-1px; }
   .wallets b{ color:var(--fg); font-variant-numeric:tabular-nums; font-weight:600; }
   /* ── доска: две панели рядом ── */
   .bd{ display:grid; grid-template-columns:380px minmax(0,1fr); gap:var(--s-4); align-items:start; }
@@ -101,7 +104,6 @@
 <div id="twload"><i></i></div>
 <div id="twwait"><div class="wb"><div class="sp"></div><div class="wt" id="twwt">Сохраняю…</div><div class="wh">идёт обмен с сервером — не нажимайте</div></div></div>
 <div class="hi">💰 Финансы</div>
-<div class="sub">Остаток и прогноз, план расходов и поступлений, банковская выписка.</div>
 <div class="tabs" id="tabs">
   <button data-tab="board" onclick="setTab('board')">Доска</button>
   <button data-tab="statement" onclick="setTab('statement')">Выписка</button>
@@ -261,7 +263,7 @@ function renderBoard(){
   el('tiles').innerHTML=tile('Остаток сейчас', money(B.cashNow)+' <small>BYN</small>')
     +tile('Ждём денег', money(f.inWait), f.inWaitAll!==f.inWait?'всего '+money(f.inWaitAll):'до '+dmy(f.horizon))
     +tile('К оплате', money(f.toPay), f.toPayAll!==f.toPay?'всего, с дальними '+money(f.toPayAll):'до '+dmy(f.horizon))
-    +tile('Прогноз остатка', money(f.forecast), 'на '+dmy(f.horizon), f.forecast<0?'bad':'')
+    +tile('Прогноз', money(f.forecast), 'на '+dmy(f.horizon), f.forecast<0?'bad':'')
     +(f.ovrIn?tile('Нам просрочили', money(f.ovrIn), 'срок прошёл, денег нет', 'bad'):'')
     +(f.ovrPay?tile('Мы просрочили', money(f.ovrPay), 'срок оплаты прошёл', 'bad'):'');
   el('wallets').innerHTML=B.wallets.filter(function(w){ return w.sum; }).map(function(w){ return '<span>'+esc(w.name)+' <b>'+money(w.sum)+(w.cur!=='BYN'?' '+w.cur:'')+'</b></span>'; }).join('')

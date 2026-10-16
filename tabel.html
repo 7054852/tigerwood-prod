@@ -246,22 +246,23 @@ function renderPay(){
     +'<button onclick="shiftZ(1)" title="следующий месяц">›</button></div>'
     +PLANNOTE+'<div class="end"><button class="sec" onclick="togZOnly()">'+(ZONLY?'📅 показать весь месяц':'⚡ только дни с работой')+'</button></div>'
     +'</div>';
-  var tile=function(t,v,st,tip){ return '<div class="tile"><div class="t">'+t+'</div><div class="v"'+(st?(' style="color:'+st+'"'):'')+(tip?(' title="'+tip+'"'):'')+'>'+v+'</div></div>'; };
-  var tiles='<div class="tiles">'
+  // показатели — одной строкой над ведомостью (правило «сетка сразу под панелью», 16.10.2026); подробности — в title
+  var k=function(t,v,st,tip){ return '<span class="k"'+(tip?(' title="'+tip+'"'):'')+'>'+t+'<b'+(st?(' style="color:'+st+'"'):'')+'>'+v+'</b></span>'; };
+  var tiles='<div class="kpis">'
       // «подано» = подтверждено + на проверке + ждёт ОТК (отклонённое не входит): сколько работы заявлено за месяц,
       // чтобы прикинуть зарплату до приёмки. Суммы по статусам сервер отдаёт только в Прохабе; GAS их не знает — ||0.
-      +tile('Подано за месяц', money(r.submitted||0)+' <small>₽</small>', '', 'подтверждено + на проверке + ждёт ОТК; отклонённое не входит')
-      +tile('Подтверждено', money(r.grand)+' <small>₽</small>', 'var(--green)', 'принято мастером и ОТК — идёт в зарплату')
-      +((r.pendingTotal||0)>0?tile('На проверке', money(r.pendingTotal)+' <small>₽</small>', 'var(--blue)', 'у мастера: количество ещё не принято'):'')
-      +((r.qcTotal||0)>0?tile('Ждёт ОТК', money(r.qcTotal)+' <small>₽</small>', 'var(--amber)', 'количество принято, качество ещё не проверено'):'')
-      +((r.rejectedTotal||0)>0?tile('Отклонено', money(r.rejectedTotal)+' <small>₽</small>', 'var(--red)', 'мастер отклонил — в зарплату и в «подано» не входит'):'')
-      +tile('Рабочих', r.workers.length)
-      +tile('В среднем на человека', money(avgPer)+' <small>₽</small>')
-      +(bestD?tile('Лучший день', money(bestV)+' <small>₽ · '+bestD+'.'+ym[1]+'</small>'):'')
-      +(r.sheetTotal>0?tile('🪚 Раскрой листов', money(r.sheetTotal)+' <small>₽</small>', 'var(--amber)', 'оплата за раскрой листов на ЧПУ: платим за лист, а детали с него уходят в свои заказы'):'')
-      +(r.freeTotal>0?tile('Из них вне заказа', money(r.freeTotal)+' <small>₽</small>', 'var(--accent-text)'):'')
-      +(r.hoursTotal>0?tile('Часов всего', h1(r.hoursTotal)+' <small>ч</small>', '', 'приход и уход из табеля: часы = уход − приход, обед не вычитается'):'')
-      +(r.hoursTotal>0?tile('В среднем ₽/час', money(Math.round(r.grand/r.hoursTotal*100)/100)+' <small>₽</small>'):'')
+      +k('Подано', money(r.submitted||0)+' ₽', '', 'подтверждено + на проверке + ждёт ОТК; отклонённое не входит')
+      +k('Подтверждено', money(r.grand)+' ₽', 'var(--green)', 'принято мастером и ОТК — идёт в зарплату')
+      +((r.pendingTotal||0)>0?k('На проверке', money(r.pendingTotal)+' ₽', 'var(--blue)', 'у мастера: количество ещё не принято'):'')
+      +((r.qcTotal||0)>0?k('Ждёт ОТК', money(r.qcTotal)+' ₽', 'var(--amber)', 'количество принято, качество ещё не проверено'):'')
+      +((r.rejectedTotal||0)>0?k('Отклонено', money(r.rejectedTotal)+' ₽', 'var(--red)', 'мастер отклонил — в зарплату и в «подано» не входит'):'')
+      +k('Рабочих', r.workers.length)
+      +k('На человека', money(avgPer)+' ₽', '', 'подтверждено ÷ рабочих')
+      +(bestD?k('Лучший день', money(bestV)+' ₽ <i>'+bestD+'.'+ym[1]+'</i>'):'')
+      +(r.sheetTotal>0?k('🪚 Раскрой листов', money(r.sheetTotal)+' ₽', 'var(--amber)', 'оплата за раскрой листов на ЧПУ: платим за лист, а детали идут в заказ по расценке'):'')
+      +(r.freeTotal>0?k('Вне заказа', money(r.freeTotal)+' ₽', 'var(--accent-text)'):'')
+      +(r.hoursTotal>0?k('Часов', h1(r.hoursTotal)+' ч', '', 'приход и уход из табеля: часы = уход − приход, обед не вычитается'):'')
+      +(r.hoursTotal>0?k('₽/час', money(Math.round(r.grand/r.hoursTotal*100)/100)+' ₽'):'')
     +'</div>';
   if(!r.workers.length){ $('pane').innerHTML=top+tiles+'<div class="empty">За этот месяц подтверждённой выработки нет.</div>'; return; }
   // ⚠ Инициал вместо второго слова терял ФАМИЛИЮ у половины людей: в «Работниках» имя записано
