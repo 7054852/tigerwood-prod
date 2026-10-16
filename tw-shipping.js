@@ -110,7 +110,7 @@ function twDeclDlg(){
 function twPacking(orderKey){
   get({vapi:'packget', deal:TWSH.deal, order:orderKey||''}).then(function(r){
     if(!r||!r.ok){ (typeof oops==='function'?oops:alert)(errText(r)); return; }
-    TWPK={ r:r, sel:0, products:null, pallets:(r.pallets||[]).map(function(p){ return { note:p.note||'', lines:(p.lines||[]).map(function(l){ return { productId:l.productId, sku:l.sku, name:l.name, qty:l.qty, boxes:l.boxes, netKg:l.netKg||'', grossKg:l.grossKg||'' }; }) }; }) };
+    TWPK={ r:r, sel:0, products:null, pallets:(r.pallets||[]).map(function(p){ return { note:p.note||'', lines:(p.lines||[]).map(function(l){ return { productId:l.productId, sku:l.sku, name:l.name, nameEn:l.nameEn||'', qty:l.qty, boxes:l.boxes, netKg:l.netKg||'', grossKg:l.grossKg||'' }; }) }; }) };
     if(!TWPK.pallets.length) TWPK.pallets.push({ note:'', lines:[] });   // всегда есть паллета, на которую кладём
     var dlg=el('askmodal').querySelector('.dlg'); dlg.classList.add('lg');
     var close=function(){ hide('askmodal'); dlg.classList.remove('lg'); };
@@ -183,7 +183,7 @@ function twPkSelect(i){ if(i===TWPK.sel) return; twPkSync(); TWPK.sel=i; twPkRen
 function twPkWeights(l){ var q=Number(l.qty)||0; if(l.un>0) l.netKg=Math.round(l.un*q*100)/100; if(l.ug>0) l.grossKg=Math.round(l.ug*q*100)/100; }
 function twPkUnit(productId){ var all=(TWPK.r.order?TWPK.r.order.items:TWPK.r.dealItems)||[]; var it=all.filter(function(x){ return x.productId===productId; })[0]||(TWPK.products||[]).filter(function(x){ return x.productId===productId; })[0]||{}; return { un:Number(it.unitNet)||0, ug:Number(it.unitGross)||0 }; }
 function twPkPut(p, it, n){ var ex=p.lines.filter(function(l){ return l.productId===it.productId; })[0], u=twPkUnit(it.productId);
-  if(ex){ ex.qty=(Number(ex.qty)||0)+n; ex.boxes=(Number(ex.boxes)||0)+n; ex.un=u.un; ex.ug=u.ug; twPkWeights(ex); } else { var l={ productId:it.productId, sku:it.sku, name:it.name, qty:n, boxes:n, netKg:'', grossKg:'', un:u.un, ug:u.ug }; twPkWeights(l); p.lines.push(l); } }
+  if(ex){ ex.qty=(Number(ex.qty)||0)+n; ex.boxes=(Number(ex.boxes)||0)+n; ex.un=u.un; ex.ug=u.ug; twPkWeights(ex); } else { var l={ productId:it.productId, sku:it.sku, name:it.name, nameEn:it.nameEn||'', qty:n, boxes:n, netKg:'', grossKg:'', un:u.un, ug:u.ug }; twPkWeights(l); p.lines.push(l); } }
 function twPkAdd(productId, i){ twPkSync(); var it=twPkPool().filter(function(x){ return x.productId===productId; })[0]; if(!it) return;
   var inp=el('pkq'+i), n=Math.round(Number(inp&&inp.value)||0);
   if(!(n>0)){ setm('pkmsg','err','Впишите, сколько штук положить'); return; }
