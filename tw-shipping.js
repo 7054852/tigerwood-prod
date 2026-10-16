@@ -128,6 +128,8 @@ function twPacking(orderKey){
 }
 /** что везём: заказ на производство (по умолчанию — заказ сделки) или позиции сделки; разложено/осталось — по всем паллетам */
 /* наше имя товара (оборудование · модель с цветом) — по документному «Набор для домашнего гимнастического комплекса» башни не различить (владелец 16.10.2026) */
+/* английское имя по товару — запасной путь для листов на паллеты, если строка пришла без него */
+function twPkEn(pid){ if(!TWPK||!TWPK.r) return ''; var all=((TWPK.r.order?TWPK.r.order.items:TWPK.r.dealItems)||[]).concat(TWPK.products||[]); for(var i=0;i<all.length;i++) if(all[i].productId===pid&&all[i].nameEn) return all[i].nameEn; return ''; }
 function twPkInternal(pid){ var all=((TWPK.r.order?TWPK.r.order.items:TWPK.r.dealItems)||[]).concat(TWPK.products||[]); for(var i=0;i<all.length;i++) if(all[i].productId===pid) return all[i].internal||''; return ''; }
 /* покрытие и цвет крупной меткой (владелец 16.10.2026: «белый или лакированный?»): поле «цвет» у BusyKids пустое — берём из имени модели */
 var TWPK_FIN=[[/\bLAK\b/i,'лак','ok'],[/\bWP\b/i,'шлифованный, без лака','warn'],[/\bWHITE\b/i,'белый','info'],[/\bGRAY\b|\bGREY\b/i,'серый','info'],[/\bBLUE\b/i,'синий','info'],
@@ -138,7 +140,7 @@ function twPkFinish(internal){ var m=String(internal||'').split(' · ').pop(), o
 function twPkPool(){
   var r=TWPK.r, src=r.order?r.order.items:r.dealItems, placed={};
   TWPK.pallets.forEach(function(p){ p.lines.forEach(function(l){ placed[l.productId]=(placed[l.productId]||0)+(Number(l.qty)||0); }); });
-  return (src||[]).map(function(it){ return { productId:it.productId, sku:it.sku, name:it.name, internal:it.internal||'', qty:it.qty, placed:placed[it.productId]||0, left:it.qty-(placed[it.productId]||0) }; });
+  return (src||[]).map(function(it){ return { productId:it.productId, sku:it.sku, name:it.name, nameEn:it.nameEn||'', internal:it.internal||'', qty:it.qty, placed:placed[it.productId]||0, left:it.qty-(placed[it.productId]||0) }; });
 }
 function twPkCss(){ if(el('pkcss')) return; var st=document.createElement('style'); st.id='pkcss';
   st.textContent='.pk-grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:var(--s-3);align-items:start}@media(max-width:760px){.pk-grid{grid-template-columns:1fr}}'
@@ -225,7 +227,7 @@ function twPalletSheets(pallets){
 function twPalletSheetsHtml(list, order){
   var n=list.length, today=new Date(), dd=function(x){ return (x<10?'0':'')+x; }, date=dd(today.getDate())+'.'+dd(today.getMonth()+1)+'.'+today.getFullYear();
   var pages=list.map(function(p,i){
-    var total=0, lines=p.lines.map(function(l){ var nm=String(l.nameEn||l.name||'').trim(), q=Number(l.qty)||0; total+=q;
+    var total=0, lines=p.lines.map(function(l){ var nm=String(l.nameEn||twPkEn(l.productId)||l.name||'').trim(), q=Number(l.qty)||0;   // лист на паллету — только по-английски (владелец 16.10.2026) total+=q;
       return '<div class="ln"><div class="l"><div class="sku">'+esc(l.sku||'')+'</div><div class="nm">'+esc(nm)+' <span class="parts">Parts -</span></div></div>'
         +'<div class="r"><span class="q">'+esc(l.qty)+'</span><span class="u">pcs</span></div></div>'; }).join('');
     return '<div class="pg" style="--k:1"><div class="hd"><div><div class="lbl">Order</div><div class="val">'+esc(order)+'</div></div><div class="pill">'+(i+1)+' / '+n+'</div></div>'
