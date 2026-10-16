@@ -229,7 +229,7 @@ function twWbMode(nb, init){ TWWB.__newBlank=!!nb; var prev=(TWWB.prev||[])[0], 
 function twWbCheck(){ var c=TWWB&&TWWB.contractSum, box=el('wbcc'); if(!box) return; if(!c){ box.style.display='none'; return; }
   var cur=0; (TWWB.items||[]).forEach(function(it){ cur+=(Number(it.ship)||0)*(Number(it.price)||0); }); cur=Math.round(cur*100)/100;
   var issued=TWWB.__newBlank?c.issued:Math.max(0,c.issued-((TWWB.prev||[])[0]?(TWWB.prev[0].sum||0):0)), diff=Math.round((issued+cur-c.amount)*100)/100;
-  if(Math.abs(diff)<0.009){ box.style.display='none'; return; }
+  if(Math.abs(diff)<0.009 || !(cur>0)){ box.style.display='none'; return; }   // нечего отгружать — проверять нечего
   box.style.display=''; box.firstChild.innerHTML='⚠ Договор № '+esc(c.number)+' на '+twWbMoney(c.amount)+', а накладные в сумме дадут '+twWbMoney(issued+cur)
     +(issued?' (уже выписано '+twWbMoney(issued)+' + эта '+twWbMoney(cur)+')':'')+' — '+(diff>0?'больше':'меньше')+' на '+twWbMoney(Math.abs(diff))+'. Если это частичная отгрузка — так и задумано: остаток уйдёт следующей накладной. Иначе проверьте позиции и цены.'; }
 function twWbSums(){ var pl=0,ms=0,zero=0,qs=0,pt=TWWB&&TWWB.__partial; ((TWWB&&TWWB.items)||[]).forEach(function(it,i){ qs+=Number(it.ship)||0; if(pt&&!(Number(it.ship)>0)) return; pl+=Number(it.places)||0; ms+=Number(it.mass)||0;
