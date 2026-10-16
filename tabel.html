@@ -9,6 +9,12 @@
 <style>
   .hi{ margin-bottom:var(--s-3); }
   .box{ margin-bottom:var(--s-3); }
+  /* показатели месяца — одной строкой над сеткой, чтобы табель начинался сразу под панелью (владелец 16.10.2026: «половина экрана — интерфейс») */
+  .kpis{ display:flex; flex-wrap:wrap; gap:var(--s-2) var(--s-5); align-items:baseline; padding:var(--s-2) var(--s-3); margin-bottom:var(--s-3); background:var(--card); border:1px solid var(--line); border-radius:var(--r-card); font:var(--t-small); color:var(--muted); }
+  .kpis b{ font:var(--t-body); font-weight:700; color:var(--fg); font-variant-numeric:tabular-nums; margin-left:4px; }
+  .kpis .k{ white-space:nowrap; }
+  .kpis .k i{ font-style:normal; color:var(--muted); }
+  .toolbar .plan{ font:var(--t-small); color:var(--muted); white-space:nowrap; }
   /* месяц */
   .mgrid td,.mgrid th{ padding:var(--s-1); font:var(--t-tiny); text-align:center; white-space:nowrap; }
   .mgrid td.nm{ text-align:left; font-weight:600; white-space:nowrap; }
@@ -46,7 +52,9 @@
   @media (max-width:640px){
     .mgrid td[data-d]{ min-width:30px; height:32px; font:var(--t-small); }
     /* режим «ставлю график / отмечаю выход» — во всю ширину и 40 px под палец */
-    .toolbar .end{ width:100%; }
+    .toolbar .plan{ display:none; }   /* на телефоне ссылка на планирование есть в меню — строку не тратим */
+    .toolbar .end{ width:100%; display:flex; gap:var(--s-2); }
+    .toolbar .end .seg.mmode{ flex:1; }
     .seg.mmode{ display:flex; width:100%; }
     .seg.mmode button{ flex:1; min-height:var(--h-ctl); padding:0 var(--s-2); }
   }
@@ -176,8 +184,7 @@ function shell(){
   showTab(TAB);
 }
 // подсказка про планирование рисуется в каждой вкладке ПОД панелью действий (порядок каркаса: вкладки → панель → уведомления)
-var PLANNOTE='<div class="note info"><div>Расстановка по участкам и задания бойцам — в разделе '
-  +'<a href="javascript:void(0)" onclick="goPlan()"><b>📊 Планирование</b></a>.</div></div>';
+var PLANNOTE='<span class="plan">расстановка и задания — в <a href="javascript:void(0)" onclick="goPlan()">📊 Планировании</a></span>';
 var MN=['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 function showTab(t){ TAB=t; ['m','z'].forEach(function(x){ var b=$('tb-'+x); if(b) b.className=(x===t?'active':''); });
   if(t==='z') loadPay(); else loadMonth(); }
@@ -237,8 +244,8 @@ function renderPay(){
     +'<button onclick="shiftZ(-1)" title="предыдущий месяц">‹</button>'
     +'<span class="lbl">'+esc(mLabel)+'</span>'
     +'<button onclick="shiftZ(1)" title="следующий месяц">›</button></div>'
-    +'<div class="end"><button class="sec" onclick="togZOnly()">'+(ZONLY?'📅 показать весь месяц':'⚡ только дни с работой')+'</button></div>'
-    +'</div>'+PLANNOTE;
+    +PLANNOTE+'<div class="end"><button class="sec" onclick="togZOnly()">'+(ZONLY?'📅 показать весь месяц':'⚡ только дни с работой')+'</button></div>'
+    +'</div>';
   var tile=function(t,v,st,tip){ return '<div class="tile"><div class="t">'+t+'</div><div class="v"'+(st?(' style="color:'+st+'"'):'')+(tip?(' title="'+tip+'"'):'')+'>'+v+'</div></div>'; };
   var tiles='<div class="tiles">'
       // «подано» = подтверждено + на проверке + ждёт ОТК (отклонённое не входит): сколько работы заявлено за месяц,
@@ -366,14 +373,13 @@ function expHtml(c){
   var m0=function(v){ return Math.round(Number(v)||0).toLocaleString('ru-RU'); };
   var fact=M.exp.factPast||0, sub=M.exp.factSub||0, pct=c.past>0?Math.round(fact/c.past*100):null, pctS=c.past>0?Math.round(sub/c.past*100):null;
   var col=function(p){ return p==null?'inherit':(p>=90?'var(--green)':(p>=70?'var(--amber)':'var(--red)')); };
-  var t=function(h,v,meta,tip){ return '<div class="tile"'+(tip?(' title="'+esc(tip)+'"'):'')+'><div class="t">'+h+'</div><div class="v">'+v+'</div>'+(meta?'<div class="meta muted" style="font:var(--t-small)">'+meta+'</div>':'')+'</div>'; };
-  return '<div class="tiles">'
-    +t('Ожидаем за месяц', m0(c.tot)+' <small>₽</small>', c.n+' смен: прошедшие — где был, дальше — по графику', 'смена × обычная выработка бойца: среднее по 7 последним сменам с выработкой больше 30 ₽ по поданным нарядам (принятые, на проверке и ждут ОТК), у новичка 50 ₽. Прошедший день считается, только если человек вышел или подал наряд')
-    +t('Ожидали до сегодня', m0(c.past)+' <small>₽</small>', c.np+' смен до вчера, где был'
-        +(c.nofact?(' · <span style="color:var(--amber)">ещё '+c.nofact+' без отметки — не считаются</span>'):''),
-        'прошедший день считается, только если человек вышел или подал наряд. Отметьте «✓ вышел» в режиме «Отмечаю выход» — смена сразу попадёт в ожидание')
-    +t('Подано до сегодня', '<span style="color:'+col(pctS)+'">'+m0(sub)+' <small>₽</small></span>', pctS!=null?(pctS+'% от ожидаемого'):'', 'всё поданное: принятое + на проверке у мастера + ждёт ОТК (по расценкам, без премий и повременки)')
-    +t('Принято до сегодня', '<span style="color:'+col(pct)+'">'+m0(fact)+' <small>₽</small></span>', pct!=null?(pct+'% от ожидаемого'):'', 'подтверждённая выработка по расценкам (без премий и повременки)')
+  var k=function(h,v,meta,tip){ return '<span class="k"'+(tip?(' title="'+esc(tip)+'"'):'')+'>'+h+'<b>'+v+'</b>'+(meta?' <i>'+meta+'</i>':'')+'</span>'; };
+  return '<div class="kpis">'
+    +k('Ожидаем за месяц', m0(c.tot)+' ₽', c.n+' смен', 'смена × обычная выработка бойца; прошедшие дни — где был, дальше — по графику')
+    +k('Ожидали до сегодня', m0(c.past)+' ₽', c.np+' смен'+(c.nofact?(' · <span style="color:var(--amber)">'+c.nofact+' без отметки</span>'):''),
+        'прошедший день считается, только если человек вышел или подал наряд. Отметьте «✓ вышел» в режиме «Отмечаю выход» — и день войдёт в расчёт')
+    +k('Подано', '<span style="color:'+col(pctS)+'">'+m0(sub)+' ₽</span>', pctS!=null?(pctS+'%'):'', 'всё поданное до сегодня: принятое + на проверке + ждёт ОТК; % от ожидаемого')
+    +k('Принято', '<span style="color:'+col(pct)+'">'+m0(fact)+' ₽</span>', pct!=null?(pct+'%'):'', 'подтверждённая выработка по расценкам до сегодня; % от ожидаемого')
     +'</div>';
 }
 function renderMonth(){
@@ -433,15 +439,15 @@ function renderMonth(){
   var modeSeg='<div class="seg mmode">'
     +'<button class="'+(MMODE==='plan'?'on':'')+'" onclick="setMMode(\'plan\')">✏️ Ставлю график</button>'
     +'<button class="'+(MMODE==='fact'?'on':'')+'" onclick="setMMode(\'fact\')">✅ Отмечаю выход</button></div>';
-  var legend='<div class="note"><div>'
+  var legend='<div class="note hint"><div>'
     +(MMODE==='fact'
       ? 'Клик по клетке: <b>по графику → ✓ вышел → ✕ не вышел</b>. Смену в этом режиме не меняем — только факт.'
       : 'Клик по клетке: ☀️ 1-я смена → 🌇 2-я смена → 🌙 ночь → пусто · зелёная рамка — вышел, красная — не вышел · серые колонки — выходные, розовые — праздники')
     +'<div style="margin-top:var(--s-1)">Бледная <b class="fk auto" style="font:var(--t-small);font-weight:600">✓</b> — отметки нет, но за этот день подан наряд: значит был на работе. Зелёная клетка без солнышка — наряд есть, а смена в графике не проставлена. <b class="fk warn" style="font:var(--t-small);font-weight:600">!</b> — отмечен «не вышел», но наряд есть.</div>'
     +'</div></div>';
   $('pane').innerHTML='<div class="toolbar"><div class="pnav"><button onclick="shiftMonth(-1)">‹</button><span class="lbl">'+esc(MN[mo-1]+' '+y)+'</span><button onclick="shiftMonth(1)">›</button></div>'
-    +'<span id="sv" class="meta"></span><div class="end">'+modeSeg+'</div></div>'
-    +PLANNOTE+legend+expHtml(EC)
+    +'<span id="sv" class="meta"></span>'+PLANNOTE+'<div class="end">'+modeSeg+'</div></div>'
+    +legend+expHtml(EC)
     +'<div class="card mgrid" style="overflow-x:auto"><table class="tbl" id="mtbl"><colgroup>'+Array(M.days+2).join('<col>')+'</colgroup>'+thead+body+'</table></div>';
   var tbl=$('mtbl');
   if(tbl){
