@@ -4,26 +4,43 @@
    места/масса по позициям → wbissue(deal, kind, data) сохраняет всё у сделки (waybill.ts saveWaybillData) и формирует документ.
    Ждёт от страницы: get, run, ask, hide, info, oops, errText, el, val, esc, setm, money. twWaybill(dealKey, 'ТН'|'ТТН'|'ТТН Юрлицо'|'Товарный чек', onDone).
    07.10.2026: бланк — резерв сделки / следующий свободный / выбрать; ТН и товарный чек — только дата (перевозку и места печатает лишь ТТН);
+   16.10.2026 (владелец): накладная — только на то, что везём: колонка «Отгружаем» (остаток, не больше упакованного по заказу), остаток — следующей
+   накладной на новом бланке (newBlank), прежние остаются; единственную неподписанную можно переформировать на том же бланке.
    twWaybillBlock(dealKey, box, onDone) — блок «Накладные» карточек сделки и договора: что выписывать по договору, резерв бланка,
    накладные карточками со статусом «выписана / подписана» и загрузкой подписанного скана, «выписано · оплачено ЕРИП · закрыта». */
 var TWWB=null;
 function twWaybill(dealKey, kind, onDone){
   get({vapi:'wbprep', deal:dealKey, kind:kind}).then(function(p){
     if(!p||!p.ok){ oops(errText(p)); return; }
-    TWWB=p; TWWB.__kind=kind; TWWB.__deal=dealKey;
+    TWWB=p; TWWB.__kind=kind; TWWB.__deal=dealKey; TWWB.__partial=Array.isArray(p.prev);
     var items=p.items||[];
     var miss=(p.missing&&p.missing.length)?('<div class="note warn"><div>⚠ Не хватает для накладной: '+esc(p.missing.join(', '))+'</div></div>'):'';
-    // не рамочный договор: ТН должна сходиться с суммой договора (владелец 14.10.2026 — предупреждаем, не запрещаем; частичная отгрузка — по сумме ТН)
-    var cc=p.contractCheck; if(cc) miss+='<div class="note warn"><div>⚠ Договор № '+esc(cc.contract)+' на '+twWbMoney(cc.amount)+', а накладные в сумме дадут '+twWbMoney(cc.issued+cc.current)
-      +(cc.issued?' (уже выписано '+twWbMoney(cc.issued)+' + эта '+twWbMoney(cc.current)+')':'')+' — '+(cc.diff>0?'больше':'меньше')+' на '+twWbMoney(Math.abs(cc.diff))+'. Если это частичная отгрузка — так и должно быть; иначе проверьте позиции и цены.</div></div>';
-    // строки накладной (07.10.2026): комплект — одной строкой (места/масса комплекса), остальное — своими строками; 0 — подсветка
+    // не рамочный договор: ТН должна сходиться с суммой договора (владелец 14.10.2026 — предупреждаем, не запрещаем; частичная отгрузка — по сумме ТН):
+    // считается на лету по колонке «Отгружаем» (twWbCheck), сервер даёт contractSum {number, amount, issued}
+    miss+='<div class="note warn" id="wbcc" style="display:none"><div></div></div>';
+    // строки накладной (07.10.2026): комплект — одной строкой (места/масса комплекса), остальное — своими строками; 0 — подсветка.
+    // Частичная отгрузка (16.10.2026): «Отгружаем» — сколько везём этой накладной (умолчание: остаток, не больше упакованного по заказу);
+    // места/масса по умолчанию пересчитываются пропорционально, пока их не ввели руками
+    var tn0=!!p.tn, partial=Array.isArray(p.prev), anyPrev=partial&&(items.some(function(it){ return Number(it.shipped)>0; })||(p.prev||[]).length>0);   // partial — сервер умеет частичную отгрузку
+    items.forEach(function(it){ it.shipped0=Number(it.shipped)||0; it.places0=Number(it.places)||0; it.mass0=Number(it.mass)||0; it.qty0=Number(it.qty)||0; });
     var rows=items.map(function(it,i){
       var z=function(v){ return Number(v)>0?'':' style="border-color:var(--red);background:var(--red-bg)"'; };
-      return '<tr id="wbr'+i+'"><td data-l="Наименование">'+esc(it.name)+(it.set?' <span class="pill info">комплект</span>':'')+(it.model&&it.model!==it.name?'<div class="sm">'+esc(it.model)+'</div>':'')+'</td>'
-        +'<td data-l="Кол-во" class="num">'+esc(it.qty)+' '+esc(it.unit||'')+'</td>'
-        +'<td data-l="Мест"><input type="number" min="0" value="'+esc(it.places)+'"'+z(it.places)+' oninput="TWWB.items['+i+'].places=this.value;twWbSums()" autocomplete="off"></td>'
-        +'<td data-l="Масса, кг"><input type="number" min="0" step="0.01" value="'+esc(it.mass)+'"'+z(it.mass)+' oninput="TWWB.items['+i+'].mass=this.value;twWbSums()" autocomplete="off"></td></tr>';
+      var pk=(it.packed!=null)?'<div class="sm muted">упаковано по заказу: '+esc(it.packed)+'</div>':'';
+      return '<tr id="wbr'+i+'"><td data-l="Наименование">'+esc(it.name)+(it.set?' <span class="pill info">комплект</span>':'')+(it.model&&it.model!==it.name?'<div class="sm">'+esc(it.model)+'</div>':'')+pk+'</td>'
+        +'<td data-l="Заказано" class="num">'+esc(it.qty)+' '+esc(it.unit||'')+'</td>'
+        +(anyPrev?'<td data-l="Уже в накладных" class="num" id="wbs'+i+'">'+esc(it.shipped0)+'</td>':'')
+        +(partial?'<td data-l="Отгружаем"><input type="number" min="0" max="'+esc(it.qty)+'" step="1" id="wbq'+i+'" value="'+esc(it.ship)+'" oninput="twWbShip('+i+',this.value)" autocomplete="off" style="width:5.5em"></td>':'')
+        +(tn0?'':'<td data-l="Мест"><input type="number" min="0" id="wbp'+i+'" value="'+esc(it.places)+'"'+z(it.places)+' oninput="TWWB.items['+i+'].places=this.value;TWWB.items['+i+'].pm=1;twWbSums()" autocomplete="off"></td>'
+        +'<td data-l="Масса, кг"><input type="number" min="0" step="0.01" id="wbm'+i+'" value="'+esc(it.mass)+'"'+z(it.mass)+' oninput="TWWB.items['+i+'].mass=this.value;TWWB.items['+i+'].pm=1;twWbSums()" autocomplete="off"></td>')+'</tr>';
     }).join('');
+    // одна живая накладная этого вида и не подписана — можно переформировать на том же бланке; иначе эта — ещё одна, на новом бланке
+    var prev=p.prev||[], canRedo=prev.length===1&&!prev[0].signed, anyLeft=items.some(function(it){ return Number(it.left)>0; });
+    TWWB.__newBlank=partial&&prev.length>0&&(!canRedo||anyLeft);
+    var modeSel='';
+    if(canRedo) modeSel='<div class="note" style="margin-top:var(--s-2)"><div>По сделке уже есть '+esc(p.kind)+' <b>'+esc(prev[0].blank)+'</b> от '+esc(prev[0].date)+' на '+twWbMoney(prev[0].sum)+'.'
+      +'<label style="display:block;margin-top:var(--s-1)"><input type="radio" name="wbmode" value="new"'+(TWWB.__newBlank?' checked':'')+' onchange="twWbMode(1)"> ➕ Ещё одна накладная на новом бланке — на остаток (частичная отгрузка)</label>'
+      +'<label style="display:block"><input type="radio" name="wbmode" value="redo"'+(TWWB.__newBlank?'':' checked')+' onchange="twWbMode(0)"> ♻️ Переформировать её заново на том же бланке (прежняя отменится)</label></div></div>';
+    else if(prev.length) modeSel='<div class="note" style="margin-top:var(--s-2)"><div>По сделке уже '+prev.length+' '+esc(p.kind)+(prev.length===1?' (подписана)':'')+' — эта будет ещё одной, на новом бланке. Лишнюю можно отменить в блоке «Накладные».</div></div>';
     var zeroNote='<div class="note warn" id="wbzero" style="margin-top:var(--s-2);display:none"><div>⚠ У подсвеченных строк не заданы места или масса — в каталоге нет данных. Впишите их: значения сохранятся в сделке.</div></div>';
     // сетка полей — своими стилями: страницы реестра/договора не обязаны иметь .grid2/.fl
     var L='display:block;margin-top:var(--s-2)', SM='display:block;font:var(--t-small);color:var(--muted);margin-bottom:var(--s-1)';
@@ -60,11 +77,12 @@ function twWaybill(dealKey, kind, onDone){
       +blankSel
       +(tn?'':'<label style="'+L+';grid-column:1 / -1"><span style="'+SM+'">📍 Адрес доставки (пункт разгрузки) — проверьте!</span><input id="wba" value="'+esc(p.address)+'" autocomplete="off" style="width:100%"></label>')
       +'</div>'
+      +modeSel
+      +((tn&&!partial)?'':'<div class="tbl-wrap" style="margin-top:var(--s-3)"><table class="tbl sm mob wbt"><thead><tr><th>Наименование</th><th class="num">'+(partial?'Заказано':'Кол-во')+'</th>'+(anyPrev?'<th class="num">Уже в накладных</th>':'')+(partial?'<th>Отгружаем</th>':'')+(tn?'':'<th>Мест</th><th>Масса, кг</th>')+'</tr></thead>'
+        +'<tbody>'+rows+'<tr style="font-weight:600"><td>Итого</td><td></td>'+(anyPrev?'<td></td>':'')+(partial?'<td data-l="Отгружаем" id="wbtq">0</td>':'')+(tn?'':'<td data-l="Мест" id="wbtp">0</td><td data-l="Масса, кг" id="wbtm">0</td>')+'</tr></tbody></table></div>'+(tn?'':zeroNote))
       +(tn
         ?'<details style="margin-top:var(--s-3)"><summary class="sm">🚚 Перевозка и доверенность — если нужно заполнить в накладной</summary><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0 var(--s-3)">'+proxy+trans+'</div></details>'
-        :'<div class="sm" style="margin-top:var(--s-3);font-weight:600">🚚 Перевозка</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0 var(--s-3)">'+trans+'</div>'
-          +'<div class="tbl-wrap" style="margin-top:var(--s-3)"><table class="tbl sm mob wbt"><thead><tr><th>Наименование</th><th class="num">Кол-во</th><th>Мест</th><th>Масса, кг</th></tr></thead>'
-          +'<tbody>'+rows+'<tr style="font-weight:600"><td>Итого</td><td></td><td data-l="Мест" id="wbtp">0</td><td data-l="Масса, кг" id="wbtm">0</td></tr></tbody></table></div>'+zeroNote)
+        :'<div class="sm" style="margin-top:var(--s-3);font-weight:600">🚚 Перевозка</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0 var(--s-3)">'+trans+'</div>')
       +'<label class="sm" style="display:block;margin-top:var(--s-3)"><input type="checkbox" id="wbc"> Я проверил <b>дату</b>'+(tn?'':' и <b>адрес</b>')+'</label>'
       +'<div class="msg" id="wbm"></div>';
     ask('✍️ Выписать '+esc(p.title||kind), body, function(){
@@ -74,9 +92,14 @@ function twWaybill(dealKey, kind, onDone){
       var payload={ date:date, freight:val('wbf'), driver:val('wbdr').trim(), car:val('wbcar').trim(), trailer:val('wbtr').trim(), waybillDoc:val('wbpl').trim(),
         recipient:twWbVal('wbrc').trim(), proxy:twWbVal('wbpx').trim(), proxyBy:twWbVal('wbpb').trim(), blankId:(el('wbbl')&&el('wbbl').value)||'' };
       if(addr!==undefined) payload.address=addr;
+      // «Отгружаем» — у всех строк; места/масса: ТТН — из окна (под отгружаемое), ТН — как были (в ТН не печатаются, строку сделки не трогаем)
+      if(TWWB.__partial){
+        payload.items=(TWWB.items||[]).map(function(it){ return {id:it.id||'', kids:it.kids||[], ship:Number(it.ship)||0, places:tn?it.places0:(Number(it.places)||0), mass:tn?it.mass0:(Number(it.mass)||0)}; });
+        payload.newBlank=!!TWWB.__newBlank;
+        if(!(TWWB.items||[]).some(function(it){ return Number(it.ship)>0; })){ setm('wbm','err','Укажите, что отгружаем: количество хотя бы в одной строке'); return false; }
+      } else if(!tn) payload.items=(TWWB.items||[]).map(function(it){ return {id:it.id||'', kids:it.kids||[], places:Number(it.places)||0, mass:Number(it.mass)||0}; });
       if(!tn){
-        payload.items=(TWWB.items||[]).map(function(it){ return {id:it.id||'', kids:it.kids||[], places:Number(it.places)||0, mass:Number(it.mass)||0}; });
-        var zr=(TWWB.items||[]).filter(function(it){ return !(Number(it.places)>0) || !(Number(it.mass)>0); });
+        var zr=(TWWB.items||[]).filter(function(it){ return Number(it.ship)>0 && (!(Number(it.places)>0) || !(Number(it.mass)>0)); });
         if(zr.length && !TWWB.__zeroOk){ TWWB.__zeroOk=1; setm('wbm','err','⚠ У '+zr.length+' строк(и) места или масса = 0 — заполните или нажмите «Сформировать» ещё раз, чтобы выписать так'); return false; }
       }
       twWbSend(dealKey, kind, payload, onDone);
@@ -84,7 +107,7 @@ function twWaybill(dealKey, kind, onDone){
     }, 'Сформировать накладную');
     twWbDlg('dlg md');
     el('askNo').onclick=function(){ hide('askmodal'); twWbDlg('dlg'); };
-    twWbSums();
+    if(TWWB.__partial) twWbMode(TWWB.__newBlank?1:0, true); else twWbSums();
   }).catch(function(e){ oops('Связь оборвалась: '+((e&&e.message)||e)); });
 }
 function twWbSend(dealKey, kind, payload, onDone){
@@ -120,8 +143,8 @@ function twWbRender(){
     var pdf=(!bad&&!chk)?'<a href="#" onclick="twWbPdf(\''+esc(d.id)+'\');return false;" title="одна страница A4, без сетки — для печати на бланке">🖨 PDF для печати</a>':'';
     var acts=bad?'':pdf+(d.signedAt?('<a href="'+esc(d.signedUrl)+'" target="_blank" rel="noopener">скан ↗</a><a href="#" onclick="twWbUnsign(\''+esc(d.id)+'\');return false;">убрать скан</a>')
       :'<button class="sec sm" onclick="twWbSignDlg(\''+esc(d.id)+'\')">⬆ Подписанный скан</button>');
-    return twFileCard({ href:d.url, tab:1, tag:chk?'ЧЕК':d.type, title:ttl+' '+(d.blank||''), meta:[d.date, twWbMoney(d.sum)+' '+(d.currency||'BYN'), d.error].filter(Boolean).join(' · '),
-      pills:pills, acts:acts, del:"twWbCancel('"+(d.cancelType||ttl)+"')", delTitle:'Отменить '+(chk?'чек':'накладную') });
+    return twFileCard({ href:d.url, tab:1, tag:chk?'ЧЕК':d.type, title:ttl+' '+(d.blank||''), meta:[d.date, twWbMoney(d.sum)+' '+(d.currency||'BYN'), d.qty!=null?(d.qty+' шт.'):'', d.error].filter(Boolean).join(' · '),
+      pills:pills, acts:acts, del:"twWbCancel('"+(d.cancelType||ttl)+"','"+esc(d.id)+"')", delTitle:'Отменить '+(chk?'чек':'накладную') });
   }).join('');
   var btns='', resv='', kinds={};
   (r.options||[]).forEach(function(o){
@@ -168,11 +191,11 @@ function twWbUnsign(id, after){
   ask('Убрать скан?', '<div>Скан уйдёт в корзину Google Drive, накладная снова станет «выписана».</div>', function(){
     run({vapi:'wbsignremove', id:id}, 'Убираю скан…', 'twwbmsg').then(function(x){ if(x) (after||twWbRefresh)(); }); }, 'Убрать скан');
 }
-function twWbCancel(type){
+function twWbCancel(type, id){   // id — одна накладная из нескольких (частичная отгрузка); без id — все документы вида
   var chk=type==='Товарный чек';
   ask('Отменить '+(chk?'товарный чек':type)+'?', '<div>Документ уйдёт в корзину'+(chk?'':', бланк станет <b>испорченным</b> (номер строгой отчётности не освобождается)')+'. Выписать заново можно сразу'+(chk?'':' — на новом бланке')+'.</div>'
     +'<label style="display:block;margin-top:var(--s-3)"><span class="sm">Причина</span><input id="twwr" autocomplete="off" style="width:100%" placeholder="например, ошибка в адресе"></label>', function(){
-    run({vapi:'deldealdoc', deal:TWWBB.deal, type:type, reason:val('twwr')}, 'Отменяю…', 'twwbmsg').then(function(x){ if(x) twWbRefresh(); }); }, 'Отменить документ');
+    run({vapi:'deldealdoc', deal:TWWBB.deal, type:type, id:id||'', reason:val('twwr')}, 'Отменяю…', 'twwbmsg').then(function(x){ if(x) twWbRefresh(); }); }, 'Отменить документ');
 }
 function twWbReserveDlg(k){
   var ru=k==='tn'?'ТН':'ТТН';
@@ -190,7 +213,26 @@ function twWbUnreserve(k){
 }
 function twWbVal(id){ var e=el(id); return e?String(e.value||''):''; }
 function twWbDlg(cls){ var d=el('askmodal').querySelector('.dlg'); if(d) d.className=cls; }
-function twWbSums(){ var pl=0,ms=0,zero=0; ((TWWB&&TWWB.items)||[]).forEach(function(it,i){ pl+=Number(it.places)||0; ms+=Number(it.mass)||0;
+/* частичная отгрузка (16.10.2026): «Отгружаем» меняет места/массу пропорционально (пока их не ввели руками) и проверку по договору */
+function twWbShip(i,v){ var it=TWWB.items[i]; it.ship=Math.max(0,Number(v)||0);
+  if(!it.pm && it.qty0>0){ it.places=Math.round(it.places0/it.qty0*it.ship); it.mass=Math.round(it.mass0/it.qty0*it.ship*100)/100;
+    var a=el('wbp'+i), b=el('wbm'+i); if(a) a.value=it.places; if(b) b.value=it.mass; }
+  twWbSums(); }
+/* newBlank=1 — ещё одна накладная (остаток после всех выписанных); 0 — переформировать единственную (её количество снова свободно) */
+function twWbMode(nb, init){ TWWB.__newBlank=!!nb; var prev=(TWWB.prev||[])[0], ps={}; if(prev&&!nb) (prev.ship||[]).forEach(function(l){ ps[l.id]=Number(l.qty)||0; });
+  (TWWB.items||[]).forEach(function(it,i){ var base=nb?it.shipped0:(prev?(prev.ship?Math.max(0,it.shipped0-(ps[it.id]||0)):Math.max(0,it.shipped0-it.qty0)):it.shipped0);
+    it.shipped=base; var left=Math.max(0,it.qty0-base); it.ship=(it.packed!=null)?Math.max(0,Math.min(left,Number(it.packed)-base)):left; it.left=left;
+    var q=el('wbq'+i), sh=el('wbs'+i); if(q) q.value=it.ship; if(sh) sh.textContent=base;
+    if(!it.pm){ it.places=(it.qty0>0&&it.ship!==it.qty0)?Math.round(it.places0/it.qty0*it.ship):it.places0; it.mass=(it.qty0>0&&it.ship!==it.qty0)?Math.round(it.mass0/it.qty0*it.ship*100)/100:it.mass0;
+      var a=el('wbp'+i), b=el('wbm'+i); if(a) a.value=it.places; if(b) b.value=it.mass; } });
+  twWbSums(); }
+function twWbCheck(){ var c=TWWB&&TWWB.contractSum, box=el('wbcc'); if(!box) return; if(!c){ box.style.display='none'; return; }
+  var cur=0; (TWWB.items||[]).forEach(function(it){ cur+=(Number(it.ship)||0)*(Number(it.price)||0); }); cur=Math.round(cur*100)/100;
+  var issued=TWWB.__newBlank?c.issued:Math.max(0,c.issued-((TWWB.prev||[])[0]?(TWWB.prev[0].sum||0):0)), diff=Math.round((issued+cur-c.amount)*100)/100;
+  if(Math.abs(diff)<0.009){ box.style.display='none'; return; }
+  box.style.display=''; box.firstChild.innerHTML='⚠ Договор № '+esc(c.number)+' на '+twWbMoney(c.amount)+', а накладные в сумме дадут '+twWbMoney(issued+cur)
+    +(issued?' (уже выписано '+twWbMoney(issued)+' + эта '+twWbMoney(cur)+')':'')+' — '+(diff>0?'больше':'меньше')+' на '+twWbMoney(Math.abs(diff))+'. Если это частичная отгрузка — так и задумано: остаток уйдёт следующей накладной. Иначе проверьте позиции и цены.'; }
+function twWbSums(){ var pl=0,ms=0,zero=0,qs=0,pt=TWWB&&TWWB.__partial; ((TWWB&&TWWB.items)||[]).forEach(function(it,i){ qs+=Number(it.ship)||0; if(pt&&!(Number(it.ship)>0)) return; pl+=Number(it.places)||0; ms+=Number(it.mass)||0;
     var bad=!(Number(it.places)>0)||!(Number(it.mass)>0); if(bad) zero++;
     var r=el('wbr'+i); if(r){ var ins=r.getElementsByTagName('input'); for(var k=0;k<ins.length;k++){ var ok=Number(ins[k].value)>0; ins[k].style.borderColor=ok?'':'var(--red)'; ins[k].style.background=ok?'':'var(--red-bg)'; } } });
-  var a=el('wbtp'), b=el('wbtm'), z=el('wbzero'); if(a) a.textContent=pl; if(b) b.textContent=Math.round(ms*100)/100; if(z) z.style.display=zero?'':'none'; }
+  var a=el('wbtp'), b=el('wbtm'), z=el('wbzero'), q=el('wbtq'); if(a) a.textContent=pl; if(b) b.textContent=Math.round(ms*100)/100; if(z) z.style.display=zero?'':'none'; if(q) q.textContent=qs; twWbCheck(); }

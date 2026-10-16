@@ -40,7 +40,26 @@ function twShipDlg(){
   var noPack=!(r.packing&&r.packing.pallets), bl=r.blank||{}, opts=[], seen={};
   if(bl.reserved){ opts.push('<option value="'+esc(bl.reserved.id)+'" selected>'+esc(bl.reserved.label)+' — зарезервирован за сделкой</option>'); seen[bl.reserved.id]=1; }
   (bl.free||[]).forEach(function(b,i){ if(seen[b.id]) return; opts.push('<option value="'+esc(b.id)+'"'+(!bl.reserved&&i===0?' selected':'')+'>'+esc(b.label)+(i===0?' — следующий свободный':'')+'</option>'); });
-  var body='<div class="sm" style="margin-bottom:var(--s-2)">Клиент: <b>'+esc(r.deal.client)+'</b>'+(r.payInvoice?' · счёт на оплату № '+esc(r.payInvoice):'')+'</div>'
+  // частичная отгрузка (владелец 16.10.2026): документы — на то, что на паллетах; уже уехавшее по прошлым ТН; вторая отгрузка — «ещё одна» (новые ТН/CMR/инвойс)
+  var lines=r.lines||[], prevTn=r.prevTn||[], partial=Array.isArray(r.lines), over=0, under=0;
+  var ltab='';
+  if(partial&&lines.length){
+    ltab='<div class="tbl-wrap" style="margin-top:var(--s-2)"><table class="tbl sm mob"><thead><tr><th>Товар</th><th class="num">Заказано</th><th class="num">Уже уехало</th><th class="num">На паллетах — отгружаем</th></tr></thead><tbody>'
+      +lines.map(function(l){ var left=Math.max(0,l.qty-l.shipped); if(l.onPallets>left) over++; if(l.onPallets<left) under++;
+        return '<tr><td data-l="Товар">'+esc(l.name)+'</td><td data-l="Заказано" class="num">'+esc(l.qty)+'</td><td data-l="Уже уехало" class="num">'+esc(l.shipped)+'</td><td data-l="На паллетах" class="num"><b'+(l.onPallets>left?' class="err"':'')+'>'+esc(l.onPallets)+'</b></td></tr>'; }).join('')
+      +'</tbody></table></div>'
+      +(noPack?'<div class="sm muted">Паллетовки нет — документы будут на все позиции сделки.</div>':'')
+      +(over?'<div class="note warn"><div>⚠ На паллетах больше, чем осталось по сделке — проверьте паллетовку.</div></div>':'')
+      +(under&&!noPack?'<div class="sm muted">Частичная отгрузка: остаток уйдёт следующей отгрузкой (ещё одна ТН и CMR).</div>':'');
+  }
+  var canRedo=prevTn.length===1&&!prevTn[0].signed, anyLeft=lines.some(function(l){ return l.qty-l.shipped>0; });
+  TWSH.newBlank=partial&&prevTn.length>0&&(!canRedo||anyLeft);
+  var mode='';
+  if(partial&&canRedo) mode='<div class="note" style="margin-top:var(--s-2)"><div>По сделке уже есть ТН <b>'+esc(prevTn[0].blank)+'</b> от '+esc(prevTn[0].date)+' на '+esc(prevTn[0].sum)+'.'
+    +'<label style="display:block;margin-top:var(--s-1)"><input type="radio" name="shmode" value="new"'+(TWSH.newBlank?' checked':'')+' onchange="TWSH.newBlank=true"> ➕ Ещё одна отгрузка — новые ТН, CMR и инвойс (прежние остаются)</label>'
+    +'<label style="display:block"><input type="radio" name="shmode" value="redo"'+(TWSH.newBlank?'':' checked')+' onchange="TWSH.newBlank=false"> ♻️ Переформировать прежние (ТН на том же бланке, CMR с тем же номером)</label></div></div>';
+  else if(partial&&prevTn.length) mode='<div class="note" style="margin-top:var(--s-2)"><div>По сделке уже '+prevTn.length+' ТН'+(prevTn.length===1?' (подписана)':'')+' — эта отгрузка будет ещё одной: новые ТН, CMR и инвойс.</div></div>';
+  var body='<div class="sm" style="margin-bottom:var(--s-2)">Клиент: <b>'+esc(r.deal.client)+'</b>'+(r.payInvoice?' · счёт на оплату № '+esc(r.payInvoice):'')+'</div>'+ltab+mode
     +(r.payInvoice?'':'<div class="note warn"><div>⚠ Счёт на оплату не выставлен — '+esc(r.invoiceTitle)+' выставляется по нему.</div></div>')
     +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0 var(--s-3)">'
     +inp('shd','📅 Дата погрузки (= дата ТН и CMR)',isoDate(f.loadDate),'', 'date')+inp('shup','Место разгрузки (CMR п. 3)',f.unloadPlace,'Osík')+inp('shuc','Страна разгрузки',f.unloadCountry,'Česká republika')
@@ -57,7 +76,7 @@ function twShipDlg(){
   ask('🚚 Отгрузочные документы — '+esc(r.eu?'Европа':'Россия'), body, function(){
     var docs=[]; ['shinv|invoice','shpk|packing','shcmr|cmr','shtn|tn'].forEach(function(x){ var p=x.split('|'), e=el(p[0]); if(e&&e.checked&&!e.disabled) docs.push(p[1]); });
     if(!docs.length){ setm('shmsg','err','Отметьте хотя бы один документ'); return false; }
-    var data={ fields:{ loadDate:ruDate(val('shd')), unloadPlace:val('shup').trim(), unloadCountry:val('shuc').trim(), instructions:val('shin').trim(), tractor:val('shtr').trim(), trailer:val('shtl').trim() }, docs:docs, blankId:val('shbl') };
+    var data={ fields:{ loadDate:ruDate(val('shd')), unloadPlace:val('shup').trim(), unloadCountry:val('shuc').trim(), instructions:val('shin').trim(), tractor:val('shtr').trim(), trailer:val('shtl').trim() }, docs:docs, blankId:val('shbl'), newBlank:!!TWSH.newBlank };
     run({vapi:'shipissue', deal:TWSH.deal, data:JSON.stringify(data)}, 'Выписываю документы…', 'shmsg').then(function(x){ if(!x) return;
       var res=x.results||{}, names={invoice:TWSH.r.invoiceTitle, packing:'Упаковочный лист', cmr:'CMR', tn:'ТН'}, h='';
       Object.keys(res).forEach(function(k){ var v=res[k]||{}; h+='<div>'+(v.ok?'✅':'❌')+' '+esc(names[k]||k)+(v.number?' № '+esc(v.number):'')+(v.blank?' '+esc(v.blank):'')+': '+(v.ok?(v.url?'<a href="'+esc(v.url)+'" target="_blank" rel="noopener">открыть</a>':'готово'):'<span class="err">'+esc(v.error||errText(v))+'</span>')+(v.ok&&v.error?' <span class="err">'+esc(v.error)+'</span>':'')+'</div>'; });
