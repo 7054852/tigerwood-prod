@@ -56,6 +56,8 @@ function twShipDlg(){
     +inp('shd','📅 Дата погрузки (= дата ТН и CMR)',isoDate(f.loadDate),'', 'date')+inp('shup','Место разгрузки (CMR п. 3)',f.unloadPlace,'Osík')+inp('shuc','Страна разгрузки',f.unloadCountry,'Česká republika')
     +inp('shtr','Тягач (CMR п. 25)',f.tractor,'DAF AC 3958-5')+inp('shtl','Полуприцеп (CMR п. 26)',f.trailer,'WIELTON H03102')+'</div>'
     +inp('shin','Указания отправителя — таможенный склад (CMR п. 13)',f.instructions,'Nam. 17. listopadu 2059, 560 02 Ceska Trebova, CZ')
+    // доверенность водителя (16.10.2026) — печатает ТН: «… по доверенности <номер, дата> выданной <кем>»
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0 var(--s-3)">'+inp('shpx','Доверенность водителя (номер, дата, ФИО)',f.proxy,'б/н от 14.10.2026, водитель Якжик А. В.')+inp('shpb','Доверенность выдана (кем)',f.proxyBy,'BusyKids Europe s.r.o.')+'</div>'
     +'<div class="sm" style="margin-top:var(--s-3);font-weight:600">Что выписать</div>'
     +chk('shinv', esc(r.invoiceTitle)+(r.shipInvoice?' — переформировать № '+esc(r.shipInvoice.number):' — новый номер'), true, !r.payInvoice)
     +chk('shpk','Упаковочный лист', !noPack, noPack, noPack?'сначала разложите товары по паллетам':'')
@@ -78,7 +80,7 @@ function twShipDlg(){
   ask('🚚 Отгрузочные документы — '+esc(r.eu?'Европа':'Россия'), body, function(){
     var docs=[]; ['shinv|invoice','shpk|packing','shcmr|cmr','shtn|tn'].forEach(function(x){ var p=x.split('|'), e=el(p[0]); if(e&&e.checked&&!e.disabled) docs.push(p[1]); });
     if(!docs.length){ setm('shmsg','err','Отметьте хотя бы один документ'); return false; }
-    var data={ fields:{ loadDate:ruDate(val('shd')), unloadPlace:val('shup').trim(), unloadCountry:val('shuc').trim(), instructions:val('shin').trim(), tractor:val('shtr').trim(), trailer:val('shtl').trim() }, docs:docs, blankId:val('shbl'), newBlank:!!TWSH.newBlank };
+    var data={ fields:{ loadDate:ruDate(val('shd')), unloadPlace:val('shup').trim(), unloadCountry:val('shuc').trim(), instructions:val('shin').trim(), tractor:val('shtr').trim(), trailer:val('shtl').trim(), proxy:val('shpx').trim(), proxyBy:val('shpb').trim() }, docs:docs, blankId:val('shbl'), newBlank:!!TWSH.newBlank };
     run({vapi:'shipissue', deal:TWSH.deal, data:JSON.stringify(data)}, 'Выписываю документы…', 'shmsg').then(function(x){ if(!x) return;
       var res=x.results||{}, names={invoice:TWSH.r.invoiceTitle, packing:'Упаковочный лист', cmr:'CMR', tn:'ТН'}, h='';
       Object.keys(res).forEach(function(k){ var v=res[k]||{}; h+='<div>'+(v.ok?'✅':'❌')+' '+esc(names[k]||k)+(v.number?' № '+esc(v.number):'')+(v.blank?' '+esc(v.blank):'')+': '+(v.ok?(v.url?'<a href="'+esc(v.url)+'" target="_blank" rel="noopener">открыть</a>':'готово'):'<span class="err">'+esc(v.error||errText(v))+'</span>')+(v.ok&&v.error?' <span class="err">'+esc(v.error)+'</span>':'')+'</div>'; });
