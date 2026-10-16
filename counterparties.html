@@ -460,6 +460,7 @@ function renderClient(){
     +'<button class="sm sec" onclick="saveMarket()">Сохранить рынок</button><span class="msg" id="mkMsg" style="margin:0"></span></div>'
     +'<div class="sm muted" style="margin-top:var(--s-2)">От рынка зависят шаблоны договоров и счетов, валюта и серия номеров: Беларусь — BYN, Россия — RUB, Европа и другое — EUR (проформа, затем коммерческий инвойс).</div></div>'
     +'</div>';
+  h+=cmrBlock(r, b, m);
   h+=similarHtml(r.similar||[]);
   h+='<div class="chips" style="margin:var(--s-4) 0 var(--s-3)">'
     +'<span class="chip'+(CC_TAB==='sales'?' on':'')+'" role="button" tabindex="0" onclick="setTab(\'sales\')">Продажи</span>'
@@ -501,6 +502,23 @@ function renderClient(){
 }
 function setTab(t){ CC_TAB=t; renderClient(); }
 /* ── похожие записи: одна компания, заведённая дважды (клиентом в продажах и поставщиком из выписки) ── */
+/* графы CMR по умолчанию (16.10.2026): п. 2 (адрес и контакт получателя), п. 3 (место и страна разгрузки), п. 13 (таможня) — одинаковы от отгрузки
+   к отгрузке; окно «Отгрузочные документы» подставляет их, остаётся вписать машину. Только клиенту РФ/Европы. */
+var CMR_F=[['rcvAddress','п. 2 — адрес получателя (со страной)','569 67 Osík 50, Osík, Svitavy, Česká republika'],['rcvContact','п. 2 — контакт получателя','Mobile +420… Имя Фамилия'],
+  ['unloadPlace','п. 3 — место разгрузки','Osik'],['unloadCountry','п. 3 — страна разгрузки','Česká republika'],['instructions','п. 13 — указания отправителя (таможня)','Nam. 17. listopadu 2059, 560 02 CeskaTrebova, CZ']];
+function cmrBlock(r, b, m){
+  if(!b.client||!(m==='eu'||m==='ru'||m==='other')) return '';
+  var c=r.cmr||{}, ed=CAN.edit, filled=CMR_F.some(function(f){ return c[f[0]]; });
+  var rows=CMR_F.map(function(f){ return '<label style="display:block;margin-top:var(--s-2)"><span class="sm muted" style="display:block">'+esc(f[1])+'</span>'
+    +(ed?'<input id="cmr_'+f[0]+'" value="'+esc(c[f[0]]||'')+'" placeholder="'+esc(f[2])+'" autocomplete="off" style="width:100%">':'<span>'+esc(c[f[0]]||'—')+'</span>')+'</label>'; }).join('');
+  return '<details class="card" style="margin-top:var(--s-3)"'+(filled?'':' open')+'><summary><b>🚚 CMR по умолчанию</b> <span class="sm muted">'+(filled?'заполнено — подставится в отгрузку':'не заполнено')+'</span></summary>'
+    +'<div class="sm muted" style="margin-top:var(--s-2)">Подставляется в окно «Отгрузочные документы» — останется вписать машину и доверенность.</div>'+rows
+    +(ed?'<div class="row" style="margin-top:var(--s-3)"><button class="sm" onclick="saveCmr()">Сохранить</button><span class="msg" id="cmrMsg" style="margin:0"></span></div>':'')+'</details>';
+}
+function saveCmr(){
+  var o={}; CMR_F.forEach(function(f){ var e=el('cmr_'+f[0]); if(e) o[f[0]]=e.value.trim(); });
+  run({vapi:'counterpartycmr', id:CKEY, data:JSON.stringify(o)}, 'Сохраняю…', 'cmrMsg').then(function(x){ if(!x) return; CC.cmr=x.cmr; setm('cmrMsg','ok','Сохранено'); });
+}
 function similarHtml(list){
   if(!list.length) return '';
   return '<div class="note warn" style="margin-top:var(--s-3)"><div><b>Похожие записи</b> — возможно, это та же компания, заведённая второй раз:</div>'
