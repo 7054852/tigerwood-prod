@@ -73,9 +73,11 @@ function twShipDlg(){
   // таблица «что отгружаем»: переформирование — переформируемая ТН из «уже уехало» вычитается (её количество снова свободно)
   TWSH.renderLines=function(){ var box=el('shlines'); if(!box) return; var nb=TWSH.newBlank, prev=prevTn[0], ps={}; if(prev&&!nb) (prev.ship||[]).forEach(function(l){ ps[l.id]=Number(l.qty)||0; });
     var over=0, under=0, h='<div class="tbl-wrap" style="margin-top:var(--s-2)"><table class="tbl sm mob"><thead><tr><th>Товар</th><th class="num">Заказано</th><th class="num">Уже уехало</th><th class="num">На паллетах — отгружаем</th></tr></thead><tbody>'
-      +lines.map(function(l){ var sh=nb?l.shipped:(prev?(prev.ship?Math.max(0,l.shipped-(ps[l.id]||0)):Math.max(0,l.shipped-l.qty)):l.shipped), left=Math.max(0,l.qty-sh); if(l.onPallets>left) over++; if(l.onPallets<left) under++;
+      +lines.map(function(l){ if(l.extra) return '<tr><td data-l="Товар">'+esc(l.name)+'</td><td data-l="Заказано" class="num">—</td><td data-l="Уже уехало" class="num">—</td><td data-l="На паллетах" class="num"><b>'+esc(l.onPallets)+'</b></td></tr>';   // сверх сделки (16.10.2026): в ТН и инвойс по цене каталога
+        var sh=nb?l.shipped:(prev?(prev.ship?Math.max(0,l.shipped-(ps[l.id]||0)):Math.max(0,l.shipped-l.qty)):l.shipped), left=Math.max(0,l.qty-sh); if(l.onPallets>left) over++; if(l.onPallets<left) under++;
         return '<tr><td data-l="Товар">'+esc(l.name)+'</td><td data-l="Заказано" class="num">'+esc(l.qty)+'</td><td data-l="Уже уехало" class="num">'+esc(sh)+'</td><td data-l="На паллетах" class="num"><b'+(l.onPallets>left?' class="err"':'')+'>'+esc(l.onPallets)+'</b></td></tr>'; }).join('')
       +'</tbody></table></div>'
+      +(TWSH.r.extraError?'<div class="note warn"><div>⚠ '+esc(TWSH.r.extraError)+'</div></div>':'')
       +(noPack0?'<div class="sm muted">Паллетовки нет — документы будут на все позиции сделки.</div>':'')
       +(over?'<div class="note warn"><div>⚠ На паллетах больше, чем осталось по сделке — проверьте паллетовку.</div></div>':'')
       +(under&&!noPack0?'<div class="sm muted">Частичная отгрузка: остаток уйдёт следующей отгрузкой (ещё одна ТН и CMR).</div>':'');
