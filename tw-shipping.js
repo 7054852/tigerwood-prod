@@ -129,6 +129,12 @@ function twPacking(orderKey){
 /** что везём: заказ на производство (по умолчанию — заказ сделки) или позиции сделки; разложено/осталось — по всем паллетам */
 /* наше имя товара (оборудование · модель с цветом) — по документному «Набор для домашнего гимнастического комплекса» башни не различить (владелец 16.10.2026) */
 function twPkInternal(pid){ var all=((TWPK.r.order?TWPK.r.order.items:TWPK.r.dealItems)||[]).concat(TWPK.products||[]); for(var i=0;i<all.length;i++) if(all[i].productId===pid) return all[i].internal||''; return ''; }
+/* покрытие и цвет крупной меткой (владелец 16.10.2026: «белый или лакированный?»): поле «цвет» у BusyKids пустое — берём из имени модели */
+var TWPK_FIN=[[/\bLAK\b/i,'лак','ok'],[/\bWP\b/i,'шлифованный, без лака','warn'],[/\bWHITE\b/i,'белый','info'],[/\bGRAY\b|\bGREY\b/i,'серый','info'],[/\bBLUE\b/i,'синий','info'],
+  [/\bBROWN\b/i,'коричневый','info'],[/\bPINK\b/i,'розовый','info'],[/\bBLACK\b/i,'чёрный','info'],[/\bDARK\b/i,'тёмный','info'],[/\bMDF\b/i,'МДФ','info'],[/\bUV\b/i,'УФ-печать','info']];
+function twPkFinish(internal){ var m=String(internal||'').split(' · ').pop(), out=[];
+  TWPK_FIN.forEach(function(f){ if(f[0].test(m)) out.push('<span class="pill '+f[2]+'" style="font-weight:700;margin-left:4px">'+f[1]+'</span>'); });
+  return out.join(''); }
 function twPkPool(){
   var r=TWPK.r, src=r.order?r.order.items:r.dealItems, placed={};
   TWPK.pallets.forEach(function(p){ p.lines.forEach(function(l){ placed[l.productId]=(placed[l.productId]||0)+(Number(l.qty)||0); }); });
@@ -152,7 +158,7 @@ function twPkRender(){
   var pals=TWPK.pallets.map(function(p,i){
     var net=0, gross=0, boxes=0, qty=0; p.lines.forEach(function(l){ net+=Number(l.netKg)||0; gross+=Number(l.grossKg)||0; boxes+=Number(l.boxes)||0; qty+=Number(l.qty)||0; });
     var on=(i===TWPK.sel);
-    var rows=p.lines.map(function(l,j){ return '<div class="pk-ln"><div class="nm"><span>'+esc(l.internal||twPkInternal(l.productId)||l.name)+' <span class="muted">'+esc(l.sku)+'</span></span><button class="ic" title="снять с паллеты" onclick="twPkDel('+i+','+j+');event.stopPropagation()">🗑</button></div>'
+    var rows=p.lines.map(function(l,j){ return '<div class="pk-ln"><div class="nm"><span>'+esc(l.internal||twPkInternal(l.productId)||l.name)+twPkFinish(l.internal||twPkInternal(l.productId))+' <span class="muted">'+esc(l.sku)+'</span></span><button class="ic" title="снять с паллеты" onclick="twPkDel('+i+','+j+');event.stopPropagation()">🗑</button></div>'
       +'<div class="ins"><label>шт '+inp(i,j,'qty',l.qty,1)+'</label><label>кор. '+inp(i,j,'boxes',l.boxes,1)+'</label><label>нетто '+inp(i,j,'netKg',l.netKg,0.01)+'</label><label>брутто '+inp(i,j,'grossKg',l.grossKg,0.01)+'</label></div></div>'; }).join('');
     return '<div class="pk-pal'+(on?' on':'')+'" onclick="twPkSelect('+i+')">'
       +'<div class="hd"><b>Паллета '+(i+1)+'</b>'+(on?'<span class="pill ok">сюда кладём</span>':'<button class="sm sec" onclick="twPkSelect('+i+');event.stopPropagation()">выбрать</button>')+'<span class="sp"></span>'
@@ -165,7 +171,7 @@ function twPkRender(){
   // ── что везём (справа): товары заказа сделки (нет заказа — позиции сделки), остаток, количество и кнопка на выбранную паллету ──
   var prow=pool.map(function(it,i){
     var over=it.left<0, done=it.left===0;
-    return '<tr'+(over?' style="color:var(--red)"':done?' class="muted"':'')+'><td>'+esc(it.internal||it.name)+'<div class="muted sm">'+esc(it.sku)+' · '+it.qty+' шт'+(it.placed?' · разложено '+it.placed:'')+'</div></td>'
+    return '<tr'+(over?' style="color:var(--red)"':done?' class="muted"':'')+'><td>'+esc(it.internal||it.name)+twPkFinish(it.internal)+'<div class="muted sm">'+esc(it.sku)+' · '+it.qty+' шт'+(it.placed?' · разложено '+it.placed:'')+'</div></td>'
       +'<td class="num">'+(over?'<b>лишнее '+(-it.left)+'</b>':done?'✓':('<input type="number" min="1" max="'+it.left+'" step="1" id="pkq'+i+'" value="'+it.left+'" style="width:64px">'))+'</td>'
       +'<td>'+(it.left>0?'<button class="sm" onclick="twPkAdd(\''+esc(it.productId)+'\','+i+')">→ Паллета '+selNo+'</button>':'')+'</td></tr>'; }).join('');
   var right='<div class="pk-pool"><div class="row" style="align-items:center"><b>Что везём</b><span class="sm muted">'+(r.order?esc(r.order.num):'позиции сделки')+' · осталось <b>'+leftAll+'</b> шт</span></div>'
