@@ -22,7 +22,8 @@ function twShRender(){
     +'<button class="gho sm" onclick="twBoxStickers()" title="стикер 40×30 мм на коробку для каждого товара заказа — печать на принтере наклеек">🔖 Стикеры на коробки</button></div>';
   h+=(r.docs||[]).map(function(d){
     var pills=d.uploaded?'<span class="pill info">загружен</span>':(d.status==='сформирован'?'<span class="pill ok">'+esc(d.status)+'</span>':'<span class="pill bad">'+esc(d.status)+'</span>');
-    var acts=d.docType==='waybill_tn'&&!d.uploaded?'<a href="#" onclick="twWbPdf(\''+esc(d.id)+'\');return false;" title="одна страница A4, без сетки — для печати на бланке">🖨 PDF для печати</a>':'';
+    // 🖨 PDF — у всех сформированных таблиц (ТН, CMR, упаковочный лист, инвойс): одна страница A4 по ширине, без сетки (владелец 17.10.2026: CMR из Google-таблицы печатался на 2 листа)
+    var acts=(d.docType==='waybill_tn'||d.docType==='cmr'||d.docType==='packing_list'||d.docType==='commercial_invoice'||d.docType==='invoice_rf_vat')&&!d.uploaded&&d.status==='сформирован'?'<a href="#" onclick="twWbPdf(\''+esc(d.id)+'\');return false;" title="одна страница A4, без сетки — для печати">🖨 PDF для печати</a>':'';
     return twFileCard({ href:d.url, tab:1, tag:twShTag(d.docType), title:d.type+(d.number&&d.number!=='декларация'?' '+d.number:''), meta:[d.date, d.name].filter(Boolean).join(' · '), pills:pills, acts:acts, off:d.status!=='сформирован' });
   }).join('');
   if(!(r.docs||[]).length) h+='<div class="sm">Отгрузочных документов ещё нет.</div>';
