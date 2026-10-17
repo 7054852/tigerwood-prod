@@ -19,6 +19,7 @@ function twShRender(){
     +' · заказ на производство '+(r.order?'<b>'+esc(r.order.num)+'</b>':'<span class="warn">не заведён</span>')+'</div>';
   h+='<div class="row" style="align-items:center;margin-bottom:var(--s-2)"><span class="sm">🧱 Паллетовка: '+(p.pallets?('<b>'+p.pallets+'</b> паллет · <b>'+p.boxes+'</b> коробок · брутто <b>'+money(p.gross)+'</b> кг'):'<span class="warn">товары не разложены по паллетам</span>')+'</span>'
     +'<button class="sec sm" onclick="twPacking()">🧱 Паллетовка</button>'+(p.pallets?'<button class="gho sm" onclick="twPalletSheets()" title="лист на каждую паллету: что на ней лежит — печать на A4">🏷 Листы на паллеты</button>':'')
+    +'<button class="gho sm" onclick="twShipReport()" title="заказано — уехало — осталось: лист для клиента, печать или «Сохранить как PDF»">📋 Отчёт клиенту</button>'
     +'<button class="gho sm" onclick="twBoxStickers()" title="стикер 40×30 мм на коробку для каждого товара заказа — печать на принтере наклеек">🔖 Стикеры на коробки</button></div>';
   h+=(r.docs||[]).map(function(d){
     var pills=d.uploaded?'<span class="pill info">загружен</span>':(d.status==='сформирован'?'<span class="pill ok">'+esc(d.status)+'</span>':'<span class="pill bad">'+esc(d.status)+'</span>');
@@ -214,6 +215,45 @@ function twPkDel(i,j){ twPkSync(); TWPK.pallets[i].lines.splice(j,1); twPkRender
 function twPkDelPallet(i){ if(TWPK.pallets.length<2) return; twPkSync(); TWPK.pallets.splice(i,1); if(TWPK.sel>=TWPK.pallets.length) TWPK.sel=TWPK.pallets.length-1; twPkRender(); }
 function twPkMove(i,d){ twPkSync(); var j=i+d; if(j<0||j>=TWPK.pallets.length) return; var t=TWPK.pallets[i]; TWPK.pallets[i]=TWPK.pallets[j]; TWPK.pallets[j]=t; if(TWPK.sel===i) TWPK.sel=j; else if(TWPK.sel===j) TWPK.sel=i; twPkRender(); }
 function twPkNew(){ twPkSync(); TWPK.pallets.push({ note:'', lines:[] }); TWPK.sel=TWPK.pallets.length-1; twPkRender(); }
+
+/* ── отчёт клиенту (владелец 17.10.2026): «заказано — уехало — осталось» по сделке, с номерами ТН/CMR/инвойсов; A4, печать или «Сохранить как PDF».
+   Европа/другое — по-английски, Россия/Беларусь — по-русски. Данные — shipreport (sales/docs/shipping.ts shipReport). ── */
+function twShipReport(){
+  var w=window.open('', '_blank');
+  if(!w){ (typeof oops==='function'?oops:alert)('Браузер не дал открыть окно — разрешите всплывающие окна для сайта'); return; }
+  w.document.write('<!doctype html><title>Отчёт по отгрузке</title><body style="font-family:system-ui,sans-serif;padding:24px">Готовлю отчёт…</body>');
+  get({vapi:'shipreport', deal:TWSH.deal}).then(function(r){
+    if(!r||!r.ok){ w.document.body.innerHTML='Отчёт не собрался: '+esc(errText(r)); return; }
+    w.document.open(); w.document.write(twShipReportHtml(r)); w.document.close();
+  }).catch(function(e){ w.document.body.innerHTML='Связь оборвалась: '+esc((e&&e.message)||e); });
+}
+function twShipReportHtml(r){
+  var en=(r.market==='eu'||r.market==='other'), T=en
+    ?{ttl:'Shipment report', client:'Buyer', order:'Order', inv:'Invoice', contract:'Contract', date:'Date', art:'Article', item:'Item', ord:'Ordered', shp:'Shipped', left:'Remaining', tot:'Total', docs:'Shipping documents', tn:'Waybill', cmr:'CMR', ci:'Commercial invoice', pcs:'pcs', print:'Print / Save as PDF'}
+    :{ttl:'Отчёт по отгрузке', client:'Покупатель', order:'Заказ', inv:'Счёт', contract:'Договор', date:'Дата', art:'Артикул', item:'Товар', ord:'Заказано', shp:'Отгружено', left:'Осталось', tot:'Итого', docs:'Документы отгрузки', tn:'ТН', cmr:'CMR', ci:'Инвойс / счёт-фактура', pcs:'шт.', print:'Печать / Сохранить как PDF'};
+  var so=0, ss=0, sl=0, rows=(r.rows||[]).map(function(x){ var left=Math.max(0,(Number(x.ordered)||0)-(Number(x.shipped)||0)); so+=Number(x.ordered)||0; ss+=Number(x.shipped)||0; sl+=left;
+    return '<tr><td class="sku">'+esc(x.sku)+'</td><td>'+esc(en?x.en:x.ru)+'</td><td class="n">'+esc(x.ordered)+'</td><td class="n b">'+esc(x.shipped)+'</td><td class="n'+(left?' w':'')+'">'+(left||'—')+'</td></tr>'; }).join('');
+  var dn={waybill_tn:T.tn, cmr:T.cmr, commercial_invoice:T.ci, invoice_rf_vat:T.ci};
+  var docs=(r.docs||[]).slice().reverse().map(function(d){ return '<li>'+esc(dn[d.type]||d.type)+' '+esc(d.number)+' — '+esc(d.date)+'</li>'; }).join('');
+  var meta=[[T.client, r.client], [T.order, [r.buyerRef, r.deal].filter(Boolean).join(' · ')], [T.inv, r.invoice?(r.invoice.number+' — '+r.invoice.date):''], [T.contract, r.contract?(r.contract.number+' — '+r.contract.date):''], [T.date, r.today]]
+    .filter(function(m){ return m[1]; }).map(function(m){ return '<div><span>'+esc(m[0])+'</span><b>'+esc(m[1])+'</b></div>'; }).join('');
+  return '<!doctype html><html lang="'+(en?'en':'ru')+'"><head><meta charset="utf-8"><title>'+esc(T.ttl+' — '+(r.buyerRef||r.deal||''))+'</title>'
+    +'<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&display=swap"><style>'
+    +'@page{size:A4 portrait;margin:14mm}html,body{margin:0;background:#EEF1F5;color:#151A24;font-family:Onest,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}'
+    +'.bar{position:sticky;top:0;background:#fff;padding:10px 16px;border-bottom:1px solid #E4E7EC;font:14px/20px Onest,system-ui,sans-serif;display:flex;gap:12px;align-items:center}'
+    +'.bar button{margin-left:auto;font:600 14px Onest,system-ui;padding:8px 16px;border-radius:8px;border:0;background:#2458C9;color:#fff;cursor:pointer}'
+    +'.pg{background:#fff;max-width:182mm;margin:16px auto;padding:14mm;box-sizing:border-box;box-shadow:0 1px 3px rgba(0,0,0,.08)}'
+    +'h1{font-size:22px;margin:0 0 12px}.meta{display:grid;grid-template-columns:1fr 1fr;gap:6px 24px;font-size:12px;margin-bottom:16px}.meta span{display:block;color:#667085;font-size:11px}'
+    +'table{width:100%;border-collapse:collapse;font-size:12px}th{text-align:left;color:#667085;font-weight:500;border-bottom:1.5px solid #151A24;padding:6px 6px}td{border-bottom:1px solid #E4E7EC;padding:6px}'
+    +'.n{text-align:right;white-space:nowrap}.b{font-weight:700}.w{color:#B54708;font-weight:600}.sku{color:#667085;white-space:nowrap}tfoot td{font-weight:700;border-top:1.5px solid #151A24;border-bottom:0}'
+    +'h2{font-size:13px;margin:18px 0 6px}ul{margin:0;padding-left:18px;font-size:12px}'
+    +'@media print{html,body{background:#fff}.bar{display:none}.pg{box-shadow:none;margin:0;padding:0;max-width:none}}'
+    +'</style></head><body><div class="bar"><b>'+esc(T.ttl)+'</b><span>'+esc(r.client)+'</span><button onclick="window.print()">🖨 '+esc(T.print)+'</button></div>'
+    +'<div class="pg"><h1>'+esc(T.ttl)+'</h1><div class="meta">'+meta+'</div>'
+    +'<table><thead><tr><th>'+esc(T.art)+'</th><th>'+esc(T.item)+'</th><th class="n">'+esc(T.ord)+'</th><th class="n">'+esc(T.shp)+'</th><th class="n">'+esc(T.left)+'</th></tr></thead>'
+    +'<tbody>'+rows+'</tbody><tfoot><tr><td></td><td>'+esc(T.tot)+', '+esc(T.pcs)+'</td><td class="n">'+so+'</td><td class="n">'+ss+'</td><td class="n">'+(sl||'—')+'</td></tr></tfoot></table>'
+    +(docs?'<h2>'+esc(T.docs)+'</h2><ul>'+docs+'</ul>':'')+'</div></body></html>';
+}
 
 /* ── листы на паллеты (владелец 12.10.2026): на каждую паллету клеится лист A4 «что на ней лежит» — по образцу Google-документа «Order: OBJ-…»:
    Order: <заказ покупателя> · Palet #N · по строкам: артикул / <имя EN> Parts - / <шт> pcs. «Parts -» — обязательно (владелец).
