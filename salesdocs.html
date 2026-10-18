@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="tw-theme.js"></script>
 <script src="tw-config.js"></script>
-<script src="tw-waybill.js?v=20261017b"></script>
+<script src="tw-waybill.js?v=20261019a"></script>
 <title>Тигервуд — Договоры, счета, накладные</title>
 <!-- Замена GAS-панелей хаба ContractsPanel (?page=contracts), InvoicesPanel (?page=invoices), DocsPanel (?page=docs).
      ?tab=contracts|invoices|docs — открыть вкладку (так ведут пункты меню). Вкладки видны по разделам роли (people/model.ts ROLE_SECTIONS).
@@ -128,7 +128,7 @@
       <select id="rgYear" style="flex:0 0 110px;width:auto" onchange="regSet('year',this.value)"><option value="">все годы</option></select>
       <input id="rgQ" placeholder="поиск: клиент, № бланка, заказ" style="flex:1;min-width:180px" oninput="regSearch()">
     </div>
-    <div class="seg" id="rsSeg" style="margin-bottom:var(--s-3)"><button data-s="" class="on" onclick="regSet('status','')">Все</button><button data-s="issued" onclick="regSet('status','issued')">Ждут подписи</button><button data-s="signed" onclick="regSet('status','signed')">Подписаны</button><button data-s="reserved" onclick="regSet('status','reserved')">Резерв</button><button data-s="spoiled" onclick="regSet('status','spoiled')">Испорчены</button></div>
+    <div class="seg" id="rsSeg" style="margin-bottom:var(--s-3)"><button data-s="" class="on" onclick="regSet('status','')">Все</button><button data-s="issued" onclick="regSet('status','issued')">Ждут подписи</button><button data-s="signed" onclick="regSet('status','signed')">Подписаны</button><button data-s="reserved" onclick="regSet('status','reserved')">Резерв</button><button data-s="free" onclick="regSet('status','free')">Пустые</button><button data-s="spoiled" onclick="regSet('status','spoiled')">Испорчены</button></div>
     <div id="regBox" class="sm">Загрузка…</div>
   </div>
 
@@ -483,7 +483,8 @@ function regSet(k, v){ REG[k]=v;
   [['rkSeg','data-k','kind'],['rsSeg','data-s','status']].forEach(function(a){ var bs=el(a[0]).querySelectorAll('button'); for(var i=0;i<bs.length;i++) bs[i].className=(bs[i].getAttribute(a[1])===REG[a[2]])?'on':''; });
   loadRegistry(); }
 function regSearch(){ clearTimeout(REG_T); REG_T=setTimeout(function(){ REG.q=val('rgQ').trim(); loadRegistry(); }, 300); }
-var WB_ST={ issued:['warn','ждёт подписи'], signed:['ok','подписана'], reserved:['info','резерв'], spoiled:['muted','испорчена'] };
+// free — пропущенный бланк (номер ниже последнего занятого той же серии, 19.10.2026): пустой, выбирается в окне накладной («Бланк ТН»)
+var WB_ST={ issued:['warn','ждёт подписи'], signed:['ok','подписана'], reserved:['info','резерв'], spoiled:['muted','испорчена'], free:['ok','пустой — можно использовать'] };
 function eripPill(e){ if(!e||!(e.issued>0)) return '<span class="sm">—</span>';
   return e.paid>=e.issued-0.01?'<span class="pill ok">оплачено</span>':'<span class="pill '+(e.paid>0?'warn':'')+'">'+money(e.paid)+' из '+money(e.issued)+'</span>'; }
 function loadRegistry(){
@@ -492,7 +493,7 @@ function loadRegistry(){
     if(!r||!r.ok){ box.innerHTML='<span class="err">⚠️ '+esc(errText(r))+'</span>'; return; }
     var ys=el('rgYear'), cur=REG.year; if(r.years&&ys.options.length<=1) ys.innerHTML='<option value="">все годы</option>'+r.years.map(function(y){ return '<option>'+y+'</option>'; }).join(''); ys.value=cur;
     var c=r.counts||{}, rows=REG_ROWS=r.rows||[];
-    var head='<div class="row" style="margin-bottom:var(--s-2)"><span class="pill warn">ждут подписи '+(c.issued||0)+'</span><span class="pill ok">подписаны '+(c.signed||0)+'</span><span class="pill info">резерв '+(c.reserved||0)+'</span><span class="pill muted">испорчены '+(c.spoiled||0)+'</span><span class="sm">· показано '+esc(r.count)+'</span></div>';
+    var head='<div class="row" style="margin-bottom:var(--s-2)"><span class="pill warn">ждут подписи '+(c.issued||0)+'</span><span class="pill ok">подписаны '+(c.signed||0)+'</span><span class="pill info">резерв '+(c.reserved||0)+'</span>'+(c.free?'<span class="pill ok" title="бланки, пропущенные при выписке: выбираются в окне накладной в поле «Бланк»">пустые '+c.free+'</span>':'')+'<span class="pill muted">испорчены '+(c.spoiled||0)+'</span><span class="sm">· показано '+esc(r.count)+'</span></div>';
     if(!rows.length){ box.innerHTML=head+'<div class="empty">Ничего не найдено.</div>'; return; }
     box.innerHTML=head+'<div class="tbl-wrap fill"><table class="tbl reg mob adapt"><thead><tr><th>Бланк / дата</th><th>Клиент</th><th>Заказ</th><th>Договор</th><th class="num">Сумма</th><th>Оплата ЕРИП</th><th>Статус</th><th></th></tr></thead><tbody>'
       +rows.map(function(x, i){
@@ -503,6 +504,7 @@ function loadRegistry(){
           +(x.status==='signed'&&x.signedUrl?'<a href="'+esc(x.signedUrl)+'" target="_blank" rel="noopener">скан ↗</a>':'')
           +(x.status==='reserved'?'<button onclick="regUnreserve('+i+')">снять резерв</button>':'')
           +((x.status==='issued'||x.status==='signed')?'<button class="danger" onclick="regCancel('+i+')" title="Отменить накладную">✕</button>':'');
+        if(x.status==='free') act='<span class="sm muted">выберите в окне накладной</span>';
         return '<tr'+(x.status==='spoiled'?' class="sp"':'')+'>'
           +'<td data-l="Бланк" style="white-space:nowrap"><b>'+esc((x.seria?x.seria+' ':'')+x.num)+'</b><span class="sub2">'+esc([x.kind, x.date].filter(Boolean).join(' · '))+'</span></td>'
           +'<td data-l="Клиент">'+esc(x.contra)+'</td><td data-l="Заказ">'+(x.dealId&&hasSec('deals')?'<a href="sales.html?deal='+encodeURIComponent(x.dealId)+'">'+esc(x.order||'сделка')+'</a>':esc(x.order))+'</td>'
