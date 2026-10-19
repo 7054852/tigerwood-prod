@@ -495,23 +495,54 @@ function renderExp(){
   if(!EXP.length){ el('expBox').innerHTML='<div class="empty">Все расходные строки выписки разнесены.</div>'; el('expGo').className='primary hide'; el('expHint').className='mut hide'; return; }
   var h='<div class="tbl-wrap"><table class="reg"><thead><tr><th></th><th>Дата</th><th>Контрагент</th><th class="num">Сумма</th><th>Что сделать</th><th>Статья</th><th>Назначение</th></tr></thead><tbody>';
   EXP.forEach(function(p, i){
-    var auto=p.action==='match'||p.action==='recognize'||p.action==='partial', what='';
+    var canSplit=(p.action==='create'||p.action==='recognize')&&!p.hoz;
+    if(canSplit && p.split && !(p.lineId in SPLIT)) SPLIT[p.lineId]=p.split;   // запомненная разбивка контрагента и договора
+    var sp=canSplit?SPLIT[p.lineId]:null;
+    var auto=p.action==='match'||p.action==='recognize'||p.action==='partial'||!!sp, what='';
     if(p.action==='match') what='<span class="pill ok">'+ACT.match+'</span> '+esc(p.expName)+(p.sumFix?' <span class="mut">план '+money(p.planSum)+'</span>':'')+'<div class="mut">'+esc(p.basis)+'</div>';
     else if(p.action==='partial') what='<span class="pill info">'+ACT.partial+'</span> '+esc(p.expName)+'<div class="mut">план '+money(p.planSum)+', останется '+money(p.rest)+'</div>';
     else if(p.action==='recognize') what=p.hoz?'<span class="pill info">перевод на наличный кошелёк</span><div class="mut">хозрасходы — не расход, а выдача наличных</div>':'<span class="pill ok">'+ACT.recognize+'</span><div class="mut">распознано по назначению</div>';
     else if(p.action==='ambiguous') what='<select id="ex_c'+i+'"><option value="">— выберите карточку —</option>'+p.candidates.map(function(c){ return '<option value="'+c.expId+'">'+esc(c.name)+' · '+money(c.sum)+(c.planIso?' · '+dm(c.planIso):'')+'</option>'; }).join('')+'<option value="new">новый расход</option></select>';
     else what='<span class="pill mute">'+ACT.create+'</span>';
+    // разбивка на несколько статей (20.10.2026): «Разбить» — части со своими статьями; разбитая строка показывает части
+    if(sp) what='<span class="pill info">разбито</span> '+sp.map(function(x){ return money(x.sum)+' · '+esc(catName(x.categoryId)||'без статьи'); }).join(' + ')
+      +'<div><a href="#" onclick="spOpen('+i+');return false;">изменить</a> · <a href="#" onclick="spClear('+i+');return false;">без разбивки</a></div>';
+    else if(canSplit) what+=' <button class="sec sm" onclick="spOpen('+i+')" title="разделить платёж на несколько статей">Разбить</button>';
     var cat=p.categoryId||p.hintCategoryId||'';
     h+='<tr><td><input type="checkbox" id="ex_k'+i+'"'+(auto?' checked':'')+'></td><td class="n">'+dm(p.dateIso)+'</td><td>'+esc(p.contr)+'</td><td class="num">'+stSum(p.sum, p.walletId)+'</td><td>'+what+'</td>'
-      +'<td>'+(p.hoz?'<span class="mut">перевод</span>':'<select id="ex_s'+i+'">'+catOpts(cat,'expense')+'</select>')+'</td><td class="purp">'+esc(p.purpose)+'</td></tr>';
+      +'<td>'+(p.hoz?'<span class="mut">перевод</span>':sp?'<span class="mut">по частям</span>':'<select id="ex_s'+i+'">'+catOpts(cat,'expense')+'</select>')+'</td><td class="purp">'+esc(p.purpose)+'</td></tr>';
   });
   el('expBox').innerHTML=h+'</tbody></table></div>'; el('expGo').className='primary'; el('expHint').className='mut';
 }
+var SPLIT={}, SPI=-1;
+function catName(id){ for(var k=0;k<(REF.categories||[]).length;k++) if(REF.categories[k].id===id) return REF.categories[k].name; return ''; }
+function spRow(x){ return '<div class="al" style="display:grid;grid-template-columns:120px 1fr 28px;gap:8px;margin-top:6px"><input class="sp_s" inputmode="decimal" value="'+(x.sum===''?'':String(x.sum).replace('.',','))+'" oninput="spLeft()"><select class="sp_c">'+catOpts(x.categoryId||'','expense')+'</select><button class="sec sm" onclick="this.parentNode.remove();spLeft()">×</button></div>'; }
+function spOpen(i){
+  SPI=i; var p=EXP[i], cur=SPLIT[p.lineId]||[{ sum:p.sum, categoryId:(el('ex_s'+i)&&el('ex_s'+i).value)||p.categoryId||'' }, { sum:'', categoryId:'' }];
+  dlgOpen('<h3>Разбить платёж '+money(p.sum)+' · '+esc(p.contr)+'</h3><div class="mut">'+esc(p.purpose)+'</div>'
+    +'<div id="spRows">'+cur.map(spRow).join('')+'</div><div style="margin-top:8px"><button class="sec sm" onclick="spAdd()">＋ часть</button> <span id="spLeft" class="mut"></span></div>'
+    +'<div class="mut" style="margin-top:6px">Разбивка запомнится для этого контрагента и договора: следующий платёж придёт уже разбитым, разница сумм — в первую часть.</div>'+dlgFoot('spGo()','Готово'));
+  spLeft();
+}
+function spAdd(){ var d=document.createElement('div'); d.innerHTML=spRow({ sum:'', categoryId:'' }); el('spRows').appendChild(d.firstChild); spLeft(); }
+function spParts(){ var s=document.querySelectorAll('#spRows .sp_s'), c=document.querySelectorAll('#spRows .sp_c'), out=[];
+  for(var k=0;k<s.length;k++) out.push({ sum:num(s[k].value), categoryId:c[k].value||null }); return out; }
+function spLeft(){ var p=EXP[SPI], t=spParts().reduce(function(a,x){ return a+x.sum; },0), left=r2(p.sum-t);
+  el('spLeft').textContent=Math.abs(left)<0.005?'распределено полностью':(left>0?'осталось распределить '+money(left):'больше суммы платежа на '+money(-left)); }
+function spGo(){
+  var p=EXP[SPI], parts=spParts().filter(function(x){ return x.sum>0; });
+  if(parts.length<2){ setm('dlgMsg','warn','Нужно хотя бы две части.'); return; }
+  if(parts.some(function(x){ return !x.categoryId; })){ setm('dlgMsg','warn','У каждой части выберите статью.'); return; }
+  if(Math.abs(r2(parts.reduce(function(a,x){ return a+x.sum; },0))-p.sum)>0.004){ setm('dlgMsg','warn','Сумма частей должна быть равна платежу '+money(p.sum)+'.'); return; }
+  SPLIT[p.lineId]=parts.map(function(x){ return { sum:r2(x.sum), categoryId:x.categoryId }; }); dlgClose(); renderExp(); el('ex_k'+SPI).checked=true;
+}
+function spClear(i){ SPLIT[EXP[i].lineId]=null; renderExp(); }
 function expApply(){
   var dec=[], bad='';
   EXP.forEach(function(p, i){
     if(!el('ex_k'+i).checked) return;
     var d={ lineId:p.lineId, action:p.action, expId:p.expId||undefined, categoryId:(el('ex_s'+i)&&el('ex_s'+i).value)||undefined };
+    if(SPLIT[p.lineId] && (p.action==='create'||p.action==='recognize')){ d.action='create'; d.parts=SPLIT[p.lineId]; d.categoryId=undefined; }
     if(p.action==='ambiguous'){ var v=el('ex_c'+i).value; if(!v){ bad='В строке «'+p.contr+' '+money(p.sum)+'» выберите карточку или «новый расход».'; return; } if(v==='new'){ d.action='create'; } else { d.action='match'; d.expId=v; } }
     dec.push(d);
   });
