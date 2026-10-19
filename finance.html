@@ -130,7 +130,7 @@
   <div class="card">
     <div class="toolbar">
       <label>Счёт выписки <select id="stWallet"></select></label>
-      <input type="file" id="stFile" accept=".xlsx,.xls,.docx">
+      <input type="file" id="stFile" accept=".xlsx,.xls,.csv,.docx">
       <button class="primary" onclick="stUpload()">Загрузить выписку</button>
       <div class="end"><button class="sec" onclick="stRefresh()">Обновить</button></div>
     </div>
@@ -389,16 +389,19 @@ function statementParse(aoa){
   for(var h=0;h<aoa.length;h++){ var hr=(aoa[h]||[]).map(function(x){ return String(x==null?'':x).trim(); });
     if(!/^Дата/.test(hr[0]||'')) continue;
     var f=function(re){ for(var j=0;j<hr.length;j++) if(re.test(hr[j])) return j; return -1; };
-    var H={ d:f(/^Дебет/), c:f(/^Кредит/), n:f(/^(Бенефициар|Плательщик|Корреспондент)/), p:f(/^Назначение/), a:f(/^Номер сч/), b:f(/^БИК/), u:f(/^УНП$/) };
-    if(H.d>=0&&H.c>=0) C=H;
-    break; }
+    // Беларусбанк: «Дебет», «Бенефициар/Плательщик», «Номер счета», «БИК банка», «УНП»; Приорбанк CSV: «Номинал.Дебет», «Корреспондент.Название / .Счет / .Код / .УНП»,
+    // у евровой выписки у назначения нет заголовка — последняя колонка после эквивалентов
+    var H={ d:f(/(^|\.)Дебет/), c:f(/(^|\.)Кредит/), n:f(/^(Бенефициар|Плательщик)|\.Назван|\.Наименов/), p:f(/Назначение/), a:f(/^Номер сч|\.Сч[её]т$/), b:f(/БИК|\.Код$/), u:f(/(^|\.)УНП$/) };
+    if(H.d<0||H.c<0) continue;   // «Дата пред. опер.» в заголовке выписки — не шапка таблицы
+    if(H.p<0){ for(var q=hr.length-1;q>H.c;q--) if(!hr[q]){ H.p=q; } }
+    C=H; break; }
   for(var i=0;i<aoa.length;i++){
     var row=aoa[i]||[], c1=String(row[0]==null?'':row[0]).trim(), m=dateRe.exec(c1);
     if(!m) continue;
     var debit=n(row[C.d]), credit=n(row[C.c]);
     if(debit<=0 && credit<=0) continue;
     out.push({ dateIso:m[3]+'-'+m[2]+'-'+m[1], docNo:s(row,1), unp:s(row,C.u), debit:debit, credit:credit,
-      account:s(row,C.a).replace(/\s+/g,''), bik:s(row,C.b), contr:s(row,C.n), purpose:s(row,C.p) });
+      account:s(row,C.a).replace(/\s+/g,''), bik:/^[A-Z]{3}$/.test(s(row,C.b))?'':s(row,C.b), contr:s(row,C.n), purpose:s(row,C.p) });   // «EUR» в колонке кода — валюта, не БИК
   }
   return out;
 }
@@ -416,6 +419,19 @@ function stUpload(){
         if(p.currency && cur && p.currency!==cur){ setm('stMsg','warn','Выписка по счёту '+esc(p.account)+' в '+esc(p.currency)+', а выбран кошелёк в '+esc(cur)+' — выберите кошелёк этого счёта.'); return; }
         stSend(w, fi, p.rows, p.closing); }); };
     rdd.readAsDataURL(fi.files[0]); return;
+  }
+  // выписка CSV (Приорбанк, 20.10.2026): Windows-1251, разделитель «;» — колонки по шапке, как Excel; валюта счёта — из строки «Счет клиента»
+  if(/\.csv$/i.test(fi.files[0].name)){
+    var rdc=new FileReader();
+    rdc.onload=function(){ var t;
+      try{ t=new TextDecoder('windows-1251').decode(new Uint8Array(rdc.result)); }catch(e){ t=new TextDecoder('utf-8').decode(new Uint8Array(rdc.result)); }
+      if(/Ð|Ñ/.test(t.slice(0,400)) && !/[А-Яа-я]/.test(t.slice(0,400))) t=new TextDecoder('utf-8').decode(new Uint8Array(rdc.result));
+      var rows=statementParse(t.split(/\r?\n/).map(function(l){ return l.split(';'); }));
+      if(!rows.length){ setm('stMsg','warn','В файле не нашлось строк операций — это точно выписка из банка?'); return; }
+      var mc=/Сч[её]т клиента\**\s*(BY\w{26})\s+([A-Z]{3})/.exec(t), wn=(REF.wallets||[]).filter(function(x){ return x.id===w; })[0];
+      if(mc && wn && wn.currency && mc[2]!==wn.currency){ setm('stMsg','warn','Выписка по счёту '+esc(mc[1])+' в '+esc(mc[2])+', а выбран кошелёк в '+esc(wn.currency)+' — выберите кошелёк этого счёта.'); return; }
+      stSend(w, fi, rows, null); };
+    rdc.readAsArrayBuffer(fi.files[0]); return;
   }
   if(typeof XLSX==='undefined'){ setm('stMsg','err','Не загрузилась библиотека чтения Excel — проверьте интернет и откройте страницу заново.'); return; }
   setm('stMsg','','Читаю файл…');
