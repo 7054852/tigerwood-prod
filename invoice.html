@@ -185,7 +185,7 @@ function pageUrl(page, params){ var sp=new URLSearchParams(location.search); ['i
   Object.keys(params||{}).forEach(function(k){ if(params[k]!=null&&params[k]!=='') sp.set(k, params[k]); }); var s=sp.toString(); return page+(s?'?'+s:''); }
 
 /* ══════════ состояние ══════════ */
-var KEY=qp('invoice')||'new', CKEY=qp('contract'), D=null, ROWS=[], PRODS=[], EDIT=true, INC='FCA', PRE='pct';
+var KEY=qp('invoice')||'new', CKEY=qp('contract'), D=null, SVC=false, ROWS=[], PRODS=[], EDIT=true, INC='FCA', PRE='pct';
 var ST_CLS={new:'warn', draft:'warn', issued:'', cancelled:'muted'};
 
 function start(){ load(); }
@@ -211,19 +211,21 @@ function fill(){
   var accs=D.accounts||[]; el('f_acc').innerHTML=accs.length?accs.map(function(a){ return '<option value="'+esc(a.id)+'">'+esc(a.label||a.acc)+'</option>'; }).join(''):'<option value="">— первый счёт EUR из реквизитов —</option>';
   el('f_acc').value=t.account||''; if(accs.length&&!el('f_acc').value) el('f_acc').value=accs[0].id;
   el('main').className=EDIT?'':'ro';
+  // контракт на услуги (19.10.2026): условий поставки нет, 100 % предоплата — поле остатка не нужно; HS/артикул печатаются «—»
+  SVC=!!(D.contract&&D.contract.services); el('s_deliv').style.display=SVC?'none':''; el('f_bdays').parentNode.style.display=SVC?'none':'';
   var ins=el('main').querySelectorAll('#s_head input, #s_deliv input, #s_pay input, #s_pay select, #s_deliv button, #s_pay button');
   for(var i=0;i<ins.length;i++) if(ins[i].id!=='f_date') ins[i].disabled=!EDIT;
   renderHead(); renderRows(); paintInc(); paintPre(); renderDocs(); renderBtns();
 }
 function renderHead(){
   var c=D.contract, cl=D.client||{}, dl=D.deal;
-  el('hTitle').textContent=D.number?('Счёт на оплату № '+D.number):'Новый счёт на оплату (номер выдаётся при формировании)';
+  el('hTitle').textContent=(D.number?('Счёт на оплату № '+D.number):'Новый счёт на оплату (номер выдаётся при формировании)')+(SVC?' — услуги':'');
   el('ttl').textContent='🧾 '+(D.number?('Счёт на оплату № '+D.number):'Счёт на оплату (Европа)');
   el('hMeta').textContent=(cl.name||'')+(c?(' · к контракту № '+c.number+' от '+c.date):'')+(dl&&dl.num?(' · сделка '+dl.num+' ('+dl.stageRu+')'):'');
   el('stpills').innerHTML='<span class="pill '+(ST_CLS[D.status]||'')+'">'+esc(D.statusRu||D.status)+'</span> <span class="pill">Европа · EUR</span>';
   el('saveTop').style.display=EDIT?'':'none';
   var h='<span class="k">Клиент</span><span class="v"><b>'+esc(cl.name||'—')+'</b>'+(cl.address?(' · '+esc(cl.address)):'')+'</span>';
-  if(c) h+='<span class="k">Рамочный контракт</span><span class="v"><a href="'+esc(pageUrl('contract.html',{contract:c.id}))+'">№ '+esc(c.number||'черновик')+' от '+esc(c.date)+'</a>'
+  if(c) h+='<span class="k">'+(SVC?'Контракт на услуги':'Рамочный контракт')+'</span><span class="v"><a href="'+esc(pageUrl('contract.html',{contract:c.id}))+'">№ '+esc(c.number||'черновик')+' от '+esc(c.date)+'</a>'
     +' · действует до '+esc(c.validUntil||'—')+' <span class="pill '+(c.expired?'bad':(c.formed?'ok':'warn'))+'">'+esc(c.expired?'истёк':c.statusRu)+'</span>'
     +(!c.formed?'<div class="sm">счёт выставляется к сформированному контракту — сначала «Сформировать документ» в карточке контракта</div>':'')+'</span>';
   else if(D.contractError) h+='<span class="k">Рамочный контракт</span><span class="v"><span class="err">'+esc(D.contractError)+'</span></span>';
@@ -306,6 +308,9 @@ function renderDocs(){
   if(rest) h+=(cur>=0?('<details class="sm" style="margin-top:var(--s-2)"><summary style="cursor:pointer">Прежние версии ('+(docs.length-1)+') — заменены, клиенту не отправлять</summary><div style="margin-top:var(--s-2)">'+rest+'</div></details>'):rest);
   ci.forEach(function(x){ h+=twFileCard({ href:x.url, tab:1, tag:'CI', title:'Коммерческий инвойс № '+x.number, meta:[x.date, money(x.sum)+' EUR'].join(' · '),
     pills:x.status?'<span class="pill">'+esc(x.status)+'</span>':'', off:/аннул/.test(x.status||'') }); });
+  // акты выполненных работ по счёту услуг (19.10.2026): первый — действующий, прежние заменены
+  (D.acts||[]).forEach(function(x,i){ h+=twFileCard({ href:x.url, tab:1, tag:'АКТ', title:'Акт выполненных работ № '+D.number, meta:[x.date, money(x.sum)+' EUR', x.error||''].filter(Boolean).join(' · '),
+    off:x.status!=='formed'||i>0, pills:i===0&&x.status==='formed'?'<span class="pill ok">действующий</span>':'<span class="pill muted">'+esc(x.status==='failed'?'ошибка':'заменён')+'</span>' }); });
   if(D.status==='issued' && !docs.length) h+='<div class="sm">Номер выдан, документа нет — нажмите «Сформировать документ» ещё раз (номер тот же).</div>';
   el('docsBox').innerHTML=h||'<div class="sm">Документов нет.</div>';
 }
@@ -314,6 +319,7 @@ function renderBtns(){
   if(c.edit) h+='<button class="green" onclick="save()">Сохранить</button>';
   if(c.edit||c.render) h+='<button onclick="renderDoc()">Сформировать документ</button>';
   if(c.commercial) h+='<button class="sec" onclick="ciDlg()">Коммерческий инвойс…</button>';
+  if(c.act) h+='<button class="sec" onclick="actDlg()">Акт выполненных работ…</button>';
   if(c.cancel) h+='<button class="danger sec" onclick="cancelDlg()">Аннулировать</button>';
   el('botBtns').innerHTML='<div class="end">'+h+'</div>';
 }
@@ -360,6 +366,17 @@ function ciDlg(){
       run({vapi:'invoicecommercial', deal:D.deal.id, items:JSON.stringify(items), opts:JSON.stringify({ proforma:D.number })}, 'Формирую коммерческий инвойс…', 'ciMsg').then(function(r){ if(!r||!r.ok) return; hide('askmodal');
         var inv=r.invoice||{}, doc=r.invoiceDoc;
         info('Готово', '<div>✅ Коммерческий инвойс <b>№ '+esc(inv.number||'')+'</b> на '+money(inv.total)+' EUR. '+(doc&&doc.url?'<a href="'+esc(doc.url)+'" target="_blank" rel="noopener">Открыть ↗</a>':esc(r.invoiceDocError||''))+'</div>'); load(); });
+      return false;
+    }, 'Сформировать');
+}
+/** акт выполненных работ по счёту услуг (19.10.2026): дата акта → euactrender; номер акта = номер счёта, прежний акт заменяется */
+function actDlg(){
+  var has=(D.acts||[]).some(function(x){ return x.status==='formed'; });
+  ask('Акт выполненных работ № '+esc(D.number||''), '<div class="sm">Двуязычный акт по позициям счёта на '+money(D.total)+' EUR.'+(has?' Прежний акт будет заменён.':'')+' После акта заказ считается выполненным (отгруженным).</div>'
+    +'<label class="fl" style="margin-top:var(--s-3)"><span class="sm">Дата акта</span><input id="actDate" type="date" value="'+esc(new Date().toISOString().slice(0,10))+'"></label><div class="msg" id="actMsg"></div>',
+    function(){
+      run({vapi:'euactrender', invoice:KEY, date:ruDate(val('actDate'))}, 'Формирую акт…', 'actMsg').then(function(r){ if(!r||!r.ok) return; hide('askmodal');
+        info('Акт сформирован', '<div>✅ Акт <b>№ '+esc(r.number)+'</b> от '+esc(r.date)+'. '+(r.url?'<a href="'+esc(r.url)+'" target="_blank" rel="noopener">Открыть ↗</a>':'')+'</div>'); load(); });
       return false;
     }, 'Сформировать');
 }

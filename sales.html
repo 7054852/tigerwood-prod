@@ -463,8 +463,12 @@ function render(){
   twPay('dealPay', DEAL.pay, { deal: DEAL.id, canCreate: false, onDone: reload });
   // юрлицо РФ / Европы (11.10.2026): отгрузочный комплект (счёт-фактура или инвойс, упаковочный лист, CMR, ТН) — tw-shipping.js; остальным — накладные РБ
   var exportDeal=(d.market==='ru'||d.market==='eu'||d.market==='other')&&d.clientType!=='физлицо';
-  el('s_ship').querySelector('.h').textContent=exportDeal?'🚚 Отгрузка — экспорт ('+(d.market==='ru'?'Россия':'Европа')+')':'🚚 Отгрузка — накладные';
-  if(exportDeal) twShippingBlock(KEY, 'wbBlock'); else twWaybillBlock(KEY, 'wbBlock', null);
+  // контракт на услуги (19.10.2026): «отгрузка» — акт выполненных работ, выписывается на странице счёта
+  var svcInv=(d.invoices||[]).filter(function(v){ return v.services && !/аннул/.test(v.status||''); });
+  if(svcInv.length){ el('s_ship').querySelector('.h').textContent='📝 Акт выполненных работ';
+    el('wbBlock').innerHTML='<div class="sm">Услуги: вместо накладной — двуязычный акт по счёту. Выписывается на странице счёта: '+svcInv.map(function(v){ return '<a href="'+esc(pageUrl('invoice.html',{invoice:v.number}))+'">№ '+esc(v.number)+'</a>'; }).join(', ')+'</div>'; }
+  else { el('s_ship').querySelector('.h').textContent=exportDeal?'🚚 Отгрузка — экспорт ('+(d.market==='ru'?'Россия':'Европа')+')':'🚚 Отгрузка — накладные';
+  if(exportDeal) twShippingBlock(KEY, 'wbBlock'); else twWaybillBlock(KEY, 'wbBlock', null); }
 }
 function billUrl(){ return (DEAL&&DEAL.invoiceDraft)?euInvoiceUrl():pageUrl('bill.html','deal',KEY); }   // черновик счёта Европы живёт на invoice.html
 function euInvoiceUrl(){ var sp=new URLSearchParams(location.search); ['deal','lead','client','contract','framework'].forEach(function(x){ sp.delete(x); }); sp.set('invoice', (DEAL&&DEAL.invoiceDraft&&DEAL.invoiceDraft.key)||KEY); return 'invoice.html?'+sp.toString(); }
