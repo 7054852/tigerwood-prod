@@ -381,10 +381,10 @@ function isFca(){ var k=curKind(); return mode()==='legal' && !!k && k.market===
 function isEu(){ var k=curKind(); return mode()==='legal' && !!k && (k.market==='eu'||k.market==='other'); }
 /** новый договор, смена рынка типа: умолчания — РФ 60 % / остаток по готовности / 15 раб. дней; Европа 70 % за 3 календ. дня / 7 календ. дней с даты поставки; иначе 80 % / с даты отгрузки / 14 */
 var KIND_MKT='';
-function kindDefaults(){ var k=curKind(), m=((k&&k.market)||'')+(isFw()?'#fw':''); if(m===KIND_MKT) return; KIND_MKT=m;
-  var eu=isEu(), ru=isFca()&&!eu; el('f_prepay').value=ru?(isFw()?70:60):eu?70:80;   // рамочный РФ/Европа — 70/30 по умолчанию (02.10.2026)
-  setSel('f_balance', ru?'ready':(isFw()&&!eu?'invoice':'shipped')); el('f_prod').value=ru?15:14;   // рамочный РБ — «по счёту» (13.10.2026)
-  el('f_pdays').value=eu?3:5; if(eu){ el('f_bdays').value=7; if(!val('d_delivInc')) el('d_delivInc').value='0'; } }   // EU: по умолчанию FCA
+function kindDefaults(){ var k=curKind(), svc=kindVal()==='services_eu', m=((k&&k.market)||'')+(isFw()?'#fw':'')+(svc?'#svc':''); if(m===KIND_MKT) return; KIND_MKT=m;
+  var eu=isEu(), ru=isFca()&&!eu; el('f_prepay').value=svc?100:ru?(isFw()?70:60):eu?70:80;   // рамочный РФ/Европа — 70/30 по умолчанию (02.10.2026); услуги — 100 % (19.10.2026)
+  setSel('f_balance', ru||svc?'ready':(isFw()&&!eu?'invoice':'shipped')); el('f_prod').value=ru?15:14;   // рамочный РБ — «по счёту» (13.10.2026)
+  el('f_pdays').value=svc?5:eu?3:5; if(eu){ el('f_bdays').value=7; if(!val('d_delivInc')) el('d_delivInc').value='0'; } }   // EU: по умолчанию FCA
 function schedOn(){ var m=mode(); return m==='retail' ? isInst() : (m==='legal' && !isFw() && val('f_balance')===SCHED_TXT); }
 function defaultValid(){ return isFw()?addDays(todayIso(),365):(todayIso().slice(0,4)+'-12-31'); }
 function vis(id, on){ var e=el(id); if(e) e.classList.toggle('hide', !on); }
@@ -471,8 +471,9 @@ function fillForm(){
   el('f_bdays').value=(c.balanceDays==null)?'':c.balanceDays; el('f_regNo').value=c.currencyRegNo||'';
   // условия не заданы (старый черновик, рамочный до 02.10.2026) — умолчания рынка, как у сервера: Европа 70 % / 3 / 7, рамочный РФ 70 %, РФ 60 %, РБ 80 %
   var cEu=(c.market==='eu'||c.market==='other');
-  if(c.prepayPercent==null||c.prepayPercent==='') el('f_prepay').value=cEu?70:c.market==='ru'?(c.isFramework?70:60):80;
-  if(cEu && !(tm.prepayDays>0)) el('f_pdays').value=3;
+  var cSvc=(c.kind==='services_eu');   // контракт на услуги (19.10.2026): 100 % за 5 календарных дней
+  if(c.prepayPercent==null||c.prepayPercent==='') el('f_prepay').value=cSvc?100:cEu?70:c.market==='ru'?(c.isFramework?70:60):80;
+  if(cEu && !(tm.prepayDays>0)) el('f_pdays').value=cSvc?5:3;
   if(cEu && c.balanceDays==null && !tm.balanceMode) el('f_bdays').value=7; el('f_regDate').value=isoDate(c.currencyRegDate);
   if(c.baseValue>0) BASE_VALUE=Number(c.baseValue);
   if(c.warrantyDefault>0) el('d_warranty').placeholder=c.warrantyDefault+' — как у продавца';
