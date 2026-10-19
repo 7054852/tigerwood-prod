@@ -130,7 +130,7 @@
   <div class="card">
     <div class="toolbar">
       <label>Счёт выписки <select id="stWallet"></select></label>
-      <input type="file" id="stFile" accept=".xlsx,.xls">
+      <input type="file" id="stFile" accept=".xlsx,.xls,.docx">
       <button class="primary" onclick="stUpload()">Загрузить выписку</button>
       <div class="end"><button class="sec" onclick="stRefresh()">Обновить</button></div>
     </div>
@@ -382,13 +382,23 @@ function periodGo(){ run({vapi:'finperiod', date:v('pdDate'), on:1}, 'Добав
 function statementParse(aoa){
   var out=[], dateRe=/^(\d{2})\.(\d{2})\.(\d{4})$/;
   function n(x){ return Number(String(x==null?'':x).replace(/[\s ]/g,'').replace(',','.'))||0; }
+  function s(row,c){ return c<0?'':String(row[c]==null?'':row[c]).trim(); }
+  // колонки — по шапке (20.10.2026): у валютных выписок Беларусбанка после «Дебет/Кредит (номинал)» идут эквиваленты, контрагент и назначение дальше;
+  // шапки нет — раскладка рублёвой выписки, как было
+  var C={ d:7, c:8, n:9, p:10, a:3, b:4, u:5 };
+  for(var h=0;h<aoa.length;h++){ var hr=(aoa[h]||[]).map(function(x){ return String(x==null?'':x).trim(); });
+    if(!/^Дата/.test(hr[0]||'')) continue;
+    var f=function(re){ for(var j=0;j<hr.length;j++) if(re.test(hr[j])) return j; return -1; };
+    var H={ d:f(/^Дебет/), c:f(/^Кредит/), n:f(/^(Бенефициар|Плательщик|Корреспондент)/), p:f(/^Назначение/), a:f(/^Номер сч/), b:f(/^БИК/), u:f(/^УНП$/) };
+    if(H.d>=0&&H.c>=0) C=H;
+    break; }
   for(var i=0;i<aoa.length;i++){
     var row=aoa[i]||[], c1=String(row[0]==null?'':row[0]).trim(), m=dateRe.exec(c1);
     if(!m) continue;
-    var debit=n(row[7]), credit=n(row[8]);
+    var debit=n(row[C.d]), credit=n(row[C.c]);
     if(debit<=0 && credit<=0) continue;
-    out.push({ dateIso:m[3]+'-'+m[2]+'-'+m[1], docNo:String(row[1]==null?'':row[1]).trim(), unp:String(row[5]==null?'':row[5]).trim(), debit:debit, credit:credit,
-      account:String(row[3]==null?'':row[3]).trim().replace(/\s+/g,''), bik:String(row[4]==null?'':row[4]).trim(), contr:String(row[9]==null?'':row[9]).trim(), purpose:String(row[10]==null?'':row[10]).trim() });
+    out.push({ dateIso:m[3]+'-'+m[2]+'-'+m[1], docNo:s(row,1), unp:s(row,C.u), debit:debit, credit:credit,
+      account:s(row,C.a).replace(/\s+/g,''), bik:s(row,C.b), contr:s(row,C.n), purpose:s(row,C.p) });
   }
   return out;
 }
@@ -396,6 +406,17 @@ function stUpload(){
   var fi=el('stFile'), w=el('stWallet').value;
   if(!fi.files||!fi.files[0]){ setm('stMsg','warn','Выберите файл выписки.'); return; }
   if(!w){ setm('stMsg','warn','Выберите счёт, по которому выгружена выписка.'); return; }
+  // выписка Приорбанка — документ Word (.docx, 20.10.2026): разбирает сервер, дальше как Excel
+  if(/\.docx$/i.test(fi.files[0].name)){
+    var rdd=new FileReader();
+    rdd.onload=function(){ var b64=String(rdd.result).split(',')[1]||'';
+      run({vapi:'finstmtparse', b64:b64}, 'Читаю выписку Приорбанка…', 'stMsg').then(function(p){ if(!p) return;
+        if(!p.rows.length){ setm('stMsg','warn','В выписке нет операций за период.'); return; }
+        var wn=(REF.wallets||[]).filter(function(x){ return x.id===w; })[0], cur=wn&&wn.currency;
+        if(p.currency && cur && p.currency!==cur){ setm('stMsg','warn','Выписка по счёту '+esc(p.account)+' в '+esc(p.currency)+', а выбран кошелёк в '+esc(cur)+' — выберите кошелёк этого счёта.'); return; }
+        stSend(w, fi, p.rows, p.closing); }); };
+    rdd.readAsDataURL(fi.files[0]); return;
+  }
   if(typeof XLSX==='undefined'){ setm('stMsg','err','Не загрузилась библиотека чтения Excel — проверьте интернет и откройте страницу заново.'); return; }
   setm('stMsg','','Читаю файл…');
   var rd=new FileReader();
@@ -409,12 +430,15 @@ function stUpload(){
       rows=statementParse(XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:''}));
     }catch(err){ setm('stMsg','err','Не разобрать файл: '+esc(err.message)); return; }
     if(!rows.length){ setm('stMsg','warn','В файле не нашлось строк операций — это точно выписка из банка?'); return; }
-    run({vapi:'finstmtupload', wallet:w, file:fi.files[0].name, rows:JSON.stringify(rows)}, 'Загружаю '+rows.length+' строк…', 'stMsg').then(function(r){
-      if(!r) return;
-      setm('stMsg','ok','Готово: добавлено '+r.added+', уже были '+r.skipped+(r.contrAdded||r.contrUnp?' · контрагенты: новых '+r.contrAdded+', дописан УНП '+r.contrUnp:'')+'.'); fi.value=''; stRefresh();
-    });
+    stSend(w, fi, rows, null);
   };
   rd.readAsArrayBuffer(fi.files[0]);
+}
+function stSend(w, fi, rows, closing){
+  run({vapi:'finstmtupload', wallet:w, file:fi.files[0].name, rows:JSON.stringify(rows), closing:closing==null?'':closing}, 'Загружаю '+rows.length+' строк…', 'stMsg').then(function(r){
+    if(!r) return;
+      setm('stMsg','ok','Готово: добавлено '+r.added+', уже были '+r.skipped+(r.contrAdded||r.contrUnp?' · контрагенты: новых '+r.contrAdded+', дописан УНП '+r.contrUnp:'')+'.'); fi.value=''; stRefresh();
+  });
 }
 var EXP=[], INC=null, IREC=[];
 function stRefresh(){
