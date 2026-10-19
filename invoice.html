@@ -309,7 +309,7 @@ function renderDocs(){
   ci.forEach(function(x){ h+=twFileCard({ href:x.url, tab:1, tag:'CI', title:'Коммерческий инвойс № '+x.number, meta:[x.date, money(x.sum)+' EUR'].join(' · '),
     pills:x.status?'<span class="pill">'+esc(x.status)+'</span>':'', off:/аннул/.test(x.status||'') }); });
   // акты выполненных работ по счёту услуг (19.10.2026): первый — действующий, прежние заменены
-  (D.acts||[]).forEach(function(x,i){ h+=twFileCard({ href:x.url, tab:1, tag:'АКТ', title:'Акт выполненных работ № '+D.number, meta:[x.date, money(x.sum)+' EUR', x.error||''].filter(Boolean).join(' · '),
+  (D.acts||[]).forEach(function(x,i){ h+=twFileCard({ href:x.url, tab:1, tag:'АКТ', title:'Акт выполненных работ № '+(x.num||D.number), meta:[x.date, money(x.sum)+' EUR', x.error||''].filter(Boolean).join(' · '),
     off:x.status!=='formed'||i>0, pills:i===0&&x.status==='formed'?'<span class="pill ok">действующий</span>':'<span class="pill muted">'+esc(x.status==='failed'?'ошибка':'заменён')+'</span>' }); });
   if(D.status==='issued' && !docs.length) h+='<div class="sm">Номер выдан, документа нет — нажмите «Сформировать документ» ещё раз (номер тот же).</div>';
   el('docsBox').innerHTML=h||'<div class="sm">Документов нет.</div>';
@@ -372,7 +372,7 @@ function ciDlg(){
 /** акт выполненных работ по счёту услуг (19.10.2026): дата акта → euactrender; номер акта = номер счёта, прежний акт заменяется */
 function actDlg(){
   var has=(D.acts||[]).some(function(x){ return x.status==='formed'; });
-  ask('Акт выполненных работ № '+esc(D.number||''), '<div class="sm">Двуязычный акт по позициям счёта на '+money(D.total)+' EUR.'+(has?' Прежний акт будет заменён.':'')+' После акта заказ считается выполненным (отгруженным).</div>'
+  ask('Акт выполненных работ по счёту № '+esc(D.number||''), '<div class="sm">Двуязычный акт по позициям счёта на '+money(D.total)+' EUR. Номер акта — свой у клиента (№1, №2…).'+(has?' Прежний акт будет заменён, номер тот же.':'')+' После акта заказ считается выполненным (отгруженным).</div>'
     +'<label class="fl" style="margin-top:var(--s-3)"><span class="sm">Дата акта</span><input id="actDate" type="date" value="'+esc(new Date().toISOString().slice(0,10))+'"></label><div class="msg" id="actMsg"></div>',
     function(){
       run({vapi:'euactrender', invoice:KEY, date:ruDate(val('actDate'))}, 'Формирую акт…', 'actMsg').then(function(r){ if(!r||!r.ok) return; hide('askmodal');
