@@ -253,6 +253,9 @@ function setTab(t){
 var WCOL=['#2458C9','#2E9E5B','#D9822B','#8E44AD','#C0392B','#16A085','#B7950B','#7F8C8D'];
 /** кошелёк цветной меткой: один цвет на кошелёк, по его месту в справочнике — глаз запоминает цвет быстрее названия */
 function walletChip(name){ if(!name) return ''; var i=0; for(var k=0;k<(REF.wallets||[]).length;k++) if(REF.wallets[k].name===name){ i=k; break; } return '<span class="wc" title="кошелёк / счёт, куда ждём деньги"><i style="background:'+WCOL[i%WCOL.length]+'"></i>'+esc(name)+'</span>'; }
+/** сумма строки выписки с валютой и кошельком (20.10.2026: комиссия 5 937,50 в тенге выглядела рублями) */
+function stSum(sum, walletId){ var w=null; for(var i=0;i<(REF.wallets||[]).length;i++) if(REF.wallets[i].id===walletId) w=REF.wallets[i];
+  return money(sum)+(w?' '+esc(w.currency||'BYN')+'<div>'+walletChip(w.name)+'</div>':''); }
 function wName(id){ for(var i=0;i<REF.wallets.length;i++) if(REF.wallets[i].id===id) return REF.wallets[i].name; return ''; }
 function wOpts(sel, filter){ return REF.wallets.filter(filter||function(){return true;}).map(function(w){ return '<option value="'+w.id+'"'+(w.id===sel?' selected':'')+'>'+esc(w.name)+(w.currency!=='BYN'?' ('+w.currency+')':'')+'</option>'; }).join(''); }
 function catOpts(sel, kind){ return '<option value="">— статья —</option>'+REF.categories.filter(function(c){ return c.kind===kind; }).map(function(c){ return '<option value="'+c.id+'"'+(c.id===sel?' selected':'')+'>'+esc(c.name)+'</option>'; }).join(''); }
@@ -499,7 +502,7 @@ function renderExp(){
     else if(p.action==='ambiguous') what='<select id="ex_c'+i+'"><option value="">— выберите карточку —</option>'+p.candidates.map(function(c){ return '<option value="'+c.expId+'">'+esc(c.name)+' · '+money(c.sum)+(c.planIso?' · '+dm(c.planIso):'')+'</option>'; }).join('')+'<option value="new">новый расход</option></select>';
     else what='<span class="pill mute">'+ACT.create+'</span>';
     var cat=p.categoryId||p.hintCategoryId||'';
-    h+='<tr><td><input type="checkbox" id="ex_k'+i+'"'+(auto?' checked':'')+'></td><td class="n">'+dm(p.dateIso)+'</td><td>'+esc(p.contr)+'</td><td class="num">'+money(p.sum)+'</td><td>'+what+'</td>'
+    h+='<tr><td><input type="checkbox" id="ex_k'+i+'"'+(auto?' checked':'')+'></td><td class="n">'+dm(p.dateIso)+'</td><td>'+esc(p.contr)+'</td><td class="num">'+stSum(p.sum, p.walletId)+'</td><td>'+what+'</td>'
       +'<td>'+(p.hoz?'<span class="mut">перевод</span>':'<select id="ex_s'+i+'">'+catOpts(cat,'expense')+'</select>')+'</td><td class="purp">'+esc(p.purpose)+'</td></tr>';
   });
   el('expBox').innerHTML=h+'</tbody></table></div>'; el('expGo').className='primary'; el('expHint').className='mut';
@@ -526,7 +529,7 @@ function renderInc(){
   if(!n){ el('incBox').innerHTML='<div class="empty">Все приходы выписки разнесены.</div>'; return; }
   var recBy={}; IREC.forEach(function(p){ recBy[p.lineId]=p; });
   var h='<div class="tbl-wrap"><table class="reg"><thead><tr><th>Дата</th><th>Вид</th><th class="num">Сумма</th><th>Подсказка</th><th>Назначение</th><th></th></tr></thead><tbody>';
-  var row=function(x, kind, sum, hint, btn){ h+='<tr><td class="n">'+dm(x.dateIso)+'</td><td>'+kind+'</td><td class="num">'+money(sum)+'</td><td>'+hint+'</td><td class="purp">'+esc(x.purpose)+'</td><td class="go">'+btn+'</td></tr>'; };
+  var row=function(x, kind, sum, hint, btn){ h+='<tr><td class="n">'+dm(x.dateIso)+'</td><td>'+kind+'</td><td class="num">'+stSum(sum, x.walletId)+'</td><td>'+hint+'</td><td class="purp">'+esc(x.purpose)+'</td><td class="go">'+btn+'</td></tr>'; };
   INC.erip.forEach(function(x, i){ row(x,'<span class="pill info">ЕРИП</span>',x.net,'брутто '+money(x.brutto)+', комиссия '+money(x.commission)+(x.registry.length?'<div class="mut">в реестре ЕРИП '+x.registry.length+' оплат на '+money(x.registry.reduce(function(s,p){return s+p.sum;},0))+'</div>':''),'<button class="sec" onclick="eripOpen('+i+')">Разложить по заказам</button>'); });
   INC.exchange.forEach(function(x, i){ row(x,'<span class="pill mute">продажа валюты</span>',x.byn,x.sold?'продано '+money(x.sold)+' по '+x.rate:'сумма валюты не разобрана','<button class="sec" onclick="xchOpen('+i+')">Провести обмен</button>'); });
   INC.cashback.forEach(function(x, i){ row(x,'<span class="pill mute">возврат наличных</span>',x.sum,esc(x.contr),'<button class="sec" onclick="cbOpen('+i+')">Провести возврат</button>'); });
