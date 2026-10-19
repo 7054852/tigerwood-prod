@@ -138,6 +138,11 @@
     <div id="stMsg" class="msg"></div>
   </div>
 
+  <div class="sect">Переводы между своими счетами <small id="ownCnt"></small></div>
+  <div id="ownBox"></div>
+  <div class="toolbar"><button class="primary hide" id="ownGo" onclick="ownApply()">Провести отмеченные</button><span class="mut">Списание и зачисление одной операции — один перевод (обмен), не расход и не приход.</span></div>
+  <div id="ownMsg" class="msg"></div>
+
   <div class="sect">Расходы к разносу <small id="expCnt"></small></div>
   <div id="expBox"></div>
   <div class="toolbar"><button class="primary hide" id="expGo" onclick="expApply()">Провести отмеченные</button><span class="mut hide" id="expHint">Отмеченные строки закроют карточки плана или создадут новые расходы. Остаток счёта изменится ровно на их сумму.</span></div>
@@ -456,9 +461,27 @@ function stSend(w, fi, rows, closing){
       setm('stMsg','ok','Готово: добавлено '+r.added+', уже были '+r.skipped+(r.contrAdded||r.contrUnp?' · контрагенты: новых '+r.contrAdded+', дописан УНП '+r.contrUnp:'')+'.'); fi.value=''; stRefresh();
   });
 }
-var EXP=[], INC=null, IREC=[];
+var EXP=[], INC=null, IREC=[], OWN={pairs:[],lone:[]};
+/* переводы между своими счетами (20.10.2026): пара строк выписки двух кошельков — один перевод / обмен */
+function renderOwn(){
+  var P=OWN.pairs||[], Lo=OWN.lone||[];
+  el('ownCnt').textContent=(P.length||Lo.length)?(P.length+' пар'+(Lo.length?', без пары '+Lo.length:'')):'';
+  if(!P.length && !Lo.length){ el('ownBox').innerHTML='<div class="empty">Переводов между своими счетами к разносу нет.</div>'; el('ownGo').className='primary hide'; return; }
+  var h='';
+  if(P.length){ h+='<div class="tbl-wrap"><table class="reg"><thead><tr><th></th><th>Дата</th><th>Откуда</th><th class="num">Списано</th><th>Куда</th><th class="num">Зачислено</th><th>Основание</th></tr></thead><tbody>';
+    P.forEach(function(p,i){ h+='<tr><td><input type="checkbox" id="ow_k'+i+'" checked></td><td class="n">'+dm(p.dateIso)+'</td><td>'+esc(p.from)+'</td><td class="num">'+money(p.fromAmount)+'</td><td>'+esc(p.to)+'</td><td class="num">'+money(p.toAmount)+'</td><td class="mut">'+esc(p.basis)+'</td></tr>'; });
+    h+='</tbody></table></div>'; }
+  if(Lo.length) h+='<div class="mut" style="margin-top:6px">Без пары (выписка второго счёта не загружена или суммы не сходятся): '+Lo.map(function(l){ return dm(l.dateIso)+' '+esc(l.wallet)+' '+(l.dir==='debit'?'−':'+')+money(l.sum); }).join(' · ')+'. Загрузите выписку второго счёта — пара найдётся сама.</div>';
+  el('ownBox').innerHTML=h; el('ownGo').className=P.length?'primary':'primary hide';
+}
+function ownApply(){
+  var sel=(OWN.pairs||[]).filter(function(p,i){ return el('ow_k'+i)&&el('ow_k'+i).checked; }).map(function(p){ return { debitId:p.debitId, creditId:p.creditId }; });
+  if(!sel.length){ setm('ownMsg','warn','Отметьте пары, которые нужно провести.'); return; }
+  run({vapi:'finowntransferapply', pairs:JSON.stringify(sel), key:newKey()}, 'Провожу '+sel.length+' переводов…', 'ownMsg').then(function(r){ if(!r) return; setm('ownMsg','ok','Проведено переводов: '+r.done+'.'); stRefresh(); });
+}
 function stRefresh(){
   el('stWallet').innerHTML=wOpts(el('stWallet').value||REF.defaultWalletId);
+  get({vapi:'finowntransfers'}).then(function(r){ if(r&&r.ok){ OWN=r; renderOwn(); } });   // 20.10.2026: старый сервер без маршрута — блок пустой
   get({vapi:'finreconpreview'}).then(function(r){ if(!r||!r.ok){ noAccess(r); return; } EXP=r.plan; renderExp(); });
   Promise.all([get({vapi:'finincomepreview'}), get({vapi:'finincreconpreview'})]).then(function(a){ if(a[0]&&a[0].ok){ INC=a[0]; IREC=(a[1]&&a[1].plan)||[]; renderInc(); } });
   get({vapi:'finstmtlist', limit:400}).then(function(r){ if(r&&r.items) renderDone(r.items.filter(function(x){ return x.posting; }).slice(0,60)); });
