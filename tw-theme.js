@@ -205,7 +205,7 @@
   root.twDocTag=function(type, name){
     var m=/\.([a-z0-9]{2,4})$/i.exec(String(name||'')); if(m) return m[1];
     var t=String(type||'');
-    return /инвойс|commercial/i.test(t)?'CI':/проформ/i.test(t)?'PI':/ттн/i.test(t)?'ТТН':/(^|\s)тн(\s|$)/i.test(t)?'ТН':/чек/i.test(t)?'ЧЕК':/счёт|счет/i.test(t)?'СЧ':/акт/i.test(t)?'АКТ':/догов|контракт/i.test(t)?'ДОГ':'ДОК';
+    return /инвойс|commercial/i.test(t)?'CI':/проформ/i.test(t)?'PI':/ттн/i.test(t)?'ТТН':/(^|\s)тн(\s|$)/i.test(t)?'ТН':/чек/i.test(t)?'ЧЕК':/счёт|счет/i.test(t)?'СЧ':/догов|контракт/i.test(t)?'ДОГ':/акт/i.test(t)?'АКТ':'ДОК';   // «Контракт» содержит «акт» — договоры раньше акта (19.10.2026)
   };
 
   root.twTheme={ get:function(){ return MODE; }, set:set, now:current, sun:sun, text:nowText, icon:icon };

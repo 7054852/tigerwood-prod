@@ -212,7 +212,7 @@ function fill(){
   el('f_acc').value=t.account||''; if(accs.length&&!el('f_acc').value) el('f_acc').value=accs[0].id;
   el('main').className=EDIT?'':'ro';
   // контракт на услуги (19.10.2026): условий поставки нет, 100 % предоплата — поле остатка не нужно; HS/артикул печатаются «—»
-  SVC=!!(D.contract&&D.contract.services); el('s_deliv').style.display=SVC?'none':''; el('f_bdays').parentNode.style.display=SVC?'none':'';
+  SVC=!!(D.contract&&D.contract.services); el('s_deliv').style.display=SVC?'none':''; el('f_bdays').parentNode.style.display=SVC?'none':''; el('f_ship').parentNode.style.display=SVC?'none':'';
   var ins=el('main').querySelectorAll('#s_head input, #s_deliv input, #s_pay input, #s_pay select, #s_deliv button, #s_pay button');
   for(var i=0;i<ins.length;i++) if(ins[i].id!=='f_date') ins[i].disabled=!EDIT;
   renderHead(); renderRows(); paintInc(); paintPre(); renderDocs(); renderBtns();
@@ -281,7 +281,7 @@ function setPre(v){ PRE=v; paintPre(); }
 function paintPre(){
   var bs=el('segPre').querySelectorAll('button'); for(var i=0;i<bs.length;i++) bs[i].className=bs[i].getAttribute('data-v')===PRE?'on':'';
   el('w_pct').classList.toggle('hide', PRE!=='pct'); el('w_sum').classList.toggle('hide', PRE!=='sum');
-  var c=D&&D.contract; el('payDefault').textContent=c?('по контракту: '+(c.prepayPercent==null?70:c.prepayPercent)+' % за '+(c.prepayDays||3)+' дн., остаток — '+(c.balanceDays||7)+' дн. с CMR'):'';
+  var c=D&&D.contract; el('payDefault').textContent=c?('по контракту: '+(c.prepayPercent==null?(SVC?100:70):c.prepayPercent)+' % за '+(c.prepayDays||(SVC?5:3))+' дн.'+(SVC?'':', остаток — '+(c.balanceDays||7)+' дн. с CMR')):'';
   calc();
 }
 function pay(){ var t=total(), p=PRE==='sum'?num(val('f_sum')):t*num(val('f_pct'))/100; p=r2(Math.min(t, Math.max(0,p))); return { total:t, prepay:p, balance:r2(t-p) }; }
@@ -300,7 +300,7 @@ function renderDocs(){
   // у каждой своё имя файла (в нём номер, под которым она выпускалась) и время
   var cur=-1; docs.forEach(function(d,i){ if(cur<0 && d.status==='formed') cur=i; });
   var card=function(d,i){ var isCur=(i===cur), old=(d.status==='formed' && !isCur);
-    return twFileCard({ href:d.url, tab:1, tag:'PI', title:isCur?('Проформа'+(D.number?' № '+D.number:'')):(d.name||'Проформа'),
+    return twFileCard({ href:d.url, tab:1, tag:SVC?'СЧ':'PI', title:isCur?((SVC?'Счёт':'Проформа')+(D.number?' № '+D.number:'')):(d.name||'Проформа'),
       meta:[d.date+(d.at?' '+d.at:''), isCur?(docs.length>1?'последняя версия':''):'', d.error||''].filter(Boolean).join(' · '), off:d.status==='cancelled'||old,
       pills:isCur?'<span class="pill ok">действующий</span>':old?'<span class="pill muted">заменён</span>':'<span class="pill '+(d.status==='failed'?'bad':'muted')+'">'+esc(d.status==='failed'?'ошибка':d.status==='cancelled'?'удалён':d.status)+'</span>' }); };
   if(cur>=0) h+=card(docs[cur],cur);
