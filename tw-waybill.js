@@ -167,13 +167,16 @@ function twWbPdf(id){
   get({vapi:'wbpdf', id:id}).then(function(r){
     if(!r||!r.ok){ if(w) w.close(); oops(errText(r)); return; }
     var bin=atob(r.b64), arr=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
-    var name=r.name||'документ.pdf', url=URL.createObjectURL(new Blob([arr],{type:'application/pdf'}));
-    if(!w){ var a=document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove(); return; }
+    var name=r.name||'документ.pdf', url=URL.createObjectURL(new Blob([arr],{type:'application/pdf'})), save=url;
+    // 19.10.2026: файл по одноразовой ссылке сервера (10 минут) — имя задаёт сервер, верное при любом способе сохранения (значок просмотрщика, Cmd+S, Safari);
+    // старый сервер без dl — как раньше, из памяти браузера
+    if(r.dl && window.TW_CFG && TW_CFG.hub){ var base=String(TW_CFG.hub).replace(/\/exec$/,'')+'/dl/'+encodeURIComponent(r.dl); url=base; save=base+'?a=1'; }
+    if(!w){ var a=document.createElement('a'); a.href=save; a.download=name; document.body.appendChild(a); a.click(); a.remove(); return; }
     // 19.10.2026: PDF из памяти браузера сохранялся под случайным именем — страница с документом и кнопкой «Сохранить» с именем документа
     w.document.open(); w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>'+esc(name)+'</title><style>html,body{margin:0;height:100%;font:14px system-ui,sans-serif}'
       +'.bar{display:flex;gap:12px;align-items:center;padding:8px 16px;border-bottom:1px solid #E4E7EC;background:#fff}.bar b{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'
       +'.bar a{font-weight:600;padding:8px 16px;border-radius:8px;background:#2458C9;color:#fff;text-decoration:none;white-space:nowrap}iframe{border:0;width:100%;height:calc(100% - 52px)}</style></head>'
-      +'<body><div class="bar"><b>'+esc(name)+'</b><a href="'+url+'" download="'+esc(name)+'">⬇ Сохранить</a></div><iframe src="'+url+'"></iframe></body></html>');
+      +'<body><div class="bar"><b>'+esc(name)+'</b><a href="'+save+'" download="'+esc(name)+'">⬇ Сохранить</a></div><iframe src="'+url+'"></iframe></body></html>');
     w.document.close();
   }).catch(function(e){ if(w) w.close(); oops('Связь оборвалась: '+((e&&e.message)||e)); });
 }
