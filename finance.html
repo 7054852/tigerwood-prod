@@ -347,7 +347,7 @@ function renderBoard(){
   var when=function(r){ return r.factIso||r.planIso||''; }, pend=B.incomes.filter(function(r){ return !r.got; });
   // просрочку решает сервер (late): предоплата по счёту без срока, остаток — после отгрузки; старый сервер без late — по дате
   var isLate=function(r){ var w=when(r); return r.late!=null?r.late:!!(w&&w<B.today); };
-  var late=pend.filter(isLate), wait=pend.filter(function(r){ return when(r)&&!isLate(r); }), nod=pend.filter(function(r){ return !when(r); });
+  var late=pend.filter(isLate), wait=pend.filter(function(r){ return !isLate(r)&&(when(r)||r.ship); }), nod=pend.filter(function(r){ return !when(r)&&!r.ship; });
   var srt=function(a,b){ return when(a)<when(b)?-1:1; }, sum=function(l){ return l.reduce(function(s,r){ return s+r.sum; },0); };
   // строки счетов, чей срок ещё не наступил (предоплата без срока, остаток до отгрузки), — своим блоком, не вперемешку с датами
   var byInv=wait.filter(function(r){ return r.ship||(r.late===false&&when(r)<B.today); }), due=wait.filter(function(r){ return byInv.indexOf(r)<0; });
