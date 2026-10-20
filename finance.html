@@ -77,6 +77,9 @@
   .col.past{ border-color:var(--red); }
   .col .ch{ display:flex; justify-content:space-between; align-items:baseline; gap:var(--s-2); }
   .col .ch b{ font:var(--t-heading); }
+  .col .mv-all{ width:100%; margin-top:var(--s-2); font:var(--t-small); min-height:28px; }
+  .mv-chips{ display:flex; flex-wrap:wrap; gap:6px; margin:var(--s-2) 0; }
+  .mv-chips button{ min-height:30px; }
   .col .bal{ font:var(--t-small); color:var(--muted); margin:2px 0 var(--s-2); }
   .col .bal b{ color:var(--fg); font-variant-numeric:tabular-nums; }
   .col .bal b.neg{ color:var(--red); }
@@ -371,7 +374,11 @@ function renderBoard(){
   var unpaid=B.expenses.filter(function(e){ return !e.paid; }), nodate=unpaid.filter(function(e){ return !e.planIso; });
   var card=function(e){ var meta=[e.contr!==e.name?e.contr:'', e.cat||'без статьи', e.paid?'оплачено '+dm(e.paidDateIso):''].filter(Boolean).join(' · ');
     return '<div class="ec'+(e.paid?' paid':'')+'" onclick="expOpen(\''+e.id+'\')"'+(e.paid?'':' draggable="true" ondragstart="dragExp(event,\''+e.id+'\')"')+' title="'+esc((e.name||'')+' — '+meta)+'"><div class="t"><span>'+esc(e.name||e.contr||'—')+'</span>'+(e.dogovor?'<i class="cal" title="график договора '+esc(e.dogovor)+'" onclick="event.stopPropagation(); schedView(CN['+cn(e.dogovor)+'])">📅</i>':'')+'<b>'+money(e.sum)+'</b></div><div class="b">'+esc(meta)+'</div>'+docLinks(e)+'</div>'; };
-  var col=function(title, sub, list, cls, iso){ return '<div class="col '+(cls||'')+'" ondragover="event.preventDefault(); this.classList.add(\'drop\')" ondragleave="this.classList.remove(\'drop\')" ondrop="dropExp(event,\''+(iso||'')+'\')"><div class="ch"><b>'+title+'</b><span class="n">'+money(sum(list))+'</span></div>'+sub+(list.length?list.map(card).join(''):'<div class="empty">нет платежей</div>')+'</div>'; };
+  // неоплаченные — сверху, оплаченные — вниз (20.10.2026); в шапке колонки — «перенести неоплаченные» на другую дату
+  var col=function(title, sub, list, cls, iso){ list=list.filter(function(e){ return !e.paid; }).concat(list.filter(function(e){ return e.paid; })); var un=list.filter(function(e){ return !e.paid; }).length;
+    return '<div class="col '+(cls||'')+'" ondragover="event.preventDefault(); this.classList.add(\'drop\')" ondragleave="this.classList.remove(\'drop\')" ondrop="dropExp(event,\''+(iso||'')+'\')"><div class="ch"><b>'+title+'</b><span class="n">'+money(sum(list))+'</span></div>'+sub
+      +(un?'<button class="sec mv-all" onclick="moveOpen(\'\',\''+(iso||'')+'\')" title="Перенести все неоплаченные платежи этой даты">⇥ Перенести неоплаченные ('+un+')</button>':'')
+      +(list.length?list.map(card).join(''):'<div class="empty">нет платежей</div>')+'</div>'; };
   var h=nodate.length?col('Без даты','<div class="bal">срок не назначен</div>',nodate):'';
   B.periods.forEach(function(p){
     var list=B.expenses.filter(function(e){ return e.planIso===p.iso&&(!e.paid||p.iso>=B.today); });
@@ -388,6 +395,24 @@ function fld(label, html, cls){ return '<div'+(cls?' class="'+cls+'"':'')+'><lab
 function inp(id, val, type, extra){ return '<input id="'+id+'" '+(type==='n'?'inputmode="decimal"':type==='d'?'type="date"':'')+' value="'+esc(val==null?'':val)+'"'+(extra||'')+'>'; }
 function v(id){ var e=el(id); return e?e.value:''; }
 function after(r, text){ if(!r) return; dlgClose(); loadBoard(); }
+/* ── перенос оплаты на другую дату (20.10.2026): кнопки «завтра / +3 дня / +неделя / +месяц / 1-е число» и своя дата; колонка — все неоплаченные сразу ── */
+function isoAdd(iso, days){ var d=new Date((iso||B.today)+'T00:00:00Z'); d.setUTCDate(d.getUTCDate()+days); return d.toISOString().slice(0,10); }
+function isoAddMonth(iso){ var d=new Date((iso||B.today)+'T00:00:00Z'), day=d.getUTCDate(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth()+1); var last=new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth()+1, 0)).getUTCDate(); d.setUTCDate(Math.min(day,last)); return d.toISOString().slice(0,10); }
+function isoFirstNext(){ var d=new Date(B.today+'T00:00:00Z'); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth()+1, 1)).toISOString().slice(0,10); }
+function moveTargets(fromIso){ var base=fromIso&&fromIso>B.today?fromIso:B.today; return [['Завтра', isoAdd(B.today,1)], ['+3 дня', isoAdd(base,3)], ['+неделя', isoAdd(base,7)], ['+месяц', isoAddMonth(base)], ['1-е число', isoFirstNext()]]; }
+function moveChips(fromIso, ids){ return '<div class="mv-chips">'+moveTargets(fromIso).map(function(t){ return '<button class="sec" onclick="'+(ids?'moveGo(MV.ids,\''+t[1]+'\')':'moveGo([EX.id],\''+t[1]+'\')')+'">'+t[0]+' <span class="mut">'+dm(t[1])+'</span></button>'; }).join('')+'</div>'; }
+var MV=null;
+function moveOpen(_id, iso){ var ids=B.expenses.filter(function(e){ return !e.paid&&(e.planIso||'')===iso; }).map(function(e){ return e.id; }); if(!ids.length) return;
+  MV={ ids:ids, iso:iso }; var s=B.expenses.filter(function(e){ return ids.indexOf(e.id)>=0; }).reduce(function(a,e){ return a+e.sum; },0);
+  dlgOpen('<h3>Перенести неоплаченные с '+(iso?dmy(iso):'«без даты»')+'</h3><div class="mut">'+ids.length+' платеж(а) на '+money(s)+'. Оплаченные остаются на месте.</div>'+moveChips(iso, true)
+    +'<div class="dl-acts"><div><label>На дату</label>'+inp('mvDate', '', 'd')+'</div><button class="primary" onclick="moveGo(MV.ids, v(\'mvDate\'))">Перенести</button></div><div id="dlgMsg" class="msg"></div><div class="dlg-btns"><button class="sec" onclick="dlgClose()">Отмена</button></div>'); }
+function moveGo(ids, iso){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(iso||'')){ setm('dlgMsg','warn','Выберите дату или нажмите кнопку с готовой датой.'); return; }
+  if(BUSY) return; BUSY=1; el('twwt').textContent='Переношу на '+dmy(iso)+'…'; el('twwait').style.display='flex';
+  var i=0, fail=null;
+  (function next(){ if(i>=ids.length||fail){ BUSY=0; el('twwait').style.display='none'; if(fail){ setm('dlgMsg','err','⚠️ '+esc(fail)); oops(fail); } else { dlgClose(); } loadBoard(); return; }
+    post({vapi:'finexpmove', id:ids[i++], date:iso}).then(function(r){ if(!r||!r.ok) fail=errText(r); next(); }, function(e){ fail='Связь оборвалась: '+((e&&e.message)||e); next(); }); })();
+}
 function dragExp(ev, id){ ev.dataTransfer.setData('text/plain', id); }
 function dropExp(ev, iso){ ev.preventDefault(); var c=ev.currentTarget; c.classList.remove('drop'); var id=ev.dataTransfer.getData('text/plain'), e=id&&byId(B.expenses,id);
   if(!e||e.planIso===iso) return; run({vapi:'finexpmove', id:id, date:iso}, 'Переношу…').then(function(r){ if(r) loadBoard(); }); }
@@ -399,6 +424,7 @@ function expOpen(id){
     +fld('Сумма', inp('exSum', e.sum?String(e.sum).replace('.',','):'', 'n'))+fld('Кошелёк','<select id="exWallet"><option value="">—</option>'+wOpts(e.walletId||'')+'</select>')
     +fld('Срок оплаты', inp('exDate', e.planIso, 'd'))+(EX&&!e.paid?'':fld(EX?'Дата оплаты':'Уже оплачен — дата оплаты', inp('exPaid', e.paidDateIso, 'd')))
     +fld('№ счёта / акта', inp('exNo', e.invNo))+fld('Дата счёта', inp('exNoDate', e.invDateIso, 'd'))+fld('Договор', inp('exDog', e.dogovor))+fld('Примечание', inp('exNote', e.note), 'wide')+'</div>'+(EX&&(e.docs||[]).length?'<div style="margin-top:var(--s-3)"><label>Документы</label>'+docLinks(e)+'</div>':'');
+  if(EX&&!e.paid) h+='<div class="sect" style="margin-top:var(--s-3)">Перенести оплату</div>'+moveChips(e.planIso)+'<div class="dl-acts"><div><label>На дату</label>'+inp('mvDate', '', 'd')+'</div><button class="sec" onclick="moveGo([EX.id], v(\'mvDate\'))">Перенести</button></div>';
   if(EX&&!e.paid) h+='<div class="dl-acts"><div><label>Оплачено — дата</label>'+inp('exPayDate', B.today, 'd')+'</div><div><label>Сумма оплаты (меньше — часть)</label>'+inp('exPaySum', String(e.sum).replace('.',','), 'n')+'</div><button onclick="expPay()">Оплачено</button></div>';
   h+='<div id="dlgMsg" class="msg"></div><div class="dlg-btns">'+(EX?(e.transferId?'<button class="danger sec" style="margin-right:auto" onclick="xferCancel(EX.transferId)">Отменить обмен / перевод</button>':'<button class="danger sec" style="margin-right:auto" onclick="expDel()">Удалить</button>')+(e.paid?'<button class="sec" onclick="expUnpay()">Снять оплату</button>':''):'')
     +(EX&&e.dogovor?'<button class="sec" onclick="schedView(EX.dogovor)">График договора</button>':'')+'<button class="sec" onclick="dlgClose()">Отмена</button><button class="primary" onclick="expSave()">Сохранить</button></div>';
