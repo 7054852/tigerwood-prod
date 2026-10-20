@@ -792,7 +792,7 @@ function pdOpen(i){
     +(x.isNew?fld('ФИО — как в списке людей / нарядах', inp('pdName','','',' list="pdPeople"'))+'<datalist id="pdPeople">'+PD.rows.map(function(r){ return '<option value="'+esc(r.name)+'">'; }).join('')+'</datalist>':'<div class="mut">Должны сейчас: '+pdDebt(x)+'</div>')
     +'<div class="form" style="margin-top:var(--s-3)">'+fld('Тип','<select id="pdType">'+['штат','подряд','оклад'].map(function(t){ return '<option'+(t===x.type?' selected':'')+'>'+t+'</option>'; }).join('')+'</select>')
     +fld('Долг на '+dmy(PD.cutIso), inp('pdOpen', x.opening?String(x.opening).replace('.',','):'', 'n'))+fld('Примечание', inp('pdNote', x.note), 'wide')+'</div>'
-    +'<div class="dlg-btns" style="justify-content:flex-start"><button class="sec" onclick="pdSave()">Сохранить тип и долг</button></div>'
+    +'<div class="dlg-btns" style="justify-content:flex-start"><button class="sec" onclick="pdSave()">Сохранить тип и долг</button>'+(x.isNew||(x.opening===0&&!x.note&&x.type!=="подряд"&&x.type!=="оклад")?'':'<button class="danger sec" onclick="pdRemove()">Убрать долг, тип и примечание</button>')+'</div>'
     +(x.isNew?'':'<div class="sect">Наряды</div><div class="mut">'+(PD.months.map(function(m){ return x.earned[m]?MON[+m.slice(5,7)]+' '+money(x.earned[m]):''; }).filter(Boolean).join(' · ')||'нарядов нет')+'</div>'
       +'<div class="sect">Выплаты с '+dmy(PD.cutIso)+'</div>'+(x.paid.length?'<table class="reg"><tbody>'+x.paid.map(function(p){ return '<tr><td class="n">'+dmy(p.dateIso)+'</td><td>'+p.how+(p.wallet?' · '+esc(p.wallet):'')+'</td><td class="num">'+money(p.sum)+(Math.abs(p.counted-p.sum)>0.004?'<div class="sub2">засчитано '+money(p.counted)+'</div>':'')+'</td></tr>'; }).join('')+'</tbody></table>':'<div class="mut">выплат нет</div>')
       +'<div class="sect">Выдать наличными</div><div class="form">'+fld('Кошелёк','<select id="pcW">'+wOpts(defW, function(w){ return /^Н /.test(w.name); })+'</select>')+fld('Дата', inp('pcD', B&&B.today||'', 'd'))
@@ -803,6 +803,8 @@ function pdOpen(i){
 function pdPrevMonth(){ var t=(B&&B.today)||new Date().toISOString().slice(0,10), y=+t.slice(0,4), m=+t.slice(5,7)-1; if(m<1){ m=12; y--; } return y+'-'+(m<10?'0':'')+m; }
 function pdSave(){ var name=PDX.isNew?v('pdName').trim():PDX.name; if(!name){ setm('dlgMsg','warn','Впишите ФИО.'); return; }
   run({vapi:'finpaydebtset', name:name, data:JSON.stringify({ type:v('pdType'), opening:v('pdOpen'), note:v('pdNote') })}, 'Сохраняю…', 'dlgMsg').then(function(r){ if(!r) return; PD=r; renderPd(); dlgClose(); setm('pdMsg','ok','Сохранено: '+esc(name)+'.'); }); }
+function pdRemove(){ if(!confirm('Убрать из расчёта запись «'+PDX.name+'»: долг на дату отсечки, тип и примечание? Наряды и выплаты не трогаются.')) return;
+  run({vapi:'finpaydebtset', name:PDX.name, data:JSON.stringify({ remove:true })}, 'Убираю…', 'dlgMsg').then(function(r){ if(!r) return; PD=r; renderPd(); dlgClose(); setm('pdMsg','ok','Убрано: '+esc(PDX.name)+'.'); }); }
 function pdCash(){ var sum=num(v('pcS')); if(!(sum>0)){ setm('dlgMsg','warn','Сумма выдачи — больше нуля.'); return; }
   if(!confirm('Записать выдачу '+money(sum)+' — '+PDX.name+'? Кошелёк уменьшится на эту сумму.')) return;
   run({vapi:'finsalcash', key:newKey(), data:JSON.stringify({ name:PDX.name, sum:sum, walletId:v('pcW'), dateIso:v('pcD'), period:v('pcP'), dept:v('pcDept'), note:v('pcN') })}, 'Записываю выдачу…', 'dlgMsg').then(function(r){ if(!r) return; PD=r.debt; renderPd(); dlgClose(); setm('pdMsg','ok','Выдача записана.'); }); }
