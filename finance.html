@@ -33,15 +33,36 @@
   .bd{ display:grid; grid-template-columns:380px minmax(0,1fr); gap:var(--s-4); align-items:start; }
   .bd-wait{ position:sticky; top:var(--s-3); max-height:calc(100vh - var(--s-6)); overflow:auto; background:var(--card); border:1px solid var(--line); border-radius:var(--r-card); padding:var(--s-4); }
   .bd-wait h3, .bd-exp h3{ font:var(--t-heading); margin:0 0 var(--s-1); }
-  .grp{ font:var(--t-label); text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:var(--s-4) 0 var(--s-2); display:flex; justify-content:space-between; }
-  .grp.bad{ color:var(--red); }
   /* «Ждём денег» (владелец 15.10.2026): день — заголовком с итогом, строка — кто · кошелёк · сумма, под ней заказ и счёт */
   .wd{ display:flex; justify-content:space-between; align-items:baseline; gap:var(--s-2); margin:var(--s-3) 0 2px; padding-bottom:2px; border-bottom:1px solid var(--line); font-weight:600; }
   .wd .dow{ color:var(--muted); font-weight:500; font:var(--t-small); margin-left:4px; }
   .wd .s{ color:var(--muted); font-weight:500; font-variant-numeric:tabular-nums; }
   .wd.late{ color:var(--red); }
-  .wi{ padding:6px 0; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:3px var(--s-2); align-items:center; cursor:pointer; border-radius:6px; }
-  .wi:hover{ background:var(--bg2); }
+  .wi{ padding:var(--s-2) var(--s-3); display:grid; grid-template-columns:minmax(0,1fr) auto; gap:3px var(--s-2); align-items:center; cursor:pointer; border-radius:var(--r-ctl); background:var(--card); border:1px solid var(--line); margin-top:6px; }
+  .wi:hover{ border-color:var(--accent); }
+  /* блоки приходов (20.10.2026): каждый приход — карточка; просрочка, ожидание и «срок не наступил» — разными блоками и цветом */
+  .ib{ border-radius:var(--r-card); padding:var(--s-2) var(--s-3) var(--s-3); margin-top:var(--s-3); background:var(--bg2); border-left:4px solid var(--line2); }
+  .ib.late{ background:var(--red-bg); border-left-color:var(--red); }
+  .ib.wait{ background:var(--green-bg); border-left-color:var(--green); }
+  .ib.inv{ background:var(--blue-bg); border-left-color:var(--blue); }
+  .ib.got{ padding-bottom:var(--s-2); }
+  .ib-h{ display:flex; justify-content:space-between; align-items:baseline; gap:var(--s-2); font-weight:700; }
+  .ib-h small{ font:var(--t-small); color:var(--muted); font-weight:500; display:block; }
+  .ib.late .ib-h > span:first-child{ color:var(--red); }
+  .ib.wait .ib-h > span:first-child{ color:var(--green); }
+  .ib.inv .ib-h > span:first-child{ color:var(--blue); }
+  .ib-h.tg{ cursor:pointer; user-select:none; }
+  .ib-h.tg:hover > span:first-child{ text-decoration:underline; }
+  .ib .wd{ margin-top:var(--s-3); border-bottom:0; padding-bottom:0; font:var(--t-small); font-weight:600; color:var(--fg2); }
+  .ib.late .wd{ color:var(--red); }
+  .wd .due{ margin-left:6px; }
+  .due{ font:var(--t-small); font-weight:600; white-space:nowrap; padding:0 7px; border-radius:999px; }
+  .due.l{ color:var(--red); background:var(--card); border:1px solid var(--red); }
+  .due.w{ color:var(--green); background:var(--card); border:1px solid var(--green); }
+  .gotq{ width:100%; margin-top:var(--s-2); }
+  .ec .docs, .dlg .docs{ display:flex; flex-wrap:wrap; gap:4px; margin-top:4px; }
+  .ec .docs a, .dlg .docs a{ font:var(--t-small); color:var(--accent-text); text-decoration:none; padding:0 6px; border:1px solid var(--line); border-radius:999px; background:var(--bg2); white-space:nowrap; max-width:100%; overflow:hidden; text-overflow:ellipsis; }
+  .ec .docs a:hover, .dlg .docs a:hover{ border-color:var(--accent); }
   .wi .who{ font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .wi .sum{ font-weight:700; font-variant-numeric:tabular-nums; white-space:nowrap; }
   .wi .meta{ grid-column:1 / -1; color:var(--muted); font:var(--t-small); display:flex; align-items:center; gap:6px; min-width:0; }
@@ -241,7 +262,10 @@ function run(p, say, m){
 }
 function newKey(){ return 'ui-'+Date.now()+'-'+Math.random().toString(36).slice(2,10); }
 
-var REF={ wallets:[], categories:[], paymentTypes:[], defaultWalletId:null }, TAB='', GOTALL=false;
+var REF={ wallets:[], categories:[], paymentTypes:[], defaultWalletId:null }, TAB='', GOTALL=false, GOTQ='';
+/* блок «Получено» свёрнут по умолчанию; раскрытый остаётся раскрытым (только в этом браузере) */
+var GOTOPEN=(function(){ try{ return localStorage.getItem('tw_fin_got')==='1'; }catch(e){ return false; } })();
+function gotToggle(){ GOTOPEN=!GOTOPEN; try{ localStorage.setItem('tw_fin_got', GOTOPEN?'1':'0'); }catch(e){} renderBoard(); }
 /* окна доски открываются и из других вкладок — им нужна загруженная доска (сегодняшняя дата, расходы) */
 function needBoard(fn){ if(typeof B!=='undefined'&&B){ fn(); return; } get({vapi:'finboard'}).then(function(r){ if(r&&r.ok){ B=r; fn(); } else oops(errText(r)); }); }
 function setTab(t){
@@ -266,6 +290,46 @@ function loadBoard(){ get({vapi:'finboard'}).then(function(r){ if(!r||!r.ok){ no
 function noAccess(r){ el('noacc').className='note warn'; el('noacc').textContent=errText(r); }
 function tile(t, v, sub, cls){ return '<div class="kp"><div class="t">'+t+'</div><div class="v'+(cls?' '+cls:'')+'">'+v+'</div>'+(sub?'<div class="s">'+sub+'</div>':'')+'</div>'; }
 function mPane(p){ el('bd').className='bd m-'+p; var b=el('mtabs').querySelectorAll('button'); b[0].className=p==='wait'?'on':''; b[1].className=p==='exp'?'on':''; }
+/* ── приходы на доске (20.10.2026): блоки по состоянию, каждый приход — карточка с отметкой «просрочено N дн.» / «через N дн.» ── */
+function incWhen(r){ return r.factIso||r.planIso||''; }
+function incSum(l){ return l.reduce(function(s,r){ return s+r.sum; },0); }
+function dDiff(a, b){ return Math.round((Date.parse(a+'T00:00:00Z')-Date.parse(b+'T00:00:00Z'))/864e5); }
+function dWord(n){ var m=n%10, h=n%100; return n+' '+(m===1&&h!==11?'день':m>=2&&m<=4&&(h<10||h>=20)?'дня':'дней'); }
+var DOW=['вс','пн','вт','ср','чт','пт','сб'];
+function dow(iso){ var d=new Date(iso+'T00:00:00'); return isNaN(d)?'':DOW[d.getDay()]; }
+function byDay(list, key){ var out=[], map={}; list.forEach(function(r){ var k=key(r)||''; if(!map[k]){ map[k]={iso:k, rows:[]}; out.push(map[k]); } map[k].rows.push(r); }); return out; }
+/* счёт и его часть из примечания плана («… · счёт P20260901 · остаток (отгрузка+7дн)») */
+function invOf(r){ var m=/счёт ([A-ZА-Я]{0,2}-?\d[\d-]*)(?: · (предоплата|остаток[^·]*|оплата[^·]*|По готовности[^·]*))?/.exec(r.note||''); return m?('счёт <b>'+esc(m[1])+'</b>'+(m[2]?' · '+esc(m[2].trim()):'')):''; }
+function dueBadge(w, mode){
+  if(!w) return '';
+  if(mode==='late'){ var n=dDiff(B.today, w); return n>0?'<span class="due l">просрочено '+dWord(n)+'</span>':''; }
+  if(mode==='wait'){ var k=dDiff(w, B.today); return '<span class="due w">'+(k<=0?'сегодня':k===1?'завтра':'через '+dWord(k))+'</span>'; }
+  return '';
+}
+function incItem(r){
+  return '<div class="wi" onclick="incOpen(\''+r.id+'\')"><div class="who" title="'+esc(r.client)+'">'+esc(r.client||'—')+'</div><div class="sum">'+money(r.sum)+'</div>'
+    +'<div class="meta">'+walletChip(r.wallet)+'<span class="tx">'+[r.zakaz?'<b>'+esc(r.zakaz)+'</b>':'', invOf(r), r.ptype&&r.ptype!=='Безналичный'?esc(r.ptype):''].filter(Boolean).join(' · ')+'</span></div></div>';
+}
+function incBlock(title, sub, list, cls, key){
+  if(!list.length) return '';
+  var h='<div class="ib '+cls+'"><div class="ib-h"><span>'+title+' · '+list.length+'<small>'+sub+'</small></span><span>'+money(incSum(list))+'</span></div>';
+  if(key) byDay(list, key).forEach(function(g){ h+='<div class="wd"><span>'+(g.iso?dm(g.iso)+'<span class="dow">'+dow(g.iso)+'</span>':'без даты')+dueBadge(g.iso, cls)+'</span><span class="s">'+money(incSum(g.rows))+'</span></div>'+g.rows.map(incItem).join(''); });
+  else h+=list.map(incItem).join('');
+  return h+'</div>';
+}
+/* полученные — свёрнутой строкой; раскрыть — список с поиском (кто, заказ, сумма) */
+function gotRows(){ return B.incomes.filter(function(r){ return r.got&&r.src!=='transfer'; }).sort(function(a,b){ return a.gotDate<b.gotDate?1:-1; }); }
+function gotBlock(){
+  var got=gotRows(); if(!got.length) return '';
+  return '<div class="ib got"><div class="ib-h tg" onclick="gotToggle()"><span>'+(GOTOPEN?'▾':'▸')+' Получено · '+got.length+'<small>за последние 90 дней · '+(GOTOPEN?'свернуть':'нажмите, чтобы показать')+'</small></span><span>'+money(incSum(got))+'</span></div>'
+    +(GOTOPEN?'<input id="gotQ" type="search" class="search gotq" placeholder="🔎 клиент, заказ или сумма" value="'+esc(GOTQ)+'" oninput="GOTQ=this.value; gotRender()"><div id="gotList"></div>':'')+'</div>';
+}
+function gotRender(){
+  var box=el('gotList'); if(!box) return;
+  var q=GOTQ.trim().toLowerCase().replace(',', '.'), all=gotRows().filter(function(r){ return !q||(r.client+' '+r.zakaz+' '+r.sum+' '+(r.note||'')).toLowerCase().indexOf(q)>=0; }), list=GOTALL||q?all:all.slice(0,20);
+  var h=''; byDay(list, function(r){ return r.gotDate; }).forEach(function(g){ h+='<div class="wd"><span>'+dm(g.iso)+'<span class="dow">'+dow(g.iso)+'</span></span><span class="s">'+money(incSum(g.rows))+'</span></div>'+g.rows.map(incItem).join(''); });
+  box.innerHTML=(h||'<div class="mut" style="padding:var(--s-2) 0">ничего не нашлось</div>')+(all.length>list.length?'<div class="mut" style="padding:var(--s-2) 0"><a href="#" onclick="GOTALL=true; gotRender(); return false">показать все '+all.length+'</a></div>':'');
+}
 function renderBoard(){
   var f=B.figures;
   el('tiles').innerHTML=tile('Остаток сейчас', money(B.cashNow)+' <small>BYN</small>')
@@ -281,25 +345,20 @@ function renderBoard(){
   // просрочку решает сервер (late): предоплата по счёту без срока, остаток — после отгрузки; старый сервер без late — по дате
   var isLate=function(r){ var w=when(r); return r.late!=null?r.late:!!(w&&w<B.today); };
   var late=pend.filter(isLate), wait=pend.filter(function(r){ return when(r)&&!isLate(r); }), nod=pend.filter(function(r){ return !when(r); });
-  var got=B.incomes.filter(function(r){ return r.got&&r.src!=='transfer'; }).sort(function(a,b){ return a.gotDate<b.gotDate?1:-1; }), gotAll=got.length; if(!GOTALL) got=got.slice(0,15);
   var srt=function(a,b){ return when(a)<when(b)?-1:1; }, sum=function(l){ return l.reduce(function(s,r){ return s+r.sum; },0); };
-  // строка: кто · кошелёк (цветная метка — один цвет на кошелёк) · сумма; ниже — заказ, счёт и его часть, тип оплаты
-  var invOf=function(r){ var m=/счёт ([A-Z]{0,2}-?\d[\d-]*)(?: · (предоплата|остаток[^·]*|оплата[^·]*))?/.exec(r.note||''); return m?('счёт <b>'+esc(m[1])+'</b>'+(m[2]?' · '+esc(m[2].trim()):'')):''; };
-  var item=function(r, cls){ return '<div class="wi '+(cls||'')+'" onclick="incOpen(\''+r.id+'\')"><div class="who" title="'+esc(r.client)+'">'+esc(r.client||'—')+'</div><div class="sum">'+money(r.sum)+'</div>'
-    +'<div class="meta">'+walletChip(r.wallet)+'<span class="tx">'+[r.zakaz?'<b>'+esc(r.zakaz)+'</b>':'', invOf(r), r.ptype&&r.ptype!=='Безналичный'?esc(r.ptype):''].filter(Boolean).join(' · ')+'</span></div></div>'; };
-  var DOW=['вс','пн','вт','ср','чт','пт','сб'], dow=function(iso){ var d=new Date(iso+'T00:00:00'); return isNaN(d)?'':DOW[d.getDay()]; };
-  var byDay=function(list, key){ var out=[], map={}; list.forEach(function(r){ var k=key(r)||''; if(!map[k]){ map[k]={iso:k, rows:[]}; out.push(map[k]); } map[k].rows.push(r); }); return out; };
-  var grp=function(title, list, cls, itemCls, key){ if(!list.length) return ''; var h='<div class="grp '+(cls||'')+'"><span>'+title+' · '+list.length+'</span><span>'+money(sum(list))+'</span></div>';
-    byDay(list, key).forEach(function(g){ h+='<div class="wd '+(itemCls||'')+'"><span>'+(g.iso?dm(g.iso)+'<span class="dow">'+dow(g.iso)+'</span>':'без даты')+'</span><span class="s">'+money(sum(g.rows))+'</span></div>'+g.rows.map(function(r){ return item(r,itemCls); }).join(''); });
-    return h; };
-  // строки счетов, чей срок ещё не наступил (предоплата без срока, остаток до отгрузки), — своей группой, не вперемешку с датами
+  // строки счетов, чей срок ещё не наступил (предоплата без срока, остаток до отгрузки), — своим блоком, не вперемешку с датами
   var byInv=wait.filter(function(r){ return r.late===false&&when(r)<B.today; }), due=wait.filter(function(r){ return byInv.indexOf(r)<0; });
-  el('waitHead').textContent=pend.length?pend.length+' платежей на '+money(sum(pend))+(late.length?' · просрочено '+late.length:''):'Ожидаемых поступлений нет.';
-  el('waitList').innerHTML=grp('Просрочено', late.sort(srt), 'bad', 'late', when)+grp('Ждём', due.sort(srt), '', '', when)+grp('По счетам — срок не наступил', byInv.sort(srt), '', '', function(r){ return ''; })+grp('Без даты', nod, '', '', function(){ return ''; })+grp('Получено недавно', got, '', '', function(r){ return r.gotDate; })+(gotAll>got.length?'<div class="mut" style="padding:var(--s-2) 0"><a href="#" onclick="GOTALL=true; renderBoard(); return false">показать все '+gotAll+'</a></div>':'');
+  el('waitHead').textContent=pend.length?pend.length+' платежей на '+money(sum(pend))+(late.length?' · просрочено '+late.length+' на '+money(sum(late)):''):'Ожидаемых поступлений нет.';
+  el('waitList').innerHTML=incBlock('Просрочено', 'срок прошёл, денег нет', late.sort(srt), 'late', when)
+    +incBlock('Ждём', 'срок впереди', due.sort(srt), 'wait', when)
+    +incBlock('По счетам — срок не наступил', 'предоплата без срока, остаток после отгрузки', byInv.sort(srt), 'inv', null)
+    +incBlock('Без даты', 'срок не назначен', nod, '', null)
+    +gotBlock();
+  if(GOTOPEN) gotRender();
   // ── справа: расходы по контрольным датам
   var unpaid=B.expenses.filter(function(e){ return !e.paid; }), nodate=unpaid.filter(function(e){ return !e.planIso; });
   var card=function(e){ var meta=[e.contr!==e.name?e.contr:'', e.cat||'без статьи', e.paid?'оплачено '+dm(e.paidDateIso):''].filter(Boolean).join(' · ');
-    return '<div class="ec'+(e.paid?' paid':'')+'" onclick="expOpen(\''+e.id+'\')"'+(e.paid?'':' draggable="true" ondragstart="dragExp(event,\''+e.id+'\')"')+' title="'+esc((e.name||'')+' — '+meta)+'"><div class="t"><span>'+esc(e.name||e.contr||'—')+'</span>'+(e.dogovor?'<i class="cal" title="график договора '+esc(e.dogovor)+'" onclick="event.stopPropagation(); schedView(CN['+cn(e.dogovor)+'])">📅</i>':'')+'<b>'+money(e.sum)+'</b></div><div class="b">'+esc(meta)+'</div></div>'; };
+    return '<div class="ec'+(e.paid?' paid':'')+'" onclick="expOpen(\''+e.id+'\')"'+(e.paid?'':' draggable="true" ondragstart="dragExp(event,\''+e.id+'\')"')+' title="'+esc((e.name||'')+' — '+meta)+'"><div class="t"><span>'+esc(e.name||e.contr||'—')+'</span>'+(e.dogovor?'<i class="cal" title="график договора '+esc(e.dogovor)+'" onclick="event.stopPropagation(); schedView(CN['+cn(e.dogovor)+'])">📅</i>':'')+'<b>'+money(e.sum)+'</b></div><div class="b">'+esc(meta)+'</div>'+docLinks(e)+'</div>'; };
   var col=function(title, sub, list, cls, iso){ return '<div class="col '+(cls||'')+'" ondragover="event.preventDefault(); this.classList.add(\'drop\')" ondragleave="this.classList.remove(\'drop\')" ondrop="dropExp(event,\''+(iso||'')+'\')"><div class="ch"><b>'+title+'</b><span class="n">'+money(sum(list))+'</span></div>'+sub+(list.length?list.map(card).join(''):'<div class="empty">нет платежей</div>')+'</div>'; };
   var h=nodate.length?col('Без даты','<div class="bal">срок не назначен</div>',nodate):'';
   B.periods.forEach(function(p){
@@ -310,6 +369,8 @@ function renderBoard(){
 }
 
 /* ── правка доски: расходы ── */
+/* документы расхода (счёт, акт, чек) — ссылками; клик по ссылке не открывает карточку */
+function docLinks(e){ var d=e.docs||[]; return d.length?'<div class="docs">'+d.map(function(x){ return '<a href="'+esc(x.url)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="открыть документ">📎 '+esc(x.t)+'</a>'; }).join('')+'</div>':''; }
 function byId(list, id){ for(var i=0;i<list.length;i++) if(list[i].id===id) return list[i]; return null; }
 function fld(label, html, cls){ return '<div'+(cls?' class="'+cls+'"':'')+'><label>'+label+'</label>'+html+'</div>'; }
 function inp(id, val, type, extra){ return '<input id="'+id+'" '+(type==='n'?'inputmode="decimal"':type==='d'?'type="date"':'')+' value="'+esc(val==null?'':val)+'"'+(extra||'')+'>'; }
@@ -325,7 +386,7 @@ function expOpen(id){
     +fld('Назначение', inp('exName', e.name), 'wide')+fld('Контрагент', inp('exContr', e.contr))+fld('Статья','<select id="exCat">'+catOpts(e.categoryId||'','expense')+'</select>')
     +fld('Сумма', inp('exSum', e.sum?String(e.sum).replace('.',','):'', 'n'))+fld('Кошелёк','<select id="exWallet"><option value="">—</option>'+wOpts(e.walletId||'')+'</select>')
     +fld('Срок оплаты', inp('exDate', e.planIso, 'd'))+(EX&&!e.paid?'':fld(EX?'Дата оплаты':'Уже оплачен — дата оплаты', inp('exPaid', e.paidDateIso, 'd')))
-    +fld('№ счёта / акта', inp('exNo', e.invNo))+fld('Дата счёта', inp('exNoDate', e.invDateIso, 'd'))+fld('Договор', inp('exDog', e.dogovor))+fld('Примечание', inp('exNote', e.note), 'wide')+'</div>';
+    +fld('№ счёта / акта', inp('exNo', e.invNo))+fld('Дата счёта', inp('exNoDate', e.invDateIso, 'd'))+fld('Договор', inp('exDog', e.dogovor))+fld('Примечание', inp('exNote', e.note), 'wide')+'</div>'+(EX&&(e.docs||[]).length?'<div style="margin-top:var(--s-3)"><label>Документы</label>'+docLinks(e)+'</div>':'');
   if(EX&&!e.paid) h+='<div class="dl-acts"><div><label>Оплачено — дата</label>'+inp('exPayDate', B.today, 'd')+'</div><div><label>Сумма оплаты (меньше — часть)</label>'+inp('exPaySum', String(e.sum).replace('.',','), 'n')+'</div><button onclick="expPay()">Оплачено</button></div>';
   h+='<div id="dlgMsg" class="msg"></div><div class="dlg-btns">'+(EX?(e.transferId?'<button class="danger sec" style="margin-right:auto" onclick="xferCancel(EX.transferId)">Отменить обмен / перевод</button>':'<button class="danger sec" style="margin-right:auto" onclick="expDel()">Удалить</button>')+(e.paid?'<button class="sec" onclick="expUnpay()">Снять оплату</button>':''):'')
     +(EX&&e.dogovor?'<button class="sec" onclick="schedView(EX.dogovor)">График договора</button>':'')+'<button class="sec" onclick="dlgClose()">Отмена</button><button class="primary" onclick="expSave()">Сохранить</button></div>';
