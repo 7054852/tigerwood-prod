@@ -81,6 +81,7 @@
   .col .bal b{ color:var(--fg); font-variant-numeric:tabular-nums; }
   .col .bal b.neg{ color:var(--red); }
   .col .plus{ color:var(--green); }
+  #pdBox b.neg{ color:var(--red); } #pdBox b.plus{ color:var(--green); } #pdBox tr.mut td{ color:var(--muted); }
   .ec{ background:var(--card); border:1px solid var(--line); border-radius:var(--r-ctl); padding:var(--s-2) var(--s-3); margin-top:var(--s-2); }
   .ec .t{ display:flex; justify-content:space-between; gap:var(--s-2); font-weight:600; }
   .ec .t span{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
@@ -198,8 +199,16 @@
 
 <!-- ═══ ЗАРПЛАТА ═══ -->
 <div id="tab_salary" class="hide">
-  <div class="note hint">Выплата зарплаты банком приходит из выписки одной суммой. Здесь она раскладывается по людям и отделам — сумма выплаты при этом не меняется.</div>
-  <div id="salSum" class="mut" style="margin-bottom:var(--s-3)"></div><div id="salBox"></div><div id="salMsg" class="msg"></div>
+  <div class="tabs" id="salTabs" style="margin-bottom:var(--s-3)"><button data-st="debt" class="on" onclick="salTab('debt')">Долг по сотрудникам</button><button data-st="bank" onclick="salTab('bank')">Выплаты из банка</button></div>
+  <div id="sal_debt">
+    <div class="note hint">Долг = долг на дату отсечки (всё выплаченное до неё в нём учтено) + подтверждённые наряды с начала месяца − выплаты с даты отсечки. Штат — наряды на руки, засчитывается полученное. Подряд — наряды до налогов, выплата из банка засчитывается начисленным (на руки ÷ 0,86). Оклад — долг не считается.</div>
+    <div class="toolbar"><input id="pdQ" type="search" class="search" placeholder="🔎 сотрудник" oninput="renderPd()"><label class="mut"><input type="checkbox" id="pdAll" onchange="renderPd()"> показать оклад и нулевые</label><div class="end"><button class="sec" onclick="pdOpen('')">+ Сотрудник</button></div></div>
+    <div id="pdSum" class="mut" style="margin:var(--s-2) 0"></div><div id="pdBox"></div><div id="pdMsg" class="msg"></div>
+  </div>
+  <div id="sal_bank" class="hide">
+    <div class="note hint">Выплата зарплаты банком приходит из выписки одной суммой. Здесь она раскладывается по людям и отделам — сумма выплаты при этом не меняется.</div>
+    <div id="salSum" class="mut" style="margin-bottom:var(--s-3)"></div><div id="salBox"></div><div id="salMsg" class="msg"></div>
+  </div>
 </div>
 <!-- ═══ РЕГУЛЯРНЫЕ ═══ -->
 <div id="tab_recurring" class="hide">
@@ -759,7 +768,44 @@ function unpost(id){
 
 /* ═══════════ ЗАРПЛАТА ═══════════ */
 var SAL=null, SP=null;
-function salLoad(){ get({vapi:'finsalary'}).then(function(r){ if(!r||!r.ok){ noAccess(r); return; } SAL=r; renderSal(); }); }
+function salLoad(){ get({vapi:'finsalary'}).then(function(r){ if(!r||!r.ok){ noAccess(r); return; } SAL=r; renderSal(); }); pdLoad(); }
+function salTab(t){ var b=el('salTabs').querySelectorAll('button'); for(var i=0;i<b.length;i++) b[i].className=b[i].getAttribute('data-st')===t?'on':''; el('sal_debt').className=t==='debt'?'':'hide'; el('sal_bank').className=t==='bank'?'':'hide'; }
+/* ── расчёт с сотрудниками (20.10.2026): кому сколько должны ── */
+var PD=null, PDX=null;
+var MON=['','янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];
+function pdLoad(){ get({vapi:'finpaydebt'}).then(function(r){ if(!r||!r.ok){ setm('pdMsg','err',esc(errText(r))); return; } PD=r; renderPd(); }); }
+function pdDebt(x){ return x.debt===null?'<span class="mut">оклад</span>':'<b class="'+(x.debt<-0.004?'plus':x.debt>0.004?'neg':'')+'">'+(x.debt<-0.004?'переплата '+money(-x.debt):money(x.debt))+'</b>'; }
+function renderPd(){
+  if(!PD) return; var t=PD.total, q=(v('pdQ')||'').trim().toLowerCase(), all=el('pdAll')&&el('pdAll').checked;
+  el('pdSum').innerHTML='Отсечка '+dmy(PD.cutIso)+' · долг на неё '+money(t.opening)+' · наряды с '+dmy(PD.earnFromIso)+' '+money(t.earned)+' · выплачено с отсечки '+money(t.paid)+' · <b>должны сейчас '+money(t.debt)+'</b>'+(t.over?' · переплата '+money(t.over):'');
+  var rows=PD.rows.filter(function(x){ return (!q||x.name.toLowerCase().indexOf(q)>=0)&&(all||q||(x.debt!==null&&Math.abs(x.debt)>0.004)); });
+  if(!rows.length){ el('pdBox').innerHTML='<div class="empty">Никого не нашлось.</div>'; return; }
+  el('pdBox').innerHTML='<div class="tbl-wrap fill"><table class="reg"><thead><tr><th>Сотрудник</th><th>Тип</th><th class="num">Долг на '+dm(PD.cutIso)+'</th>'+PD.months.map(function(m){ return '<th class="num">Наряды '+MON[+m.slice(5,7)]+'</th>'; }).join('')+'<th class="num">Выплачено</th><th class="num">Должны</th><th></th></tr></thead><tbody>'
+    +rows.map(function(x){ var i=PD.rows.indexOf(x); return '<tr'+(x.type==='оклад'?' class="mut"':'')+'><td>'+esc(x.name)+(x.known?'':' <span class="pill warn" title="нет в списке людей Прохаба">?</span>')+(x.note?'<div class="sub2">'+esc(x.note)+'</div>':'')+'</td><td>'+x.type+'</td><td class="num">'+(x.opening?money(x.opening):'')+'</td>'
+      +PD.months.map(function(m){ return '<td class="num">'+(x.earned[m]?money(x.earned[m]):'')+'</td>'; }).join('')
+      +'<td class="num">'+(x.paidTotal?money(x.paidTotal)+(Math.abs(x.paidCounted-x.paidTotal)>0.004?'<div class="sub2">засчитано '+money(x.paidCounted)+'</div>':''):'')+'</td><td class="num">'+pdDebt(x)+'</td><td class="go"><button class="sec" onclick="pdOpen('+i+')">Открыть</button></td></tr>'; }).join('')+'</tbody></table></div>';
+}
+function pdOpen(i){
+  var x=i===''?{ name:'', type:'штат', opening:0, earned:{}, earnedTotal:0, paid:[], paidTotal:0, paidCounted:0, debt:0, note:'', known:true, isNew:true }:PD.rows[i]; PDX=x;
+  var cash=(REF.wallets||[]).filter(function(w){ return /^Н /.test(w.name); }), defW=(cash.filter(function(w){ return /Миронов/.test(w.name); })[0]||cash[0]||{}).id||'';
+  dlgOpen('<h3>'+(x.isNew?'Сотрудник в расчёте':esc(x.name))+'</h3>'
+    +(x.isNew?fld('ФИО — как в списке людей / нарядах', inp('pdName','','',' list="pdPeople"'))+'<datalist id="pdPeople">'+PD.rows.map(function(r){ return '<option value="'+esc(r.name)+'">'; }).join('')+'</datalist>':'<div class="mut">Должны сейчас: '+pdDebt(x)+'</div>')
+    +'<div class="form" style="margin-top:var(--s-3)">'+fld('Тип','<select id="pdType">'+['штат','подряд','оклад'].map(function(t){ return '<option'+(t===x.type?' selected':'')+'>'+t+'</option>'; }).join('')+'</select>')
+    +fld('Долг на '+dmy(PD.cutIso), inp('pdOpen', x.opening?String(x.opening).replace('.',','):'', 'n'))+fld('Примечание', inp('pdNote', x.note), 'wide')+'</div>'
+    +'<div class="dlg-btns" style="justify-content:flex-start"><button class="sec" onclick="pdSave()">Сохранить тип и долг</button></div>'
+    +(x.isNew?'':'<div class="sect">Наряды</div><div class="mut">'+(PD.months.map(function(m){ return x.earned[m]?MON[+m.slice(5,7)]+' '+money(x.earned[m]):''; }).filter(Boolean).join(' · ')||'нарядов нет')+'</div>'
+      +'<div class="sect">Выплаты с '+dmy(PD.cutIso)+'</div>'+(x.paid.length?'<table class="reg"><tbody>'+x.paid.map(function(p){ return '<tr><td class="n">'+dmy(p.dateIso)+'</td><td>'+p.how+(p.wallet?' · '+esc(p.wallet):'')+'</td><td class="num">'+money(p.sum)+(Math.abs(p.counted-p.sum)>0.004?'<div class="sub2">засчитано '+money(p.counted)+'</div>':'')+'</td></tr>'; }).join('')+'</tbody></table>':'<div class="mut">выплат нет</div>')
+      +'<div class="sect">Выдать наличными</div><div class="form">'+fld('Кошелёк','<select id="pcW">'+wOpts(defW, function(w){ return /^Н /.test(w.name); })+'</select>')+fld('Дата', inp('pcD', B&&B.today||'', 'd'))
+      +fld('Сумма', inp('pcS', x.debt>0?String(x.debt).replace('.',','):'', 'n'))+fld('За месяц', '<input id="pcP" type="month" value="'+pdPrevMonth()+'">')+fld('Отдел','<select id="pcDept"><option>рабочие</option><option>администрация</option><option>коммерческий отдел</option></select>')+fld('За что', inp('pcN','наличными'), 'wide')+'</div>'
+      +'<div class="dlg-btns" style="justify-content:flex-start"><button class="primary" onclick="pdCash()">Выдано</button></div>')
+    +'<div id="dlgMsg" class="msg"></div><div class="dlg-btns"><button class="sec" onclick="dlgClose()">Закрыть</button></div>');
+}
+function pdPrevMonth(){ var t=(B&&B.today)||new Date().toISOString().slice(0,10), y=+t.slice(0,4), m=+t.slice(5,7)-1; if(m<1){ m=12; y--; } return y+'-'+(m<10?'0':'')+m; }
+function pdSave(){ var name=PDX.isNew?v('pdName').trim():PDX.name; if(!name){ setm('dlgMsg','warn','Впишите ФИО.'); return; }
+  run({vapi:'finpaydebtset', name:name, data:JSON.stringify({ type:v('pdType'), opening:v('pdOpen'), note:v('pdNote') })}, 'Сохраняю…', 'dlgMsg').then(function(r){ if(!r) return; PD=r; renderPd(); dlgClose(); setm('pdMsg','ok','Сохранено: '+esc(name)+'.'); }); }
+function pdCash(){ var sum=num(v('pcS')); if(!(sum>0)){ setm('dlgMsg','warn','Сумма выдачи — больше нуля.'); return; }
+  if(!confirm('Записать выдачу '+money(sum)+' — '+PDX.name+'? Кошелёк уменьшится на эту сумму.')) return;
+  run({vapi:'finsalcash', key:newKey(), data:JSON.stringify({ name:PDX.name, sum:sum, walletId:v('pcW'), dateIso:v('pcD'), period:v('pcP'), dept:v('pcDept'), note:v('pcN') })}, 'Записываю выдачу…', 'dlgMsg').then(function(r){ if(!r) return; PD=r.debt; renderPd(); dlgClose(); setm('pdMsg','ok','Выдача записана.'); }); }
 function renderSal(){
   var sm=SAL.summary; el('salSum').textContent=SAL.items.length?('Выплат: '+SAL.items.length+(sm.unsplit?' · не разнесено '+sm.unsplit+' на '+money(sm.unsplitSum):' · всё разнесено')+(sm.unchecked?' · не проверено '+sm.unchecked:'')):'';
   if(!SAL.items.length){ el('salBox').innerHTML='<div class="empty">Выплат зарплаты пока нет.</div>'; return; }
