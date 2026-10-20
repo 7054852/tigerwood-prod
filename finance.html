@@ -56,6 +56,7 @@
   .ib .wd{ margin-top:var(--s-3); border-bottom:0; padding-bottom:0; font:var(--t-small); font-weight:600; color:var(--fg2); }
   .ib.late .wd{ color:var(--red); }
   .wd .due{ margin-left:6px; }
+  .wi .shipn{ color:var(--blue); }
   .due{ font:var(--t-small); font-weight:600; white-space:nowrap; padding:0 7px; border-radius:999px; }
   .due.l{ color:var(--red); background:var(--card); border:1px solid var(--red); }
   .due.w{ color:var(--green); background:var(--card); border:1px solid var(--green); }
@@ -308,8 +309,10 @@ function dueBadge(w, mode){
 }
 function incItem(r){
   return '<div class="wi" onclick="incOpen(\''+r.id+'\')"><div class="who" title="'+esc(r.client)+'">'+esc(r.client||'—')+'</div><div class="sum">'+money(r.sum)+'</div>'
-    +'<div class="meta">'+walletChip(r.wallet)+'<span class="tx">'+[r.zakaz?'<b>'+esc(r.zakaz)+'</b>':'', invOf(r), r.ptype&&r.ptype!=='Безналичный'?esc(r.ptype):''].filter(Boolean).join(' · ')+'</span></div></div>';
+    +'<div class="meta">'+walletChip(r.wallet)+'<span class="tx">'+[r.zakaz?'<b>'+esc(r.zakaz)+'</b>':'', invOf(r), r.ptype&&r.ptype!=='Безналичный'?esc(r.ptype):''].filter(Boolean).join(' · ')+'</span></div>'+shipNote(r)+'</div>';
 }
+/* остаток после отгрузки: товар ещё не уехал — срок считается от плана отгрузки производственного заказа */
+function shipNote(r){ var x=r.ship; if(!x) return ''; return '<div class="meta shipn">после отгрузки'+(x.plan?' · план '+dmy(x.plan)+(x.order?' ('+esc(x.order)+')':''):' · дата отгрузки не назначена')+' + '+dWord(x.days)+'</div>'; }
 function incBlock(title, sub, list, cls, key){
   if(!list.length) return '';
   var h='<div class="ib '+cls+'"><div class="ib-h"><span>'+title+' · '+list.length+'<small>'+sub+'</small></span><span>'+money(incSum(list))+'</span></div>';
@@ -347,11 +350,11 @@ function renderBoard(){
   var late=pend.filter(isLate), wait=pend.filter(function(r){ return when(r)&&!isLate(r); }), nod=pend.filter(function(r){ return !when(r); });
   var srt=function(a,b){ return when(a)<when(b)?-1:1; }, sum=function(l){ return l.reduce(function(s,r){ return s+r.sum; },0); };
   // строки счетов, чей срок ещё не наступил (предоплата без срока, остаток до отгрузки), — своим блоком, не вперемешку с датами
-  var byInv=wait.filter(function(r){ return r.late===false&&when(r)<B.today; }), due=wait.filter(function(r){ return byInv.indexOf(r)<0; });
+  var byInv=wait.filter(function(r){ return r.ship||(r.late===false&&when(r)<B.today); }), due=wait.filter(function(r){ return byInv.indexOf(r)<0; });
   el('waitHead').textContent=pend.length?pend.length+' платежей на '+money(sum(pend))+(late.length?' · просрочено '+late.length+' на '+money(sum(late)):''):'Ожидаемых поступлений нет.';
   el('waitList').innerHTML=incBlock('Просрочено', 'срок прошёл, денег нет', late.sort(srt), 'late', when)
     +incBlock('Ждём', 'срок впереди', due.sort(srt), 'wait', when)
-    +incBlock('По счетам — срок не наступил', 'предоплата без срока, остаток после отгрузки', byInv.sort(srt), 'inv', null)
+    +incBlock('По счетам — срок не наступил', 'предоплата без срока; остаток — после отгрузки', byInv.sort(srt), 'inv', null)
     +incBlock('Без даты', 'срок не назначен', nod, '', null)
     +gotBlock();
   if(GOTOPEN) gotRender();
