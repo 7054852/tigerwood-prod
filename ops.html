@@ -774,6 +774,7 @@ function detailBlock(det, db, showSel){
     +  '<span style="flex:1"></span>'+sel
     +  '<button class="gray sm" onclick="addOp('+jsq(det)+')">＋ операция</button>'
     +  '<button class="green sm" onclick="addOpsBlock('+jsq(det)+')">＋ блоком</button>'
+    +  (PROHUB?'<button class="gray sm" onclick="compDlg('+jsq(det)+')" title="операции детали, которых нет в составах товаров">⇄ в составы</button>':'')
     +  '<button class="danger sec sm" onclick="delDetail('+jsq(det)+')" title="убрать деталь из блока">✕</button>'
     +'</div>'
     +'<table class="tbl sm optbl">'
@@ -911,7 +912,7 @@ function delOp(det, op){ ask('Удалить операцию «'+op+'» у де
 function delOpGo(det, op){
   DATA.rates=(DATA.rates||[]).filter(function(o){ return !(o.name===det && o.op===op); });
   renderOps();
-  api({vapi:'delrate',name:det,op:op}).then(function(r){ if(!r||!r.ok){ nope(r&&r.error); load(); } })
+  api({vapi:'delrate',name:det,op:op}).then(function(r){ if(!r||!r.ok){ load(); if(r&&r.inComps) delWithComps(det,op,r,load); else nope(r&&r.error); } })
     .catch(function(e){ nope('Не удалось удалить: '+errOf(e)+'. Обновляю список.'); load(); });
 }
 function addOpsBlock(det){ EDIT=det+SEP+BLK; renderOps(); setTimeout(function(){ var b=el('blkList'); if(b) b.scrollIntoView({block:'nearest'}); },30); }
@@ -950,6 +951,7 @@ function saveOpsBlock(det){
     if(!eq)(DATA.detEquip||[]).forEach(function(de){ if(de.detail===det&&!eq)eq=de.equip||''; });
     (r.rows||[]).forEach(function(nr){ nr.name=det; nr.equip=eq; DATA.rates.push(nr); });
     EDIT=''; renderOps();   // без тяжёлой перезагрузки
+    if(PROHUB && (r.rows||[]).length) compDlg(det, r.rows.map(function(x){ return x.op; }));
   }).catch(function(e){ setMsg('blkMsg',false,'ошибка: '+errOf(e)); });
 }
 function openReq(det,op,eq){ if(eq)OPENQ[eq]=1; EDIT=det+SEP+op; renderOps(); }
@@ -959,7 +961,41 @@ function doSaveRate(){ var e=editParts(); if(!e.det||!e.op){ setMsg('e_msg',fals
   api({vapi:'saverate',name:e.det,op:e.op,perhour:num(el('e_ph').value),koef:num(el('e_k').value)||1,note:el('e_note').value}).then(function(x){
     if(!x||!x.ok){ setMsg('e_msg',false,'ошибка: '+((x&&x.error)||'')); return; }
     EDIT=e.det+SEP+e.op; load();
+    if(PROHUB && e.isNew) compDlg(e.det, [e.op]);
   }).catch(function(x){ setMsg('e_msg',false,errOf(x)); }); }
+// операция в составах товаров: удалить и убрать из составов — только по подтверждению
+function delWithComps(det, op, r, done){
+  ask(r.error, function(){
+    api({vapi:'delrate',name:det,op:op,comps:1}).then(function(x){ if(!x||!x.ok){ nope(x&&x.error); load(); return; } done(); })
+      .catch(function(e){ nope('Не удалось удалить: '+errOf(e)); load(); });
+  }, 'Удалить и убрать из составов');
+}
+// составы — копия операций детали: новая операция сама туда не встаёт (у детали варианты: лак, цвет, масло) — отметить, куда добавить.
+// fresh — только что добавленные операции (галочки стоят); без fresh — все операции справочника, которых нет в составах (галочки сняты)
+function compDlg(det, fresh){
+  api({vapi:'detailcomps',detail:det}).then(function(r){
+    if(!r||!r.ok){ if(!fresh) nope(r&&r.error); return; }
+    var F={}; (fresh||[]).forEach(function(o){ F[String(o).toLowerCase()]=1; });
+    var pick=function(p){ return (p.missing||[]).filter(function(o){ return !fresh||F[String(o).toLowerCase()]; }); };
+    var ps=(r.products||[]).filter(function(p){ return pick(p).length; });
+    if(!ps.length){ if(!fresh) dlg('Составы товаров','<div>'+((r.products||[]).length?'Во всех товарах с деталью «'+esc(det)+'» есть все её операции.':'Деталь «'+esc(det)+'» не стоит ни в одном составе.')+'</div>'); return; }
+    var html='<div class="hint" style="margin-bottom:8px">'+(fresh?'Деталь «'+esc(det)+'» стоит в составах товаров. Новая операция сама туда не встаёт — у детали бывают варианты (лак, цвет, масло). Отметьте, куда добавить:'
+        :'Операции детали «'+esc(det)+'», которых нет в составах. Отметьте, что добавить:')+'</div>'
+      +'<div style="max-height:50vh;overflow:auto">'+ps.map(function(p){
+        return '<div style="padding:6px 0;border-bottom:1px solid var(--line)"><b>'+esc(p.sku)+'</b> <span class="hint">'+esc(p.name||'')+'</span>'
+          +'<div style="display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:4px">'+pick(p).map(function(o){
+            return '<label style="display:flex;gap:4px;align-items:center;font:var(--t-small)"><input type="checkbox" data-sku="'+esc(p.sku)+'" value="'+esc(o)+'"'+(fresh?' checked':'')+' style="width:auto">'+esc(o)+'</label>'; }).join('')
+          +'</div></div>'; }).join('')+'</div>';
+    dlg('Добавить в составы товаров', html, function(b){
+      var add={}, n=0; Array.prototype.forEach.call(b.querySelectorAll('input:checked'), function(c){ var k=c.getAttribute('data-sku'); (add[k]=add[k]||[]).push(c.value); n++; });
+      if(!n) return;
+      apiPost({vapi:'detailcompsync',detail:det,add:JSON.stringify(add)}).then(function(x){
+        if(!x||!x.ok){ nope((x&&x.error)||'Составы не сохранены.'); return; }
+        dlg('Готово','<div>Составы обновлены: '+x.saved+' из '+Object.keys(add).length+'. Неотгруженные заказы этих товаров пересобраны.</div>');
+      }).catch(function(e){ nope('Составы не сохранены: '+errOf(e)); });
+    }, 'Добавить', fresh?'Не добавлять':'Отмена');
+  }).catch(function(){ if(!fresh) nope('Сервер не ответил — повторите.'); });
+}
 function confirmMsg(r,role){ if(!el('e_msg'))return; el('e_msg').className='msg '+(r&&r.ok?'ok':'err');
   if(r&&r.ok&&r.requested){ el('e_msg').textContent='↺ предложено '+fmtR(r.proposedRate)+' р. — ждёт начальника'; return; }
   el('e_msg').textContent = r&&r.ok ? ((role==='начальник'?'🟢 начальник':'🟡 мастер')+' · '+(r.measured?('замер: '+r.perHour+' шт/час → '+fmtR(r.rate)+' р.'):('расценка '+fmtR(r.rate)+' р.'))) : ('ошибка: '+((r&&r.error)||'')); }
@@ -974,7 +1010,7 @@ function doRejectRecalc(){ var e=editParts();
     .catch(function(x){ setMsg('e_msg',false,errOf(x)); }); }
 function doDelRate(){ var e=editParts(); ask('Удалить операцию «'+e.op+'» у детали «'+e.det+'»?', function(){ doDelRateGo(e); }, 'Удалить'); }
 function doDelRateGo(e){
-  api({vapi:'delrate',name:e.det,op:e.op}).then(function(r){ if(!r||!r.ok){ refused('e_msg',r); return; } EDIT=''; load(); })
+  api({vapi:'delrate',name:e.det,op:e.op}).then(function(r){ if(!r||!r.ok){ if(r&&r.inComps) delWithComps(e.det,e.op,r,function(){ EDIT=''; load(); }); else refused('e_msg',r); return; } EDIT=''; load(); })
     .catch(function(x){ setMsg('e_msg',false,errOf(x)); }); }
 function moveDetail(det,equip){ api({vapi:'setdeteq',detail:det,equip:equip==='Общие'?'':equip}).then(function(r){ if(!r||!r.ok) nope(r&&r.error); load(); })
   .catch(function(e){ nope('Не перенесено: '+errOf(e)); load(); }); }
