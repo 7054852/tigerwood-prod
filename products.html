@@ -1261,8 +1261,11 @@ function packBlockHtml(){
     +'<b style="font:var(--t-small);font-weight:600">📦 Упаковка изделия</b>'
     +'<div class="muted" style="font:var(--t-small);margin:var(--s-1) 0 var(--s-1)">Ставка — рубли за одну штуку. Изменённая здесь ставка при «💾 Сохранить состав» запишется в товар и в справочник расценок.</div>';
   PACK_KINDS.forEach(function(kind){
-    var di=-1; EM.forEach(function(d,i){ if(di<0 && packKindOf(d.detail,d.level)===kind) di=i; });
-    h+='<div class="row prow"><b style="width:130px">'+PACK_TITLES[kind]+'</b>';
+    // все строки этого вида (22.10.2026: показывали только первую — вторая «Фурнитура…»/«Коробка…» пропадала из редактора, её нельзя было ни править, ни удалить)
+    var all=[]; EM.forEach(function(d,i){ if(packKindOf(d.detail,d.level)===kind) all.push(i); });
+    if(!all.length) all=[-1];
+    all.forEach(function(di,k){
+    h+='<div class="row prow"><b style="width:130px">'+(k?'':PACK_TITLES[kind])+'</b>';
     if(di<0){
       if(PACKFORM&&PACKFORM.kind===kind){ h+='</div>'+packFormHtml(); return; }
       h+='<span style="flex:1;'+(kind==='product'?'color:var(--amber)':'color:var(--muted)')+'">'
@@ -1281,6 +1284,7 @@ function packBlockHtml(){
         ?'<button class="btn sm" onclick="emUnsetProd('+di+')" title="это не товар целиком — вернуть строку в обычные детали">снять пометку</button>'
         :'<button class="btn sm danger" onclick="EM.splice('+di+',1);compRender()" title="убрать из состава">✕</button>')
       +'</div>';
+    });
   });
   // упаковки товара нет, но похожая строка уже заведена деталью — подсказываем
   if(!EM.some(function(d){ return d.level==='изделие'; }) && !(PACKFORM&&PACKFORM.kind==='product')){
