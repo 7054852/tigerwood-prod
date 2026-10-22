@@ -1162,6 +1162,7 @@ var PACK_HINTS={
   box:'Сборка коробки под товар.'
 };
 var PACKFORM=null, PACKAUTO=null, PACKEDIT=null;
+function emIsPackOp(op){ var k=pkey(op); return k===pkey('Упаковка')||k===pkey('Упаковка после сборки'); }
 function packKindOf(detail,level){
   if(String(level||'')==='изделие') return 'product';
   var k=pkey(detail);
@@ -1276,8 +1277,9 @@ function packBlockHtml(){
     }
     var d=EM[di];
     h+='<span style="flex:1">'+esc(d.detail)+packNameNote(kind,d.detail,EDEQ,d.block)+'</span>';
+    var packOnly=kind==='product' && d.ops.some(function(o){ return o.on && emIsPackOp(o.op); });   // у изделия здесь — только ставка упаковки, остальные операции — в блоке детали ниже
     d.ops.forEach(function(o,oi){
-      if(!o.on) return;
+      if(!o.on || (packOnly && !emIsPackOp(o.op))) return;
       h+='<span class="muted">'+esc(o.op)+'</span>'
         +'<input type="number" step="0.01" min="0" value="'+o.rate+'" style="width:84px" oninput="EM['+di+'].ops['+oi+'].rate=Number(this.value)||0;emRecalc()"> ₽';
     });
@@ -1361,7 +1363,7 @@ function packPushRates(done){
 }
 function editHtml(){
   var h='<div class="card"><div class="toolbar">'
-    +'<b>✎ Состав: '+esc(EDMOD)+'</b>'
+    +'<b>✎ Состав: '+esc([EDEQ,EDMOD].filter(Boolean).join(' · '))+' <span class="muted" style="font-weight:400">'+esc(EDART)+'</span></b>'   // модель «Hill» есть у разного оборудования — пишем и его, и артикул
     +'<b class="meta">труд: <span id="edTot" style="color:var(--green)">'+emTotal().toLocaleString('ru-RU',{minimumFractionDigits:2})+' р.</span></b>'
     +'<div class="end"><button class="btn sm" onclick="EMODE=false;compRender()">отмена</button>'
     +'<button class="btn sm pri" onclick="editSave()">💾 Сохранить состав</button></div></div>'
@@ -1369,7 +1371,11 @@ function editHtml(){
     +'<div class="note">Деталь приносит все свои операции — галочка включает в состав, стрелки ↑↓ задают техпорядок этой модели. «новая» — операция появилась в справочнике позже: поставьте галочку, если она нужна этой модели.</div>'
     +packBlockHtml();
   EM.forEach(function(d,di){
-    if(packKindOf(d.detail,d.level)) return;   // упаковка товара, фурнитура и коробка — в блоке упаковки выше
+    // фурнитура и коробка — только в блоке упаковки выше; строка изделия — и тут, если у неё есть операции кроме упаковки
+    // (22.10.2026: у «Колец» единственная деталь «Кольцо» = изделие — её операции, кол-во и ✕ пропадали из редактора)
+    var pk=packKindOf(d.detail,d.level);
+    if(pk==='furn'||pk==='box') return;
+    if(pk==='product' && !d.ops.some(function(o){ return !emIsPackOp(o.op); })) return;
     h+='<div class="dblk">'
       +'<div class="row"><b style="flex:1;font:var(--t-small)">'+esc(d.detail)+'</b>'
       +'<b class="muted" style="font:var(--t-small);font-weight:600"><span id="edSum_'+di+'">'+emDetSum(d).toLocaleString('ru-RU',{minimumFractionDigits:2})+' р.</span></b>'
@@ -1377,6 +1383,7 @@ function editHtml(){
       +'<input type="number" value="'+esc(d.qty)+'" style="width:64px" oninput="EM['+di+'].qty=this.value;emRecalc()">'
       // кнопку показываем только там, где вопрос вообще осмыслен: у строки есть операция
       // упаковки, то есть она может оказаться строкой товара целиком, а не деталью
+      +(pk==='product'?'<span class="pill mute" title="строка товара целиком: упаковано штук, отгрузка, склад">изделие</span>':'')
       +(emCanBeProd(d)?'<button class="btn sm" onclick="emSetProd('+di+')" title="это не деталь, а товар целиком: по такой строке считаются упаковано штук, отгрузка, склад и мотивация начальника">📦 это изделие</button>':'')
       +'<button class="btn sm danger" onclick="EM.splice('+di+',1);compRender()" title="убрать деталь из состава">✕</button></div>';
     d.ops.forEach(function(o,oi){
