@@ -1840,8 +1840,26 @@ function otkAll(gi){
 var OADD=0;
 function otkAddToggle(){ OADD=!OADD; var b=document.getElementById('oadd');
   b.style.display=OADD?'':'none'; if(OADD) renderOtkAdd(); }
-function otkEquips(){ return (DATA.equipments||[]); }
-function otkComp(){ return (DATA.comp||{}); }
+// состав выбранного заказа (22.10.2026: список шёл из всего каталога — детали чужих товаров мешались); «вне заказа» — весь каталог
+var OACOMP=null;   // {batch, equipments, byEquip}
+function otkEquips(){ return OACOMP ? OACOMP.equipments : (DATA.equipments||[]); }
+function otkComp(){ return OACOMP ? OACOMP.byEquip : (DATA.comp||{}); }
+function otkBatchChg(){
+  var b=(document.getElementById('oa_b')||{}).value||'', es=document.getElementById('oa_e'); if(!es) return;
+  if(!b){ OACOMP=null; otkFillEq(); return; }
+  if(OACOMP&&OACOMP.batch===b){ otkFillEq(); return; }
+  es.innerHTML=opt('','загрузка…'); document.getElementById('oa_d').innerHTML=''; document.getElementById('oa_ops').innerHTML='';
+  api({vapi:'ordercomp',batch:b}).then(function(r){
+    if(((document.getElementById('oa_b')||{}).value||'')!==b) return;   // пока грузилось, выбрали другой заказ
+    OACOMP={batch:b, equipments:(r&&r.equipments)||[], byEquip:(r&&r.byEquip)||{}}; otkFillEq();
+  }).catch(function(){ es.innerHTML=opt('','не загрузилось — выберите заказ ещё раз'); });
+}
+function otkFillEq(){
+  var es=document.getElementById('oa_e'); if(!es) return;
+  var eqs=otkEquips().filter(function(e){ var p=otkComp()[e]; return p&&(p.order||[]).length; });   // только с деталями (упаковка изделия — во вкладке «Выработка»)
+  es.innerHTML=eqs.map(function(e){return opt(e);}).join('')||opt('','в этом заказе нет деталей');
+  otkAddDet();
+}
 function renderOtkAdd(){
   var b=document.getElementById('oadd');
   var eqs=otkEquips();
@@ -1855,8 +1873,8 @@ function renderOtkAdd(){
     // без выбора даты работа падала на сегодня и портила табель и «выработку по дням».
     +'<label>Дата приёмки<input id="oa_dt" type="date" value="'+attr(todayIso())+'" max="'+attr(todayIso())+'"></label>'
     +'<label>Смена<select id="oa_sh"><option value="день">☀️ 1-я смена</option><option value="2 смена">🌇 2-я смена</option><option value="ночь">🌙 ночь</option></select></label>'
-    +'<label>Заказ<select id="oa_b">'+bopts+'</select></label>'
-    +'<label>Оборудование<select id="oa_e" onchange="otkAddDet()">'+eqs.map(function(e){return opt(e);}).join('')+'</select></label>'
+    +'<label>Заказ<select id="oa_b" onchange="otkBatchChg()">'+bopts+'</select></label>'
+    +'<label>Оборудование<select id="oa_e" onchange="otkAddDet()"></select></label>'
     +'<label>Деталь<select id="oa_d" onchange="otkAddOp()"></select></label>'
     +((DATA.sites&&DATA.sites.length)?('<label>Участок<select id="oa_site" onchange="otkSiteChg()">'+opt('','все участки')+DATA.sites.map(function(x){ return opt(x); }).join('')+'</select></label>'):'')
     +'<label>Операции — отметьте всё, что принимаете с этими деталями</label><div id="oa_ops" class="oplist"></div>'
@@ -1866,7 +1884,7 @@ function renderOtkAdd(){
     +'<div class="sum" id="oa_sum">—</div>'
     +'<div class="row"><button id="oa_go" onclick="otkAddGo()">✅ Внести и принять</button><span class="msg" id="oa_msg"></span></div></div>';
   var os=document.getElementById('oa_site'); if(os){ var kp=''; try{ kp=localStorage.getItem('tw_osite_'+(TGID||''))||''; }catch(e){} if(kp&&DATA.sites.indexOf(kp)>=0) os.value=kp; }
-  otkAddDet();
+  OACOMP=null; otkBatchChg();
 }
 function otkAddDet(){
   var eq=(document.getElementById('oa_e')||{}).value||'', p=(otkComp()[eq]||{});
