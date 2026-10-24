@@ -420,13 +420,16 @@ function cvOpen(id, copy){
   var l=null; (CV||[]).forEach(function(x){ if(x.id===id) l=x; });
   var cur=l||{ name:'', note:'', mats:[], items:[] }, on={}; cur.mats.forEach(function(m){ on[m]=1; });
   var mats=CVMATS.slice(); cur.mats.forEach(function(m){ if(!mats.some(function(x){ return x.name===m; })) mats.push({ name:m }); });
-  var html='<label>Название</label><input id="cv_name" value="'+esc(copy?cur.name+' (копия)':cur.name)+'" placeholder="например: Дом 2 боковины, фанера 1525×1525">'
-    +'<label style="margin-top:8px">Подходит к листам</label><div style="max-height:160px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:6px 10px">'
-    +mats.map(function(m){ return '<label style="display:flex;gap:6px;align-items:center;font:var(--t-small)"><input type="checkbox" class="cv_m" value="'+esc(m.name)+'"'+(on[m.name]?' checked':'')+' style="width:auto">'
-      +esc(m.name)+(m.thick||m.size?' <span class="hint">'+esc([m.thick?m.thick+' мм':'', m.size||''].filter(Boolean).join(' · '))+'</span>':'')+'</label>'; }).join('')+'</div>'
+  var html='<label>Название</label><input id="cv_name" value="'+esc(copy?cur.name+' (копия)':cur.name)+'" placeholder="например: Дом 2 боковины, фанера 1525×1525" style="width:100%">'
+    +'<label style="margin-top:8px">Подходит к листам</label>'
+    +'<label style="display:flex;gap:6px;align-items:center;margin:4px 0 6px"><input type="checkbox" id="cv_all" style="width:auto"'+(mats.length&&mats.every(function(m){ return on[m.name]; })?' checked':'')
+      +' onchange="var v=this.checked; Array.prototype.forEach.call(document.querySelectorAll(\'.cv_m\'), function(c){ c.checked=v; })"><b>Ко всем листам</b></label>'
+    +'<div style="max-height:160px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:6px 10px">'
+    +mats.map(function(m){ return '<label style="display:flex;gap:6px;align-items:center;font:var(--t-small)"><input type="checkbox" class="cv_m" value="'+esc(m.name)+'"'+(on[m.name]?' checked':'')+' style="width:auto" onchange="el(\'cv_all\').checked=Array.prototype.every.call(document.querySelectorAll(\'.cv_m\'), function(c){ return c.checked; })">'
+      +esc(m.name)+((m.thick||m.size)&&!(m.size&&m.name.indexOf(m.size)>=0)?' <span class="hint">'+esc([m.thick?m.thick+' мм':'', m.size||''].filter(Boolean).join(' · '))+'</span>':'')+'</label>'; }).join('')+'</div>'
     +'<label style="margin-top:8px">Детали с одного листа</label><div id="cv_rows">'+(cur.items.length?cur.items:[{ detail:'', qty:'' }]).map(function(i){ return cvRow(i.detail, i.qty); }).join('')+'</div>'
     +'<button class="gray sm" style="margin-top:6px" onclick="el(\'cv_rows\').insertAdjacentHTML(\'beforeend\', cvRow(\'\',\'\'))">＋ деталь</button>'
-    +'<label style="margin-top:8px">Заметка</label><input id="cv_note" value="'+esc(cur.note)+'" placeholder="программа ЧПУ, особенности"><div id="cv_msg" class="msg"></div>';
+    +'<label style="margin-top:8px">Заметка</label><input id="cv_note" value="'+esc(cur.note)+'" placeholder="программа ЧПУ, особенности" style="width:100%"><div id="cv_msg" class="msg"></div>';
   dlg(l&&!copy?'Вариант раскроя':'Новый вариант раскроя', html, function(root){
     var mats=[], items=[];
     Array.prototype.forEach.call(root.querySelectorAll('.cv_m'), function(c){ if(c.checked) mats.push(c.value); });
