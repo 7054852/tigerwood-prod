@@ -41,20 +41,20 @@
   .wi{ padding:var(--s-2) var(--s-3); display:grid; grid-template-columns:minmax(0,1fr) auto; gap:3px var(--s-2); align-items:center; cursor:pointer; border-radius:var(--r-ctl); background:var(--card); border:1px solid var(--line); margin-top:6px; }
   .wi:hover{ border-color:var(--accent); }
   /* блоки приходов (20.10.2026): каждый приход — карточка; просрочка, ожидание и «срок не наступил» — разными блоками и цветом */
-  .ib{ border-radius:var(--r-card); padding:var(--s-2) var(--s-3) var(--s-3); margin-top:var(--s-3); background:var(--bg2); border-left:4px solid var(--line2); }
-  .ib.late{ background:var(--red-bg); border-left-color:var(--red); }
-  .ib.wait{ background:var(--green-bg); border-left-color:var(--green); }
-  .ib.inv{ background:var(--blue-bg); border-left-color:var(--blue); }
-  .ib.got{ padding-bottom:var(--s-2); }
+  div.ib{ border-radius:var(--r-card); padding:var(--s-2) var(--s-3) var(--s-3); margin-top:var(--s-3); background:var(--bg2); border-left:4px solid var(--line2); }
+  div.ib.late{ background:var(--red-bg); border-left-color:var(--red); }
+  div.ib.wait{ background:var(--green-bg); border-left-color:var(--green); }
+  div.ib.inv{ background:var(--blue-bg); border-left-color:var(--blue); }
+  div.ib.got{ padding-bottom:var(--s-2); }
   .ib-h{ display:flex; justify-content:space-between; align-items:baseline; gap:var(--s-2); font-weight:700; }
   .ib-h small{ font:var(--t-small); color:var(--muted); font-weight:500; display:block; }
-  .ib.late .ib-h > span:first-child{ color:var(--red); }
-  .ib.wait .ib-h > span:first-child{ color:var(--green); }
-  .ib.inv .ib-h > span:first-child{ color:var(--blue); }
+  div.ib.late .ib-h > span:first-child{ color:var(--red); }
+  div.ib.wait .ib-h > span:first-child{ color:var(--green); }
+  div.ib.inv .ib-h > span:first-child{ color:var(--blue); }
   .ib-h.tg{ cursor:pointer; user-select:none; }
   .ib-h.tg:hover > span:first-child{ text-decoration:underline; }
-  .ib .wd{ margin-top:var(--s-3); border-bottom:0; padding-bottom:0; font:var(--t-small); font-weight:600; color:var(--fg2); }
-  .ib.late .wd{ color:var(--red); }
+  div.ib .wd{ margin-top:var(--s-3); border-bottom:0; padding-bottom:0; font:var(--t-small); font-weight:600; color:var(--fg2); }
+  div.ib.late .wd{ color:var(--red); }
   .wd .due{ margin-left:6px; }
   .wi .shipn{ color:var(--blue); }
   .due{ font:var(--t-small); font-weight:600; white-space:nowrap; padding:0 7px; border-radius:999px; }
@@ -120,6 +120,9 @@
   table.reg td.purp{ max-width:340px; color:var(--muted); font:var(--t-small); }
   table.reg td.go{ white-space:nowrap; text-align:right; }
   table.reg td.go button{ margin:2px 0 2px var(--s-1); }
+  .setgrid{ display:grid; grid-template-columns:1fr 1fr; gap:0 var(--s-6); align-items:start; }
+  @media (max-width:900px){ .setgrid{ grid-template-columns:1fr; } }
+  .sect .sadd{ margin-left:auto; text-transform:none; letter-spacing:0; font:var(--t-small); font-weight:600; color:var(--accent-text); }
   .al{ display:grid; grid-template-columns:1fr 130px auto; gap:var(--s-2); margin-top:var(--s-2); align-items:center; }
   .form{ display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:var(--s-3); margin:var(--s-3) 0; }
   .form label{ display:block; font:var(--t-small); color:var(--muted); margin-bottom:2px; }
@@ -249,10 +252,13 @@
 <!-- ═══ СПРАВОЧНИКИ ═══ -->
 <div id="tab_settings" class="hide">
   <div class="sect">Курсы валют <small>BYN за единицу</small></div><div class="toolbar"><div id="rateBox" class="wallets" style="border:0;margin:0;padding:0"></div><div class="end"><button class="sec" onclick="ratesUpd()">Обновить по НБ РБ</button></div></div>
-  <div class="sect">Кошельки</div><div class="toolbar"><button class="sec" onclick="walOpen('')">+ Кошелёк</button></div><div id="walBox"></div>
-  <div class="sect">Типы оплаты <small>комиссия подставляется при получении денег</small></div><div class="toolbar"><button class="sec" onclick="ptOpen('')">+ Тип оплаты</button></div><div id="ptBox"></div>
+  <!-- 24.10.2026: короткие справочники — рядом в две колонки, компактные строки, «изменить» ссылкой (было по 76 px на строку из-за кнопок) -->
+  <div class="setgrid">
+    <div><div class="sect">Кошельки <a href="#" class="sadd" onclick="walOpen('');return false">＋ кошелёк</a></div><div id="walBox"></div></div>
+    <div><div class="sect">Типы оплаты <small>комиссия — при получении денег</small><a href="#" class="sadd" onclick="ptOpen('');return false">＋ тип оплаты</a></div><div id="ptBox"></div></div>
+  </div>
+  <div class="sect">Статьи <a href="#" class="sadd" onclick="catOpen('');return false">＋ статья</a></div><div class="toolbar"><input id="catQ" type="search" class="search" placeholder="🔎 статья, направление" oninput="renderSettings()"></div><div id="catBox"></div>
   <div class="sect">Доступ к Снабу <small>кто подаёт счета из Telegram и кто их одобряет</small></div><div id="snabBox"></div>
-  <div class="sect">Статьи</div><div class="toolbar"><button class="sec" onclick="catOpen('')">+ Статья</button><input id="catQ" type="search" class="search" placeholder="🔎 статья" oninput="renderSettings()"></div><div id="catBox"></div>
   <div id="setMsg" class="msg"></div>
 </div>
 
@@ -1218,15 +1224,15 @@ var SET=null, CE=null, WE=null, PE=null;
 function setLoad(){ get({vapi:'finsettings'}).then(function(r){ if(!r||!r.ok){ noAccess(r); return; } SET=r; renderSettings(); }); get({vapi:'finsnabaccess'}).then(snabRender); }
 function snabRender(r){ if(!r||!r.ok){ el('snabBox').innerHTML='<div class="mut">'+esc(errText(r))+'</div>'; return; }
   var box=function(p, role){ return '<input type="checkbox"'+(p[role]?' checked':'')+' onchange="snabSet(\''+p.id+'\',\''+role+'\',this.checked)">'; };
-  el('snabBox').innerHTML='<div class="tbl-wrap"><table class="reg"><thead><tr><th>Сотрудник</th><th>Подаёт счета</th><th>Одобряет</th></tr></thead><tbody>'+r.people.map(function(p){ return '<tr><td>'+(p.name?esc(p.name):'<span class="mut">нет в «Сотрудниках» · Telegram '+esc(p.id)+'</span>')+'</td><td>'+box(p,'submit')+'</td><td>'+box(p,'approve')+'</td></tr>'; }).join('')+'</tbody></table></div><div class="mut">Одобряющий может и подавать. В списке — сотрудники с привязанным Telegram.</div>'; }
+  el('snabBox').innerHTML='<div class="tbl-wrap"><table class="tbl sm"><thead><tr><th>Сотрудник</th><th>Подаёт счета</th><th>Одобряет</th></tr></thead><tbody>'+r.people.map(function(p){ return '<tr><td>'+(p.name?esc(p.name):'<span class="mut">нет в «Сотрудниках» · Telegram '+esc(p.id)+'</span>')+'</td><td>'+box(p,'submit')+'</td><td>'+box(p,'approve')+'</td></tr>'; }).join('')+'</tbody></table></div><div class="mut">Одобряющий может и подавать. В списке — сотрудники с привязанным Telegram.</div>'; }
 function snabSet(id, role, on){ run({vapi:'finsnabaccessset', who:id, role:role, on:on?1:0}, 'Сохраняю доступ…', 'setMsg').then(function(r){ if(r) snabRender(r); else get({vapi:'finsnabaccess'}).then(snabRender); }); }
 function refsReload(){ return get({vapi:'finrefs'}).then(function(r){ if(r&&r.ok) REF=r; }); }
 function renderSettings(){
   el('rateBox').innerHTML=SET.rates.length?SET.rates.map(function(r){ return '<span>'+r.currency+' <b>'+String(r.rate).replace('.',',')+'</b> <span class="mut">'+dm(r.date)+(r.source==='deal'?' · курс сделки':r.source==='manual'?' · вручную':'')+'</span></span>'; }).join(''):'<span class="mut">курсов нет</span>';
-  el('walBox').innerHTML='<div class="tbl-wrap"><table class="reg"><thead><tr><th>Кошелёк</th><th>Валюта</th><th>Вид</th><th class="num">Стартовый остаток</th><th></th></tr></thead><tbody>'+SET.wallets.map(function(w){ return '<tr><td>'+esc(w.name)+'</td><td>'+w.currency+'</td><td>'+(w.isCash?'наличные':'счёт')+'</td><td class="num">'+money(w.start)+'</td><td class="go"><button class="sec" onclick="walOpen(\''+w.id+'\')">Изменить</button></td></tr>'; }).join('')+'</tbody></table></div>';
-  el('ptBox').innerHTML='<div class="tbl-wrap"><table class="reg"><thead><tr><th>Тип оплаты</th><th class="num">Комиссия, %</th><th></th></tr></thead><tbody>'+SET.paymentTypes.filter(function(t){ return t.active; }).map(function(t){ return '<tr><td>'+esc(t.name)+'</td><td class="num">'+String(t.pct).replace('.',',')+'</td><td class="go"><button class="sec" onclick="ptOpen(\''+t.id+'\')">Изменить</button></td></tr>'; }).join('')+'</tbody></table></div>';
-  var q=(v('catQ')||'').toLowerCase(), cats=SET.categories.filter(function(c){ return !q||c.name.toLowerCase().indexOf(q)>=0; });
-  el('catBox').innerHTML='<div class="tbl-wrap"><table class="reg"><thead><tr><th>Статья</th><th>Вид</th><th>Направление</th><th>Деятельность</th><th>Документ</th><th></th></tr></thead><tbody>'+cats.map(function(c){ return '<tr'+(c.active?'':' class="sp"')+'><td>'+esc(c.name)+(c.active?'':' <span class="pill mute">выключена</span>')+'</td><td>'+(c.kind==='income'?'доход':'расход')+'</td><td>'+esc(c.group)+'</td><td>'+esc(c.activity)+'</td><td>'+(c.doc?'требуется':'не требуется')+'</td><td class="go"><button class="sec" onclick="catOpen(\''+c.id+'\')">Изменить</button></td></tr>'; }).join('')+'</tbody></table></div>';
+  el('walBox').innerHTML='<div class="tbl-wrap"><table class="tbl sm"><thead><tr><th>Кошелёк</th><th>Вид</th><th class="num">Стартовый остаток</th><th></th></tr></thead><tbody>'+SET.wallets.map(function(w){ return '<tr><td>'+esc(w.name)+'</td><td>'+(w.isCash?'наличные':'счёт')+'</td><td class="num">'+money(w.start)+' '+esc(w.currency)+'</td><td class="acts2"><a href="#" onclick="walOpen(\''+w.id+'\');return false">изменить</a></td></tr>'; }).join('')+'</tbody></table></div>';
+  el('ptBox').innerHTML='<div class="tbl-wrap"><table class="tbl sm"><thead><tr><th>Тип оплаты</th><th class="num">Комиссия, %</th><th></th></tr></thead><tbody>'+SET.paymentTypes.filter(function(t){ return t.active; }).map(function(t){ return '<tr><td>'+esc(t.name)+'</td><td class="num">'+String(t.pct).replace('.',',')+'</td><td class="acts2"><a href="#" onclick="ptOpen(\''+t.id+'\');return false">изменить</a></td></tr>'; }).join('')+'</tbody></table></div>';
+  var q=(v('catQ')||'').toLowerCase(), cats=SET.categories.filter(function(c){ return !q||(c.name+' '+(c.group||'')+' '+(c.activity||'')).toLowerCase().indexOf(q)>=0; });
+  el('catBox').innerHTML='<div class="tbl-wrap"><table class="tbl sm"><thead><tr><th>Статья</th><th>Вид</th><th>Направление</th><th>Деятельность</th><th>Документ</th><th></th></tr></thead><tbody>'+cats.map(function(c){ return '<tr'+(c.active?'':' class="sp"')+'><td>'+esc(c.name)+(c.active?'':' <span class="pill mute">выключена</span>')+'</td><td>'+(c.kind==='income'?'доход':'расход')+'</td><td>'+esc(c.group)+'</td><td>'+esc(c.activity)+'</td><td>'+(c.doc?'требуется':'не требуется')+'</td><td class="acts2"><a href="#" onclick="catOpen(\''+c.id+'\');return false">изменить</a></td></tr>'; }).join('')+'</tbody></table></div>';
 }
 function setDone(r){ if(!r) return; dlgClose(); setLoad(); refsReload(); }
 function ratesUpd(){ run({vapi:'finratesupdate'}, 'Запрашиваю курсы НБ РБ…', 'setMsg').then(function(r){ if(!r) return; setm('setMsg', r.failed.length?'warn':'ok', 'Обновлено: '+(r.updated.join(', ')||'—')+(r.failed.length?'. Не ответили: '+r.failed.join(', ')+' — остался прежний курс':'')+(r.kept.length?'. Курс сделки не меняется: '+r.kept.join(', '):'')+'.'); setLoad(); }); }
