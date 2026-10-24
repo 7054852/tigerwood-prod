@@ -80,6 +80,7 @@
   <a id="t_detreg" onclick="tab('detreg')">Реестр деталей</a>
   <a id="t_opreg" onclick="tab('opreg')">Реестр операций</a>
   <a id="t_cut" onclick="tab('cut')">Раскрой ЧПУ</a>
+  <a id="t_cutvar" onclick="tab('cutvar')">Варианты раскроя</a>
   <a id="t_dups" class="hide" onclick="tab('dups')">Дубли</a>
 </div>
 <div class="sub" id="pageSub">Материал + работа собираются в стоимость изделия. Элемент = одна вещь со стадиями (заготовка→деталь→узел). <span id="pushmsg" class="msg"></span></div>
@@ -252,6 +253,20 @@
   <div class="tbl-wrap"><table class="tbl sm" id="payTbl"><thead><tr><th>Деталь</th><th style="width:130px">Операция</th><th style="width:110px">Расценка (труд)</th><th style="width:180px">Оплата ЗП</th></tr></thead><tbody></tbody></table></div>
 </div>
 
+<!-- ═══ ВАРИАНТЫ РАСКРОЯ ЧПУ (24.10.2026): какие детали и сколько выходит с одного листа ═══ -->
+<div id="pane_cutvar" class="hide">
+  <div class="toolbar">
+    <input id="cvQ" type="search" class="search" placeholder="🔎 вариант, деталь, лист" oninput="cvRender()">
+    <label class="hint" style="display:flex;gap:4px;align-items:center"><input type="checkbox" id="cvArch" onchange="cvRender()" style="width:auto"> архив</label>
+    <span class="meta" id="cvCnt"></span>
+    <div class="end"><button class="sec ib" title="Обновить" onclick="cvLoad()">↻</button><button onclick="cvOpen('')">＋ Вариант</button></div>
+  </div>
+  <div class="note hint"><div><b>Вариант раскроя</b> — карта раскроя ЧПУ: какие детали и сколько штук выходит с <b>одного листа</b>, и к каким листам она подходит.
+    Раскройщик в наряде выбирает вариант, лист и число листов — детали система считает сама, он отмечает только брак. Годные детали идут на склад раскроя.
+    Вариант в архиве раскройщик не видит, история нарядов по нему остаётся. «Брак» — средний по нарядам с этим вариантом.</div></div>
+  <div class="tbl-wrap fill"><table class="tbl sm" id="cvTbl"><thead><tr><th>Вариант</th><th>Детали с листа</th><th>Листы</th><th class="num">Нарезано листов</th><th class="num">Брак</th><th></th></tr></thead><tbody></tbody></table></div>
+</div>
+
 <!-- ═══ ДУБЛИ СПРАВОЧНИКОВ (только через Прохаб: у хаба этих маршрутов нет) ═══ -->
 <div id="pane_dups" class="hide">
   <div class="toolbar"><button onclick="dupScan()">🔎 Проверить дубли</button><button class="sec" onclick="packCheck()" title="упаковка товара, фурнитура и коробка — по оборудованию товара, а не по блоку операций">📦 Проверить упаковку</button><span class="msg" id="dupmsg"></span></div>
@@ -324,20 +339,20 @@ function ask(q, onOk, okText){ dlg('Подтвердите', '<div>'+esc(q).repl
 function refused(mid, r, pre){ var t=(pre||'')+((r&&r.error)||'Сервер не ответил — повторите.'); if(mid) setMsg(mid,false,t); nope(t); }
 
 var HIDDEN={};
-function tab(t){ curTab=t; if(t==='cut'&&!CUTROWS.length){ loadCut(); loadPay(); } if(t==='dups'&&!DUPS) dupScan(); ['cost','elem','mat','ops','detreg','opreg','cut','dups'].forEach(function(x){ el('pane_'+x).className = (x===t&&!HIDDEN[x])?'':'hide'; el('t_'+x).className = HIDDEN[x]?'hide':(x===t?'on':''); }); }
+function tab(t){ curTab=t; if(t==='cut'&&!CUTROWS.length){ loadCut(); loadPay(); } if(t==='cutvar'&&!CV) cvLoad(); if(t==='dups'&&!DUPS) dupScan(); ['cost','elem','mat','ops','detreg','opreg','cut','cutvar','dups'].forEach(function(x){ el('pane_'+x).className = (x===t&&!HIDDEN[x])?'':'hide'; el('t_'+x).className = HIDDEN[x]?'hide':(x===t?'on':''); }); }
 // разделение экранов: mode=ops — Операции, реестры, раскрой; mode=cost — Себестоимость / Элементы / Материалы
 var MODE=(qp('mode')||qp('page')||'cost')==='ops'?'ops':'cost';
 // «Дубли» — маршруты Прохаба (dupscan/dupmerge); через хаб (srv=gas) вкладку не показываем
 var PROHUB=!!(window.TW_CFG && TW_CFG.srv!=='gas'), DUPS=null;
 function applyMode(){
   if(MODE==='ops'){
-    HIDDEN={cost:1,elem:1,mat:1,dups:PROHUB?0:1};
+    HIDDEN={cost:1,elem:1,mat:1,dups:PROHUB?0:1,cutvar:PROHUB?0:1};
     tab('ops');
     el('pageTitle').textContent='🧰 Операции и расценки';
     el('pageSub').innerHTML='Расценки по деталям + реестры деталей и операций (коды). Формула: ставка часа ÷ штук/час × коэф. <span id="pushmsg" class="msg"></span>';
     document.title='Тигервуд — Операции и расценки';
   } else {
-    HIDDEN={ops:1,detreg:1,opreg:1,cut:1,dups:PROHUB?0:1};
+    HIDDEN={ops:1,detreg:1,opreg:1,cut:1,cutvar:1,dups:PROHUB?0:1};
     tab('cost');
     document.title='Тигервуд — Себестоимость';
   }
@@ -375,6 +390,55 @@ function applyOpsFocus(){
 // ── 🪚 РАСКРОЙ ЧПУ: расценки за лист ──
 var CUTROWS=[];
 function cmsg(t,err){ var e=el('cutmsg'); if(e){ e.className='msg '+(err?'err':'ok'); e.textContent=t||''; } }
+/* ═══ варианты раскроя ═══ */
+var CV=null, CVMATS=null;
+function cvLoad(){
+  api({vapi:'cutlayouts'}).then(function(r){ if(!r||!r.ok){ nope(r&&r.error); return; } CV=r.items||[]; cvRender(); }).catch(function(e){ nope('Не загрузилось: '+errOf(e)); });
+  if(!CVMATS) api({vapi:'recalcsheetrates',dry:'1'}).then(function(r){ CVMATS=((r&&r.rows)||[]).filter(function(x){ return (x.now||0)>0; }).map(function(x){ return { name:x.name, thick:x.thick, size:x.size }; }); });
+}
+function cvRender(){
+  if(!CV) return;
+  var q=(el('cvQ').value||'').toLowerCase(), arch=el('cvArch').checked;
+  var rows=CV.filter(function(l){ return (arch?!l.active:l.active) && (!q || (l.name+' '+l.mats.join(' ')+' '+l.items.map(function(i){ return i.detail; }).join(' ')).toLowerCase().indexOf(q)>=0); });
+  el('cvCnt').textContent=rows.length+' '+(arch?'в архиве':'вариантов');
+  el('cvTbl').getElementsByTagName('tbody')[0].innerHTML=rows.map(function(l){
+    return '<tr><td><b>'+esc(l.name)+'</b>'+(l.note?'<span class="sub2">'+esc(l.note)+'</span>':'')+'</td>'
+      +'<td>'+l.items.map(function(i){ return esc(i.detail)+' × '+i.qty; }).join('<br>')+'<span class="sub2">всего '+l.perSheet+' шт с листа</span></td>'
+      +'<td>'+l.mats.map(esc).join('<br>')+'</td>'
+      +'<td class="num">'+(l.sheets||'—')+(l.last?'<span class="sub2">'+esc(l.last.split('-').reverse().join('.'))+'</span>':'')+'</td>'
+      +'<td class="num">'+(l.good+l.bad>0?String(l.badPct).replace('.',',')+' %<span class="sub2">'+l.bad+' из '+(l.good+l.bad)+'</span>':'—')+'</td>'
+      +'<td class="acts2"><a href="#" onclick="cvOpen('+jsq(l.id)+');return false">изменить</a><a href="#" onclick="cvOpen('+jsq(l.id)+',1);return false">копия</a>'
+      +'<a href="#" onclick="cvOff('+jsq(l.id)+','+(l.active?0:1)+');return false">'+(l.active?'в архив':'вернуть')+'</a></td></tr>';
+  }).join('')||'<tr><td colspan="6" class="hint">'+(arch?'архив пуст':'вариантов ещё нет — «＋ Вариант»')+'</td></tr>';
+  if(window.twFitTables) twFitTables();
+}
+function cvRow(d, q){ return '<div class="row cvr" style="display:flex;gap:8px;margin-top:6px"><input class="cv_d" list="detNames" value="'+esc(d||'')+'" placeholder="деталь" style="flex:1">'
+  +'<input class="cv_q" type="number" min="1" step="1" inputmode="numeric" value="'+esc(q||'')+'" placeholder="шт" style="width:80px" title="штук с одного листа">'
+  +'<button class="gray sm" onclick="this.parentNode.parentNode.removeChild(this.parentNode)" title="убрать">✕</button></div>'; }
+function cvOpen(id, copy){
+  if(!CVMATS){ setTimeout(function(){ cvOpen(id, copy); }, 400); return; }
+  var l=null; (CV||[]).forEach(function(x){ if(x.id===id) l=x; });
+  var cur=l||{ name:'', note:'', mats:[], items:[] }, on={}; cur.mats.forEach(function(m){ on[m]=1; });
+  var mats=CVMATS.slice(); cur.mats.forEach(function(m){ if(!mats.some(function(x){ return x.name===m; })) mats.push({ name:m }); });
+  var html='<label>Название</label><input id="cv_name" value="'+esc(copy?cur.name+' (копия)':cur.name)+'" placeholder="например: Дом 2 боковины, фанера 1525×1525">'
+    +'<label style="margin-top:8px">Подходит к листам</label><div style="max-height:160px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:6px 10px">'
+    +mats.map(function(m){ return '<label style="display:flex;gap:6px;align-items:center;font:var(--t-small)"><input type="checkbox" class="cv_m" value="'+esc(m.name)+'"'+(on[m.name]?' checked':'')+' style="width:auto">'
+      +esc(m.name)+(m.thick||m.size?' <span class="hint">'+esc([m.thick?m.thick+' мм':'', m.size||''].filter(Boolean).join(' · '))+'</span>':'')+'</label>'; }).join('')+'</div>'
+    +'<label style="margin-top:8px">Детали с одного листа</label><div id="cv_rows">'+(cur.items.length?cur.items:[{ detail:'', qty:'' }]).map(function(i){ return cvRow(i.detail, i.qty); }).join('')+'</div>'
+    +'<button class="gray sm" style="margin-top:6px" onclick="el(\'cv_rows\').insertAdjacentHTML(\'beforeend\', cvRow(\'\',\'\'))">＋ деталь</button>'
+    +'<label style="margin-top:8px">Заметка</label><input id="cv_note" value="'+esc(cur.note)+'" placeholder="программа ЧПУ, особенности"><div id="cv_msg" class="msg"></div>';
+  dlg(l&&!copy?'Вариант раскроя':'Новый вариант раскроя', html, function(root){
+    var mats=[], items=[];
+    Array.prototype.forEach.call(root.querySelectorAll('.cv_m'), function(c){ if(c.checked) mats.push(c.value); });
+    Array.prototype.forEach.call(root.querySelectorAll('.cvr'), function(r){ var d=r.querySelector('.cv_d').value.trim(), q=r.querySelector('.cv_q').value; if(d) items.push({ detail:d, qty:q }); });
+    setMsg('cv_msg', true, 'сохраняю…');
+    apiPost({vapi:'cutlayoutsave', data:JSON.stringify({ id:l&&!copy?l.id:undefined, name:el('cv_name').value, note:el('cv_note').value, mats:mats, items:items })}).then(function(r){
+      if(!r||!r.ok){ setMsg('cv_msg', false, (r&&r.error)||'не сохранилось'); return; } closeDlg(); cvLoad(); }).catch(function(e){ setMsg('cv_msg', false, errOf(e)); });
+    return false;   // окно закрывается после ответа сервера — при ошибке введённое не теряется
+  }, 'Сохранить');
+}
+function cvOff(id, on){ api({vapi:'cutlayoutoff', id:id, on:on?'1':'0'}).then(function(r){ if(!r||!r.ok){ nope(r&&r.error); return; } cvLoad(); }); }
+
 function loadCut(){
   cmsg('загрузка…');
   api({vapi:'recalcsheetrates',dry:'1'}).then(function(r){
