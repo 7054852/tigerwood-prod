@@ -155,16 +155,22 @@
 
 <!-- ═══ ВЫПИСКА ═══ -->
 <div id="tab_statement" class="hide">
-  <div class="card">
-    <div class="toolbar">
-      <label>Счёт выписки <select id="stWallet"></select></label>
-      <input type="file" id="stFile" accept=".xlsx,.xls,.csv,.docx">
-      <button class="primary" onclick="stUpload()">Загрузить выписку</button>
-      <div class="end"><button class="sec" onclick="stRefresh()">Обновить</button></div>
+  <div class="toolbar">
+    <input id="stQ" type="search" class="search" placeholder="🔎 Контрагент, сумма, №, дата, «не разнесён»…" oninput="sqSoon('st')" onkeydown="if(event.key==='Escape'){this.value='';sqRun('st');}">
+    <div class="chips" id="stChips"></div>
+    <div class="end">
+      <select id="stWallet" title="Счёт, по которому выгружена выписка — выберите перед загрузкой"></select>
+      <input type="file" id="stFile" accept=".xlsx,.xls,.csv,.docx" class="hide" onchange="stUpload()">
+      <button class="sec ib" title="Обновить" onclick="stRefresh()">↻</button>
+      <button class="primary" onclick="el('stFile').value='';el('stFile').click()" title="Файл выгрузки из банка (Excel или Word Приорбанка) на выбранный слева счёт">⬆ Загрузить выписку</button>
     </div>
-    <div class="mut">Файл выгрузки из банка (Excel). Строки, которые уже загружены, пропускаются — один и тот же файл можно загружать повторно.</div>
-    <div id="stMsg" class="msg"></div>
   </div>
+  <div class="note hint"><div><b>Загрузка.</b> Выберите счёт и файл выгрузки из банка. Строки, которые уже загружены, пропускаются — один и тот же файл можно загружать повторно.<br>
+    <b>Поиск</b> — по всей истории выписок, условия через пробел: контрагент («сонидо»), сумма (<code>150,50</code>, <code>&gt;1000</code>, <code>100-200</code>), номер документа, УНП, дата (<code>23.10</code>, <code>01.10-15.10</code>, <code>октябрь</code>, <code>вчера</code>, <code>неделя</code>, <code>прошлый месяц</code>),
+    а также <code>приход</code>, <code>расход</code>, <code>не разнесён</code>, <code>перевод</code>. Целое число (<code>2539</code>) ищется и как сумма, и как номер, и в назначении. Esc — очистить.</div></div>
+  <div id="stMsg" class="msg"></div>
+  <div id="stFound" class="hide"><div class="mut" id="stFoundHead" style="margin-bottom:var(--s-2)"></div><div id="stFoundBox"></div></div>
+  <div id="stMain">
 
   <div class="sect">Переводы между своими счетами <small id="ownCnt"></small></div>
   <div id="ownBox"></div>
@@ -180,26 +186,34 @@
   <div id="incBox"></div>
   <div id="incMsg" class="msg"></div>
 
-  <div class="sect">Разнесённые строки <small>последние 60</small></div>
+  <div class="sect">Разнесённые строки <small>последние 60 — остальные ищите поиском</small></div>
   <div id="doneBox"></div>
+  </div>
 </div>
 
 <!-- ═══ СЧЕТА ПОСТАВЩИКОВ ═══ -->
 <div id="tab_invoices" class="hide">
-  <div class="card">
-    <div class="toolbar">
-      <button class="primary" onclick="invOpen('')">+ Счёт</button>
-      <input type="file" id="invFiles" multiple accept=".pdf,image/*">
-      <button class="sec" onclick="invUpload()">Загрузить и распознать</button>
-      <div class="end"><button class="sec" onclick="invLoad()">Обновить</button></div>
+  <div class="toolbar">
+    <input id="invQ" type="search" class="search" placeholder="🔎 Поставщик, № счёта, сумма, дата, «не оплачен»…" oninput="sqSoon('inv')" onkeydown="if(event.key==='Escape'){this.value='';sqRun('inv');}">
+    <div class="chips" id="invChips"></div>
+    <div class="end">
+      <input type="file" id="invFiles" multiple accept=".pdf,image/*" class="hide" onchange="invUpload()">
+      <button class="sec ib" title="Обновить" onclick="invLoad()">↻</button>
+      <button class="sec" onclick="el('invFiles').value='';el('invFiles').click()" title="PDF или фото счетов, до 10 МБ — распознаются сами">⬆ Загрузить счета</button>
+      <button class="primary" onclick="invOpen('')">＋ Счёт</button>
     </div>
-    <div class="mut">Файлы счетов (PDF или фото, до 10 МБ) попадают «на одобрение» и распознаются по одному: поставщик, номер, дата и сумма подставляются сами — проверьте их перед одобрением. Одобренный счёт становится карточкой расхода на доске.</div>
-    <div id="invMsg" class="msg"></div>
   </div>
+  <div class="note hint"><div><b>Загрузка.</b> Файлы счетов (PDF или фото, до 10 МБ) попадают «на одобрение» и распознаются по одному: поставщик, номер, дата и сумма подставляются сами — проверьте их перед одобрением. Одобренный счёт становится карточкой расхода на доске.<br>
+    <b>Поиск</b> — по всем счетам, условия через пробел: поставщик, номер счёта, сумма (<code>150,50</code>, <code>&gt;1000</code>, <code>100-200</code>), дата счёта или оплаты (<code>23.10</code>, <code>01.10-15.10</code>, <code>октябрь</code>, <code>неделя</code>),
+    статус: <code>не оплачен</code>, <code>оплачен</code>, <code>на одобрении</code>, <code>дубль</code>, <code>акт</code>. Esc — очистить.</div></div>
+  <div id="invMsg" class="msg"></div>
+  <div id="invFound" class="hide"><div class="mut" id="invFoundHead" style="margin-bottom:var(--s-2)"></div><div id="invFoundBox"></div></div>
+  <div id="invMain">
   <div class="sect">На одобрении <small id="invPendCnt"></small></div><div id="invPend"></div>
   <div id="crWrap" class="hide"><div class="sect">Наличные отчёты на подтверждении <small>из Telegram</small></div><div id="crBox"></div></div>
   <div class="sect">Реестр счетов <small id="invRegCnt"></small></div><div id="invReg"></div>
   <div class="toolbar"><button class="sec hide" id="invMore" onclick="invPage()">Показать ещё</button></div>
+  </div>
 </div>
 
 <!-- ═══ ЗАРПЛАТА ═══ -->
@@ -585,6 +599,7 @@ function ownApply(){
 }
 function stRefresh(){
   el('stWallet').innerHTML=wOpts(el('stWallet').value||REF.defaultWalletId);
+  sqChipsRender('st'); if(el('stQ').value.trim()) sqRun('st');
   get({vapi:'finowntransfers'}).then(function(r){ if(r&&r.ok){ OWN=r; renderOwn(); } });   // 20.10.2026: старый сервер без маршрута — блок пустой
   get({vapi:'finreconpreview'}).then(function(r){ if(!r||!r.ok){ noAccess(r); return; } EXP=r.plan; renderExp(); });
   Promise.all([get({vapi:'finincomepreview'}), get({vapi:'finincreconpreview'})]).then(function(a){ if(a[0]&&a[0].ok){ INC=a[0]; IREC=(a[1]&&a[1].plan)||[]; renderInc(); } });
@@ -888,6 +903,61 @@ function tplToggle(id, on){ run({vapi:'fintemplatetoggle', id:id, on:on?1:0}, '�
 function tplDel(){ if(!confirm('Удалить шаблон «'+TP.name+'»? Уже созданные карточки останутся.')) return; run({vapi:'fintemplatedel', id:TP.id}, 'Удаляю…', 'dlgMsg').then(function(r){ if(!r) return; dlgClose(); TPL=r.items; renderTpl(); }); }
 function tplRun(){ run({vapi:'finrecurrun'}, 'Создаю карточки…', 'tplMsg').then(function(r){ if(r) setm('tplMsg','ok', r.created?'Создано карточек: '+r.created+'.':'Новых карточек нет — на ближайшие месяцы всё уже создано.'); }); }
 
+/* ═══════════ УМНЫЙ ПОИСК (24.10.2026): счета и выписка — одна строка, сервер ищет по всей истории ═══════════ */
+var SQ={ st:{ t:0, seq:0 }, inv:{ t:0, seq:0 } };
+var SQCHIPS={ st:[['не разнесен','не разнесённые'],['приход','приходы'],['расход','расходы'],['месяц','этот месяц']],   // «сегодня», «неделя» — словом в поиске (панель — в одну строку)
+  inv:[['не оплачен','не оплаченные'],['на одобрении','на одобрении'],['оплачен','оплаченные'],['дубль','дубли'],['месяц','этот месяц']] };
+function sqInput(k){ return el(k==='st'?'stQ':'invQ'); }
+function sqHas(v, w){ return (' '+v.toLowerCase().replace(/ё/g,'е')+' ').indexOf(' '+w+' ')>=0; }
+function sqChipsRender(k){ var v=sqInput(k).value; el(k+'Chips').innerHTML=SQCHIPS[k].map(function(c,i){ return '<button class="chip'+(sqHas(v,c[0])?' on':'')+'" onclick="sqChip(\''+k+'\','+i+')">'+esc(c[1])+'</button>'; }).join(''); }
+function sqChip(k, i){ var w=SQCHIPS[k][i][0], inp=sqInput(k), v=inp.value.trim();
+  inp.value=sqHas(v,w)?(' '+v+' ').replace(new RegExp(' '+w+' ','i'),' ').trim():(v?v+' ':'')+w; sqRun(k); }
+function sqSoon(k){ clearTimeout(SQ[k].t); sqChipsRender(k); SQ[k].t=setTimeout(function(){ sqRun(k); }, 400); }
+function sqRun(k){
+  sqChipsRender(k);
+  var q=sqInput(k).value.trim(), box=el(k+'Found'), main=el(k+'Main');
+  if(!q){ SQ[k].seq++; box.className='hide'; main.className=''; return; }
+  var my=++SQ[k].seq;
+  get({vapi:k==='st'?'finstmtsearch':'fininvsearch', q:q}).then(function(r){
+    if(my!==SQ[k].seq) return;   // пока искали, запрос изменился
+    if(!r||!r.ok){ el(k+'FoundHead').innerHTML='<span style="color:var(--red)">'+esc(errText(r))+'</span>'; el(k+'FoundBox').innerHTML=''; box.className=''; main.className='hide'; return; }
+    box.className=''; main.className='hide';
+    if(k==='st') stFoundRender(r); else invFoundRender(r);
+    if(window.twFitTables) twFitTables();
+  }, function(){ if(my===SQ[k].seq) el(k+'FoundHead').innerHTML='<span style="color:var(--red)">Сервер не ответил — повторите.</span>'; });
+}
+function sqHead(n, what, extra, r){ return '<b>Найдено: '+n+' '+what+'</b>'+(extra?' · '+extra:'')+(r.total>r.items.length?' · <span style="color:var(--amber)">показаны первые '+r.items.length+' — уточните запрос</span>':'')
+  +(r.query?'<div style="font:var(--t-small);color:var(--muted)">понял как: '+esc(r.query)+'</div>':''); }
+function plural(n, a, b, c){ var m=n%10, h=n%100; return m===1&&h!==11?a:(m>=2&&m<=4&&(h<12||h>14)?b:c); }
+function stFoundRender(r){
+  var tot=Object.keys(r.totals||{}).map(function(c){ var t=r.totals[c]; return (t.in?'пришло <b style="color:var(--green)">'+money(t.in)+' '+esc(c)+'</b>':'')+(t.in&&t.out?', ':'')+(t.out?'ушло <b>'+money(t.out)+' '+esc(c)+'</b>':''); }).filter(Boolean).join(' · ');
+  el('stFoundHead').innerHTML=sqHead(r.total, plural(r.total,'строка','строки','строк'), tot, r);
+  if(!r.items.length){ el('stFoundBox').innerHTML='<div class="empty">Ничего не нашлось. Попробуйте короче: часть названия, только сумму или только дату.</div>'; return; }
+  el('stFoundBox').innerHTML='<div class="tbl-wrap fill"><table class="reg"><thead><tr><th>Дата</th><th>Контрагент</th><th class="num">Сумма</th><th>Назначение</th><th>Разнесено</th></tr></thead><tbody>'
+    +r.items.map(function(x){ var inc=x.dir==='credit';
+      return '<tr><td class="n">'+dmy(x.dateIso)+(x.docNo?'<span class="sub2">№ '+esc(x.docNo)+'</span>':'')+'</td>'
+        +'<td>'+(x.contr?'<a href="#" onclick="contrOpen(CN['+cn(x.contr)+']);return false">'+esc(x.contr)+'</a>':'<span class="mut">—</span>')+(x.unp?'<span class="sub2">УНП '+esc(x.unp)+'</span>':'')+'</td>'
+        +'<td class="num"><b'+(inc?' style="color:var(--green)"':'')+'>'+(inc?'+':'−')+money(x.sum)+' '+esc(x.cur)+'</b><span class="sub2">'+walletChip(x.wallet)+'</span></td>'
+        +'<td class="purp">'+esc(x.purpose)+'</td>'
+        +'<td>'+(x.open?'<span class="pill warn">не разнесена</span>':'<span class="pill ok">'+esc(x.posting||'разнесена')+'</span>')+(x.to&&x.to.length?'<span class="sub2">'+x.to.map(esc).join('<br>')+'</span>':'')+'</td></tr>'; }).join('')
+    +'</tbody></table></div>';
+}
+function invFoundRender(r){
+  el('invFoundHead').innerHTML=sqHead(r.total, plural(r.total,'счёт','счёта','счетов'), 'на <b>'+money(r.sum)+'</b>'+(r.unpaid?' · не оплачено <b style="color:var(--amber)">'+money(r.unpaid)+'</b>':''), r);
+  if(!r.items.length){ el('invFoundBox').innerHTML='<div class="empty">Ничего не нашлось. Попробуйте короче: часть названия поставщика, только номер или только сумму.</div>'; return; }
+  INV.found=r.items;
+  el('invFoundBox').innerHTML='<div class="tbl-wrap fill"><table class="reg"><thead><tr><th>Поставщик</th><th>Документ</th><th class="num">Сумма</th><th>Оплатить</th><th>Статус</th><th></th></tr></thead><tbody>'
+    +r.items.map(function(x){ return '<tr><td>'+(x.contr?'<a href="#" onclick="contrOpen(CN['+cn(x.contr)+']);return false">'+esc(x.contr)+'</a>':'<span class="mut">—</span>')+'</td>'
+      +'<td>'+invDoc(x)+(x.dup?' <span class="pill warn">возможный дубль</span>':'')+'</td>'
+      +'<td class="num">'+money(x.sum)+'<span class="sub2">'+walletChip(x.wallet)+'</span></td><td class="n">'+dmy(x.payDateIso)+'</td>'
+      +'<td><span class="pill '+(x.paid?'ok':x.pending?'warn':'')+'">'+esc(x.status)+'</span></td>'
+      +'<td class="acts2">'+fileLink(x.file)+(x.pending&&byId(INV.pend,x.id)?' <a href="#" onclick="invOpen(\''+x.id+'\');return false">изменить</a> <a href="#" onclick="invApprove(\''+x.id+'\');return false">одобрить</a>':'')
+      +(!x.paid&&!x.pending?' <a href="#" title="удалить счёт" onclick="invDelFound(\''+x.id+'\');return false">✕</a>':'')+'</td></tr>'; }).join('')
+    +'</tbody></table></div>';
+}
+function invDelFound(id){ var x=byId(INV.found||[],id); if(!x||!confirm('Удалить счёт '+(x.contr||'')+' на '+money(x.sum)+'? Его неоплаченная карточка расхода уйдёт с доски.')) return;
+  run({vapi:'fininvdel', id:id}, 'Удаляю…', 'invMsg').then(function(r){ if(r){ invLoad(); sqRun('inv'); } }); }
+
 /* ═══════════ СЧЕТА ПОСТАВЩИКОВ ═══════════ */
 var INV={ pend:[], reg:[], off:0 }, IE=null, IA=null, CN=[];
 function cn(name){ CN.push(name); return CN.length-1; }
@@ -896,6 +966,7 @@ function fileLink(u){ return /^https?:/.test(u||'')?'<a href="'+esc(u)+'" target
 function invDoc(x){ return esc(x.type)+(x.docNo?' № '+esc(x.docNo):'')+(x.docDateIso?' от '+dmy(x.docDateIso):''); }
 function invLoad(){
   INV.off=0; INV.reg=[];
+  sqChipsRender('inv'); if(el('invQ').value.trim()) sqRun('inv');
   get({vapi:'fininbox'}).then(function(r){ if(!r||!r.ok){ noAccess(r); return; } INV.pend=r.items; invPendRender(); });
   invPage(); crLoad();
   get({vapi:'fininvqueue'}).then(function(r){ if(r&&r.left>0) invProcess(); });
