@@ -450,6 +450,17 @@ function cvOpen(id, copy){
     return false;   // окно закрывается после ответа сервера — при ошибке введённое не теряется
   }, 'Сохранить');
 }
+// скачать файл карты раскроя через Прохаб: ссылка на 10 минут (Диск владельца не нужен); в Telegram — его загрузчиком
+function cutFileDl(id, a){
+  var was=a&&a.textContent; if(a) a.textContent='готовлю…';
+  api({vapi:'cutfilelink', id:id}).then(function(r){
+    if(a) a.textContent=was;
+    if(!r||!r.ok){ alert((r&&r.error)||'не скачать'); return; }
+    var url=BASE.replace(/\/exec(\?.*)?$/,'')+r.path, tw=window.Telegram&&Telegram.WebApp;
+    if(tw&&tw.downloadFile&&tw.isVersionAtLeast&&tw.isVersionAtLeast('8.0')){ try{ tw.downloadFile({url:url, file_name:r.name}); return; }catch(e){} }
+    var l=document.createElement('a'); l.href=url; l.rel='noopener'; document.body.appendChild(l); l.click(); l.parentNode.removeChild(l);
+  }).catch(function(e){ if(a) a.textContent=was; alert('не скачать: '+(e&&e.message||e)); });
+}
 function cvFileWhen(iso){ try{ return new Date(iso).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}); }catch(e){ return iso; } }
 function cvSize(b){ return b>=1048576?(Math.round(b/104857.6)/10+' МБ').replace('.',','):Math.max(1,Math.round(b/1024))+' КБ'; }
 function cvFilesHtml(l){
@@ -459,7 +470,8 @@ function cvFilesHtml(l){
     return '<div style="display:flex;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)">'
       +(f.preview?'<img src="'+f.preview+'" alt="" style="width:56px;height:42px;object-fit:cover;border-radius:6px;flex:none">'
         :'<span class="pill mute" style="width:56px;justify-content:center;flex:none">'+esc((f.ext||'файл').toUpperCase())+'</span>')
-      +'<div style="flex:1;min-width:0"><a href="'+esc(f.url)+'" target="_blank" style="word-break:break-all">'+esc(f.name)+'</a>'
+      +'<div style="flex:1;min-width:0"><a href="#" onclick="cutFileDl('+jsq(f.id)+',this);return false" title="скачать" style="word-break:break-all">⬇ '+esc(f.name)+'</a>'
+        +' <a href="'+esc(f.url)+'" target="_blank" class="hint" style="font:var(--t-small)" title="открыть на Google Диске">на Диске</a>'
       +'<span class="sub2" style="display:block;font:var(--t-small);color:var(--muted)">'+cvSize(f.size)+' · загружен '+esc(cvFileWhen(f.at))+(f.by?' · '+esc(f.by):'')+'</span></div>'
       +'<a href="#" style="font:var(--t-small);color:var(--red);flex:none" onclick="cvFileDel(this,'+jsq(f.id)+','+jsq(l.id)+');return false">удалить</a></div>';
   }).join('');
