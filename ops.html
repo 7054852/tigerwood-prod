@@ -256,14 +256,15 @@
 <!-- ═══ КАРТЫ РАСКРОЯ ЧПУ (24.10.2026): какие детали и сколько выходит с одного листа ═══ -->
 <div id="pane_cutvar" class="hide">
   <div class="toolbar">
-    <input id="cvQ" type="search" class="search" placeholder="🔎 карта, деталь, лист" oninput="cvRender()">
+    <input id="cvQ" type="search" class="search" placeholder="🔎 карта, деталь, лист, файл" oninput="cvRender()">
     <label class="hint" style="display:flex;gap:4px;align-items:center"><input type="checkbox" id="cvArch" onchange="cvRender()" style="width:auto"> архив</label>
     <span class="meta" id="cvCnt"></span>
     <div class="end"><button class="sec ib" title="Обновить" onclick="cvLoad()">↻</button><button onclick="cvOpen('')">＋ Карта</button></div>
   </div>
   <div class="note hint"><div><b>Карта раскроя</b> ЧПУ — какие детали и сколько штук выходит с <b>одного листа</b>, и к каким листам она подходит.
     Раскройщик в наряде выбирает карту, лист и число листов — детали система считает сама, он отмечает только брак. Годные детали идут на склад раскроя.
-    Карту в архиве раскройщик не видит, история нарядов по нему остаётся. «Брак» — средний по нарядам с этой картой.</div></div>
+    Карту в архиве раскройщик не видит, история нарядов по нему остаётся. «Брак» — средний по нарядам с этой картой.
+    <b>Файлы</b> — в окне карты («изменить»): картинка jpg (видна в списке, чтобы узнать карту), чертёж CDR, программы TAP / ART / DXF. Хранятся на Диске в папке «Прохаб — карты раскроя».</div></div>
   <div class="tbl-wrap fill"><table class="tbl sm" id="cvTbl"><thead><tr><th>Карта</th><th>Детали с листа</th><th>Листы</th><th class="num">Нарезано листов</th><th class="num">Брак</th><th></th></tr></thead><tbody></tbody></table></div>
 </div>
 
@@ -399,10 +400,14 @@ function cvLoad(){
 function cvRender(){
   if(!CV) return;
   var q=(el('cvQ').value||'').toLowerCase(), arch=el('cvArch').checked;
-  var rows=CV.filter(function(l){ return (arch?!l.active:l.active) && (!q || (l.name+' '+l.mats.join(' ')+' '+l.items.map(function(i){ return i.detail; }).join(' ')).toLowerCase().indexOf(q)>=0); });
+  var rows=CV.filter(function(l){ return (arch?!l.active:l.active) && (!q || (l.name+' '+l.mats.join(' ')+' '+l.items.map(function(i){ return i.detail; }).join(' ')+' '+(l.files||[]).map(function(f){ return f.name; }).join(' ')).toLowerCase().indexOf(q)>=0); });
   el('cvCnt').textContent=rows.length+' '+(arch?'в архиве':'карт');
   el('cvTbl').getElementsByTagName('tbody')[0].innerHTML=rows.map(function(l){
-    return '<tr><td><b>'+esc(l.name)+'</b>'+(l.note?'<span class="sub2">'+esc(l.note)+'</span>':'')+'</td>'
+    var fs=l.files||[], pic=fs.filter(function(f){ return f.preview; })[0], exts=[];
+    fs.forEach(function(f){ var e=(f.ext||'файл').toUpperCase(); if(exts.indexOf(e)<0) exts.push(e); });
+    return '<tr><td><div style="display:flex;gap:10px;align-items:flex-start">'+(pic?'<a href="'+esc(pic.url)+'" target="_blank" title="'+esc(pic.name)+'"><img src="'+pic.preview+'" alt="" style="width:72px;height:54px;object-fit:cover;border-radius:6px;display:block;background:var(--bg2)"></a>':'')
+      +'<div><b>'+esc(l.name)+'</b>'+(l.note?'<span class="sub2">'+esc(l.note)+'</span>':'')
+      +(fs.length?'<span class="sub2"><a href="#" onclick="cvOpen('+jsq(l.id)+');return false" title="открыть файлы">📎 '+fs.length+' · '+esc(exts.join(', '))+'</a></span>':'')+'</div></div></td>'
       +'<td>'+l.items.map(function(i){ return esc(i.detail)+' × '+i.qty; }).join('<br>')+'<span class="sub2">всего '+l.perSheet+' шт с листа</span></td>'
       +'<td>'+l.mats.map(esc).join('<br>')+'</td>'
       +'<td class="num">'+(l.sheets||'—')+(l.last?'<span class="sub2">'+esc(l.last.split('-').reverse().join('.'))+'</span>':'')+'</td>'
@@ -429,7 +434,12 @@ function cvOpen(id, copy){
       +esc(m.name)+((m.thick||m.size)&&!(m.size&&m.name.indexOf(m.size)>=0)?' <span class="hint">'+esc([m.thick?m.thick+' мм':'', m.size||''].filter(Boolean).join(' · '))+'</span>':'')+'</label>'; }).join('')+'</div>'
     +'<label style="margin-top:8px">Детали с одного листа</label><div id="cv_rows">'+(cur.items.length?cur.items:[{ detail:'', qty:'' }]).map(function(i){ return cvRow(i.detail, i.qty); }).join('')+'</div>'
     +'<button class="gray sm" style="margin-top:6px" onclick="el(\'cv_rows\').insertAdjacentHTML(\'beforeend\', cvRow(\'\',\'\'))">＋ деталь</button>'
-    +'<label style="margin-top:8px">Заметка</label><input id="cv_note" value="'+esc(cur.note)+'" placeholder="программа ЧПУ, особенности" style="width:100%"><div id="cv_msg" class="msg"></div>';
+    +'<label style="margin-top:8px">Заметка</label><input id="cv_note" value="'+esc(cur.note)+'" placeholder="программа ЧПУ, особенности" style="width:100%">'
+    +'<label style="margin-top:12px">Файлы</label>'+(l&&!copy?'<div id="cv_files">'+cvFilesHtml(l)+'</div>'
+      +'<label class="btn gray sm" style="display:inline-flex;margin-top:6px;cursor:pointer">📎 Добавить файлы<input type="file" multiple style="display:none" onchange="cvUpload('+jsq(l.id)+', this)"></label>'
+      +'<span class="hint" style="margin-left:8px">jpg, CDR, TAP, ART, DXF… до 14 МБ</span><div id="cv_fmsg" class="msg"></div>'
+      :'<div class="hint">Файлы можно прикрепить после сохранения карты — откройте её через «изменить».</div>')
+    +'<div id="cv_msg" class="msg"></div>';
   dlg(l&&!copy?'Карта раскроя':'Новая карта раскроя', html, function(root){
     var mats=[], items=[];
     Array.prototype.forEach.call(root.querySelectorAll('.cv_m'), function(c){ if(c.checked) mats.push(c.value); });
@@ -439,6 +449,56 @@ function cvOpen(id, copy){
       if(!r||!r.ok){ setMsg('cv_msg', false, (r&&r.error)||'не сохранилось'); return; } closeDlg(); cvLoad(); }).catch(function(e){ setMsg('cv_msg', false, errOf(e)); });
     return false;   // окно закрывается после ответа сервера — при ошибке введённое не теряется
   }, 'Сохранить');
+}
+function cvFileWhen(iso){ try{ return new Date(iso).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}); }catch(e){ return iso; } }
+function cvSize(b){ return b>=1048576?(Math.round(b/104857.6)/10+' МБ').replace('.',','):Math.max(1,Math.round(b/1024))+' КБ'; }
+function cvFilesHtml(l){
+  var fs=l.files||[];
+  if(!fs.length) return '<div class="hint">файлов нет</div>';
+  return fs.map(function(f){
+    return '<div style="display:flex;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)">'
+      +(f.preview?'<img src="'+f.preview+'" alt="" style="width:56px;height:42px;object-fit:cover;border-radius:6px;flex:none">'
+        :'<span class="pill mute" style="width:56px;justify-content:center;flex:none">'+esc((f.ext||'файл').toUpperCase())+'</span>')
+      +'<div style="flex:1;min-width:0"><a href="'+esc(f.url)+'" target="_blank" style="word-break:break-all">'+esc(f.name)+'</a>'
+      +'<span class="sub2" style="display:block;font:var(--t-small);color:var(--muted)">'+cvSize(f.size)+' · загружен '+esc(cvFileWhen(f.at))+(f.by?' · '+esc(f.by):'')+'</span></div>'
+      +'<a href="#" style="font:var(--t-small);color:var(--red);flex:none" onclick="cvFileDel(this,'+jsq(f.id)+','+jsq(l.id)+');return false">удалить</a></div>';
+  }).join('');
+}
+function cvRefreshFiles(id, done){
+  api({vapi:'cutlayouts'}).then(function(r){ if(r&&r.ok){ CV=r.items||[]; cvRender(); var l=null; CV.forEach(function(x){ if(x.id===id) l=x; }); if(l&&el('cv_files')) el('cv_files').innerHTML=cvFilesHtml(l); } if(done) done(); });
+}
+function cvFileDel(a, fid, lid){
+  if(a.getAttribute('data-sure')!=='1'){ a.setAttribute('data-sure','1'); a.textContent='точно удалить?'; a.style.fontWeight='600'; return; }
+  a.textContent='удаляю…';
+  apiPost({vapi:'cutlayoutfiledel', id:fid}).then(function(r){ if(!r||!r.ok){ setMsg('cv_fmsg', false, (r&&r.error)||'не удалилось'); return; } cvRefreshFiles(lid); })
+    .catch(function(e){ setMsg('cv_fmsg', false, errOf(e)); });
+}
+// картинка → уменьшенная копия для списка (data:image/jpeg, ширина до 480)
+function cvPreview(file){
+  return new Promise(function(ok){
+    if(!/^image\/(jpeg|png|webp|gif|bmp)$/.test(file.type)) { ok(''); return; }
+    var img=new Image(), u=URL.createObjectURL(file);
+    img.onload=function(){ var k=Math.min(1, 480/img.width), c=document.createElement('canvas'); c.width=Math.round(img.width*k); c.height=Math.round(img.height*k);
+      c.getContext('2d').drawImage(img,0,0,c.width,c.height); URL.revokeObjectURL(u); try{ ok(c.toDataURL('image/jpeg',0.75)); }catch(e){ ok(''); } };
+    img.onerror=function(){ URL.revokeObjectURL(u); ok(''); }; img.src=u;
+  });
+}
+function cvUpload(id, inp){
+  var files=Array.prototype.slice.call(inp.files||[]); inp.value=''; if(!files.length) return;
+  var big=files.filter(function(f){ return f.size>14*1048576; }).map(function(f){ return f.name; });
+  if(big.length){ setMsg('cv_fmsg', false, 'Больше 14 МБ — не загрузить: '+big.join(', ')); files=files.filter(function(f){ return f.size<=14*1048576; }); if(!files.length) return; }
+  var i=0, errs=[];
+  (function next(){
+    if(i>=files.length){ cvRefreshFiles(id, function(){ setMsg('cv_fmsg', !errs.length, errs.length?errs.join('; '):'✅ загружено: '+files.length); }); return; }
+    var f=files[i++]; setMsg('cv_fmsg', true, 'загружаю '+i+' из '+files.length+': '+f.name+'…');
+    var rd=new FileReader();
+    rd.onload=function(){ var b64=String(rd.result).split(',')[1]||'';
+      cvPreview(f).then(function(pv){ return apiPost({vapi:'cutlayoutfileadd', id:id, name:f.name, mime:f.type||'', b64:b64, preview:pv}); })
+        .then(function(r){ if(!r||!r.ok) errs.push(f.name+': '+((r&&r.error)||'не загрузился')); next(); })
+        .catch(function(e){ errs.push(f.name+': '+errOf(e)); next(); }); };
+    rd.onerror=function(){ errs.push(f.name+': не прочитать файл'); next(); };
+    rd.readAsDataURL(f);
+  })();
 }
 function cvOff(id, on){ api({vapi:'cutlayoutoff', id:id, on:on?'1':'0'}).then(function(r){ if(!r||!r.ok){ nope(r&&r.error); return; } cvLoad(); }); }
 
