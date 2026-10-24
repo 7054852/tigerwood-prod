@@ -26,14 +26,51 @@
 </head>
 <body>
 <div class="hi">🏬 Склады</div>
-<div class="muted sub0">Незавершённые детали из закрытых заказов и упакованный товар, который ещё не увезли.</div>
+<div class="muted sub0">Склад раскроя, обрезки, незавершённые детали из закрытых заказов и упакованный товар, который ещё не увезли.</div>
 
 <!-- каркас: вкладки → панель действий → уведомление → плитки → таблица в карточке -->
 <div class="tabs noprint">
-  <button id="tb_wip" class="on" onclick="setTab('wip')">Детали</button>
+  <button id="tb_cut" onclick="setTab('cut')">Склад раскроя</button>
+  <button id="tb_off" onclick="setTab('off')">Обрезки</button>
+  <button id="tb_wip" onclick="setTab('wip')">Детали</button>
   <button id="tb_fg" onclick="setTab('fg')">Готовая продукция</button>
 </div>
 
+<!-- ═══ СКЛАД РАСКРОЯ (24.10.2026): годные детали участка раскроя; заказ берёт их выдачей ═══ -->
+<div id="pane_cut" style="display:none">
+  <div class="toolbar noprint">
+    <input id="cq" type="search" class="search" placeholder="🔎 деталь" oninput="cutRender()">
+    <select id="cprod" onchange="cutRender()" style="max-width:260px"><option value="">все товары</option></select>
+    <select id="cgrp" onchange="cutRender()"><option value="">все группы</option></select>
+    <div class="chips"><button class="chip" id="cc_have" onclick="cutChip('have')">есть на складе</button><button class="chip" id="cc_short" onclick="cutChip('short')">не хватает заказам</button></div>
+    <span class="meta" id="cmeta"></span>
+    <div class="end"><button class="sec ib" title="Обновить" onclick="cutLoad()">↻</button><button onclick="cutDist()">📦 Раздать по заказам</button></div>
+  </div>
+  <div class="note hint"><div>Сюда приходят <b>годные детали участка раскроя</b> (ЧПУ и пила) после одобрения наряда мастером. «Ждёт проверки» — поданные, но ещё не одобренные.
+    <b>Группа</b> — оборудование товаров, где стоит деталь; деталь из товаров разного оборудования — «Общее».
+    <b>Раздать по заказам</b> — детали уходят в заказы, начиная с самого раннего срока, до их потребности: «Раскрой» заказа засчитывается, зарплата повторно не начисляется.
+    Взять в один конкретный заказ — кнопка «🧩 Склад деталей» в карточке заказа.</div></div>
+  <div class="msg" id="cmsg"></div>
+  <div class="tbl-wrap fill"><table class="tbl sm"><thead><tr><th>Деталь</th><th class="num">На складе</th><th class="num">Ждёт проверки</th><th class="num">Нужно заказам</th><th class="num">Выдано за 30 дн.</th></tr></thead><tbody id="ctb"></tbody></table></div>
+</div>
+
+<!-- ═══ ОБРЕЗКИ (24.10.2026): куски листа после пилы — Д×Ш×толщина, материал ═══ -->
+<div id="pane_off" style="display:none">
+  <div class="toolbar noprint">
+    <select id="okind" onchange="offLoad()"><option value="">фанера и МДФ</option></select>
+    <select id="othick" onchange="offLoad()"><option value="">любая толщина</option></select>
+    <span class="muted">под деталь</span><input id="ol" type="number" min="0" placeholder="Д" style="width:80px" oninput="offSoon()"><span class="muted">×</span><input id="ow" type="number" min="0" placeholder="Ш" style="width:80px" oninput="offSoon()">
+    <input id="oq" type="search" class="search" placeholder="🔎 поиск" oninput="offSoon()" style="max-width:180px">
+    <div class="end"><button class="sec ib" title="Обновить" onclick="offLoad()">↻</button><button onclick="offAdd()">＋ Обрезок</button></div>
+  </div>
+  <div class="note hint"><div>Обрезки записывает рабочий на пиле в наряде («Остались обрезки»), здесь можно завести и вручную. Размер — <b>длина × ширина × толщина</b> в мм, например <code>1050*500*12</code>; толщину можно не писать — возьмётся у материала.
+    «Под деталь Д×Ш» — покажет только обрезки, из которых она выйдет (с поворотом), начиная с самого маленького. «Взять» — обрезок ушёл в работу; «списать» — в отход.</div></div>
+  <div class="msg" id="omsg"></div>
+  <div class="tbl-wrap fill"><table class="tbl sm"><thead><tr><th>Материал</th><th class="num">Толщина</th><th>Размер, мм</th><th class="num">Площадь, м²</th><th class="num">Шт</th><th>Откуда</th><th></th></tr></thead><tbody id="otb"></tbody></table></div>
+  <div class="muted" id="otot" style="margin-top:var(--s-2)"></div>
+</div>
+
+<div id="pane_main">
 <div class="toolbar noprint">
   <span class="meta" id="chg"></span>
   <span class="msg" id="msg"></span>
@@ -55,6 +92,9 @@
 </div>
 
 <div id="log"></div>
+</div>
+
+<div class="dlg-bg" id="wdlg" style="display:none" onclick="if(event.target===this) this.style.display='none'"><div class="dlg md"><div id="wdlgB"></div></div></div>
 
 <script>
 function qp(k){ var m=new RegExp('[?&]'+k+'=([^&]*)').exec(location.search); return m?decodeURIComponent(m[1]):''; }
@@ -79,13 +119,119 @@ function api(p){ var _t=twTok(); if(_t) p.tok=_t; p.app=APP; if(TGID) p.tgid=TGI
   return fetch(BASE+'?'+q).then(function(r){return r.json();}).then(twAuthWall); }
 function msg(h){ $('msg').innerHTML=h||''; }
 
-var TAB='wip', DATA=null;
+var TAB=qp('tab')||'cut', DATA=null;
 function setTab(t){
   TAB=t;
+  ['cut','off','wip','fg'].forEach(function(x){ $('tb_'+x).className=(t===x)?'on':''; });
+  $('pane_cut').style.display=t==='cut'?'':'none'; $('pane_off').style.display=t==='off'?'':'none'; $('pane_main').style.display=(t==='wip'||t==='fg')?'':'none';
+  if(t==='cut'){ cutLoad(); return; } if(t==='off'){ offLoad(); return; }
   ISSUE=false; $('issue').style.display=(t==='fg')?'':'none';
   $('issue').textContent='🚚 Отгрузить со склада'; $('save').style.display='';
-  $('tb_wip').className=(t==='wip')?'on':''; $('tb_fg').className=(t==='fg')?'on':'';
   $('log').innerHTML=''; load();
+}
+
+// ─── СКЛАД РАСКРОЯ ───
+var CS=null, CCHIP={};
+function cutLoad(){
+  $('cmsg').textContent='загрузка…';
+  api({vapi:'cutstock'}).then(function(r){
+    if(!r||!r.ok){ $('cmsg').innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; return; }
+    CS=r; $('cmsg').textContent='';
+    var cp=$('cprod').value, cg=$('cgrp').value;
+    $('cprod').innerHTML='<option value="">все товары</option>'+(r.products||[]).map(function(p){ return '<option value="'+esc(p.sku)+'">'+esc(p.sku)+(p.name?' — '+esc(p.name):'')+'</option>'; }).join('');
+    $('cgrp').innerHTML='<option value="">все группы</option>'+(r.groups||[]).map(function(g){ return '<option>'+esc(g)+'</option>'; }).join('');
+    $('cprod').value=cp; $('cgrp').value=cg; cutRender();
+  }).catch(function(e){ $('cmsg').innerHTML='<span class="err">'+esc(e.message)+'</span>'; });
+}
+function cutChip(k){ CCHIP[k]=!CCHIP[k]; $('cc_'+k).className='chip'+(CCHIP[k]?' on':''); cutRender(); }
+function n1(x){ return String(Math.round((x||0)*10)/10).replace('.',','); }
+function cutRender(){
+  if(!CS) return;
+  var q=($('cq').value||'').toLowerCase(), pr=$('cprod').value, gr=$('cgrp').value;
+  var rows=CS.items.filter(function(x){
+    if(q && x.detail.toLowerCase().indexOf(q)<0) return false;
+    if(pr && !x.products.some(function(p){ return p.sku===pr; })) return false;
+    if(gr && x.group!==gr) return false;
+    if(CCHIP.have && !(x.stock>0)) return false;
+    if(CCHIP.short && !(x.short>0)) return false;
+    return x.stock||x.pending||x.need||x.issued30;
+  });
+  var stock=0, short=0; rows.forEach(function(x){ stock+=Math.max(0,x.stock); short+=x.short; });
+  $('cmeta').textContent=rows.length+' дет. · на складе '+n1(stock)+(short?' · не хватает '+n1(short):'');
+  var h='', last=null;
+  rows.forEach(function(x){
+    if(x.group!==last){ last=x.group; h+='<tr><td colspan="5" style="background:var(--bg2)"><b>'+esc(x.group)+'</b></td></tr>'; }
+    var prods=x.products.map(function(p){ return p.sku; }).join(', ');
+    h+='<tr><td>'+esc(x.detail)+(prods?'<span class="sub2" title="'+esc(x.products.map(function(p){ return p.sku+(p.name?' — '+p.name:''); }).join('\n'))+'">'+esc(prods.length>90?prods.slice(0,90)+'…':prods)+'</span>':'')+'</td>'
+      +'<td class="num">'+(x.stock<0?'<span class="neg" title="строку раскроя удалили после выдачи — проверьте">'+n1(x.stock)+'</span>':'<b>'+n1(x.stock)+'</b>')+'</td>'
+      +'<td class="num">'+(x.pending?n1(x.pending):'<span class="cell0">—</span>')+'</td>'
+      +'<td class="num" title="'+esc(x.orders.map(function(o){ return o.num+(o.deadline?' (срок '+o.deadline.split('-').reverse().join('.')+')':'')+': '+n1(o.left); }).join('\n'))+'">'
+        +(x.need?n1(x.need)+(x.short?'<span class="sub2" style="color:var(--amber)">не хватает '+n1(x.short)+'</span>':''):'<span class="cell0">—</span>')+'</td>'
+      +'<td class="num">'+(x.issued30?n1(x.issued30):'<span class="cell0">—</span>')+'</td></tr>';
+  });
+  $('ctb').innerHTML=h||'<tr><td colspan="5" class="muted">Ничего нет — детали появятся после одобрения нарядов участка раскроя.</td></tr>';
+  if(window.twFitTables) twFitTables();
+}
+function wdlg(html){ $('wdlgB').innerHTML=html; $('wdlg').style.display='flex'; }
+function cutDist(){
+  $('cmsg').textContent='считаю план…';
+  api({vapi:'cutdistribute', dry:'1'}).then(function(r){
+    $('cmsg').textContent='';
+    if(!r||!r.ok){ $('cmsg').innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; return; }
+    if(!r.plan.length){ wdlg('<h3>Раздать по заказам</h3><div>Раздавать нечего: деталей со склада раскроя не ждёт ни один открытый заказ.</div><div class="dlg-btns"><button onclick="$(\'wdlg\').style.display=\'none\'">Понятно</button></div>'); return; }
+    wdlg('<h3>Раздать по заказам — '+r.qty+' дет.</h3><div class="muted">Сначала заказ с самым ранним сроком, до его потребности. «Раскрой» в заказе засчитается, со склада спишется.</div>'
+      +'<div style="max-height:55vh;overflow:auto;margin-top:var(--s-2)">'+r.plan.map(function(p){ return '<div style="margin-top:var(--s-2)"><b>'+esc(p.order)+'</b> <span class="muted">'+(p.deadline?'срок '+esc(p.deadline.split('-').reverse().join('.')):'без срока')+'</span>'
+        +'<div class="muted">'+p.items.map(function(x){ return esc(x.detail)+' — '+x.qty; }).join(' · ')+'</div></div>'; }).join('')+'</div>'
+      +'<div class="msg" id="dmsg"></div><div class="dlg-btns"><button class="sec" onclick="$(\'wdlg\').style.display=\'none\'">Отмена</button><button id="dgo" onclick="cutDistGo()">Выдать в заказы</button></div>');
+  }).catch(function(e){ $('cmsg').innerHTML='<span class="err">'+esc(e.message)+'</span>'; });
+}
+function cutDistGo(){
+  $('dgo').disabled=true; $('dmsg').textContent='выдаю…';
+  api({vapi:'cutdistribute'}).then(function(r){
+    if(!r||!r.ok){ $('dmsg').innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; $('dgo').disabled=false; return; }
+    $('wdlg').style.display='none'; $('cmsg').innerHTML='<span class="ok">✅ Выдано в заказы: '+(r.done||[]).length+'</span>'; cutLoad();
+  }).catch(function(e){ $('dmsg').innerHTML='<span class="err">'+esc(e.message)+'</span>'; $('dgo').disabled=false; });
+}
+
+// ─── ОБРЕЗКИ ───
+var OF=null, OFT=0;
+function offSoon(){ clearTimeout(OFT); OFT=setTimeout(offLoad, 350); }
+function offLoad(){
+  $('omsg').textContent='загрузка…';
+  api({vapi:'offcuts', mat:$('okind').value, thick:$('othick').value, l:$('ol').value, w:$('ow').value, q:$('oq').value}).then(function(r){
+    if(!r||!r.ok){ $('omsg').innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; return; }
+    OF=r; $('omsg').textContent='';
+    var k=$('okind').value, t=$('othick').value;
+    $('okind').innerHTML='<option value="">фанера и МДФ</option>'+(r.kinds||[]).map(function(x){ return '<option>'+esc(x)+'</option>'; }).join(''); $('okind').value=k;
+    $('othick').innerHTML='<option value="">любая толщина</option>'+(r.thicks||[]).map(function(x){ return '<option value="'+x+'">'+String(x).replace('.',',')+' мм</option>'; }).join(''); $('othick').value=t;
+    $('otb').innerHTML=(r.items||[]).map(function(o){
+      return '<tr><td>'+esc(o.material)+(o.note?'<span class="sub2">'+esc(o.note)+'</span>':'')+'</td><td class="num">'+String(o.thick).replace('.',',')+'</td><td><b>'+o.length+'×'+o.width+'</b></td>'
+        +'<td class="num">'+String(o.area).replace('.',',')+'</td><td class="num">'+o.qty+'</td>'
+        +'<td>'+(o.from?esc(o.from.date.split('-').reverse().join('.'))+'<span class="sub2">'+esc(o.from.worker)+'</span>':'<span class="muted">вручную '+esc(o.createdAt.split('-').reverse().join('.'))+'</span>')+'</td>'
+        +'<td class="acts2"><a href="#" onclick="offClose(\''+o.id+'\',\'used\');return false">взять</a><a href="#" onclick="offClose(\''+o.id+'\',\'scrap\');return false" title="в отход">списать</a></td></tr>';
+    }).join('')||'<tr><td colspan="7" class="muted">'+(($('ol').value&&$('ow').value)?'Подходящих обрезков нет.':'На складе обрезков пусто.')+'</td></tr>';
+    $('otot').innerHTML=(r.totals||[]).map(function(x){ return esc(x.kind)+' '+String(x.thick).replace('.',',')+' мм — <b>'+x.qty+' шт</b>, '+String(x.area).replace('.',',')+' м²'; }).join(' · ');
+    if(window.twFitTables) twFitTables();
+  }).catch(function(e){ $('omsg').innerHTML='<span class="err">'+esc(e.message)+'</span>'; });
+}
+function offClose(id, how){
+  if(how==='scrap' && !confirm('Списать обрезок в отход?')) return;
+  api({vapi:'offcutclose', id:id, how:how}).then(function(r){ if(!r||!r.ok){ $('omsg').innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; return; } offLoad(); });
+}
+var OFMATS=null;
+function offAdd(){
+  if(OFMATS===null){ api({vapi:'cutdata'}).then(function(r){ OFMATS=((r&&r.sawSheets)||[]).map(function(m){ return m.name; }); offAdd(); }).catch(function(){ OFMATS=[]; offAdd(); }); return; }
+  wdlg('<h3>Новый обрезок</h3><label>Материал</label>'+(OFMATS.length?'<select id="na_mat">'+OFMATS.map(function(m){ return '<option>'+esc(m)+'</option>'; }).join('')+'</select>':'<input id="na_mat" placeholder="точное название листа, как в материалах">')
+    +'<label style="margin-top:8px">Размер, мм</label><input id="na_size" placeholder="1050*500*12 (толщину можно не писать)">'
+    +'<label style="margin-top:8px">Сколько одинаковых кусков</label><input id="na_qty" type="number" min="1" value="1">'
+    +'<label style="margin-top:8px">Заметка</label><input id="na_note" placeholder="где лежит, особенности">'
+    +'<div class="msg" id="namsg"></div><div class="dlg-btns"><button class="sec" onclick="$(\'wdlg\').style.display=\'none\'">Отмена</button><button onclick="offAddGo()">Записать</button></div>');
+}
+function offAddGo(){
+  api({vapi:'offcutadd', mat:$('na_mat').value, size:$('na_size').value, qty:$('na_qty').value, note:$('na_note').value}).then(function(r){
+    if(!r||!r.ok){ $('namsg').innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; return; }
+    $('wdlg').style.display='none'; $('omsg').innerHTML=(r.warnings&&r.warnings.length)?'<span class="muted">'+esc(r.warnings.join('; '))+'</span>':''; offLoad();
+  });
 }
 function load(){
   msg('загрузка…'); DATA=null;
@@ -230,7 +376,7 @@ function fgLog(sku){
       +'<tbody>'+rows+'</tbody></table></div></div>';
   });
 }
-load();
+setTab(TAB);
 </script>
 </body>
 </html>
