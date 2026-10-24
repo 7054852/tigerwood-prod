@@ -181,7 +181,7 @@ function CARD(e){ return '<div style="padding:var(--s-4);line-height:1.5">'
   <div id="cart" style="margin-top:var(--s-3)"></div>
 </div>
 <div id="pane-c" style="display:none">
-  <div class="note">Раскрой — отдельный этап: годные детали уходят на <b>склад раскроя</b>, заказы берут их оттуда. <b>ЧПУ</b> — выберите вариант раскроя и лист, отметьте брак: оплата за листы.
+  <div class="note">Раскрой — отдельный этап: годные детали уходят на <b>склад раскроя</b>, заказы берут их оттуда. <b>ЧПУ</b> — выберите карту раскроя и лист, отметьте брак: оплата за листы.
     <b>Пила</b> — из чего резали (лист или обрезок), сколько деталей и брак: оплата за годные детали; оставшиеся обрезки — на склад обрезков.</div>
   <div id="cutrate"></div>
   <div id="cutlist">Загрузка…</div>
@@ -2119,9 +2119,9 @@ function rwDel(id){
   if(!confirm('Убрать этот возврат? Детали перестанут числиться на переделке.')) return;
   api({vapi:'reworkdel',id:id}).then(function(r){ if(!r||!r.ok){ alert((r&&r.error)||'ошибка'); return; } rwLoadList(); }).catch(function(){ alert('ошибка сети'); });
 }
-// ═══════════ 🪚 УЧАСТОК РАСКРОЯ (24.10.2026): ЧПУ (лист + вариант раскроя) и пила (из листа или обрезка) ═══════════
+// ═══════════ 🪚 УЧАСТОК РАСКРОЯ (24.10.2026): ЧПУ (лист + карта раскроя) и пила (из листа или обрезка) ═══════════
 // Раскрой — отдельный этап вне заказов: годные детали уходят на склад раскроя, заказ берёт их со склада.
-// ЧПУ: вариант раскроя → детали считаются сами (шт на лист × листов), рабочий отмечает брак; можно дописать детали вручную.
+// ЧПУ: карта раскроя → детали считаются сами (шт на лист × листов), рабочий отмечает брак; можно дописать детали вручную.
 // Пила: «из чего резали» — лист (сколько листов распустил — учёт, не оплата) или обрезок со склада; детали за штуку; остались обрезки.
 //
 // ВАЖНО про рендер: при вводе чисел ничего не перерисовывается — иначе поле пересоздаётся и слетает фокус.
@@ -2165,7 +2165,7 @@ function detRateOf(det){ var d=CUT&&CUT.byDetail[det]; return d?(d.rate||0):0; }
 function detPaid(det){ var d=CUT&&CUT.byDetail[det]; return !d || d.paid!==false; }
 function detPayMode(det){ var d=CUT&&CUT.byDetail[det]; return (d&&d.payMode)||''; }
 function layOf(sd){ return (sd.layout&&CUT&&CUT.layoutById[sd.layout])||null; }
-// все детали листа ЧПУ: из варианта (шт на лист × листов, брак) + вручную; {det, made, bad}
+// все детали листа ЧПУ: из карты (шт на лист × листов, брак) + вручную; {det, made, bad}
 function sheetDets(sd){
   var out=[], L=layOf(sd);
   if(L) L.items.forEach(function(x){ out.push({ det:x.detail, made:x.qty*(sd.qty||0), bad:n0((sd.bad||{})[x.detail]) }); });
@@ -2200,11 +2200,11 @@ function detRowHtml(pre,u,it){
 }
 function layoutOpts(sd){
   var ls=(CUT.layouts||[]);
-  return '<option value="">— без варианта (детали вручную) —</option>'+ls.map(function(l){ return '<option value="'+esc(l.id)+'">'+esc(l.name)+' · '+l.perSheet+' шт/лист</option>'; }).join('');
+  return '<option value="">— без карты (детали вручную) —</option>'+ls.map(function(l){ return '<option value="'+esc(l.id)+'">'+esc(l.name)+' · '+l.perSheet+' шт/лист</option>'; }).join('');
 }
 function matOpts(sd){
   var L=layOf(sd), ms=(CUT.sheets||[]).filter(function(m){ return !L || L.mats.indexOf(m.name)>=0; });
-  return ms.map(function(m){ return '<option value="'+esc(m.name)+'">'+esc(m.name)+' — '+m.rate+' р.</option>'; }).join('')||'<option value="">'+(L?'у варианта нет листов с расценкой':'нет расценок за лист')+'</option>';
+  return ms.map(function(m){ return '<option value="'+esc(m.name)+'">'+esc(m.name)+' — '+m.rate+' р.</option>'; }).join('')||'<option value="">'+(L?'у карты нет листов с расценкой':'нет расценок за лист')+'</option>';
 }
 function fillSheetDom(sd){
   var ls=document.getElementById('s-lay-'+sd.uid); if(ls){ ls.innerHTML=layoutOpts(sd); ls.value=sd.layout||''; if(ls.value!==(sd.layout||'')){ sd.layout=''; ls.value=''; } }
@@ -2359,7 +2359,7 @@ function cutPayload(){
   for(var i=0;i<SHEETS.length;i++){
     var sd=SHEETS[i]; if(!sd.mat||!(sd.qty>0)) continue;
     var its=sd.items.filter(function(it){ return it.detail&&(n0(it.qty)>0||n0(it.bad)>0); }).map(function(it){ return {detail:it.detail, qty:n0(it.qty), bad:n0(it.bad)}; });
-    if(!sd.layout && !its.length) return { error:'Лист «'+sd.mat+'»: выберите вариант раскроя или укажите, какие детали вышли — кнопка «＋ деталь»' };
+    if(!sd.layout && !its.length) return { error:'Лист «'+sd.mat+'»: выберите карту раскроя или укажите, какие детали вышли — кнопка «＋ деталь»' };
     var L=layOf(sd); if(L) for(var j=0;j<L.items.length;j++){ var x=L.items[j]; if(n0((sd.bad||{})[x.detail])>x.qty*sd.qty) return { error:'Лист «'+sd.mat+'»: брак «'+x.detail+'» больше, чем вышло' }; }
     sheets.push({mat:sd.mat, qty:sd.qty, layout:sd.layout||'', bad:sd.bad||{}, items:its});
   }
@@ -2388,7 +2388,7 @@ function loadCutLog(){
         var dets=g.details.map(function(x){ return '<div class="row"><span>'+esc(x.detail)+' · '+x.qty+' шт'+(x.bad?' <span class="pill warn">брак '+x.bad+'</span>':'')+'</span><span class="muted">'
           +(x.stock?'📦 склад раскроя':(x.free?'🧰 вне заказа':esc(x.batch)))+'</span></div>'; }).join('');
         return '<div class="card"><div class="row"><b>'+(g.tool==='saw'?'🔪 ':'🪚 ')+esc(g.mat)+' · '+g.qty+' лист(ов)</b><span class="muted">'+esc(g.date)+'</span></div>'
-          +(g.layout?'<div class="muted">вариант: '+esc(g.layout)+'</div>':'')
+          +(g.layout?'<div class="muted">карта: '+esc(g.layout)+'</div>':'')
           +'<div class="row"><span class="muted">'+esc(g.worker)+'</span><span>выход <b>'+g.detQty+'</b> дет. ('+g.perSheet+'/лист)'+(g.badQty?' · брак '+g.badQty+' ('+String(g.badPct).replace('.',',')+' %)':'')+warn+'</span></div>'
           +dets+'</div>';
       }).join('');
@@ -2407,7 +2407,7 @@ function kindBadge(it){
   if(!it||isDev(it)) return '';
   if(it.kind==='подряд') return '<span class="pill warn" title="работу выполнил подрядчик: в зарплату не идёт, платим по акту">🤝 подряд</span> ';
   if(it.kind==='повременно') return '<span class="pill mute" title="доплата за работу по времени">💵 доплата</span> ';
-  var cut=(it.layout?'<span class="pill mute" title="вариант раскроя ЧПУ">'+esc(it.layout)+'</span> ':'')+(it.cutBad?'<span class="pill warn" title="брак при резке — в количестве только годные">брак '+it.cutBad+'</span> ':'')
+  var cut=(it.layout?'<span class="pill mute" title="карта раскроя ЧПУ">'+esc(it.layout)+'</span> ':'')+(it.cutBad?'<span class="pill warn" title="брак при резке — в количестве только годные">брак '+it.cutBad+'</span> ':'')
     +(it.offcut?'<span class="pill mute" title="резали из обрезка">✂️ '+esc(it.offcut)+'</span> ':'');
   if(it.kind==='лист') return (it.cutTool==='saw'?'<span class="pill mute" title="пила: сколько листов распустили — учёт расхода, не оплата">🔪 листы (учёт)</span> '
     :'<span class="pill info" title="раскрой листа на ЧПУ — оплата за лист">📐 лист</span> ')+cut;
