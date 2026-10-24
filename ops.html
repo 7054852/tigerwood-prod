@@ -437,7 +437,7 @@ function cvOpen(id, copy){
     +'<label style="margin-top:8px">Заметка</label><input id="cv_note" value="'+esc(cur.note)+'" placeholder="программа ЧПУ, особенности" style="width:100%">'
     +'<label style="margin-top:12px">Файлы</label>'+(l&&!copy?'<div id="cv_files">'+cvFilesHtml(l)+'</div>'
       +'<label class="btn gray sm" style="display:inline-flex;margin-top:6px;cursor:pointer">📎 Добавить файлы<input type="file" multiple style="display:none" onchange="cvUpload('+jsq(l.id)+', this)"></label>'
-      +'<span class="hint" style="margin-left:8px">jpg, CDR, TAP, ART, DXF… до 14 МБ</span><div id="cv_fmsg" class="msg"></div>'
+      +'<span class="hint" style="margin-left:8px">jpg, CDR, TAP, ART, DXF… до 300 МБ</span><div id="cv_fmsg" class="msg"></div>'
       :'<div class="hint">Файлы можно прикрепить после сохранения карты — откройте её через «изменить».</div>')
     +'<div id="cv_msg" class="msg"></div>';
   dlg(l&&!copy?'Карта раскроя':'Новая карта раскроя', html, function(root){
@@ -495,21 +495,31 @@ function cvPreview(file){
     img.onerror=function(){ URL.revokeObjectURL(u); ok(''); }; img.src=u;
   });
 }
+// кусок файла → base64 (без «data:…,»)
+function cvB64(blob){ return new Promise(function(ok, no){ var rd=new FileReader(); rd.onload=function(){ ok(String(rd.result).split(',')[1]||''); }; rd.onerror=function(){ no(new Error('не прочитать файл')); }; rd.readAsDataURL(blob); }); }
+// загрузка частями (крупные CDR): start → куски по 2 МБ с процентами; сбой куска — до 3 повторов
+function cvSend(id, f, tag){
+  return cvPreview(f).then(function(pv){ return apiPost({vapi:'cutlayoutfilestart', id:id, name:f.name, mime:f.type||'', size:f.size, preview:pv}); }).then(function(st){
+    if(!st||!st.ok) throw new Error((st&&st.error)||'не начать загрузку');
+    var off=0, tries=0;
+    function step(){
+      setMsg('cv_fmsg', true, tag+f.name+' — '+Math.floor(off*100/f.size)+' %…');
+      return cvB64(f.slice(off, off+st.chunk)).then(function(b64){ return apiPost({vapi:'cutlayoutfilechunk', up:st.up, off:off, b64:b64}); })
+        .then(function(r){ if(!r||!r.ok) throw new Error((r&&r.error)||'кусок не принят'); tries=0; if(r.done) return r; off=r.next; return step(); },
+              function(e){ if(++tries>3) throw e; return new Promise(function(z){ setTimeout(z, 2000*tries); }).then(step); });
+    }
+    return step();
+  });
+}
 function cvUpload(id, inp){
   var files=Array.prototype.slice.call(inp.files||[]); inp.value=''; if(!files.length) return;
-  var big=files.filter(function(f){ return f.size>14*1048576; }).map(function(f){ return f.name; });
-  if(big.length){ setMsg('cv_fmsg', false, 'Больше 14 МБ — не загрузить: '+big.join(', ')); files=files.filter(function(f){ return f.size<=14*1048576; }); if(!files.length) return; }
+  var big=files.filter(function(f){ return f.size>300*1048576; }).map(function(f){ return f.name; });
+  if(big.length){ setMsg('cv_fmsg', false, 'Больше 300 МБ — не загрузить: '+big.join(', ')); files=files.filter(function(f){ return f.size<=300*1048576; }); if(!files.length) return; }
   var i=0, errs=[];
   (function next(){
     if(i>=files.length){ cvRefreshFiles(id, function(){ setMsg('cv_fmsg', !errs.length, errs.length?errs.join('; '):'✅ загружено: '+files.length); }); return; }
-    var f=files[i++]; setMsg('cv_fmsg', true, 'загружаю '+i+' из '+files.length+': '+f.name+'…');
-    var rd=new FileReader();
-    rd.onload=function(){ var b64=String(rd.result).split(',')[1]||'';
-      cvPreview(f).then(function(pv){ return apiPost({vapi:'cutlayoutfileadd', id:id, name:f.name, mime:f.type||'', b64:b64, preview:pv}); })
-        .then(function(r){ if(!r||!r.ok) errs.push(f.name+': '+((r&&r.error)||'не загрузился')); next(); })
-        .catch(function(e){ errs.push(f.name+': '+errOf(e)); next(); }); };
-    rd.onerror=function(){ errs.push(f.name+': не прочитать файл'); next(); };
-    rd.readAsDataURL(f);
+    var f=files[i++];
+    cvSend(id, f, files.length>1?i+' из '+files.length+': ':'').then(function(){ next(); }, function(e){ errs.push(f.name+': '+errOf(e)); next(); });
   })();
 }
 function cvOff(id, on){ api({vapi:'cutlayoutoff', id:id, on:on?'1':'0'}).then(function(r){ if(!r||!r.ok){ nope(r&&r.error); return; } cvLoad(); }); }
