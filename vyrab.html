@@ -130,7 +130,7 @@ function CARD(e){ return '<div style="padding:var(--s-4);line-height:1.5">'
 
 <div class="tabs">
   <button id="tab-w" class="active" onclick="showTab('w')">Выработка</button>
-  <button id="tab-c" onclick="showTab('c')" style="display:none">Раскрой</button>
+  <button id="tab-c" onclick="showTab('c')" style="display:none">Участок раскроя</button>
   <button id="tab-o" onclick="showTab('o')" style="display:none">Приёмка</button>
   <button id="tab-m" onclick="showTab('m')">Проверка</button>
   <button id="tab-s" onclick="showTab('s')" style="display:none">Подряд</button>
@@ -181,13 +181,10 @@ function CARD(e){ return '<div style="padding:var(--s-4);line-height:1.5">'
   <div id="cart" style="margin-top:var(--s-3)"></div>
 </div>
 <div id="pane-c" style="display:none">
-  <div class="note">Указываете лист и <b>обязательно</b> — что с него вышло. Оплата идёт за листы; детали попадут в свои заказы.</div>
+  <div class="note">Раскрой — отдельный этап: годные детали уходят на <b>склад раскроя</b>, заказы берут их оттуда. <b>ЧПУ</b> — выберите вариант раскроя и лист, отметьте брак: оплата за листы.
+    <b>Пила</b> — из чего резали (лист или обрезок), сколько деталей и брак: оплата за годные детали; оставшиеся обрезки — на склад обрезков.</div>
   <div id="cutrate"></div>
-  <div class="sect">🪚 Раскрой на ЧПУ</div>
   <div id="cutlist">Загрузка…</div>
-  <div id="cutempty" class="empty" style="display:none">Листов пока нет — нажмите «＋ Добавить лист».</div>
-  <button class="sec" onclick="addSheet()">＋ Добавить лист</button>
-  <button class="sec" id="cutlike" style="display:none;margin-top:var(--s-2)" onclick="addSheetLikeLast()">📋 Как предыдущий лист</button>
   <div id="cutlog" style="margin-top:var(--s-4)"></div>
 </div>
 <div id="pane-m" style="display:none">
@@ -865,16 +862,14 @@ function renderCart(){
 function renderTotals(){
   var box=document.getElementById('worksum'), btn=document.getElementById('worksend'); if(!box||!btn) return;
   var opsSum=0; for(var i=0;i<CART.length;i++) opsSum+=CART[i].sum;
-  var nSheets=0, nDet=0;
-  for(var k=0;k<SHEETS.length;k++){ if(SHEETS[k].mat&&SHEETS[k].qty>0) nSheets++; 
-    for(var j=0;j<SHEETS[k].items.length;j++) if(SHEETS[k].items[j].detail&&SHEETS[k].items[j].qty>0) nDet++; }
+  var nSheets=(CUTCOUNT||{}).sheets||0, nSaw=(CUTCOUNT||{}).saws||0, nDet=(CUTCOUNT||{}).det||0;
   var total=Math.round((opsSum+(CUTTOTAL||0))*100)/100;
-  if(!CART.length && !nSheets){ box.innerHTML=''; setBar('',false); return; }
+  if(!CART.length && !nSheets && !nSaw){ box.innerHTML=''; setBar('',false); return; }
   var wsel=document.getElementById('worker'), forWho=(wsel&&wsel.value)||'';
   var forOther=((isMaster()||hasProxy())&&forWho&&forWho!==DATA.worker);
   var parts=[];
   if(CART.length) parts.push(CART.length+' оп.');
-  if(nSheets) parts.push(nSheets+' лист(ов)'+(nDet?(' · '+nDet+' дет.'):''));
+  if(nSheets||nSaw) parts.push((nSheets?nSheets+' лист(ов)':'')+(nSheets&&nSaw?' + ':'')+(nSaw?nSaw+' распил(ов)':'')+(nDet?(' · '+nDet+' дет.'):''));
   var devSum=0; for(var d=0;d<CART.length;d++) if(CART[d].dev) devSum+=CART[d].sum;   // часы разработки — без надбавок (сервер считает так же)
   var bd=computeBreakdown(total-devSum, SHIFT==='ночь');
   if(devSum>0){ bd.time=Math.round(devSum*100)/100; bd.total=Math.round((bd.total+devSum)*100)/100; }
@@ -906,7 +901,10 @@ function restoreDraft(){
   if(d.date){ var el=document.getElementById('wdate'); if(el) el.value=d.date; }
   if(d.shift){ SHIFT=d.shift; shMarks(); }
   if(d.cart && d.cart.length){ CART=d.cart; renderCart(); }
-  if(d.sheets && d.sheets.length){ SHEETS=d.sheets; for(var i=0;i<SHEETS.length;i++) if(SHEETS[i].uid>UID) UID=SHEETS[i].uid; }
+  // черновик раскроя: листы ЧПУ и распилы (до 24.10.2026 — только листы с заказами у деталей; заказ теперь не нужен)
+  var maxUid=function(a){ (a||[]).forEach(function(x){ if(x.uid>UID) UID=x.uid; (x.items||[]).forEach(function(y){ if(y.uid>UID) UID=y.uid; }); (x.offIn||[]).forEach(function(y){ if(y.uid>UID) UID=y.uid; }); }); };
+  if(d.sheets && d.sheets.length){ SHEETS=d.sheets.map(function(x){ x.bad=x.bad||{}; x.layout=x.layout||''; return x; }); maxUid(SHEETS); }
+  if(d.saws && d.saws.length){ SAWS=d.saws; maxUid(SAWS); }
   if(d.addto){ ADDTO=d.addto; ADDINFO=d.addinfo||''; renderAddBanner(); }
   updateWhen(); renderTotals();
 }
@@ -922,7 +920,7 @@ function saveDraft(){
   try{
     var ws=document.getElementById('worker');
     DRAFT={ worker:(ws&&ws.value)||'', date:(document.getElementById('wdate')||{}).value||'',
-            shift:SHIFT, cart:CART, sheets:SHEETS, addto:ADDTO, addinfo:ADDINFO, ts:new Date().getTime() };
+            shift:SHIFT, cart:CART, sheets:SHEETS, saws:SAWS, addto:ADDTO, addinfo:ADDINFO, ts:new Date().getTime() };
     try{ localStorage.setItem(draftKey(), JSON.stringify(DRAFT)); }catch(e){}
   }catch(e){}
 }
@@ -1003,23 +1001,9 @@ function sendWork(){
     +byLeaf.slice(0,3).map(function(x){ return '· '+(x.label||x.detail)+' · '+x.op; }).join('\n')+(byLeaf.length>3?'\n· …':'')
     +'\n\nЗа них начислится 0 р. Такие детали подают во вкладке «🪚 Раскрой» вместе с листом — тогда платит строка листа.'
     +'\n\nВсё равно отправить?')) return;
-  var sheets=[];
-  for(var i=0;i<SHEETS.length;i++){
-    var sd=SHEETS[i]; if(!sd.mat||!(sd.qty>0)) continue;
-    var its=[];
-    for(var j=0;j<sd.items.length;j++){
-      var it=sd.items[j]; if(!it.detail||!(it.qty>0)) continue;
-      if(it.batch===null){ wmsg('<span class="err">Выберите заказ для детали «'+esc(it.detail)+'» (вкладка «Раскрой»)</span>'); showTab('c'); return; }
-      var d=CUT&&CUT.byDetail[it.detail]||{}, eq='';
-      for(var k=0;k<(d.orders||[]).length;k++) if(d.orders[k].orderId===it.batch) eq=d.orders[k].eq;
-      its.push({detail:it.detail, qty:it.qty, batch:it.batch, eq:eq||d.eq||''});
-    }
-    // ⚠ лист без деталей бессмысленен: выход не посчитать, а работа не попадёт в заказ.
-    // Говорим до отправки, а не отказом сервера после трёх секунд ожидания.
-    if(!its.length){ wmsg('<span class="err">Лист «'+esc(sd.mat)+'»: укажите, какие детали с него вышли — кнопка «＋ деталь»</span>'); showTab('c'); return; }
-    sheets.push({mat:sd.mat, qty:sd.qty, items:its});
-  }
-  if(!items.length && !sheets.length){ wmsg('<span class="err">Наряд пуст</span>'); return; }
+  var cp=cutPayload(); if(cp.error){ wmsg('<span class="err">'+esc(cp.error)+'</span>'); showTab('c'); return; }
+  var sheets=cp.sheets, saw=cp.saw;
+  if(!items.length && !sheets.length && !saw.length){ wmsg('<span class="err">Наряд пуст</span>'); return; }
   var wd=(document.getElementById('wdate')||{}).value||'';
   var dRu=wd?wd.split('-').reverse().join('.'):'';
   // ВРЕМЯ ПРИХОДА обязательно при первом наряде за дату: спрашиваем здесь, а не отказом сервера
@@ -1036,20 +1020,18 @@ function sendWork(){
   }
   wmsg(ADDTO?'Добавляю в наряд…':'Отправляю наряд…'); sendLock(true);
   var p={vapi:'submitwork',worker:worker,date:dRu,shift:SHIFT,
-         items:JSON.stringify(items), sheets:JSON.stringify(sheets)};
+         items:JSON.stringify(items), sheets:JSON.stringify(sheets), saw:JSON.stringify(saw)};
   if(ADDTO) p.addto=ADDTO;
   apiPost(p).then(function(r){
     sendLock(false);
     if(r&&r.dup){ wmsg('<span class="ok">✅ Этот наряд уже отправлен — повтор пропущен</span>');
-      CART=[]; SHEETS=[]; CUTTOTAL=0; ADDTO=''; clearDraft();
-      if(CUT) addSheet(); else renderCut();
+      CART=[]; ADDTO=''; clearDraft(); cutReset();
       renderAddBanner(); renderCart(); try{ loadPending(); }catch(e){} return; }
     if(r&&r.ok){
-      var parts=[]; if(r.ops) parts.push(r.ops+' оп.'); if(r.sheets) parts.push(r.sheets+' лист(ов)'); if(r.details) parts.push(r.details+' дет.');
+      var parts=[]; if(r.ops) parts.push(r.ops+' оп.'); if(r.sheets) parts.push(r.sheets+' лист(ов)'); if(r.details) parts.push(r.details+' дет.'); if(r.offcuts) parts.push(r.offcuts+' обрезк.');
       var w=(r.warnings&&r.warnings.length)?('<br><span class="muted">'+r.warnings.map(esc).join('<br>')+'</span>'):'';
       wmsg('<span class="ok">✅ '+(r.added?'Добавлено в наряд: ':'Наряд отправлен: ')+parts.join(' + ')+' на <b>'+r.sum+' руб.</b> (на проверке)</span>'+w);
-      CART=[]; SHEETS=[]; CUTTOTAL=0; CUTNEEDPICK=false; ADDTO=''; ADDINFO=''; clearDraft();
-      if(CUT) addSheet(); else renderCut();
+      CART=[]; ADDTO=''; ADDINFO=''; clearDraft(); cutReset();
       renderAddBanner(); renderCart(); loadMySummary(); loadCutLog();
       try{ loadPending(); }catch(e){}
     }
@@ -1247,7 +1229,9 @@ function act(p, msg, done){
 // потерянная работа — пишем прямо, что это раскрой. Смысл прежний, меняется только подпись.
 function isCutLine(x){ return !!(x && x.kind==='лист'); }
 function batchTag(x){
-  if(isCutLine(x)) return '<span class="pill warn" title="раскрой листа: оплата за лист. В заказ идут детали, которые с него вышли">🪚 Раскрой</span>';
+  if(isCutLine(x)) return x.cutTool==='saw' ? '<span class="pill mute" title="пила: листы — учёт расхода, оплата за детали">🔪 Пила</span>'
+    : '<span class="pill warn" title="раскрой листа на ЧПУ: оплата за лист; детали — на склад раскроя">🪚 Раскрой</span>';
+  if(x && x.toStock) return '<span class="pill info" title="участок раскроя: годные детали — на склад раскроя, заказ берёт их со склада">📦 склад раскроя</span>';
   return (x && x.free) ? '<span class="pill info" title="работа не по заказу — в ЗП входит, на выполнение заказов не влияет">🧰 вне заказа</span>' : esc((x && x.batch) || '');
 }
 // ⚠ ПРОКРУТКА НА МЕСТЕ (владелец 09.10.2026): после коэффициента/одобрения список перерисовывается — экран остаётся там, где был
@@ -2135,202 +2119,262 @@ function rwDel(id){
   if(!confirm('Убрать этот возврат? Детали перестанут числиться на переделке.')) return;
   api({vapi:'reworkdel',id:id}).then(function(r){ if(!r||!r.ok){ alert((r&&r.error)||'ошибка'); return; } rwLoadList(); }).catch(function(){ alert('ошибка сети'); });
 }
-// ═══════════ 🪚 РАСКРОЙ НА ЧПУ: лист → детали ═══════════
-// Рабочий указывает лист материала и что с него вышло. Платим и за лист, и за детали.
-// Деталь, которой нет ни в одном активном заказе, идёт «вне заказа» автоматически.
+// ═══════════ 🪚 УЧАСТОК РАСКРОЯ (24.10.2026): ЧПУ (лист + вариант раскроя) и пила (из листа или обрезка) ═══════════
+// Раскрой — отдельный этап вне заказов: годные детали уходят на склад раскроя, заказ берёт их со склада.
+// ЧПУ: вариант раскроя → детали считаются сами (шт на лист × листов), рабочий отмечает брак; можно дописать детали вручную.
+// Пила: «из чего резали» — лист (сколько листов распустил — учёт, не оплата) или обрезок со склада; детали за штуку; остались обрезки.
 //
-// ВАЖНО про рендер: список НЕ перерисовывается при вводе количества — иначе поле ввода
-// пересоздаётся и слетает фокус. Структуру строит renderCut/addSheetDom, цифры — recalcCut.
-var CUT=null, SHEETS=[], UID=0, MATOPTS='', DETOPTS='';
+// ВАЖНО про рендер: при вводе чисел ничего не перерисовывается — иначе поле пересоздаётся и слетает фокус.
+// Структуру карточки строят *Html/fill*, цифры — recalcCut (только textContent).
+var CUT=null, SHEETS=[], SAWS=[], UID=0, DETOPTS='', OFFS=null, CUTMODE=(function(){ try{ return localStorage.getItem('tw_cutmode')||'cnc'; }catch(e){ return 'cnc'; } })();
 function findS(u){ for(var i=0;i<SHEETS.length;i++) if(SHEETS[i].uid===u) return SHEETS[i]; return null; }
 function findSIdx(u){ for(var i=0;i<SHEETS.length;i++) if(SHEETS[i].uid===u) return i; return -1; }
-function findI(sd,u){ for(var j=0;j<sd.items.length;j++) if(sd.items[j].uid===u) return sd.items[j]; return null; }
+function findW(u){ for(var i=0;i<SAWS.length;i++) if(SAWS[i].uid===u) return SAWS[i]; return null; }
+function findWIdx(u){ for(var i=0;i<SAWS.length;i++) if(SAWS[i].uid===u) return i; return -1; }
+function findI(list,u){ for(var j=0;j<list.length;j++) if(list[j].uid===u) return list[j]; return null; }
 function txt(id,v){ var e=document.getElementById(id); if(e) e.textContent=v; }
+function n0(v){ var n=Number(String(v==null?'':v).replace(',','.')); return n>0?n:0; }
 function loadCut(){
   var el=document.getElementById('cutlist');
   if(CUT){ renderCut(); return; }
   el.textContent='Загрузка…';
   api({vapi:'cutdata'}).then(function(r){
     if(!r||!r.ok){ el.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка загрузки')+'</span>'; return; }
-    CUT=r; CUT.byDetail={};
+    CUT=r; CUT.byDetail={}; CUT.layoutById={};
     (CUT.details||[]).forEach(function(d){ CUT.byDetail[d.detail]=d; });
-    buildCutOpts();
+    (CUT.layouts||[]).forEach(function(l){ CUT.layoutById[l.id]=l; });
+    DETOPTS='<option value="">— выберите деталь —</option>'+(CUT.details||[]).map(function(d){ return '<option value="'+esc(d.detail)+'">'+esc(d.detail)+'</option>'; }).join('');
     renderCutRateBox();
-    if(!SHEETS.length) addSheet(); else renderCut();
-    loadCutLog();
+    if(!SHEETS.length) addSheet(true);
+    if(!SAWS.length) addSaw(true);
+    renderCut(); loadCutLog();
   }).catch(function(){ el.innerHTML='<span class="err">Ошибка сети</span>'; });
 }
-// списки опций строим ОДИН раз (58 деталей в каждом селекте — на телефоне это дорого)
-function buildCutOpts(){
-  MATOPTS=(CUT.sheets||[]).map(function(m){ return '<option value="'+esc(m.name)+'">'+esc(m.name)+' — '+m.rate+' р.</option>'; }).join('');
-  var inOrd=[], free=[];
-  (CUT.details||[]).forEach(function(d){
-    var o='<option value="'+esc(d.detail)+'">'+esc(d.detail)+'</option>';
-    if(d.orders.length) inOrd.push(o); else free.push(o);
-  });
-  DETOPTS='<option value="">— выберите деталь —</option>'
-    +(inOrd.length?('<optgroup label="Нужны в заказах">'+inOrd.join('')+'</optgroup>'):'')
-    +(free.length?('<optgroup label="Вне заказа">'+free.join('')+'</optgroup>'):'');
+function setCutMode(m){ CUTMODE=m; try{ localStorage.setItem('tw_cutmode',m); }catch(e){}
+  var a=document.getElementById('cm-cnc'), b=document.getElementById('cm-saw'); if(a) a.className=m==='cnc'?'on':''; if(b) b.className=m==='saw'?'on':'';
+  var c=document.getElementById('cnc-box'), s=document.getElementById('saw-box'); if(c) c.style.display=m==='cnc'?'':'none'; if(s) s.style.display=m==='saw'?'':'none';
+  if(m==='saw' && OFFS===null) loadOffs();
 }
-// расценки за лист ведёт мастер+ в разделе «🧰 Операции и расценки» → вкладка «🪚 Раскрой ЧПУ»
 function renderCutRateBox(){
   var box=document.getElementById('cutrate'); if(!box) return;
-  var no=!(CUT.sheets||[]).length;
-  box.innerHTML = no
-    ? '<div class="note warn"><div>Нет расценок за раскрой листа.'
-      +(CUT.canCheck?' Заведите их в разделе <b>🧰 Операции и расценки</b> → вкладка <b>🪚 Раскрой ЧПУ</b>.':' Попросите начальника завести.')+'</div></div>'
-    : '';
+  box.innerHTML = !(CUT.sheets||[]).length
+    ? '<div class="note warn"><div>Нет расценок за раскрой листа на ЧПУ.'+(CUT.canCheck?' Заведите их в разделе <b>🧰 Операции и расценки</b> → вкладка <b>🪚 Раскрой ЧПУ</b>.':' Попросите начальника завести.')+'</div></div>' : '';
 }
 function sheetRateOf(mat){ var l=(CUT&&CUT.sheets)||[]; for(var i=0;i<l.length;i++) if(l[i].name===mat) return l[i].rate; return 0; }
 function detRateOf(det){ var d=CUT&&CUT.byDetail[det]; return d?(d.rate||0):0; }
-// с листа детали режет станок — их отдельно не оплачиваем (ЗП идёт за лист), но в заказ работа зачитывается
 function detPaid(det){ var d=CUT&&CUT.byDetail[det]; return !d || d.paid!==false; }
 function detPayMode(det){ var d=CUT&&CUT.byDetail[det]; return (d&&d.payMode)||''; }
-// лист оплачивается, пока хоть одна вышедшая с него деталь не помечена «за деталь» (правило sheetPaidWith_ на сервере)
-function sheetPaid(sd){ var any=false;
-  for(var i=0;i<sd.items.length;i++){ var det=sd.items[i].detail; if(!det) continue; any=true;
-    if(detPayMode(det)!=='за деталь') return true; }
-  return !any; }
-// ── структура: карточка листа и строка детали (собираются один раз, дальше только цифры) ──
+function layOf(sd){ return (sd.layout&&CUT&&CUT.layoutById[sd.layout])||null; }
+// все детали листа ЧПУ: из варианта (шт на лист × листов, брак) + вручную; {det, made, bad}
+function sheetDets(sd){
+  var out=[], L=layOf(sd);
+  if(L) L.items.forEach(function(x){ out.push({ det:x.detail, made:x.qty*(sd.qty||0), bad:n0((sd.bad||{})[x.detail]) }); });
+  for(var j=0;j<sd.items.length;j++){ var it=sd.items[j]; if(it.detail) out.push({ det:it.detail, made:n0(it.qty), bad:n0(it.bad) }); }
+  return out;
+}
+function sheetPaid(sd){ var ds=sheetDets(sd); if(!ds.length) return true; for(var i=0;i<ds.length;i++) if(detPayMode(ds[i].det)!=='за деталь') return true; return false; }
+// ── ЧПУ: карточка листа ──
 function sheetCardHtml(sd){
   return '<div class="card" id="s-'+sd.uid+'">'
     +'<div class="row"><b id="s-lbl-'+sd.uid+'">Лист</b><span class="ok" id="s-sum-'+sd.uid+'">0 р.</span></div>'
+    +'<div class="row" style="margin-top:var(--s-1)"><select class="vsel" id="s-lay-'+sd.uid+'" onchange="setSheetLayout('+sd.uid+',this.value)"></select></div>'
     +'<div class="row" style="margin-top:var(--s-1)"><select class="vsel" id="s-mat-'+sd.uid+'" onchange="setSheetMat('+sd.uid+',this.value)"></select>'
       +'<input type="number" min="0" inputmode="numeric" id="s-qty-'+sd.uid+'" style="width:74px" oninput="setSheetQty('+sd.uid+',this.value)" onchange="setSheetQty('+sd.uid+',this.value)">'
       +'<span class="muted">листов</span></div>'
-    +'<div id="s-items-'+sd.uid+'"></div>'
-    +'<div class="row" style="margin-top:var(--s-2)"><button class="sm sec" onclick="addCutItem('+sd.uid+')">＋ деталь</button>'
-      +'<button class="sm sec" onclick="cloneSheet('+sd.uid+')" title="создать такой же лист">📋 как этот</button>'
+    +'<div id="s-lrows-'+sd.uid+'"></div><div id="s-items-'+sd.uid+'"></div>'
+    +'<div class="row" style="margin-top:var(--s-2)"><button class="sm sec" id="s-add-'+sd.uid+'" onclick="addCutItem('+sd.uid+')">＋ деталь</button>'
+      +'<button class="sm sec" onclick="cloneSheet('+sd.uid+')" title="такой же лист">📋 как этот</button>'
       +'<button class="sm sec" onclick="rmSheet('+sd.uid+')">✕ лист</button>'
-      +'<span class="muted" id="s-out-'+sd.uid+'">выход: 0 дет.</span></div>'
+      +'<span class="muted" id="s-out-'+sd.uid+'"></span></div>'
     +'</div>';
 }
-function itemRowHtml(sd,it){
-  var k=sd.uid+'-'+it.uid;
-  return '<div id="d-'+k+'" style="border-top:1px solid var(--line);padding-top:var(--s-2);margin-top:var(--s-2)">'
-    +'<div class="row"><select class="vsel" id="d-det-'+k+'" onchange="setItemDetail('+sd.uid+','+it.uid+',this.value)"></select>'
-      +'<input type="number" min="0" inputmode="numeric" id="d-qty-'+k+'" placeholder="шт" style="width:74px" oninput="setItemQty('+sd.uid+','+it.uid+',this.value)" onchange="setItemQty('+sd.uid+','+it.uid+',this.value)">'
-      +'<button class="sm sec" onclick="rmCutItem('+sd.uid+','+it.uid+')">✕</button></div>'
-    +'<div class="row" style="margin-top:var(--s-1)"><span id="d-pick-'+k+'"></span><span class="muted" id="d-sum-'+k+'"></span></div></div>';
+// строка детали (ЧПУ вручную и пила): деталь · сделано · брак · годных
+function detRowHtml(pre,u,it){
+  var k=pre+u+'-'+it.uid;
+  return '<div id="'+k+'" style="border-top:1px solid var(--line);padding-top:var(--s-2);margin-top:var(--s-2)">'
+    +'<div class="row"><select class="vsel" id="'+k+'-det" onchange="setDet(\''+pre+'\','+u+','+it.uid+',this.value)"></select>'
+      +'<button class="sm sec" onclick="rmDet(\''+pre+'\','+u+','+it.uid+')">✕</button></div>'
+    +'<div class="row" style="margin-top:var(--s-1)"><span class="muted">сделано</span><input type="number" min="0" inputmode="numeric" id="'+k+'-qty" placeholder="шт" style="width:70px" oninput="setDetN(\''+pre+'\','+u+','+it.uid+',\'qty\',this.value)">'
+      +'<span class="muted">брак</span><input type="number" min="0" inputmode="numeric" id="'+k+'-bad" placeholder="0" style="width:60px" oninput="setDetN(\''+pre+'\','+u+','+it.uid+',\'bad\',this.value)">'
+      +'<span class="muted" id="'+k+'-sum"></span></div></div>';
 }
-// выбор заказа у детали: нет заказов → авто «вне заказа»; один → подставлен; несколько → выбрать обязательно
-function pickHtml(sd,it){
-  if(!it.detail) return '';
-  var d=CUT.byDetail[it.detail];
-  if(!d||!d.orders.length) return '<span class="pill info">🧰 вне заказа</span>';
-  var need=(it.batch===null);
-  return '<select class="vsel'+(need?' need':'')+'" onchange="setItemBatch('+sd.uid+','+it.uid+',this.value)">'
-    +(need?'<option value="__">— выберите заказ —</option>':'')
-    +d.orders.map(function(o){ return '<option value="'+esc(o.orderId)+'"'+(it.batch===o.orderId?' selected':'')+'>'+esc(o.num)+' · нужно '+o.left+'</option>'; }).join('')
-    +'<option value=""'+(it.batch===''?' selected':'')+'>🧰 вне заказа</option></select>';
+function layoutOpts(sd){
+  var ls=(CUT.layouts||[]);
+  return '<option value="">— без варианта (детали вручную) —</option>'+ls.map(function(l){ return '<option value="'+esc(l.id)+'">'+esc(l.name)+' · '+l.perSheet+' шт/лист</option>'; }).join('');
+}
+function matOpts(sd){
+  var L=layOf(sd), ms=(CUT.sheets||[]).filter(function(m){ return !L || L.mats.indexOf(m.name)>=0; });
+  return ms.map(function(m){ return '<option value="'+esc(m.name)+'">'+esc(m.name)+' — '+m.rate+' р.</option>'; }).join('')||'<option value="">'+(L?'у варианта нет листов с расценкой':'нет расценок за лист')+'</option>';
+}
+function fillSheetDom(sd){
+  var ls=document.getElementById('s-lay-'+sd.uid); if(ls){ ls.innerHTML=layoutOpts(sd); ls.value=sd.layout||''; if(ls.value!==(sd.layout||'')){ sd.layout=''; ls.value=''; } }
+  var ms=document.getElementById('s-mat-'+sd.uid);
+  if(ms){ ms.innerHTML=matOpts(sd); ms.value=sd.mat; if(ms.value!==sd.mat){ ms.selectedIndex=0; sd.mat=ms.value; } }
+  var qs=document.getElementById('s-qty-'+sd.uid); if(qs) qs.value=sd.qty||'';
+  var L=layOf(sd), lr=document.getElementById('s-lrows-'+sd.uid);
+  if(lr) lr.innerHTML=L?L.items.map(function(x,i){ var k='l'+sd.uid+'-'+i;
+    return '<div class="row" style="border-top:1px solid var(--line);padding-top:var(--s-2);margin-top:var(--s-2)"><span style="flex:1">'+esc(x.detail)+' <span class="muted">· '+x.qty+'/лист</span></span>'
+      +'<span class="muted">выйдет <b id="'+k+'-made">0</b></span><span class="muted">брак</span>'
+      +'<input type="number" min="0" inputmode="numeric" id="'+k+'-bad" placeholder="0" style="width:60px" value="'+(n0((sd.bad||{})[x.detail])||'')+'" oninput="setLayBad('+sd.uid+','+i+',this.value)">'
+      +'<span class="muted">годных <b id="'+k+'-good">0</b></span></div>'; }).join(''):'';
+  var box=document.getElementById('s-items-'+sd.uid);
+  if(box){ box.innerHTML=sd.items.map(function(it){ return detRowHtml('d',sd.uid,it); }).join(''); sd.items.forEach(function(it){ fillDetDom('d',sd.uid,it); }); }
+  txt('s-add-'+sd.uid, L?'＋ лишняя деталь':'＋ деталь');
+}
+function fillDetDom(pre,u,it){
+  var k=pre+u+'-'+it.uid, ds=document.getElementById(k+'-det'); if(ds){ ds.innerHTML=DETOPTS; ds.value=it.detail||''; }
+  var q=document.getElementById(k+'-qty'); if(q) q.value=it.qty||''; var b=document.getElementById(k+'-bad'); if(b) b.value=it.bad||'';
+}
+// ── пила: карточка распила ──
+function sawCardHtml(c){
+  return '<div class="card" id="w-'+c.uid+'">'
+    +'<div class="row"><b id="w-lbl-'+c.uid+'">Распил</b><span class="ok" id="w-sum-'+c.uid+'">0 р.</span></div>'
+    +'<div class="row" style="margin-top:var(--s-1)"><span class="muted">Из чего резали:</span><div class="seg"><button id="w-ss-'+c.uid+'" onclick="setSawSrc('+c.uid+',\'sheet\')">🪵 Лист</button><button id="w-so-'+c.uid+'" onclick="setSawSrc('+c.uid+',\'offcut\')">✂️ Обрезок</button></div></div>'
+    +'<div id="w-src-'+c.uid+'"></div><div id="w-items-'+c.uid+'"></div>'
+    +'<div class="row" style="margin-top:var(--s-2)"><button class="sm sec" onclick="addSawItem('+c.uid+')">＋ деталь</button></div>'
+    +'<div class="muted" style="margin-top:var(--s-3)">Остались обрезки — на склад обрезков (размер: длина*ширина*толщина, например 1050*500*12)</div><div id="w-off-'+c.uid+'"></div>'
+    +'<div class="row" style="margin-top:var(--s-2)"><button class="sm sec" onclick="addOffIn('+c.uid+')">＋ обрезок</button>'
+      +'<button class="sm sec" onclick="cloneSaw('+c.uid+')">📋 как этот</button><button class="sm sec" onclick="rmSaw('+c.uid+')">✕ распил</button>'
+      +'<span class="muted" id="w-out-'+c.uid+'"></span></div>'
+    +'</div>';
+}
+function sawMatOpts(){ return (CUT.sawSheets||[]).map(function(m){ return '<option value="'+esc(m.name)+'">'+esc(m.name)+'</option>'; }).join('')||'<option value="">нет листовых материалов</option>'; }
+function offGroups(){ var g={}, out=[]; (OFFS||[]).forEach(function(o){ var k=o.kind+' '+String(o.thick).replace('.',',')+' мм'; if(!g[k]){ g[k]=1; out.push(k); } }); return out.sort(); }
+function srcHtml(c){
+  if(c.src==='sheet') return '<div class="row" style="margin-top:var(--s-1)"><select class="vsel" id="w-mat-'+c.uid+'" onchange="setSawMat('+c.uid+',this.value)">'+sawMatOpts()+'</select>'
+    +'<input type="number" min="0" inputmode="numeric" id="w-sh-'+c.uid+'" style="width:74px" placeholder="0" oninput="setSawSheets('+c.uid+',this.value)"><span class="muted">листов распустил</span></div>';
+  if(OFFS===null) return '<div class="muted">загружаю обрезки…</div>';
+  if(!OFFS.length) return '<div class="muted">На складе обрезков пусто.</div>';
+  var gs=offGroups(), f=c.offFilter||'', list=OFFS.filter(function(o){ return !f || (o.kind+' '+String(o.thick).replace('.',',')+' мм')===f; });
+  return '<div class="row" style="margin-top:var(--s-1)"><select class="vsel" onchange="setSawFilter('+c.uid+',this.value)"><option value="">все обрезки</option>'
+      +gs.map(function(g){ return '<option'+(g===f?' selected':'')+'>'+esc(g)+'</option>'; }).join('')+'</select></div>'
+    +'<div style="max-height:220px;overflow:auto;margin-top:var(--s-1)">'+list.slice(0,60).map(function(o){
+      return '<label class="oprow'+(c.offcut===o.id?' on':'')+'"><input type="radio" name="wo-'+c.uid+'" value="'+esc(o.id)+'"'+(c.offcut===o.id?' checked':'')+' onchange="setSawOffcut('+c.uid+',this.value)">'
+        +'<span>'+esc(o.label)+(o.qty>1?' · '+o.qty+' шт':'')+'</span><span class="r">'+esc(o.material)+'</span></label>'; }).join('')+'</div>';
+}
+function offInRowHtml(c,o){ var k='o'+c.uid+'-'+o.uid;
+  return '<div class="row" id="'+k+'" style="margin-top:var(--s-1)"><select class="vsel" id="'+k+'-mat" onchange="setOffIn('+c.uid+','+o.uid+',\'mat\',this.value)">'+sawMatOpts()+'</select>'
+    +'<input id="'+k+'-size" placeholder="1050*500*12" style="width:130px" oninput="setOffIn('+c.uid+','+o.uid+',\'size\',this.value)">'
+    +'<input type="number" min="1" inputmode="numeric" id="'+k+'-qty" style="width:56px" placeholder="1" oninput="setOffIn('+c.uid+','+o.uid+',\'qty\',this.value)"><span class="muted">шт</span>'
+    +'<button class="sm sec" onclick="rmOffIn('+c.uid+','+o.uid+')">✕</button></div>'; }
+function fillSawDom(c){
+  var a=document.getElementById('w-ss-'+c.uid), b=document.getElementById('w-so-'+c.uid); if(a) a.className=c.src==='sheet'?'on':''; if(b) b.className=c.src==='offcut'?'on':'';
+  var sb=document.getElementById('w-src-'+c.uid); if(sb) sb.innerHTML=srcHtml(c);
+  var ms=document.getElementById('w-mat-'+c.uid); if(ms){ ms.value=c.mat||''; if(ms.value!==c.mat){ ms.selectedIndex=0; c.mat=ms.value; } }
+  var sh=document.getElementById('w-sh-'+c.uid); if(sh) sh.value=c.sheets||'';
+  var box=document.getElementById('w-items-'+c.uid);
+  if(box){ box.innerHTML=c.items.map(function(it){ return detRowHtml('p',c.uid,it); }).join(''); c.items.forEach(function(it){ fillDetDom('p',c.uid,it); }); }
+  var ob=document.getElementById('w-off-'+c.uid);
+  if(ob){ ob.innerHTML=c.offIn.map(function(o){ return offInRowHtml(c,o); }).join('');
+    c.offIn.forEach(function(o){ var k='o'+c.uid+'-'+o.uid, m=document.getElementById(k+'-mat'); if(m){ m.value=o.mat||c.mat||''; if(!m.value) m.selectedIndex=0; o.mat=m.value; }
+      var s=document.getElementById(k+'-size'); if(s) s.value=o.size||''; var q=document.getElementById(k+'-qty'); if(q) q.value=o.qty||''; }); }
 }
 function renderCut(){
   var el=document.getElementById('cutlist'); if(!el||!CUT) return;
-  var html=''; for(var i=0;i<SHEETS.length;i++) html+=sheetCardHtml(SHEETS[i]);
-  el.innerHTML=html;
-  for(var k=0;k<SHEETS.length;k++) fillSheetDom(SHEETS[k]);
-  recalcCut();
+  el.innerHTML='<div class="row" style="margin-bottom:var(--s-2)"><div class="seg"><button id="cm-cnc" onclick="setCutMode(\'cnc\')">🪚 ЧПУ — листы</button><button id="cm-saw" onclick="setCutMode(\'saw\')">🔪 Пила — детали</button></div></div>'
+    +'<div id="cnc-box"><div id="cnc-list">'+SHEETS.map(sheetCardHtml).join('')+'</div>'
+      +'<button class="sec" onclick="addSheet()">＋ Добавить лист</button> <button class="sec" onclick="addSheetLikeLast()">📋 Как предыдущий</button></div>'
+    +'<div id="saw-box"><div id="saw-list">'+SAWS.map(sawCardHtml).join('')+'</div><button class="sec" onclick="addSaw()">＋ Добавить распил</button></div>';
+  SHEETS.forEach(fillSheetDom); SAWS.forEach(fillSawDom);
+  setCutMode(CUTMODE); recalcCut();
 }
-function fillSheetDom(sd){
-  var ms=document.getElementById('s-mat-'+sd.uid);
-  if(ms){ ms.innerHTML=MATOPTS||'<option value="">нет расценок за лист</option>'; ms.value=sd.mat; if(!ms.value&&MATOPTS){ ms.selectedIndex=0; sd.mat=ms.value; } }
-  var qs=document.getElementById('s-qty-'+sd.uid); if(qs) qs.value=sd.qty||'';
-  var box=document.getElementById('s-items-'+sd.uid);
-  if(box){ var h=''; for(var j=0;j<sd.items.length;j++) h+=itemRowHtml(sd,sd.items[j]); box.innerHTML=h;
-    for(var j2=0;j2<sd.items.length;j2++) fillItemDom(sd,sd.items[j2]); }
-}
-function fillItemDom(sd,it){
-  var k=sd.uid+'-'+it.uid;
-  var ds=document.getElementById('d-det-'+k); if(ds){ ds.innerHTML=DETOPTS; ds.value=it.detail||''; }
-  var qs=document.getElementById('d-qty-'+k); if(qs) qs.value=it.qty||'';
-  var pk=document.getElementById('d-pick-'+k); if(pk) pk.innerHTML=pickHtml(sd,it);
-}
-// ТОЛЬКО цифры: ни один input не пересоздаётся, поэтому фокус и каретка на месте
+// ТОЛЬКО цифры: ни один input не пересоздаётся
 function recalcCut(){
-  var total=0, needPick=false;
-  for(var i=0;i<SHEETS.length;i++){
-    var sd=SHEETS[i], sp=sheetPaid(sd), ss=sp?Math.round((sd.qty||0)*sheetRateOf(sd.mat)*100)/100:0, out=0;
-    total+=ss;
-    for(var j=0;j<sd.items.length;j++){
-      var it=sd.items[j], pd=detPaid(it.detail), ds=pd?(Math.round((it.qty||0)*detRateOf(it.detail)*100)/100):0;
-      total+=ds; out+=(it.qty||0);
-      if(it.batch===null) needPick=true;
-      txt('d-sum-'+sd.uid+'-'+it.uid, pd?(ds?(ds+' р.'):'') : (it.detail?'0 р. · оплачено листом':''));
-    }
-    txt('s-lbl-'+sd.uid,'Лист '+(i+1));
-    txt('s-sum-'+sd.uid, sp?(ss+' р.'):'0 р. · оплачено деталями');
-    txt('s-out-'+sd.uid,'выход: '+out+' дет.');
-  }
-  CUTTOTAL=Math.round(total*100)/100; CUTNEEDPICK=needPick;
-  saveDraft();
-  var em=document.getElementById('cutempty'); if(em) em.style.display=SHEETS.length?'none':'';
-  var lk=document.getElementById('cutlike'); if(lk) lk.style.display=SHEETS.length?'':'none';
-  renderTotals();
+  var total=0, cs=0, cd=0;
+  SHEETS.forEach(function(sd,i){
+    var L=layOf(sd), ds=sheetDets(sd), sp=sheetPaid(sd), ss=sp?Math.round((sd.qty||0)*sheetRateOf(sd.mat)*100)/100:0, good=0, bad=0, dsum=0;
+    if(L) L.items.forEach(function(x,j){ var made=x.qty*(sd.qty||0), b=n0((sd.bad||{})[x.detail]); txt('l'+sd.uid+'-'+j+'-made', made); txt('l'+sd.uid+'-'+j+'-good', Math.max(0,made-b)); });
+    ds.forEach(function(x){ var g=Math.max(0,x.made-x.bad); good+=g; bad+=x.bad; if(detPaid(x.det)) dsum+=Math.round(g*detRateOf(x.det)*100)/100; });
+    sd.items.forEach(function(it){ var g=Math.max(0,n0(it.qty)-n0(it.bad)), pd=detPaid(it.detail), s=pd?Math.round(g*detRateOf(it.detail)*100)/100:0;
+      txt('d'+sd.uid+'-'+it.uid+'-sum', it.detail?('годных '+g+(pd?(s?' · '+s+' р.':''):' · оплачено листом')):''); });
+    total+=ss+dsum; if(sd.mat&&sd.qty>0) cs++; cd+=good;
+    txt('s-lbl-'+sd.uid,'Лист '+(i+1)+(L?' · '+L.name:'')); txt('s-sum-'+sd.uid, sp?(Math.round((ss+dsum)*100)/100+' р.'):'0 р. · оплачено деталями');
+    txt('s-out-'+sd.uid, 'годных '+good+(bad?' · брак '+bad:''));
+  });
+  SAWS.forEach(function(c,i){
+    var good=0, bad=0, sum=0;
+    c.items.forEach(function(it){ var g=Math.max(0,n0(it.qty)-n0(it.bad)), s=Math.round(g*detRateOf(it.detail)*100)/100; good+=g; bad+=n0(it.bad); sum+=s;
+      txt('p'+c.uid+'-'+it.uid+'-sum', it.detail?('годных '+g+(s?' · '+s+' р.':'')):''); });
+    total+=sum; if(good||bad) cd+=good;
+    txt('w-lbl-'+c.uid,'Распил '+(i+1)); txt('w-sum-'+c.uid, Math.round(sum*100)/100+' р.');
+    txt('w-out-'+c.uid, 'годных '+good+(bad?' · брак '+bad:'')+(c.offIn.length?' · обрезков '+c.offIn.length:''));
+  });
+  CUTTOTAL=Math.round(total*100)/100; CUTNEEDPICK=false; CUTCOUNT={ sheets:cs, saws:SAWS.filter(function(c){ return c.items.some(function(it){ return it.detail&&(n0(it.qty)||n0(it.bad)); }); }).length, det:cd };
+  saveDraft(); renderTotals();
 }
-var CUTTOTAL=0, CUTNEEDPICK=false;
-function addSheet(){
+var CUTTOTAL=0, CUTNEEDPICK=false, CUTCOUNT={ sheets:0, saws:0, det:0 };
+function addSheet(silent){
   var last=SHEETS.length?SHEETS[SHEETS.length-1]:null;
-  var sd={uid:++UID, mat:(last?last.mat:((CUT&&CUT.sheets&&CUT.sheets[0])?CUT.sheets[0].name:'')), qty:1, items:[]};
-  SHEETS.push(sd);
-  var el=document.getElementById('cutlist');
-  if(el&&el.getElementsByTagName('div').length) el.insertAdjacentHTML('beforeend', sheetCardHtml(sd));   // добавляем ТОЛЬКО новую карточку
-  else if(el){ el.innerHTML=sheetCardHtml(sd); }
-  fillSheetDom(sd); recalcCut();
+  var sd={uid:++UID, layout:last?last.layout:'', mat:(last?last.mat:((CUT&&CUT.sheets&&CUT.sheets[0])?CUT.sheets[0].name:'')), qty:1, bad:{}, items:[]};
+  SHEETS.push(sd); if(silent) return;
+  var el=document.getElementById('cnc-list'); if(el){ el.insertAdjacentHTML('beforeend', sheetCardHtml(sd)); fillSheetDom(sd); } recalcCut();
 }
-// «как этот»: тот же материал и тот же состав деталей — правим только отличия
 function cloneSheet(u){
   var idx=findSIdx(u); if(idx<0) return; var src=SHEETS[idx];
-  var items=[]; for(var k=0;k<src.items.length;k++) items.push({uid:++UID, detail:src.items[k].detail, qty:src.items[k].qty, batch:src.items[k].batch});
-  var sd={uid:++UID, mat:src.mat, qty:src.qty, items:items};
+  var sd={uid:++UID, layout:src.layout, mat:src.mat, qty:src.qty, bad:{}, items:src.items.map(function(x){ return {uid:++UID, detail:x.detail, qty:x.qty, bad:0}; })};
   SHEETS.splice(idx+1,0,sd);
-  var after=document.getElementById('s-'+u);
-  if(after) after.insertAdjacentHTML('afterend', sheetCardHtml(sd));
-  fillSheetDom(sd); recalcCut();
-  return sd.uid;
+  var after=document.getElementById('s-'+u); if(after) after.insertAdjacentHTML('afterend', sheetCardHtml(sd));
+  fillSheetDom(sd); recalcCut(); return sd.uid;
 }
-// то же самое, но снизу: рабочий кроит пачку одинаковых листов и не листает вверх к последней карточке
-function addSheetLikeLast(){
-  if(!SHEETS.length){ addSheet(); return; }
-  var u=cloneSheet(SHEETS[SHEETS.length-1].uid);
-  var n=document.getElementById('s-'+u);
-  if(n&&n.scrollIntoView) n.scrollIntoView(false);   // без {behavior} — старые WebView его не понимают
-}
-function rmSheet(u){
-  var idx=findSIdx(u); if(idx<0) return;
-  SHEETS.splice(idx,1);
-  var n=document.getElementById('s-'+u); if(n&&n.parentNode) n.parentNode.removeChild(n);   // .remove() нет в старых WebView
-  recalcCut();
-}
+function addSheetLikeLast(){ if(!SHEETS.length){ addSheet(); return; } var u=cloneSheet(SHEETS[SHEETS.length-1].uid), n=document.getElementById('s-'+u); if(n&&n.scrollIntoView) n.scrollIntoView(false); }
+function rmSheet(u){ var idx=findSIdx(u); if(idx<0) return; SHEETS.splice(idx,1); var n=document.getElementById('s-'+u); if(n&&n.parentNode) n.parentNode.removeChild(n); recalcCut(); }
+function setSheetLayout(u,v){ var sd=findS(u); if(!sd) return; sd.layout=v; sd.bad={}; fillSheetDom(sd); recalcCut(); }
 function setSheetMat(u,v){ var sd=findS(u); if(sd){ sd.mat=v; recalcCut(); } }
-function setSheetQty(u,v){ var sd=findS(u); if(sd){ sd.qty=Number(v)||0; recalcCut(); } }
-function addCutItem(u){
-  var sd=findS(u); if(!sd) return;
-  var it={uid:++UID, detail:'', qty:0, batch:null}; sd.items.push(it);
-  var box=document.getElementById('s-items-'+u);
-  if(box) box.insertAdjacentHTML('beforeend', itemRowHtml(sd,it));
-  fillItemDom(sd,it); recalcCut();
+function setSheetQty(u,v){ var sd=findS(u); if(sd){ sd.qty=n0(v); recalcCut(); } }
+function setLayBad(u,i,v){ var sd=findS(u); if(!sd) return; var L=layOf(sd); if(!L||!L.items[i]) return; sd.bad=sd.bad||{}; sd.bad[L.items[i].detail]=n0(v); recalcCut(); }
+function addCutItem(u){ var sd=findS(u); if(!sd) return; var it={uid:++UID, detail:'', qty:0, bad:0}; sd.items.push(it);
+  var box=document.getElementById('s-items-'+u); if(box){ box.insertAdjacentHTML('beforeend', detRowHtml('d',u,it)); fillDetDom('d',u,it); } recalcCut(); }
+function cardOf(pre,u){ return pre==='d'?findS(u):findW(u); }
+function setDet(pre,u,iu,v){ var c=cardOf(pre,u); if(!c) return; var it=findI(c.items,iu); if(it){ it.detail=v; recalcCut(); } }
+function setDetN(pre,u,iu,f,v){ var c=cardOf(pre,u); if(!c) return; var it=findI(c.items,iu); if(it){ it[f]=n0(v); recalcCut(); } }
+function rmDet(pre,u,iu){ var c=cardOf(pre,u); if(!c) return; for(var j=0;j<c.items.length;j++) if(c.items[j].uid===iu){ c.items.splice(j,1); break; }
+  var n=document.getElementById(pre+u+'-'+iu); if(n&&n.parentNode) n.parentNode.removeChild(n); recalcCut(); }
+// ── пила ──
+function addSaw(silent){
+  var last=SAWS.length?SAWS[SAWS.length-1]:null;
+  var c={uid:++UID, src:last?last.src:'sheet', mat:last?last.mat:((CUT&&CUT.sawSheets&&CUT.sawSheets[0])?CUT.sawSheets[0].name:''), sheets:0, offcut:'', offFilter:'', items:[{uid:++UID, detail:'', qty:0, bad:0}], offIn:[]};
+  SAWS.push(c); if(silent) return;
+  var el=document.getElementById('saw-list'); if(el){ el.insertAdjacentHTML('beforeend', sawCardHtml(c)); fillSawDom(c); } recalcCut();
 }
-function rmCutItem(u,iu){
-  var sd=findS(u); if(!sd) return;
-  for(var j=0;j<sd.items.length;j++) if(sd.items[j].uid===iu){ sd.items.splice(j,1); break; }
-  var n=document.getElementById('d-'+u+'-'+iu); if(n&&n.parentNode) n.parentNode.removeChild(n);
-  recalcCut();
+function cloneSaw(u){ var idx=findWIdx(u); if(idx<0) return; var s=SAWS[idx];
+  var c={uid:++UID, src:s.src, mat:s.mat, sheets:s.sheets, offcut:'', offFilter:s.offFilter, items:s.items.map(function(x){ return {uid:++UID, detail:x.detail, qty:x.qty, bad:0}; }), offIn:[]};
+  SAWS.splice(idx+1,0,c); var after=document.getElementById('w-'+u); if(after) after.insertAdjacentHTML('afterend', sawCardHtml(c)); fillSawDom(c); recalcCut(); }
+function rmSaw(u){ var idx=findWIdx(u); if(idx<0) return; SAWS.splice(idx,1); var n=document.getElementById('w-'+u); if(n&&n.parentNode) n.parentNode.removeChild(n); recalcCut(); }
+function setSawSrc(u,v){ var c=findW(u); if(!c) return; c.src=v; if(v==='offcut'&&OFFS===null) loadOffs(); fillSawDom(c); recalcCut(); }
+function setSawMat(u,v){ var c=findW(u); if(c){ c.mat=v; recalcCut(); } }
+function setSawSheets(u,v){ var c=findW(u); if(c){ c.sheets=n0(v); recalcCut(); } }
+function setSawFilter(u,v){ var c=findW(u); if(!c) return; c.offFilter=v; var sb=document.getElementById('w-src-'+u); if(sb) sb.innerHTML=srcHtml(c); }
+function setSawOffcut(u,v){ var c=findW(u); if(!c) return; c.offcut=v; var sb=document.getElementById('w-src-'+u); if(sb) sb.innerHTML=srcHtml(c); recalcCut(); }
+function addSawItem(u){ var c=findW(u); if(!c) return; var it={uid:++UID, detail:'', qty:0, bad:0}; c.items.push(it);
+  var box=document.getElementById('w-items-'+u); if(box){ box.insertAdjacentHTML('beforeend', detRowHtml('p',u,it)); fillDetDom('p',u,it); } recalcCut(); }
+function addOffIn(u){ var c=findW(u); if(!c) return; var o={uid:++UID, mat:c.src==='sheet'?c.mat:'', size:'', qty:1}; c.offIn.push(o);
+  var ob=document.getElementById('w-off-'+u); if(ob){ ob.insertAdjacentHTML('beforeend', offInRowHtml(c,o)); var k='o'+u+'-'+o.uid, m=document.getElementById(k+'-mat'); if(m){ m.value=o.mat; if(!m.value) m.selectedIndex=0; o.mat=m.value; } var q=document.getElementById(k+'-qty'); if(q) q.value=1; } recalcCut(); }
+function setOffIn(u,ou,f,v){ var c=findW(u); if(!c) return; var o=findI(c.offIn,ou); if(o){ o[f]=f==='qty'?n0(v):v; recalcCut(); } }
+function rmOffIn(u,ou){ var c=findW(u); if(!c) return; for(var j=0;j<c.offIn.length;j++) if(c.offIn[j].uid===ou){ c.offIn.splice(j,1); break; }
+  var n=document.getElementById('o'+u+'-'+ou); if(n&&n.parentNode) n.parentNode.removeChild(n); recalcCut(); }
+function loadOffs(){ OFFS=OFFS||null; api({vapi:'offcuts'}).then(function(r){ OFFS=(r&&r.items)||[]; SAWS.forEach(function(c){ if(c.src==='offcut'){ var sb=document.getElementById('w-src-'+c.uid); if(sb) sb.innerHTML=srcHtml(c); } }); }).catch(function(){ OFFS=[]; }); }
+// для отправки: листы ЧПУ и распилы в формате сервера; ошибка — текстом (а не отказом сервера после ожидания)
+function cutPayload(){
+  var sheets=[], saw=[];
+  for(var i=0;i<SHEETS.length;i++){
+    var sd=SHEETS[i]; if(!sd.mat||!(sd.qty>0)) continue;
+    var its=sd.items.filter(function(it){ return it.detail&&(n0(it.qty)>0||n0(it.bad)>0); }).map(function(it){ return {detail:it.detail, qty:n0(it.qty), bad:n0(it.bad)}; });
+    if(!sd.layout && !its.length) return { error:'Лист «'+sd.mat+'»: выберите вариант раскроя или укажите, какие детали вышли — кнопка «＋ деталь»' };
+    var L=layOf(sd); if(L) for(var j=0;j<L.items.length;j++){ var x=L.items[j]; if(n0((sd.bad||{})[x.detail])>x.qty*sd.qty) return { error:'Лист «'+sd.mat+'»: брак «'+x.detail+'» больше, чем вышло' }; }
+    sheets.push({mat:sd.mat, qty:sd.qty, layout:sd.layout||'', bad:sd.bad||{}, items:its});
+  }
+  for(var k=0;k<SAWS.length;k++){
+    var c=SAWS[k], its2=c.items.filter(function(it){ return it.detail&&(n0(it.qty)>0||n0(it.bad)>0); }).map(function(it){ return {detail:it.detail, qty:n0(it.qty), bad:n0(it.bad)}; });
+    if(!its2.length) continue;
+    for(var m=0;m<its2.length;m++) if(its2[m].bad>its2[m].qty) return { error:'Распил '+(k+1)+': брак «'+its2[m].detail+'» больше, чем сделано' };
+    if(c.src==='sheet' && !(c.sheets>0)) return { error:'Распил '+(k+1)+': укажите, сколько листов «'+c.mat+'» распустили' };
+    if(c.src==='offcut' && !c.offcut) return { error:'Распил '+(k+1)+': выберите обрезок, из которого резали' };
+    var offIn=c.offIn.filter(function(o){ return String(o.size||'').trim(); }).map(function(o){ return {mat:o.mat, size:o.size, qty:o.qty||1}; });
+    saw.push(c.src==='sheet' ? {src:'sheet', mat:c.mat, sheets:c.sheets, items:its2, offcutsIn:offIn} : {src:'offcut', offcuts:[c.offcut], items:its2, offcutsIn:offIn});
+  }
+  return { sheets:sheets, saw:saw };
 }
-function setItemDetail(u,iu,v){
-  var sd=findS(u); if(!sd) return; var it=findI(sd,iu); if(!it) return;
-  it.detail=v;
-  var d=CUT.byDetail[v];
-  it.batch = (!d||!d.orders.length) ? '' : (d.orders.length===1 ? d.orders[0].orderId : null);
-  var pk=document.getElementById('d-pick-'+u+'-'+iu); if(pk) pk.innerHTML=pickHtml(sd,it);   // меняем только соседний блок, не строку с полем ввода
-  recalcCut();
-}
-function setItemQty(u,iu,v){ var sd=findS(u); if(!sd) return; var it=findI(sd,iu); if(it){ it.qty=Number(v)||0; recalcCut(); } }
-function setItemBatch(u,iu,v){
-  var sd=findS(u); if(!sd) return; var it=findI(sd,iu); if(!it) return;
-  it.batch = (v==='__') ? null : v;   // «— выберите заказ —» = не выбрано, иначе деталь молча ушла бы «вне заказа»
-  var pk=document.getElementById('d-pick-'+u+'-'+iu); if(pk) pk.innerHTML=pickHtml(sd,it);
-  recalcCut();
-}
+function cutReset(){ SHEETS=[]; SAWS=[]; OFFS=null; CUTTOTAL=0; CUTCOUNT={ sheets:0, saws:0, det:0 }; if(CUT){ addSheet(true); addSaw(true); renderCut(); } }
 // выход деталей с каждого листа: видно, где вышло меньше обычного
 function loadCutLog(){
   var el=document.getElementById('cutlog'); if(!el) return;
@@ -2341,9 +2385,11 @@ function loadCutLog(){
     el.innerHTML='<div class="sect">Выход с листа</div>'+(avg?'<div class="card">'+avg+'</div>':'')
       +list.slice(0,12).map(function(g){
         var warn=(g.dev<=-15)?' <span class="pill warn" title="меньше обычного — проверьте брак">⚠ '+g.dev+'%</span>':'';
-        var dets=g.details.map(function(x){ return '<div class="row"><span>'+esc(x.detail)+' · '+x.qty+' шт</span><span class="muted">'+(x.free?'🧰 вне заказа':esc(x.batch))+'</span></div>'; }).join('');
-        return '<div class="card"><div class="row"><b>'+esc(g.mat)+' · '+g.qty+' лист(ов)</b><span class="muted">'+esc(g.date)+'</span></div>'
-          +'<div class="row"><span class="muted">'+esc(g.worker)+'</span><span>выход <b>'+g.detQty+'</b> дет. ('+g.perSheet+'/лист)'+warn+'</span></div>'
+        var dets=g.details.map(function(x){ return '<div class="row"><span>'+esc(x.detail)+' · '+x.qty+' шт'+(x.bad?' <span class="pill warn">брак '+x.bad+'</span>':'')+'</span><span class="muted">'
+          +(x.stock?'📦 склад раскроя':(x.free?'🧰 вне заказа':esc(x.batch)))+'</span></div>'; }).join('');
+        return '<div class="card"><div class="row"><b>'+(g.tool==='saw'?'🔪 ':'🪚 ')+esc(g.mat)+' · '+g.qty+' лист(ов)</b><span class="muted">'+esc(g.date)+'</span></div>'
+          +(g.layout?'<div class="muted">вариант: '+esc(g.layout)+'</div>':'')
+          +'<div class="row"><span class="muted">'+esc(g.worker)+'</span><span>выход <b>'+g.detQty+'</b> дет. ('+g.perSheet+'/лист)'+(g.badQty?' · брак '+g.badQty+' ('+String(g.badPct).replace('.',',')+' %)':'')+warn+'</span></div>'
           +dets+'</div>';
       }).join('');
   }).catch(function(){});
@@ -2361,9 +2407,13 @@ function kindBadge(it){
   if(!it||isDev(it)) return '';
   if(it.kind==='подряд') return '<span class="pill warn" title="работу выполнил подрядчик: в зарплату не идёт, платим по акту">🤝 подряд</span> ';
   if(it.kind==='повременно') return '<span class="pill mute" title="доплата за работу по времени">💵 доплата</span> ';
-  if(it.kind==='лист') return '<span class="pill info" title="раскрой листа на ЧПУ — оплата за лист">📐 лист</span> ';
-  if(it.paid===false) return '<span class="pill info" title="деталь вышла с листа: ЗП уже начислена за лист, работа в заказе зачтена">🪚 с листа</span> ';
-  return '';
+  var cut=(it.layout?'<span class="pill mute" title="вариант раскроя ЧПУ">'+esc(it.layout)+'</span> ':'')+(it.cutBad?'<span class="pill warn" title="брак при резке — в количестве только годные">брак '+it.cutBad+'</span> ':'')
+    +(it.offcut?'<span class="pill mute" title="резали из обрезка">✂️ '+esc(it.offcut)+'</span> ':'');
+  if(it.kind==='лист') return (it.cutTool==='saw'?'<span class="pill mute" title="пила: сколько листов распустили — учёт расхода, не оплата">🔪 листы (учёт)</span> '
+    :'<span class="pill info" title="раскрой листа на ЧПУ — оплата за лист">📐 лист</span> ')+cut;
+  if(it.cutTool==='saw') return '<span class="pill info" title="пила: оплата за годные детали">🔪 пила</span> '+cut;
+  if(it.paid===false) return '<span class="pill info" title="деталь вышла с листа: ЗП уже начислена за лист">🪚 с листа</span> '+cut;
+  return cut;
 }
 function doRegister(){
   var fio=(document.getElementById('reg-fio')||{}).value||'';
