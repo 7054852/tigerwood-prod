@@ -766,6 +766,9 @@ function calc(){
 }
 var CART=[], SHIFT='день';
 var BONUS={premPct:10,premThr:100,nightPct:15};   // как в Config
+// с 26.10.2026 премии за наряд нет — вместо неё недельная премия (сервер: WEEK_BONUS_FROM); день — «гггг-мм-дд» или «дд.мм.гггг»
+var WEEKB_FROM='2026-10-26';
+function premOnDay(d){ d=String(d||''); if(/^\d\d\.\d\d\.\d{4}/.test(d)) d=d.slice(6,10)+'-'+d.slice(3,5)+'-'+d.slice(0,2); if(!d){ var t=new Date(); d=t.getFullYear()+'-'+pad2(t.getMonth()+1)+'-'+pad2(t.getDate()); } return d<WEEKB_FROM; }
 // три смены (владелец 02.10.2026): «день» = 1-я, «2 смена» = 2-я, «ночь». Ночная надбавка — только ночью.
 function shIco(s){ return s==='ночь'?'🌙':(s==='2 смена'?'🌇':'☀️'); }
 function shName(s){ return s==='ночь'?'ночь':(s==='2 смена'?'2-я смена':'1-я смена'); }
@@ -786,14 +789,15 @@ function updateWhen(){ try{ renderDayTime(); }catch(e){} var el=document.getElem
   var human=wd?wd.split('-').reverse().slice(0,2).join('.'):'—';
   el.innerHTML='📅 Отчёт за <b>'+human+'</b> · '+shLbl(SHIFT); }
 function bonusCalc(base){
-  var night=(SHIFT==='ночь'), ni=night?Math.round(base*BONUS.nightPct)/100:0;
-  var prem=base>BONUS.premThr?Math.round(base*BONUS.premPct)/100:0;
-  return {base:Math.round(base*100)/100, night:ni, prem:prem, total:Math.round((base+ni+prem)*100)/100, nightOn:night, premOn:base>BONUS.premThr};
+  var night=(SHIFT==='ночь'), ni=night?Math.round(base*BONUS.nightPct)/100:0, on=premOnDay((document.getElementById('wdate')||{}).value)&&base>BONUS.premThr;
+  var prem=on?Math.round(base*BONUS.premPct)/100:0;
+  return {base:Math.round(base*100)/100, night:ni, prem:prem, total:Math.round((base+ni+prem)*100)/100, nightOn:night, premOn:on};
 }
 // разбивка по базе/премии/ночной (та же формула, что на сервере). base — сдельная база (с учётом коэффициентов)
-function computeBreakdown(base, night){
+function computeBreakdown(base, night, day){
   base=Math.round(base*100)/100;
-  var prem=base>BONUS.premThr?Math.round(base*BONUS.premPct)/100:0;
+  if(day===undefined) day=(document.getElementById('wdate')||{}).value;
+  var prem=premOnDay(day)&&base>BONUS.premThr?Math.round(base*BONUS.premPct)/100:0;
   var ni=night?Math.round(base*BONUS.nightPct)/100:0;
   return {base:base, premium:prem, night:ni, total:Math.round((base+prem+ni)*100)/100};
 }
@@ -1656,7 +1660,7 @@ function renderJournal0(){
       for(var q=0;q<g.lines.length;q++){ var L=g.lines[q];
         if(L.status==='ждёт ОТК') continue;   // ещё не засчитано — в разбивку наряда не берём
         if(L.kind==='премия') gbon+=L.sum||0; else if(L.paid!==false) effBase+=(L.base||0)*kOf(L.koef); }
-      var gbd=computeBreakdown(effBase, night);
+      var gbd=computeBreakdown(effBase, night, g.date);
       if(gbon){ gbd.bonus=Math.round(gbon*100)/100; gbd.total=Math.round((gbd.total+gbon)*100)/100; }
       // ⚠ премия за наряд и ночная считаются от ВСЕГО наряда. Если фильтр показал только часть строк,
       // разбивка была бы враньём (порог 100 ₽ на куске не наберётся) — вместо неё говорим прямо.
