@@ -112,22 +112,29 @@
   table.pay .stl b{ font-weight:600; }
   table.pay .stl > span{ white-space:nowrap; }   /* на телефоне переносим между суммами, а не внутри «🔎 163,00» */
   /* ── НЕДЕЛЯ (25.10.2026): смена и заработок в одной клетке + недельная премия ── */
-  .wk td[data-i]{ min-width:58px; line-height:1.15; }
-  .wk td .rb{ display:block; font:var(--t-small); font-weight:600; font-variant-numeric:tabular-nums; }
+  /* компактно (владелец 25.10.2026): строка — одна высота поля ввода; смена и рубли в одну строку, детали — в подсказке */
+  .wk td, .wk th{ padding:2px 4px; }
+  .wk td[data-i]{ min-width:50px; }
+  .wk td .rb{ font:var(--t-small); font-weight:600; font-variant-numeric:tabular-nums; margin-left:2px; }
   .wk td .rb.z{ color:var(--line2); font-weight:400; }
+  .wk td .fk{ vertical-align:baseline; }
   .wk td.tot{ font:var(--t-small); font-weight:700; cursor:default; }
-  .wk td.wb{ min-width:190px; text-align:left; cursor:default; white-space:normal; }
-  .wbar{ height:6px; border-radius:3px; background:var(--bg2); overflow:hidden; margin:2px 0; } .wbar i{ display:block; height:100%; }
-  .wb-box{ display:flex; gap:4px; align-items:center; flex-wrap:wrap; }
-  .wb-box input{ width:64px; min-height:30px; padding:0 6px; text-align:right; }
+  .wk td.wb{ text-align:left; cursor:default; }
+  .wbar{ display:inline-block; vertical-align:middle; width:52px; height:6px; border-radius:3px; background:var(--bg2); overflow:hidden; } .wbar i{ display:block; height:100%; }
+  .wb-box{ display:flex; gap:4px; align-items:center; white-space:nowrap; font:var(--t-tiny); }
+  .wb-box input{ width:54px; min-height:26px; height:26px; padding:0 5px; text-align:right; font:var(--t-small); }
+  .wb-box .st{ margin-left:4px; font-variant-numeric:tabular-nums; }
   .wk-cards{ display:none; }
   @media (max-width:640px){
     .wk-tbl{ display:none; } .wk-cards{ display:block; }
     .wcard{ background:var(--card); border:1px solid var(--line); border-radius:var(--r-card); padding:var(--s-3); margin-bottom:var(--s-2); }
     .wcard .hd{ display:flex; justify-content:space-between; gap:var(--s-2); font-weight:600; }
     .wcard .dd{ display:grid; grid-template-columns:repeat(7,1fr); gap:3px; margin-top:var(--s-2); }
-    .wcard .dd div{ text-align:center; font:var(--t-tiny); border-radius:var(--r-xs); padding:3px 0; min-height:40px; cursor:pointer; }
-    .wcard .dd div b{ display:block; font:var(--t-small); font-weight:600; }
+    .wcard{ padding:var(--s-2) var(--s-3); }
+    .wcard .dd{ margin-top:4px; }
+    .wcard .dd div{ text-align:center; font:var(--t-tiny); line-height:1.25; border-radius:var(--r-xs); padding:2px 0; cursor:pointer; }
+    .wcard .dd div .rv{ display:block; font:var(--t-small); font-weight:600; }
+    .wcard .wb-box{ margin-top:4px; }
   }
 </style>
 </head>
@@ -563,21 +570,25 @@ function loadWeek(silent){
 }
 function wbCell(n){ return WD.byName[n]||null; }
 function wbHtml(n, card){
-  var b=wbCell(n), B=WD.b;
-  var early=WK<B.start, out='';   // неделя до старта: порог ставят заранее, начислять начнём с B.start
-  if(early&&!(b&&B.editable)) return '<span class="muted" style="font:var(--t-tiny)">недельная премия — с '+esc(ruDate(B.start))+'</span>';
-  if(early) out+='<div class="muted" style="font:var(--t-tiny)">'+(b.threshold>0&&b.amount>0?'✓ '+money(b.threshold)+' ₽ → '+money(b.amount)+' ₽, ':'')+'действует с '+esc(ruDate(B.start))+'</div>';
-  else if(b&&b.threshold>0&&b.amount>0){
+  // одна строка: [порог] → [премия] · полоса · «сделано/порог» или «✓ премия»; подробности — в подсказке
+  var b=wbCell(n), B=WD.b, early=WK<B.start;
+  if(!b||(early&&!B.editable)) return early?'<span class="muted" style="font:var(--t-tiny)">с '+esc(ruDate(B.start).slice(0,5))+'</span>':'<span class="muted">—</span>';
+  var has=b.threshold>0&&b.amount>0, tip='', st='';
+  if(early) { st='<span class="muted">с '+esc(ruDate(B.start).slice(0,5))+'</span>'; tip='недельная премия начнёт действовать с '+ruDate(B.start); }
+  else if(has){
     var pct=Math.min(100,Math.round(b.earned/b.threshold*100)), done=b.earned>=b.threshold;
-    out+='<div class="wbar"><i style="width:'+pct+'%;background:'+(done?'var(--green)':'var(--amber)')+'"></i></div>'
-      +'<div style="font:var(--t-tiny)">'+money(b.earned)+' из '+money(b.threshold)+' ₽ · '
-      +(done?'<b style="color:var(--green)">премия '+money(b.granted||b.amount)+' ₽'+(b.granted?'':' (начислится)')+'</b>':'ещё '+money(Math.round((b.threshold-b.earned)*100)/100)+' ₽ до премии '+money(b.amount)+' ₽')
-      +(b.pending>0?' · <span style="color:var(--blue)">⏳ '+money(b.pending)+'</span>':'')+'</div>';
-  } else if(b&&b.earned>0) out+='<div style="font:var(--t-tiny)" class="muted">в зачёт премии '+money(b.earned)+' ₽ · порога нет</div>';
-  if(b&&B.editable) out+='<div class="wb-box" style="margin-top:3px"><span class="muted" style="font:var(--t-tiny)">порог</span><input type="number" min="0" inputmode="decimal" class="wb-t" value="'+(b.threshold||'')+'" placeholder="₽" onchange="wbSave(this,\''+b.personId+'\')">'
-    +'<span class="muted" style="font:var(--t-tiny)">премия</span><input type="number" min="0" inputmode="decimal" class="wb-a" value="'+(b.amount||'')+'" placeholder="₽" onchange="wbSave(this,\''+b.personId+'\')"></div>';
-  else if(b&&b.threshold>0&&!B.editable&&B.canEdit&&WK<B.current) out+='<div class="muted" style="font:var(--t-tiny)">прошлая неделя — порог не меняется</div>';
-  return out||'<span class="cell0 muted">—</span>';
+    st='<span class="wbar"><i style="width:'+pct+'%;background:'+(done?'var(--green)':'var(--amber)')+'"></i></span> '
+      +(done?'<b style="color:var(--green)">✓ '+Math.round(b.granted||b.amount)+'</b>':Math.round(b.earned)+'/'+Math.round(b.threshold))
+      +(b.pending>0?' <span style="color:var(--blue)">⏳'+Math.round(b.pending)+'</span>':'');
+    tip='сделано '+money(b.earned)+' из '+money(b.threshold)+' ₽'+(done?' — премия '+money(b.granted||b.amount)+' ₽'+(b.granted?'':' (начислится)'):' — ещё '+money(Math.round((b.threshold-b.earned)*100)/100)+' ₽ до премии '+money(b.amount)+' ₽')
+      +(b.pending>0?'\nна проверке '+money(b.pending)+' ₽':'');
+  } else if(b.earned>0){ st='<span class="muted">'+Math.round(b.earned)+'</span>'; tip='в зачёт премии '+money(b.earned)+' ₽, порога нет'; }
+  if(!early&&!B.editable&&B.canEdit&&WK<B.current) tip+=(tip?'\n':'')+'прошлая неделя — порог не меняется';
+  var inp=B.editable
+    ? '<input type="number" min="0" inputmode="decimal" class="wb-t" value="'+(b.threshold||'')+'" placeholder="порог" title="порог за неделю, ₽" onchange="wbSave(this,\''+b.personId+'\')">→'
+      +'<input type="number" min="0" inputmode="decimal" class="wb-a" value="'+(b.amount||'')+'" placeholder="₽" title="премия, ₽" onchange="wbSave(this,\''+b.personId+'\')">'
+    : (has?'<span>'+Math.round(b.threshold)+' → '+Math.round(b.amount)+'</span>':'');
+  return '<div class="wb-box"'+(tip?' title="'+esc(tip)+'"':'')+'>'+inp+(st?'<span class="st">'+st+'</span>':'')+'</div>';
 }
 function wbSave(inp, pid){
   var box=inp.parentNode, t=box.querySelector('.wb-t').value, a=box.querySelector('.wb-a').value;
@@ -626,18 +637,18 @@ function renderWeek(){
   // таблица — компьютер
   var th='<tr><th>Рабочий</th>'+D.dates.map(function(iso,i){ var we=D.off[iso]||D.hol[iso];
       return '<th class="'+(D.hol[iso]?'we hol':(we?'we':''))+(iso===td?' hl':'')+'" title="'+esc(D.hol[iso]||'')+'">'+DOW[i]+' '+Number(iso.slice(8))+'</th>'; }).join('')
-    +'<th>Итого</th><th style="text-align:left">Недельная премия</th></tr>';
+    +'<th>Итого</th><th style="text-align:left" title="порог за неделю → премия; полоса — сколько набрано">Порог → премия</th></tr>';
   var body=D.names.map(function(n,ni){
     return '<tr><td class="nm">'+esc(n)+'</td>'+D.dates.map(function(iso,i){ var c=wkCellInfo(n,iso);
-        return '<td class="'+c.cls+'" data-n="'+ni+'" data-i="'+i+'" title="'+esc(c.tip)+'">'+c.ic+'<span class="rb'+(c.v?'':' z')+'">'+(c.v?money(c.v):'·')+'</span></td>'; }).join('')
-      +'<td class="tot">'+money(rowTot(n))+'</td><td class="wb">'+wbHtml(n)+'</td></tr>';
+        return '<td class="'+c.cls+'" data-n="'+ni+'" data-i="'+i+'" title="'+esc(c.tip)+'">'+c.ic+'<span class="rb'+(c.v?'':' z')+'">'+(c.v?Math.round(c.v):'')+'</span></td>'; }).join('')
+      +'<td class="tot" title="'+money(rowTot(n))+' ₽">'+Math.round(rowTot(n))+'</td><td class="wb">'+wbHtml(n)+'</td></tr>';
   }).join('');
   // карточки — телефон
   var cards=D.names.map(function(n,ni){
-    return '<div class="wcard"><div class="hd"><span>'+esc(n)+'</span><span>'+money(rowTot(n))+' ₽</span></div><div class="dd">'
+    return '<div class="wcard"><div class="hd"><span>'+esc(n)+'</span><span>'+Math.round(rowTot(n))+' ₽</span></div><div class="dd">'
       +D.dates.map(function(iso,i){ var c=wkCellInfo(n,iso);
-        return '<div class="'+c.cls+'" data-n="'+ni+'" data-i="'+i+'">'+DOW[i]+'<br>'+c.ic+'<b'+(c.v?'':' style="color:var(--line2);font-weight:400"')+'>'+(c.v?Math.round(c.v):'·')+'</b></div>'; }).join('')
-      +'</div><div style="margin-top:var(--s-2)">'+wbHtml(n,1)+'</div></div>';
+        return '<div class="'+c.cls+'" data-n="'+ni+'" data-i="'+i+'">'+DOW[i]+' '+c.ic+'<span class="rv"'+(c.v?'':' style="color:var(--line2);font-weight:400"')+'>'+(c.v?Math.round(c.v):'·')+'</span></div>'; }).join('')
+      +'</div>'+wbHtml(n,1)+'</div>';
   }).join('');
   $('pane').innerHTML=h+'<div class="card mgrid wk wk-tbl" style="overflow-x:auto"><table class="tbl" id="wtbl">'+th+body+'</table></div><div class="wk-cards" id="wcards">'+cards+'</div>';
   $('wtbl').addEventListener('click', wkCellClick); $('wcards').addEventListener('click', wkCellClick);
