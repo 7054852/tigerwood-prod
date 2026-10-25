@@ -223,8 +223,8 @@
 <div id="tab_salary" class="hide">
   <div class="tabs" id="salTabs" style="margin-bottom:var(--s-2)"><button data-st="debt" class="on" onclick="salTab('debt')">Долг по сотрудникам</button><button data-st="bank" onclick="salTab('bank')">Выплаты из банка</button></div>
   <div id="sal_debt">
-    <div class="toolbar"><input id="pdQ" type="search" class="search" placeholder="🔎 сотрудник" oninput="renderPd()"><label class="mut"><input type="checkbox" id="pdAll" onchange="renderPd()"> оклад и нулевые</label><div class="end"><button class="sec" onclick="pdOpen('')">+ Сотрудник</button></div></div>
-    <div class="note hint">Долг = долг на дату отсечки (всё выплаченное до неё в нём учтено) + подтверждённые наряды закрытых месяцев − выплаты с даты отсечки. Наряды текущего месяца копятся отдельно и становятся долгом, когда месяц закончится. Штат — наряды на руки, засчитывается полученное. Подряд — наряды до налогов, выплата из банка засчитывается начисленным (на руки ÷ 0,86). Оклад — долг не считается. Клик по строке — подробности, тип, долг на отсечку, выдача наличными.</div>
+    <div class="toolbar"><input id="pdQ" type="search" class="search" placeholder="🔎 сотрудник" oninput="renderPd()"><label class="mut"><input type="checkbox" id="pdAll" onchange="renderPd()"> и нулевые</label><div class="end"><button class="sec" onclick="pdOpen('')">💵 Наличными / отсечка</button></div></div>
+    <div class="note hint">Долг на руки = долг на дату отсечки + принятые наряды × k + правки итога − выплаты с отсечки. k — по договору, действовавшему в день наряда: штат 1, подряд 0,86 (удерживаем подоходный и пенсионный), без договора — 1 с пометкой; НПД и обучение не считаются. Выплата = оплаченный расход на человека (часть банковского реестра, наличные) и оплаты контрагенту «за него». Ведомость долг не меняет. Тот же расчёт — в «Кадрах». Клик по строке — отсечка, примечание, выдача наличными.</div>
     <div id="pdSum" class="pdsum"></div><div id="pdBox"></div><div id="pdMsg" class="msg"></div>
   </div>
   <div id="sal_bank" class="hide">
@@ -819,75 +819,86 @@ function unpost(id){
 var SAL=null, SP=null;
 function salLoad(){ get({vapi:'finsalary'}).then(function(r){ if(!r||!r.ok){ noAccess(r); return; } SAL=r; renderSal(); }); pdLoad(); }
 function salTab(t){ var b=el('salTabs').querySelectorAll('button'); for(var i=0;i<b.length;i++) b[i].className=b[i].getAttribute('data-st')===t?'on':''; el('sal_debt').className=t==='debt'?'':'hide'; el('sal_bank').className=t==='bank'?'':'hide'; }
-/* ── расчёт с сотрудниками (20.10.2026): кому сколько должны ── */
-var PD=null, PDX=null;
+/* ── долг по сотрудникам: единый расчёт Прохаба (payroll/debt.ts), тот же экран в «Кадрах» ── */
+var PD=null, PDX=null, PDOPEN={};
 var MON=['','янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];
 function pdLoad(){ get({vapi:'finpaydebt'}).then(function(r){ if(!r||!r.ok){ setm('pdMsg','err',esc(errText(r))); return; } PD=r; renderPd(); }); }
+function pdMonths(){ var s={}; PD.rows.forEach(function(x){ Object.keys(x.earned).forEach(function(m){ s[m]=1; }); }); return Object.keys(s).sort(); }
+function pdDebt(x){ if(x.debt===null) return '<span class="mut" title="нарядов нет — оплата по окладу, долг по ведомости">по окладу</span>'; if(x.debt<-0.004) return '<b class="plus" title="выплачено больше, чем заработано">вперёд '+money(-x.debt)+'</b>'; return x.debt>0.004?'<b class="neg">'+money(x.debt)+'</b>':'<span class="mut">0</span>'; }
+function pdPaid(p){ return dmy(p.dateIso)+' · '+money(p.sum)+' · '+esc(p.how)+(p.wallet?' · '+esc(p.wallet):'')+(p.note?' <span class="mut">'+esc(p.note)+'</span>':''); }
 function renderPd(){
-  if(!PD) return; var t=PD.total, q=(v('pdQ')||'').trim().toLowerCase(), all=el('pdAll')&&el('pdAll').checked, cur=PD.currentYm||new Date(Date.now()+3*3600e3).toISOString().slice(0,7);
-  el('pdSum').innerHTML='<b>Должны: '+money(t.debt)+'</b> <span class="mut">за закрытые месяцы</span> · копится за '+MON[+cur.slice(5,7)]+': '+money(t.accruing||0)+(t.over?' · выдано вперёд / переплата: '+money(t.over):'')+' <span class="mut">· отсечка '+dmy(PD.cutIso)+', долг на неё '+money(t.opening)+'</span>';
-  var rows=PD.rows.filter(function(x){ return (!q||x.name.toLowerCase().indexOf(q)>=0)&&(all||q||(x.debt!==null&&(Math.abs(x.debt)>0.004||(x.accruing||0)>0.004))); });
+  if(!PD) return; var t=PD.totals, q=(v('pdQ')||'').trim().toLowerCase(), all=el('pdAll')&&el('pdAll').checked, months=pdMonths();
+  el('pdSum').innerHTML='<b>Должны: '+money(t.debt)+'</b> <span class="mut">· заработано с '+dmy(PD.earnFromIso)+': '+money(t.earned)+' · выплачено с '+dmy(PD.cutIso)+': '+money(t.paid)+'</span>';
+  var rows=PD.rows.filter(function(x){ return (!q||x.name.toLowerCase().indexOf(q)>=0)&&(all||q||(x.debt!==null&&Math.abs(x.debt)>0.004)); });
   if(!rows.length){ el('pdBox').innerHTML='<div class="empty">Никого не нашлось.</div>'; return; }
-  var mm=function(m){ return MON[+m.slice(5,7)]; };
-  el('pdBox').innerHTML='<div class="tbl-wrap fill"><table class="tbl sm pdt"><thead><tr><th>Сотрудник</th><th>Тип</th><th class="num">На '+dm(PD.cutIso)+'</th>'
-    +PD.months.map(function(m){ return '<th class="num'+(m===cur?' cur':'')+'">'+mm(m)+(m===cur?' · копится':'')+'</th>'; }).join('')+'<th class="num">Выплачено</th><th class="num">Должны</th></tr></thead><tbody>'
-    +rows.map(function(x){ var i=PD.rows.indexOf(x); return '<tr'+(x.type==='оклад'?' class="mut"':'')+' onclick="pdOpen('+i+')" title="'+esc(x.note||'Открыть')+'"><td>'+esc(x.name)+(x.known?'':' <span class="pill warn" title="нет в списке людей Прохаба">?</span>')+(x.note?' <span class="mut" title="'+esc(x.note)+'">📝</span>':'')+'</td><td class="mut">'+x.type+'</td><td class="num">'+(x.opening?money(x.opening):'')+'</td>'
-      +PD.months.map(function(m){ return '<td class="num'+(m===cur?' cur':'')+'">'+(x.earned[m]?money(x.earned[m]):'')+'</td>'; }).join('')
-      +'<td class="num">'+(x.paidTotal?money(x.paidTotal):'')+'</td><td class="num">'+pdDebt(x)+'</td></tr>'; }).join('')+'</tbody></table></div>';
+  var sum=function(f){ return rows.reduce(function(s,x){ return s+f(x); },0); }, cols=6+months.length;
+  el('pdBox').innerHTML='<div class="tbl-wrap fill"><table class="tbl sm pdt"><thead><tr><th>Сотрудник</th><th>Вид</th><th class="num">На '+dm(PD.cutIso)+'</th>'
+    +months.map(function(m){ return '<th class="num">'+MON[+m.slice(5,7)]+'</th>'; }).join('')+'<th class="num">Правки</th><th class="num">Выплачено</th><th class="num">Должны</th></tr></thead><tbody>'
+    +rows.map(function(x){ var i=PD.rows.indexOf(x), open=PDOPEN[x.personId];
+      return '<tr onclick="pdOpen('+i+')" title="'+esc(x.openingNote||'Открыть')+'"><td>'+esc(x.name)+(x.openingNote?' <span class="mut" title="'+esc(x.openingNote)+'">📝</span>':'')+(x.noContract>0.004?' <span class="pill warn" title="наряды без действующего договора — посчитаны как есть: '+money(x.noContract)+'">без договора</span>':'')+'</td><td class="mut">'+esc(x.kind)+'</td><td class="num">'+(x.opening?money(x.opening):'')+'</td>'
+      +months.map(function(m){ return '<td class="num">'+(x.earned[m]?money(x.earned[m]):'')+'</td>'; }).join('')
+      +'<td class="num">'+(x.adjustments?money(x.adjustments):'')+'</td><td class="num">'+(x.paid.length?'<a href="#" title="показать выплаты" onclick="event.stopPropagation();PDOPEN[\''+x.personId+'\']=!PDOPEN[\''+x.personId+'\'];renderPd();return false">'+money(x.paidTotal)+' '+(open?'▾':'▸')+'</a>':'')+'</td><td class="num">'+pdDebt(x)+'</td></tr>'
+      +(open?'<tr><td colspan="'+cols+'" class="mut">'+x.paid.map(pdPaid).join('<br>')+'</td></tr>':''); }).join('')
+    +'<tr><td><b>Итого</b></td><td></td><td class="num">'+money(sum(function(x){ return x.opening; }))+'</td>'+months.map(function(m){ return '<td class="num">'+money(sum(function(x){ return x.earned[m]||0; }))+'</td>'; }).join('')
+    +'<td class="num">'+money(sum(function(x){ return x.adjustments; }))+'</td><td class="num">'+money(sum(function(x){ return x.paidTotal; }))+'</td><td class="num"><b>'+money(sum(function(x){ return x.debt; }))+'</b></td></tr></tbody></table></div>';
   if(window.twFitTables) twFitTables();
 }
-function pdDebt(x){ if(x.debt===null) return '<span class="mut">оклад</span>'; if(x.debt<-0.004) return '<b class="plus" title="выплачено больше, чем заработано в закрытых месяцах">вперёд '+money(-x.debt)+'</b>'; return x.debt>0.004?'<b class="neg">'+money(x.debt)+'</b>':'<span class="mut">0</span>'; }
 function pdOpen(i){
-  var x=i===''?{ name:'', type:'штат', opening:0, earned:{}, earnedTotal:0, paid:[], paidTotal:0, paidCounted:0, debt:0, note:'', known:true, isNew:true }:PD.rows[i]; PDX=x;
-  var cash=(REF.wallets||[]).filter(function(w){ return /^Н /.test(w.name); }), defW=(cash.filter(function(w){ return /Миронов/.test(w.name); })[0]||cash[0]||{}).id||'';
-  dlgOpen('<h3>'+(x.isNew?'Сотрудник в расчёте':esc(x.name))+'</h3>'
-    +(x.isNew?fld('ФИО — как в списке людей / нарядах', inp('pdName','','',' list="pdPeople"'))+'<datalist id="pdPeople">'+PD.rows.map(function(r){ return '<option value="'+esc(r.name)+'">'; }).join('')+'</datalist>':'<div class="mut">Должны за закрытые месяцы: '+pdDebt(x)+(x.accruing&&PD.currentYm?' · копится за '+MON[+PD.currentYm.slice(5,7)]+': '+money(x.accruing):'')+'</div>')
-    +'<div class="form" style="margin-top:var(--s-3)">'+fld('Тип','<select id="pdType">'+['штат','подряд','оклад'].map(function(t){ return '<option'+(t===x.type?' selected':'')+'>'+t+'</option>'; }).join('')+'</select>')
-    +fld('Долг на '+dmy(PD.cutIso), inp('pdOpen', x.opening?String(x.opening).replace('.',','):'', 'n'))+fld('Примечание', inp('pdNote', x.note), 'wide')+fld('Платим за него — контрагенты через «;» (ОПИ по исполнительному листу и т. п.): их оплаты — его выплаченная зарплата', inp('pdFor', (PD.payFor&&PD.payFor[x.name]||[]).join('; ')), 'wide')+'</div>'
-    +'<div class="dlg-btns" style="justify-content:flex-start"><button class="sec" onclick="pdSave()">Сохранить тип и долг</button>'+(x.isNew||(x.opening===0&&!x.note&&x.type!=="подряд"&&x.type!=="оклад")?'':'<button class="danger sec" onclick="pdRemove()">Убрать долг, тип и примечание</button>')+'</div>'
-    +(x.isNew?'':'<div class="sect">Наряды</div><div class="mut">'+(PD.months.map(function(m){ return x.earned[m]?MON[+m.slice(5,7)]+' '+money(x.earned[m]):''; }).filter(Boolean).join(' · ')||'нарядов нет')+'</div>'
-      +'<div class="sect">Выплаты с '+dmy(PD.cutIso)+'</div>'+(x.paid.length?'<table class="reg"><tbody>'+x.paid.map(function(p){ return '<tr><td class="n">'+dmy(p.dateIso)+'</td><td>'+p.how+(p.wallet?' · '+esc(p.wallet):'')+'</td><td class="num">'+money(p.sum)+(Math.abs(p.counted-p.sum)>0.004?'<div class="sub2">засчитано '+money(p.counted)+'</div>':'')+'</td></tr>'; }).join('')+'</tbody></table>':'<div class="mut">выплат нет</div>')
-      +'<div class="sect">Выдать наличными</div><div class="form">'+fld('Кошелёк','<select id="pcW">'+wOpts(defW, function(w){ return /^Н /.test(w.name); })+'</select>')+fld('Дата', inp('pcD', B&&B.today||'', 'd'))
-      +fld('Сумма', inp('pcS', x.debt>0?String(x.debt).replace('.',','):'', 'n'))+fld('За месяц', '<input id="pcP" type="month" value="'+pdPrevMonth()+'">')+fld('Отдел','<select id="pcDept"><option>рабочие</option><option>администрация</option><option>коммерческий отдел</option></select>')+fld('За что', inp('pcN','наличными'), 'wide')+'</div>'
-      +'<div class="dlg-btns" style="justify-content:flex-start"><button class="primary" onclick="pdCash()">Выдано</button></div>')
+  var x=i===''?null:PD.rows[i]; PDX=x;
+  var cash=(REF.wallets||[]).filter(function(w){ return w.isCash; }), defW=(cash.filter(function(w){ return /Миронов/.test(w.name); })[0]||cash[0]||{}).id||'';
+  dlgOpen('<h3>'+(x?esc(x.name)+' <span class="mut">· '+esc(x.kind)+'</span>':'Сотрудник')+'</h3>'
+    +(x?'<div class="mut">Должны: '+pdDebt(x)+(x.payFor.length?' · платим за него: '+esc(x.payFor.join(', ')):'')+(x.noContract>0.004?' · без договора заработано '+money(x.noContract):'')+'</div>'
+      :'<div class="form" style="margin-top:var(--s-3)">'+fld('Сотрудник','<select id="pdP">'+PD.people.map(function(p){ return '<option value="'+p.id+'">'+esc(p.name)+'</option>'; }).join('')+'</select>','wide')+'</div>')
+    +'<div class="sect">Долг на '+dmy(PD.cutIso)+'</div><div class="form">'+fld('Сумма', inp('pdOpen', x&&x.opening?String(x.opening).replace('.',','):'', 'n'))+fld('Примечание', inp('pdNote', x?x.openingNote:''), 'wide')+'</div>'
+    +'<div class="dlg-btns" style="justify-content:flex-start"><button class="sec" onclick="pdSave(false)">Сохранить</button>'+(x&&(x.opening||x.openingNote)?'<button class="danger sec" onclick="pdSave(true)">Снять отсечку</button>':'')+'</div>'
+    +(x?'<div class="sect">Выплаты с '+dmy(PD.cutIso)+'</div><div class="mut">'+(x.paid.length?x.paid.map(pdPaid).join('<br>'):'выплат нет')+'</div>':'')
+    +'<div class="sect">Выдать наличными</div><div class="form">'+fld('Кошелёк','<select id="pcW">'+wOpts(defW, function(w){ return w.isCash; })+'</select>')+fld('Дата', inp('pcD', B&&B.today||'', 'd'))
+      +fld('Сумма', inp('pcS', x&&x.debt>0?String(x.debt).replace('.',','):'', 'n'))+fld('За месяц', '<input id="pcP" type="month" value="'+pdPrevMonth()+'">')+fld('Отдел','<select id="pcDept"><option>рабочие</option><option>администрация</option><option>коммерческий отдел</option></select>')+fld('За что', inp('pcN','наличными'), 'wide')+'</div>'
+      +'<div class="dlg-btns" style="justify-content:flex-start"><button class="primary" onclick="pdCash()">Выдано</button></div>'
     +'<div id="dlgMsg" class="msg"></div><div class="dlg-btns"><button class="sec" onclick="dlgClose()">Закрыть</button></div>');
 }
 function pdPrevMonth(){ var t=(B&&B.today)||new Date().toISOString().slice(0,10), y=+t.slice(0,4), m=+t.slice(5,7)-1; if(m<1){ m=12; y--; } return y+'-'+(m<10?'0':'')+m; }
-function pdSave(){ var name=PDX.isNew?v('pdName').trim():PDX.name; if(!name){ setm('dlgMsg','warn','Впишите ФИО.'); return; }
-  run({vapi:'finpaydebtset', name:name, data:JSON.stringify({ type:v('pdType'), opening:v('pdOpen'), note:v('pdNote'), payFor:v('pdFor') })}, 'Сохраняю…', 'dlgMsg').then(function(r){ if(!r) return; PD=r; renderPd(); dlgClose(); setm('pdMsg','ok','Сохранено: '+esc(name)+'.'); }); }
-function pdRemove(){ if(!confirm('Убрать из расчёта запись «'+PDX.name+'»: долг на дату отсечки, тип и примечание? Наряды и выплаты не трогаются.')) return;
-  run({vapi:'finpaydebtset', name:PDX.name, data:JSON.stringify({ remove:true })}, 'Убираю…', 'dlgMsg').then(function(r){ if(!r) return; PD=r; renderPd(); dlgClose(); setm('pdMsg','ok','Убрано: '+esc(PDX.name)+'.'); }); }
-function pdCash(){ var sum=num(v('pcS')); if(!(sum>0)){ setm('dlgMsg','warn','Сумма выдачи — больше нуля.'); return; }
-  if(!confirm('Записать выдачу '+money(sum)+' — '+PDX.name+'? Кошелёк уменьшится на эту сумму.')) return;
-  run({vapi:'finsalcash', key:newKey(), data:JSON.stringify({ name:PDX.name, sum:sum, walletId:v('pcW'), dateIso:v('pcD'), period:v('pcP'), dept:v('pcDept'), note:v('pcN') })}, 'Записываю выдачу…', 'dlgMsg').then(function(r){ if(!r) return; PD=r.debt; renderPd(); dlgClose(); setm('pdMsg','ok','Выдача записана.'); }); }
+function pdPerson(){ return PDX?PDX.personId:v('pdP'); }
+function pdName(){ return PDX?PDX.name:((el('pdP').selectedOptions[0]||{}).text||''); }
+function pdSave(remove){ var pid=pdPerson(); if(!pid){ setm('dlgMsg','warn','Выберите сотрудника.'); return; }
+  if(remove&&!confirm('Снять долг на '+dmy(PD.cutIso)+' у «'+pdName()+'»? Наряды и выплаты не трогаются.')) return;
+  run({vapi:'finpaydebtset', person:pid, data:JSON.stringify(remove?{ remove:true }:{ opening:v('pdOpen'), note:v('pdNote') })}, 'Сохраняю…', 'dlgMsg').then(function(r){ if(!r) return; PD=r; renderPd(); dlgClose(); setm('pdMsg','ok',(remove?'Отсечка снята: ':'Сохранено: ')+esc(pdName())+'.'); }); }
+function pdCash(){ var pid=pdPerson(), sum=num(v('pcS')); if(!pid){ setm('dlgMsg','warn','Выберите сотрудника.'); return; } if(!(sum>0)){ setm('dlgMsg','warn','Сумма выдачи — больше нуля.'); return; }
+  if(!confirm('Записать выдачу '+money(sum)+' — '+pdName()+'? Кошелёк уменьшится на эту сумму.')) return;
+  run({vapi:'finsalcash', key:newKey(), data:JSON.stringify({ personId:pid, sum:sum, walletId:v('pcW'), dateIso:v('pcD'), period:v('pcP'), dept:v('pcDept'), note:v('pcN') })}, 'Записываю выдачу…', 'dlgMsg').then(function(r){ if(!r) return; PD=r.debt; renderPd(); dlgClose(); setm('pdMsg','ok','Выдача записана.'); }); }
 function renderSal(){
   var sm=SAL.summary; el('salSum').textContent=SAL.items.length?('Выплат: '+SAL.items.length+(sm.unsplit?' · не разнесено '+sm.unsplit+' на '+money(sm.unsplitSum):' · всё разнесено')+(sm.unchecked?' · не проверено '+sm.unchecked:'')):'';
   if(!SAL.items.length){ el('salBox').innerHTML='<div class="empty">Выплат зарплаты пока нет.</div>'; return; }
   var pill={ 'не разнесена':'bad', 'частично':'warn', 'не проверена':'info', 'разнесена':'ok' };
   el('salBox').innerHTML='<div class="tbl-wrap"><table class="reg"><thead><tr><th>Дата</th><th>Кошелёк</th><th>Реестр</th><th class="num">Сумма</th><th>Состояние</th><th>Кому</th><th></th></tr></thead><tbody>'
     +SAL.items.map(function(x, i){ return '<tr><td class="n">'+dmy(x.dateIso)+'</td><td>'+esc(x.wallet)+'</td><td>'+esc(x.contr)+'</td><td class="num">'+money(x.total)+'</td><td><span class="pill '+pill[x.status]+'">'+x.status+'</span>'+(x.rem>0.004&&x.parts.length?' <span class="mut">остаток '+money(x.rem)+'</span>':'')+'</td>'
-      +'<td class="purp">'+esc(x.parts.map(function(p){ return p.emp+' '+money(p.sum); }).join(', '))+'</td><td class="go"><button class="sec" onclick="salOpen('+i+')">Разнести</button></td></tr>'; }).join('')+'</tbody></table></div>';
+      +'<td class="purp">'+esc(x.parts.map(function(p){ return p.name+' '+money(p.sum); }).join(', '))+'</td><td class="go"><button class="sec" onclick="salOpen('+i+')">Разнести</button></td></tr>'; }).join('')+'</tbody></table></div>';
 }
 function salOpen(i){
-  SP={ it:SAL.items[i], rows:SAL.items[i].parts.map(function(p){ return { dept:p.dept, emp:p.emp, sum:p.sum }; }) }; if(!SP.rows.length) SP.rows.push({dept:'рабочие',emp:'',sum:0});
+  SP={ it:SAL.items[i], rows:SAL.items[i].parts.map(function(p){ return { dept:p.dept||'рабочие', personId:p.personId||'', name:p.name, sum:p.sum, period:p.period }; }) }; if(!SP.rows.length) SP.rows.push({dept:'рабочие',personId:'',sum:0});
   dlgOpen('<h3>Выплата '+money(SP.it.total)+' от '+dmy(SP.it.dateIso)+'</h3><div class="mut">'+esc(SP.it.contr)+' · '+esc(SP.it.wallet)+'</div><div id="spHint" class="mut" style="margin:var(--s-2) 0">Ищу подходящие ведомости…</div>'
-    +'<datalist id="spEmps">'+SAL.employees.map(function(e){ return '<option value="'+esc(e.name)+'">'; }).join('')+'</datalist><div id="spRows"></div>'
-    +'<button class="sec" onclick="SP.rows.push({dept:\'рабочие\',emp:\'\',sum:0}); salRows()">+ строка</button><div id="spIdent" class="ident"></div>'
+    +'<div id="spRows"></div>'
+    +'<button class="sec" onclick="SP.rows.push({dept:\'рабочие\',personId:\'\',sum:0}); salRows()">+ строка</button><div id="spIdent" class="ident"></div>'
     +'<div id="dlgMsg" class="msg"></div><div class="dlg-btns"><button class="danger sec" style="margin-right:auto" onclick="SP.rows=[]; salSave()">Отменить разнесение</button><button class="sec" onclick="dlgClose()">Отмена</button><button class="primary" onclick="salSave()">Сохранить</button></div>');
   salRows();
   get({vapi:'finsalaryhint', id:SP.it.id}).then(function(r){ var h=el('spHint'); if(!h) return;
     if(!r||!r.ok||!r.cands.length){ h.textContent=r&&r.error?r.error:'Подходящих ведомостей не нашлось — разнесите вручную.'; return; }
     SP.cands=r.cands; h.innerHTML='По ведомостям: '+r.cands.map(function(c, k){ return '<button class="sec" onclick="salUse('+k+')">'+esc(c.kind)+' '+esc(c.period)+', '+c.mode+' '+money(c.sum)+(c.exact?' ✓':'')+'</button>'; }).join(' '); });
 }
-function salUse(k){ SP.rows=SP.cands[k].lines.map(function(l){ return { dept:l.dept, emp:l.emp, sum:l.sum }; }); salRows(); }
+function salUse(k){ SP.rows=SP.cands[k].lines.map(function(l){ return { dept:l.dept, personId:l.personId, name:l.name, sum:l.sum, period:l.period }; }); salRows(); }
+/* человек — только из списка людей Прохаба (person_id); тот, кого в списке уже нет (архив), остаётся в своей строке */
+function salPeople(r){ var list=SAL.employees.slice(); if(r.personId&&!list.some(function(e){ return e.id===r.personId; })) list.push({ id:r.personId, name:(r.name||'—')+' (архив)', dept:r.dept }); return list; }
 function salRows(){
   el('spRows').innerHTML=SP.rows.map(function(r, k){ return '<div class="al" style="grid-template-columns:150px 1fr 120px auto"><select onchange="SP.rows['+k+'].dept=this.value">'+SAL.depts.map(function(d){ return '<option'+(d===r.dept?' selected':'')+'>'+d+'</option>'; }).join('')+'</select>'
-    +'<input list="spEmps" placeholder="сотрудник" value="'+esc(r.emp)+'" onchange="salEmp('+k+',this.value)"><input inputmode="decimal" placeholder="сумма" value="'+(r.sum?String(r.sum).replace('.',','):'')+'" oninput="SP.rows['+k+'].sum=num(this.value); salIdent()"><button class="sec" onclick="SP.rows.splice('+k+',1); salRows()">×</button></div>'; }).join('');
+    +'<select onchange="salEmp('+k+',this.value)"><option value="">— сотрудник —</option>'+salPeople(r).map(function(e){ return '<option value="'+e.id+'"'+(e.id===r.personId?' selected':'')+'>'+esc(e.name)+'</option>'; }).join('')+'</select>'
+    +'<input inputmode="decimal" placeholder="сумма" value="'+(r.sum?String(r.sum).replace('.',','):'')+'" oninput="SP.rows['+k+'].sum=num(this.value); salIdent()"><button class="sec" onclick="SP.rows.splice('+k+',1); salRows()">×</button></div>'; }).join('');
   salIdent();
 }
-function salEmp(k, name){ SP.rows[k].emp=name; for(var i=0;i<SAL.employees.length;i++) if(SAL.employees[i].name===name&&SAL.employees[i].dept){ SP.rows[k].dept=SAL.employees[i].dept; salRows(); break; } }
+function salEmp(k, id){ SP.rows[k].personId=id; for(var i=0;i<SAL.employees.length;i++) if(SAL.employees[i].id===id){ SP.rows[k].name=SAL.employees[i].name; if(SAL.employees[i].dept){ SP.rows[k].dept=SAL.employees[i].dept; salRows(); } break; } }
 function salIdent(){ var s=r2(SP.rows.reduce(function(t,r){ return t+(Number(r.sum)||0); },0)), d=r2(SP.it.total-s), b=el('spIdent'); b.className='ident '+(d<-0.004?'bad':Math.abs(d)<0.005?'ok':''); b.textContent='Разнесено '+money(s)+' из '+money(SP.it.total)+(d>0.004?' — останется не разнесено '+money(d):d<-0.004?' — больше выплаты на '+money(-d):' — вся выплата.'); }
-function salSave(){ run({vapi:'finsalarysplit', id:SP.it.id, parts:JSON.stringify(SP.rows.filter(function(r){ return Number(r.sum)>0; }))}, 'Сохраняю разнесение…', 'dlgMsg').then(function(r){ if(!r) return; dlgClose(); SAL=r.sal; renderSal(); setm('salMsg','ok','Сохранено.'+(r.rem>0.004?' Не разнесено '+money(r.rem)+'.':'')); }); }
+function salSave(){ var parts=SP.rows.filter(function(r){ return Number(r.sum)>0; }).map(function(r){ return { personId:r.personId, dept:r.dept, sum:r.sum, period:r.period||'' }; });
+  if(parts.some(function(p){ return !p.personId; })){ setm('dlgMsg','warn','В каждой строке выберите сотрудника из списка.'); return; }
+  run({vapi:'finsalarysplit', id:SP.it.id, parts:JSON.stringify(parts)}, 'Сохраняю разнесение…', 'dlgMsg').then(function(r){ if(!r) return; dlgClose(); SAL=r.sal; renderSal(); setm('salMsg','ok','Сохранено.'+(r.rem>0.004?' Не разнесено '+money(r.rem)+'.':'')); }); }
 
 /* ═══════════ РЕГУЛЯРНЫЕ ═══════════ */
 var TPL=[], TP=null;
