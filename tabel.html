@@ -124,6 +124,10 @@
   .wb-box{ display:flex; gap:4px; align-items:center; white-space:nowrap; font:var(--t-tiny); }
   .wb-box input{ width:54px; min-height:26px; height:26px; padding:0 5px; text-align:right; font:var(--t-small); }
   .wb-box .st{ margin-left:4px; font-variant-numeric:tabular-nums; }
+  /* премия назначена — слегка заметно (владелец 25.10.2026): полоска у имени и рамка полей акцентом */
+  .wk tr.hasb td.nm{ box-shadow:inset 3px 0 0 var(--accent), 2px 0 0 var(--line); }
+  .hasb .wb-box input{ border-color:var(--accent); }
+  .wcard.hasb{ box-shadow:inset 3px 0 0 var(--accent); }
   .wk-cards{ display:none; }
   @media (max-width:640px){
     .wk-tbl{ display:none; } .wk-cards{ display:block; }
@@ -639,13 +643,15 @@ function renderWeek(){
       return '<th class="'+(D.hol[iso]?'we hol':(we?'we':''))+(iso===td?' hl':'')+'" title="'+esc(D.hol[iso]||'')+'">'+DOW[i]+' '+Number(iso.slice(8))+'</th>'; }).join('')
     +'<th>Итого</th><th style="text-align:left" title="порог за неделю → премия; полоса — сколько набрано">Порог → премия</th></tr>';
   var body=D.names.map(function(n,ni){
-    return '<tr><td class="nm">'+esc(n)+'</td>'+D.dates.map(function(iso,i){ var c=wkCellInfo(n,iso);
+    var hb=wbCell(n), on=hb&&hb.threshold>0&&hb.amount>0;
+    return '<tr'+(on?' class="hasb"':'')+'><td class="nm"'+(on?' title="недельная премия назначена"':'')+'>'+esc(n)+'</td>'+D.dates.map(function(iso,i){ var c=wkCellInfo(n,iso);
         return '<td class="'+c.cls+'" data-n="'+ni+'" data-i="'+i+'" title="'+esc(c.tip)+'">'+c.ic+'<span class="rb'+(c.v?'':' z')+'">'+(c.v?Math.round(c.v):'')+'</span></td>'; }).join('')
       +'<td class="tot" title="'+money(rowTot(n))+' ₽">'+Math.round(rowTot(n))+'</td><td class="wb">'+wbHtml(n)+'</td></tr>';
   }).join('');
   // карточки — телефон
   var cards=D.names.map(function(n,ni){
-    return '<div class="wcard"><div class="hd"><span>'+esc(n)+'</span><span>'+Math.round(rowTot(n))+' ₽</span></div><div class="dd">'
+    var hb=wbCell(n), on=hb&&hb.threshold>0&&hb.amount>0;
+    return '<div class="wcard'+(on?' hasb':'')+'"><div class="hd"><span>'+esc(n)+'</span><span>'+Math.round(rowTot(n))+' ₽</span></div><div class="dd">'
       +D.dates.map(function(iso,i){ var c=wkCellInfo(n,iso);
         return '<div class="'+c.cls+'" data-n="'+ni+'" data-i="'+i+'">'+DOW[i]+' '+c.ic+'<span class="rv"'+(c.v?'':' style="color:var(--line2);font-weight:400"')+'>'+(c.v?Math.round(c.v):'·')+'</span></div>'; }).join('')
       +'</div>'+wbHtml(n,1)+'</div>';
