@@ -479,7 +479,9 @@ function usersView(box){
   var R=null, SNAB;
   api({vapi:'users',tgid:TGID}).then(function(r){ R=r; if(r&&r.ok&&SNAB) r.snab=SNAB; renderUsers(box,r); })
     .catch(function(e){ box.innerHTML='<div class="pad err">Не удалось загрузить сотрудников: '+esc((e&&e.message)||'нет связи с сервером')+'. Обновите страницу.</div>'; });
-  api({vapi:'snabaccess',tgid:TGID}).catch(function(){ return null; }).then(function(s){ SNAB=(s&&s.ok)?s:null;
+  // права Снаба — из Прохаба (finsnabaccess, М8 26.10.2026; прежний snabaccess читал устаревшую ячейку Фин.гения): people[] → списки submit/approve
+  api({vapi:'finsnabaccess',tgid:TGID}).catch(function(){ return null; }).then(function(s){
+    SNAB=(s&&s.ok)?{ ok:true, submit:(s.people||[]).filter(function(x){ return x.submit; }), approve:(s.people||[]).filter(function(x){ return x.approve; }) }:null;
     if(R&&R.ok&&SNAB&&box.isConnected){ R.snab=SNAB; renderUsers(box,R); } });
 }
 function renderUsers(box,r){
@@ -657,11 +659,11 @@ function saveUser(i,tgid){
   var ab=document.getElementById('ap'+i); if(ab) p.appr=ab.checked?'1':'0';   // подтверждение нарядов
   api(p).then(function(r){ m.innerHTML=(r&&r.ok)?'<span class="ok">✅</span>':'<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; }).catch(function(e){ m.innerHTML='<span class="err">ошибка</span>'; });
 }
-// доступ к Снабу правится отдельным роутом (списки живут в Config Фин.гения, не в «Работниках»),
+// доступ к Снабу правится отдельным роутом (списки — настройки финансов Прохаба finance.snab.*, не в «Работниках»),
 // поэтому не через saveUser. Ошибка — откатываем галочку, чтобы экран не врал.
 function setSnab(who,on,el){
   el.disabled=true;
-  api({vapi:'snabaccessset',tgid:TGID,who:who,role:'submit',on:on?'1':'0'}).then(function(r){
+  api({vapi:'finsnabaccessset',tgid:TGID,who:who,role:'submit',on:on?'1':'0'}).then(function(r){
     el.disabled=false;
     if(!r||!r.ok){ el.checked=!on; alert((r&&r.error)||'не сохранилось'); }
   }).catch(function(){ el.disabled=false; el.checked=!on; alert('ошибка сети'); });
