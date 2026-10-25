@@ -464,7 +464,7 @@ function renderMonth(){
   var legend='<div class="note hint"><div>'
     +(MMODE==='fact'
       ? 'Клик по клетке: <b>по графику → ✓ вышел → ✕ не вышел</b>. Смену в этом режиме не меняем — только факт.'
-      : 'Клик по клетке: ☀️ 1-я смена → 🌇 2-я смена → 🌙 ночь → пусто · зелёная рамка — вышел, красная — не вышел · серые колонки — выходные, розовые — праздники')
+      : 'Клик по клетке: ☀️ 1-я смена → 🌇 2-я смена → 🌙 ночь → пусто (если выход уже отмечен — снова ☀️) · зелёная рамка — вышел, красная — не вышел · серые колонки — выходные, розовые — праздники')
     +'<div style="margin-top:var(--s-1)">Бледная <b class="fk auto" style="font:var(--t-small);font-weight:600">✓</b> — отметки нет, но за этот день подан наряд: значит был на работе. Зелёная клетка без солнышка — наряд есть, а смена в графике не проставлена. <b class="fk warn" style="font:var(--t-small);font-weight:600">!</b> — отмечен «не вышел», но наряд есть.</div>'
     +'</div></div>';
   $('pane').innerHTML='<div class="toolbar"><div class="pnav"><button onclick="shiftMonth(-1)">‹</button><span class="lbl">'+esc(MN[mo-1]+' '+y)+'</span><button onclick="shiftMonth(1)">›</button></div>'
@@ -511,11 +511,8 @@ function monthCellClick(ev){
     return;
   }
   var next=(sh==='')?'день':(sh==='день'?'2 смена':(sh==='2 смена'?'ночь':''));
-  // по смене уже отмечен ФАКТ выхода: снятие удалило бы строку вместе с фактом — не пускаем
-  if(next==='' && st && st!=='план'){
-    alert(w+' '+d+'.'+M.mon+': выход уже отмечен («'+st+'»). Чтобы снять смену, переключитесь в «✅ Отмечаю выход», верните клетку в «план» и снимите смену.');
-    return;
-  }
+  // выход уже отмечен — смену не снимаем (факт пропал бы), круг идёт ☀️ → 🌇 → 🌙 → ☀️ (владелец 25.10.2026: застрял на ночи)
+  if(next==='' && st && st!=='план') next='день';
   if(next==='') delete M.map[key];
   else M.map[key]={date:YM+'-'+pad2(d), worker:w, shift:next, status:(e&&e.status)||'план', own:e&&e.own};
   renderMonth();                                       // мгновенно на экране
@@ -655,7 +652,7 @@ function wkCellClick(ev){
     bgSave({vapi:'tabelfact',date:iso,worker:n,status:nf,tgid:TGID}); return;
   }
   var next=(sh==='')?'день':(sh==='день'?'2 смена':(sh==='2 смена'?'ночь':''));
-  if(next==='' && st && st!=='план'){ alert(n+' '+ruDate(iso)+': выход уже отмечен («'+st+'»). Чтобы снять смену, переключитесь в «✅ Отмечаю выход», верните клетку в «план» и снимите смену.'); return; }
+  if(next==='' && st && st!=='план') next='день';   // выход отмечен — по кругу без «пусто»
   if(next==='') delete WD.tab[key]; else WD.tab[key]={date:iso, worker:n, shift:next, status:(e&&e.status)||'план', own:e&&e.own};
   renderWeek();
   bgSave({vapi:'tabelset',date:iso,worker:n,shift:next,tgid:TGID});
