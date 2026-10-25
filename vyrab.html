@@ -150,6 +150,7 @@ function CARD(e){ return '<div style="padding:var(--s-4);line-height:1.5">'
   </div>
   <div id="whobar"></div>
   <div id="daytime"></div>
+  <div id="myweek"></div>
   <div class="note">🌙 Ночная смена с 23 на 24 — ставьте <b>23</b> (день, когда смена началась).</div>
 </div>
 <div id="pane-w">
@@ -624,6 +625,7 @@ function load(){
     if(keep){ bsel.value=keep; if(!bsel.value) bsel.selectedIndex=0; }
     if(!keep || bsel.value!==keep) onBatchChange(); else updateWhen();
     loadMySummary();
+    if(!isMaster()) loadMyWeek();
     restoreDraft();
     renderDayTime();   // карточка дня: приход/уход по выбранному сотруднику и дате
     if(isMaster()){
@@ -2614,6 +2616,23 @@ function editDayTime(w,dRu){
 }
 function finishDay(w,dRu){ setDayTime(w,dRu,{out:nowHM()},function(r){ if(r&&!r.ok) alert(r.error||'не записалось'); }); }
 // карточка дня над формой + напоминание про незакрытый прошлый день
+// недельная премия (25.10.2026): сколько набрано за неделю пн–вс и сколько осталось до порога; итог прошлой недели
+function loadMyWeek(){
+  api({vapi:'myweek'}).then(function(r){
+    var el=document.getElementById('myweek'); if(!el||!r||!r.ok) return;
+    var ru=function(iso){ return iso.slice(8,10)+'.'+iso.slice(5,7); }, h='';
+    if(r.threshold>0&&r.amount>0){
+      var pct=Math.min(100,Math.round(r.earned/r.threshold*100)), done=r.earned>=r.threshold, left=Math.round((r.threshold-r.earned)*100)/100;
+      h+='<div style="font-weight:600">Неделя '+ru(r.week)+'–'+ru(r.to)+': '+rub2(r.earned)+' из '+rub2(r.threshold)+' р.</div>'
+        +'<div style="height:8px;border-radius:4px;background:var(--bg2);overflow:hidden;margin:6px 0"><i style="display:block;height:100%;width:'+pct+'%;background:'+(done?'var(--green)':'var(--amber)')+'"></i></div>'
+        +'<div class="muted" style="font:var(--t-small)">'+(done?'✅ Порог пройден — премия '+rub2(r.amount)+' р. за неделю':'Ещё '+rub2(left)+' р. до недельной премии '+rub2(r.amount)+' р.')
+        +(r.pending>0?' · ⏳ на проверке '+rub2(r.pending)+' р.':'')+'<br>Считается принятая работа с пн по вс.</div>';
+    }
+    if(r.prev) h+='<div class="muted" style="font:var(--t-small);margin-top:'+(h?'6px':'0')+'">Прошлая неделя '+ru(r.prev.week)+': '+rub2(r.prev.earned)+' из '+rub2(r.prev.threshold)+' р. — '
+      +(r.prev.granted?'<b style="color:var(--green)">премия '+rub2(r.prev.granted)+' р.</b>':(r.prev.closed?'премии нет':'итог — после вторника'))+'</div>';
+    el.innerHTML=h?'<div class="card" style="margin-top:var(--s-2)">'+h+'</div>':'';
+  }).catch(function(){});
+}
 function renderDayTime(){
   var box=document.getElementById('daytime'); if(!box) return;
   var w=curWorker(), dRu=wdateRu();

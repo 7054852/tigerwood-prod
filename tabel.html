@@ -111,6 +111,24 @@
   table.pay .stl .qcw{ color:var(--amber); } table.pay .stl .rej{ color:var(--red); }
   table.pay .stl b{ font-weight:600; }
   table.pay .stl > span{ white-space:nowrap; }   /* на телефоне переносим между суммами, а не внутри «🔎 163,00» */
+  /* ── НЕДЕЛЯ (25.10.2026): смена и заработок в одной клетке + недельная премия ── */
+  .wk td[data-i]{ min-width:58px; line-height:1.15; }
+  .wk td .rb{ display:block; font:var(--t-small); font-weight:600; font-variant-numeric:tabular-nums; }
+  .wk td .rb.z{ color:var(--line2); font-weight:400; }
+  .wk td.tot{ font:var(--t-small); font-weight:700; cursor:default; }
+  .wk td.wb{ min-width:190px; text-align:left; cursor:default; white-space:normal; }
+  .wbar{ height:6px; border-radius:3px; background:var(--bg2); overflow:hidden; margin:2px 0; } .wbar i{ display:block; height:100%; }
+  .wb-box{ display:flex; gap:4px; align-items:center; flex-wrap:wrap; }
+  .wb-box input{ width:64px; min-height:30px; padding:0 6px; text-align:right; }
+  .wk-cards{ display:none; }
+  @media (max-width:640px){
+    .wk-tbl{ display:none; } .wk-cards{ display:block; }
+    .wcard{ background:var(--card); border:1px solid var(--line); border-radius:var(--r-card); padding:var(--s-3); margin-bottom:var(--s-2); }
+    .wcard .hd{ display:flex; justify-content:space-between; gap:var(--s-2); font-weight:600; }
+    .wcard .dd{ display:grid; grid-template-columns:repeat(7,1fr); gap:3px; margin-top:var(--s-2); }
+    .wcard .dd div{ text-align:center; font:var(--t-tiny); border-radius:var(--r-xs); padding:3px 0; min-height:40px; cursor:pointer; }
+    .wcard .dd div b{ display:block; font:var(--t-small); font-weight:600; }
+  }
 </style>
 </head>
 <body>
@@ -167,7 +185,7 @@ function isoToday(d){ d=d||new Date(); return d.getFullYear()+'-'+pad2(d.getMont
 function ruDate(iso){ var p=String(iso||'').split('-'); return p.length===3?(p[2]+'.'+p[1]+'.'+p[0]):iso; }
 function dayName(iso){ try{ return ['вс','пн','вт','ср','чт','пт','сб'][new Date(iso+'T12:00:00').getDay()]; }catch(e){ return ''; } }
 
-var app=$('app'), TAB='m';
+var app=$('app'), TAB=qp('view')||'w';
 
 function goPlan(){
   try{ window.top.postMessage({tw:'go',id:'prodplan'},'*'); }catch(e){}
@@ -177,17 +195,20 @@ function shell(){
   // Расстановка и выдача работ переехали в раздел «📊 Планирование» — здесь остаётся УЧЁТ:
   // кто вышел, месяц, ведомость заработка. Две половины планирования больше не живут в разных
   // разделах на разных датах.
+  // неделя — главный вид (25.10.2026): смены, заработок и недельная премия вместе; месяц — прежние большие сетки
   app.innerHTML='<div class="tabs">'
-    +'<button id="tb-m" onclick="showTab(\'m\')">Табель</button>'
-    +'<button id="tb-z" onclick="showTab(\'z\')">Заработок</button></div>'
+    +'<button id="tb-w" onclick="showTab(\'w\')">Неделя</button>'
+    +'<button id="tb-m" onclick="showTab(\'m\')" title="график смен на месяц">Месяц</button>'
+    +'<button id="tb-z" onclick="showTab(\'z\')" title="заработок по дням месяца">Заработок</button></div>'
     +'<div id="pane"></div>';
   showTab(TAB);
 }
 // подсказка про планирование рисуется в каждой вкладке ПОД панелью действий (порядок каркаса: вкладки → панель → уведомления)
 var PLANNOTE='<span class="plan">расстановка и задания — в <a href="javascript:void(0)" onclick="goPlan()">📊 Планировании</a></span>';
 var MN=['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
-function showTab(t){ TAB=t; ['m','z'].forEach(function(x){ var b=$('tb-'+x); if(b) b.className=(x===t?'active':''); });
-  if(t==='z') loadPay(); else loadMonth(); }
+function showTab(t){ TAB=t; ['w','m','z'].forEach(function(x){ var b=$('tb-'+x); if(b) b.className=(x===t?'active':''); });
+  if(t==='z') loadPay(); else if(t==='w') loadWeek(); else loadMonth(); }
+function reloadCur(silent){ if(TAB==='w') loadWeek(silent); else if(TAB==='m') loadMonth(silent); }
 
 /* ── ТАБЕЛЬ (месяц) ──
    Отклик мгновенный: клетка меняется СРАЗУ (оптимистично), запись уходит в фоне;
@@ -201,14 +222,14 @@ function bgSave(p){
   // записи уходят СТРОГО ПО ОЧЕРЕДИ кликов (иначе параллельные запросы могут обогнать друг друга)
   SAVEQ=SAVEQ.then(function(){ return api(p); }).then(function(r){
     SAVING--; if(SAVING<=0){ SAVING=0; svDone(); scheduleConverge(); }
-    if(!r||!r.ok){ alert((r&&r.error)||'не сохранилось — обновляю'); loadMonth(); }
-  }).catch(function(){ SAVING--; if(SAVING<0)SAVING=0; alert('Нет связи — обновляю'); loadMonth(); });
+    if(!r||!r.ok){ alert((r&&r.error)||'не сохранилось — обновляю'); reloadCur(); }
+  }).catch(function(){ SAVING--; if(SAVING<0)SAVING=0; alert('Нет связи — обновляю'); reloadCur(); });
 }
 // после того как все записи ушли — один тихий сверочный запрос (экран сходится с сервером)
 function scheduleConverge(){
   if(CONVERGE) clearTimeout(CONVERGE);
   CONVERGE=setTimeout(function(){ CONVERGE=null; if(SAVING!==0) return;
-    if(TAB==='m') loadMonth(true); },1200);
+    reloadCur(true); },1200);
 }
 // явное снятие смены (кнопка ✕ — то же, что повторный клик по активной смене)
 /* ── ЗАРАБОТОК: ведомость «рабочий × день месяца» ── */
@@ -472,7 +493,7 @@ function renderMonth(){
 // ДВА РЕЖИМА ОДНОЙ СЕТКИ: график ставят заранее, факт отмечают по ходу дня. Разделены явными
 // кнопками, а не скрытым жестом (долгое нажатие на телефоне никто не найдёт и не объяснит сменщику).
 var MMODE='plan';
-function setMMode(m){ MMODE=m; renderMonth(); }
+function setMMode(m){ MMODE=m; if(TAB==='w') renderWeek(); else renderMonth(); }
 function monthCellClick(ev){
   var td=ev.target.closest?ev.target.closest('td'):null;
   if(!td||!td.hasAttribute('data-w')) return;
@@ -500,12 +521,151 @@ function monthCellClick(ev){
   renderMonth();                                       // мгновенно на экране
   bgSave({vapi:'tabelset',date:YM+'-'+pad2(d),worker:w,shift:next,tgid:TGID});
 }
+
+/* ══ НЕДЕЛЯ (25.10.2026): пн–вс; в клетке смена/выход и заработок дня; справа — недельная премия ══
+   Данные — те же, что у месяца (tabelmonth + payrolldaily, неделя на стыке месяцев — оба месяца) + weekbonus.
+   Порог и премию меняют директор и начальник; действуют с текущей недели, прошлые не пересчитываются (сервер). */
+function addD(iso,n){ var d=new Date(iso+'T12:00:00'); d.setDate(d.getDate()+n); return isoToday(d); }
+function mondayOf(iso){ var d=new Date(iso+'T12:00:00'); d.setDate(d.getDate()-((d.getDay()+6)%7)); return isoToday(d); }
+var WK=mondayOf(isoToday()), WD=null;
+function shiftWeek(n){ WK=n?addD(WK,7*n):mondayOf(isoToday()); loadWeek(); }
+function loadWeek(silent){
+  if(!silent) $('pane').innerHTML='<div class="center muted">Загрузка…</div>';
+  var wk0=WK, dates=[]; for(var i=0;i<7;i++) dates.push(addD(WK,i));
+  var yms=[]; dates.forEach(function(d){ var y=d.slice(0,7); if(yms.indexOf(y)<0) yms.push(y); });
+  var calls=[]; yms.forEach(function(y){ calls.push(api({vapi:'tabelmonth',ym:y,tgid:TGID})); calls.push(api({vapi:'payrolldaily',ym:y,tgid:TGID})); });
+  calls.push(api({vapi:'weekbonus',week:WK,tgid:TGID}));
+  Promise.all(calls.map(function(c){ return c.catch(function(e){ return {ok:false,error:'сеть: '+(e.message||e)}; }); })).then(function(rs){
+    if(TAB!=='w'||wk0!==WK) return;
+    if(silent && SAVING>0) return;
+    var bad=rs.filter(function(r){ return !r||!r.ok; })[0];
+    if(bad){ if(!silent) $('pane').innerHTML='<div class="box err">'+esc(bad.error||'ошибка')+'</div>'; return; }
+    var D={dates:dates, tab:{}, worked:{}, off:{}, hol:{}, rub:{}, night:{}, eve:{}, hrs:{}, names:[], b:rs[rs.length-1], byName:{}};
+    var seen={}, add=function(n){ n=String(n||'').trim(); if(n&&!seen[n]){ seen[n]=1; D.names.push(n); } };
+    yms.forEach(function(y,k){
+      var t=rs[2*k], p=rs[2*k+1], inWk=function(iso){ return dates.indexOf(iso)>=0; };
+      t.workers.forEach(add);
+      t.entries.forEach(function(e){ if(inWk(e.date)) D.tab[e.worker+'|'+e.date]=e; });
+      (t.worked||[]).forEach(function(k2){ var pp=k2.split('|'), iso=y+'-'+pad2(pp[1]); if(inWk(iso)) D.worked[pp[0]+'|'+iso]=1; });
+      (t.off||[]).forEach(function(d){ D.off[y+'-'+pad2(d)]=1; });
+      for(var hd in (t.holidayNames||{})) D.hol[y+'-'+pad2(hd)]=t.holidayNames[hd];
+      p.workers.forEach(function(w){
+        var any=false;
+        for(var d in w.byDay){ var iso=y+'-'+pad2(d); if(inWk(iso)){ D.rub[w.name+'|'+iso]=w.byDay[d]; any=true; if(w.night[d]) D.night[w.name+'|'+iso]=1; if((w.eve||{})[d]) D.eve[w.name+'|'+iso]=1; } }
+        for(var h in (w.hoursByDay||{})){ var iso2=y+'-'+pad2(h); if(inWk(iso2)) D.hrs[w.name+'|'+iso2]=w.hoursByDay[h]; }
+        if(any) add(w.name);
+      });
+    });
+    D.b.people.forEach(function(x){ D.byName[x.name]=x; if(D.b.editable||x.threshold>0||x.earned>0||x.pending>0||x.granted>0) add(x.name); });
+    // показываем тех, у кого на неделе что-то есть: смена, наряд, заработок или премия
+    // текущая и будущие недели (порог можно ставить) — все рабочие, даже без смен: порог ставят заранее
+    D.names=D.names.filter(function(n){ var b=D.byName[n]; if(b&&(D.b.editable||b.threshold>0||b.earned>0||b.pending>0)) return true;
+      return dates.some(function(iso){ var k=n+'|'+iso; return D.tab[k]||D.worked[k]||D.rub[k]; }); });
+    WD=D; renderWeek();
+  });
+}
+function wbCell(n){ return WD.byName[n]||null; }
+function wbHtml(n, card){
+  var b=wbCell(n), B=WD.b;
+  if(WK<B.start) return '<span class="muted" style="font:var(--t-tiny)">недельная премия — с '+esc(ruDate(B.start))+'</span>';
+  var out='';
+  if(b&&b.threshold>0&&b.amount>0){
+    var pct=Math.min(100,Math.round(b.earned/b.threshold*100)), done=b.earned>=b.threshold;
+    out+='<div class="wbar"><i style="width:'+pct+'%;background:'+(done?'var(--green)':'var(--amber)')+'"></i></div>'
+      +'<div style="font:var(--t-tiny)">'+money(b.earned)+' из '+money(b.threshold)+' ₽ · '
+      +(done?'<b style="color:var(--green)">премия '+money(b.granted||b.amount)+' ₽'+(b.granted?'':' (начислится)')+'</b>':'ещё '+money(Math.round((b.threshold-b.earned)*100)/100)+' ₽ до премии '+money(b.amount)+' ₽')
+      +(b.pending>0?' · <span style="color:var(--blue)">⏳ '+money(b.pending)+'</span>':'')+'</div>';
+  } else if(b&&b.earned>0) out+='<div style="font:var(--t-tiny)" class="muted">в зачёт премии '+money(b.earned)+' ₽ · порога нет</div>';
+  if(b&&B.editable) out+='<div class="wb-box" style="margin-top:3px"><span class="muted" style="font:var(--t-tiny)">порог</span><input type="number" min="0" inputmode="decimal" class="wb-t" value="'+(b.threshold||'')+'" placeholder="₽" onchange="wbSave(this,\''+b.personId+'\')">'
+    +'<span class="muted" style="font:var(--t-tiny)">премия</span><input type="number" min="0" inputmode="decimal" class="wb-a" value="'+(b.amount||'')+'" placeholder="₽" onchange="wbSave(this,\''+b.personId+'\')"></div>';
+  else if(b&&b.threshold>0&&!B.editable&&B.canEdit&&WK<B.current) out+='<div class="muted" style="font:var(--t-tiny)">прошлая неделя — порог не меняется</div>';
+  return out||'<span class="cell0 muted">—</span>';
+}
+function wbSave(inp, pid){
+  var box=inp.parentNode, t=box.querySelector('.wb-t').value, a=box.querySelector('.wb-a').value;
+  svShow();
+  api({vapi:'weekbonusset', personId:pid, threshold:t, amount:a, week:WK, tgid:TGID}).then(function(r){
+    if(!r||!r.ok){ svShow('<span class="err">'+esc((r&&r.error)||'не сохранилось')+'</span>'); return; }
+    svShow('<span class="ok">✓ сохранено с '+esc(ruDate(r.from))+'</span>'); loadWeek(true);
+  }).catch(function(e){ svShow('<span class="err">нет связи: '+esc(e.message||e)+'</span>'); });
+}
+function wkCellInfo(n, iso){
+  var k=n+'|'+iso, e=WD.tab[k], sh=e?e.shift:'', st=e?e.status:'', did=!!WD.worked[k], v=WD.rub[k]||0, h=WD.hrs[k]||0;
+  var cls='', ic='';
+  if(sh){ var out=(st==='вышел'), no=(st==='не вышел');
+    cls=(sh==='ночь'?'cell-n':(sh==='2 смена'?'cell-e':'cell-d'))+(out||(did&&!no)?' cell-out':(no?' cell-no':''));
+    ic=(sh==='ночь'?'🌙':(sh==='2 смена'?'🌇':'☀️'))+(out?'<b class="fk ok">✓</b>':(no?'<b class="fk no">✕</b>':(did?'<b class="fk auto">✓</b>':'')));
+  } else if(did){ cls='cell-work cell-out'; ic='<b class="fk auto">✓</b>'; }
+  if(WD.off[iso]||WD.hol[iso]) cls+=(cls?' ':'')+(WD.hol[iso]?'we hol':'we');
+  var tip=n+', '+ruDate(iso)+(sh?' · '+(sh==='день'?'1-я смена':sh)+(st&&st!=='план'?' · '+st:''):'')+(v?'\nзаработок '+money(v)+' ₽':'')+(h?' · '+h1(h)+' ч':'')+(WD.night[k]?' · ночь':'');
+  return {cls:cls, ic:ic||'&nbsp;', v:v, tip:tip};
+}
+function renderWeek(){
+  if(!WD) return;
+  var D=WD, B=D.b, td=isoToday(), DOW=['пн','вт','ср','чт','пт','сб','вс'];
+  var lbl=ruDate(D.dates[0]).slice(0,5)+'–'+ruDate(D.dates[6]);
+  var tot=0, granted=0, withRule=0, got=0, pend=0;
+  var rowTot=function(n){ var s=0; D.dates.forEach(function(iso){ s+=D.rub[n+'|'+iso]||0; }); return Math.round(s*100)/100; };
+  D.names.forEach(function(n){ tot+=rowTot(n); var b=wbCell(n); if(b){ pend+=b.pending||0; if(b.threshold>0&&b.amount>0){ withRule++; if(b.earned>=b.threshold) got++; } granted+=b.granted||0; } });
+  var modeSeg='<div class="seg mmode">'
+    +'<button class="'+(MMODE==='plan'?'on':'')+'" onclick="setMMode(\'plan\')">✏️ Ставлю график</button>'
+    +'<button class="'+(MMODE==='fact'?'on':'')+'" onclick="setMMode(\'fact\')">✅ Отмечаю выход</button></div>';
+  var k=function(t,v,st,tip){ return '<span class="k"'+(tip?(' title="'+esc(tip)+'"'):'')+'>'+t+'<b'+(st?(' style="color:'+st+'"'):'')+'>'+v+'</b></span>'; };
+  var h='<div class="toolbar"><div class="pnav"><button onclick="shiftWeek(-1)" title="прошлая неделя">‹</button><span class="lbl">'+esc(lbl)+'</span><button onclick="shiftWeek(1)" title="следующая неделя">›</button></div>'
+    +(WK!==mondayOf(td)?'<button class="sec" onclick="shiftWeek(0)">сегодня</button>':'')
+    +'<span id="sv" class="meta"></span>'+PLANNOTE+'<div class="end">'+modeSeg+'</div></div>'
+    +'<div class="note hint"><div>В клетке — смена (☀️ 1-я, 🌇 2-я, 🌙 ночь; ✓ вышел, ✕ не вышел) и заработок за день по принятым нарядам. Клик по клетке — как в табеле месяца: '
+    +(MMODE==='fact'?'<b>по графику → ✓ вышел → ✕ не вышел</b>.':'<b>пусто → ☀️ → 🌇 → 🌙 → пусто</b>.')
+    +' <b>Недельная премия</b>: если за неделю (пн–вс) принятой сдельной работы набралось на порог — премия начисляется строкой «Премия» в воскресенье. '
+    +'Ночная надбавка и премии мастера в порог не идут. Поздно принятые наряды учитываются до конца вторника, потом неделя закрыта. '
+    +'Порог и премию меняют директор и начальник — с текущей недели, прошлые недели не пересчитываются.</div></div>'
+    +'<div class="kpis">'+k('За неделю', money(tot)+' ₽', 'var(--green)', 'принятые наряды по дням недели')
+      +(pend>0?k('На проверке', money(pend)+' ₽', 'var(--blue)', 'сдельная работа недели, ещё не принятая'):'')
+      +(withRule?k('Премию набрали', got+' из '+withRule):'')
+      +(granted>0?k('Премий начислено', money(granted)+' ₽', 'var(--green)'):'')
+      +(B.closed?k('Неделя', 'закрыта', '', 'после вторника премия за неделю не меняется'):'')+'</div>';
+  if(!D.names.length){ $('pane').innerHTML=h+'<div class="empty">На этой неделе ни смен, ни нарядов.</div>'; return; }
+  // таблица — компьютер
+  var th='<tr><th>Рабочий</th>'+D.dates.map(function(iso,i){ var we=D.off[iso]||D.hol[iso];
+      return '<th class="'+(D.hol[iso]?'we hol':(we?'we':''))+(iso===td?' hl':'')+'" title="'+esc(D.hol[iso]||'')+'">'+DOW[i]+' '+Number(iso.slice(8))+'</th>'; }).join('')
+    +'<th>Итого</th><th style="text-align:left">Недельная премия</th></tr>';
+  var body=D.names.map(function(n,ni){
+    return '<tr><td class="nm">'+esc(n)+'</td>'+D.dates.map(function(iso,i){ var c=wkCellInfo(n,iso);
+        return '<td class="'+c.cls+'" data-n="'+ni+'" data-i="'+i+'" title="'+esc(c.tip)+'">'+c.ic+'<span class="rb'+(c.v?'':' z')+'">'+(c.v?money(c.v):'·')+'</span></td>'; }).join('')
+      +'<td class="tot">'+money(rowTot(n))+'</td><td class="wb">'+wbHtml(n)+'</td></tr>';
+  }).join('');
+  // карточки — телефон
+  var cards=D.names.map(function(n,ni){
+    return '<div class="wcard"><div class="hd"><span>'+esc(n)+'</span><span>'+money(rowTot(n))+' ₽</span></div><div class="dd">'
+      +D.dates.map(function(iso,i){ var c=wkCellInfo(n,iso);
+        return '<div class="'+c.cls+'" data-n="'+ni+'" data-i="'+i+'">'+DOW[i]+'<br>'+c.ic+'<b'+(c.v?'':' style="color:var(--line2);font-weight:400"')+'>'+(c.v?Math.round(c.v):'·')+'</b></div>'; }).join('')
+      +'</div><div style="margin-top:var(--s-2)">'+wbHtml(n,1)+'</div></div>';
+  }).join('');
+  $('pane').innerHTML=h+'<div class="card mgrid wk wk-tbl" style="overflow-x:auto"><table class="tbl" id="wtbl">'+th+body+'</table></div><div class="wk-cards" id="wcards">'+cards+'</div>';
+  $('wtbl').addEventListener('click', wkCellClick); $('wcards').addEventListener('click', wkCellClick);
+}
+function wkCellClick(ev){
+  var el=ev.target.closest?ev.target.closest('[data-i]'):null; if(!el) return;
+  var n=WD.names[Number(el.getAttribute('data-n'))], iso=WD.dates[Number(el.getAttribute('data-i'))]; if(!n||!iso) return;
+  var key=n+'|'+iso, e=WD.tab[key], sh=e?e.shift:'', st=e?e.status:'';
+  if(MMODE==='fact'){
+    if(!sh){ svShow('<span class="muted">'+esc(n)+', '+esc(ruDate(iso))+': смены нет — сначала поставьте график</span>'); return; }
+    var nf=(st==='вышел')?'не вышел':((st==='не вышел')?'план':'вышел');
+    WD.tab[key]={date:iso, worker:n, shift:sh, status:nf, own:e&&e.own}; renderWeek();
+    bgSave({vapi:'tabelfact',date:iso,worker:n,status:nf,tgid:TGID}); return;
+  }
+  var next=(sh==='')?'день':(sh==='день'?'2 смена':(sh==='2 смена'?'ночь':''));
+  if(next==='' && st && st!=='план'){ alert(n+' '+ruDate(iso)+': выход уже отмечен («'+st+'»). Чтобы снять смену, переключитесь в «✅ Отмечаю выход», верните клетку в «план» и снимите смену.'); return; }
+  if(next==='') delete WD.tab[key]; else WD.tab[key]={date:iso, worker:n, shift:next, status:(e&&e.status)||'план', own:e&&e.own};
+  renderWeek();
+  bgSave({vapi:'tabelset',date:iso,worker:n,shift:next,tgid:TGID});
+}
 shell();
 
 // авто-обновление: оболочка шлёт «refresh» при возврате на раздел — перечитываем данные без перезагрузки страницы
 (function(){
   try{ var m=/[?&]twsec=([^&]+)/.exec(location.search); window.top.postMessage({tw:'hello',sec:m?decodeURIComponent(m[1]):''},'*'); }catch(e){}
-  window.addEventListener('message',function(e){ var d=e&&e.data; if(d&&d.tw==='refresh'){ try{ if(TAB==='z')loadPay(); else loadMonth(); }catch(err){} } });
+  window.addEventListener('message',function(e){ var d=e&&e.data; if(d&&d.tw==='refresh'){ try{ if(TAB==='z')loadPay(); else reloadCur(); }catch(err){} } });
 })();
 
 // ─────── ПОКАЗЫВАЕМ, ЧТО ИДЁТ РАБОТА ───────
