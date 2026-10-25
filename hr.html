@@ -147,7 +147,7 @@ function render(){
   var body='';
   if(CARD) body=cardView();
   else if(TAB==='emp') body=empView();
-  else if(TAB==='con') body=conRegView();
+  else if(TAB==='con') body=CONIN?conInView():conRegView();
   else if(TAB==='doc') body=docView();
   else if(TAB==='pay') body=payView();
   else if(TAB==='fuel') body=fuelView();
@@ -1127,7 +1127,8 @@ function conRegView(){
   var h=tb('<div class="seg">'+
     ['all','контракт','подряд','обучение'].map(function(v){ return '<button class="'+(CONFILTER===v?'on':'')+'" onclick="conFilter(\''+v+'\')">'+
       (v==='all'?'все':(v==='контракт'?'контракты':(v==='подряд'?'подряд':'обучение')))+'</button>'; }).join('')+'</div>'+
-    '<span class="meta">всего: '+all.length+'</span>','');
+    '<span class="meta">всего: '+all.length+'</span>',
+    '<button class="btn pri" onclick="conInOpen()" title="подписанные договоры (PDF, фото страниц, Word) → распознать → завести в систему">📥 Загрузить договоры</button>');
   h+='<div class="card tbwrap"><table class="tbl mob"><thead><tr><th></th><th>№</th><th>Дата</th><th>Вид</th><th>ФИО</th><th>Должность / работа</th><th>Окончание</th><th>Статус</th><th>Документ</th></tr></thead><tbody>';
   h+=l.map(function(c){
     var e=byEmp[c.emp]||{};
@@ -1607,6 +1608,98 @@ function regExport(){
   var a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob(['﻿'+lines.join('\r\n')],{type:'text/csv;charset=utf-8'}));
   a.download='реестр выплат '+REG.ym+'.csv'; document.body.appendChild(a); a.click(); a.remove();
+}
+// ─── 📥 Загрузка подписанных договоров пачкой: папка Диска «Кадры / 00 Входящие договоры» или файлы с телефона → распознать → завести ───
+var CONIN=null, CONINBUSY=0;
+function conInOpen(){
+  CONIN={loading:1}; TAB='con'; CARD=null; render();
+  api({vapi:'hrconinbox'}).then(function(r){
+    if(!r||!r.ok){ CONIN=null; alert((r&&r.error)||'ошибка'); render(); return; }
+    CONIN={folderUrl:r.folderUrl,note:r.note||'',files:r.files.map(function(f){ return {f:f,on:f.kind!=='old'&&f.kind!=='other',grp:'',rec:null}; })}; render();
+  }).catch(function(e){ CONIN=null; alert('сеть: '+e.message); render(); });
+}
+function conInUpload(input){
+  var files=Array.prototype.slice.call(input.files||[]); if(!files.length) return;
+  var i=0; CONINBUSY=1; render();
+  function next(){
+    if(i>=files.length){ CONINBUSY=0; conInOpen(); return; }
+    var f=files[i], fr=new FileReader();
+    fr.onload=function(){
+      apiPost({vapi:'hrconupload',name:f.name,mime:f.type,b64:String(fr.result).split(',')[1]})
+        .then(function(r){ if(!r.ok){ CONINBUSY=0; alert(r.error||'ошибка загрузки'); conInOpen(); return; } i++; next(); })
+        .catch(function(e){ CONINBUSY=0; alert('сеть: '+e.message); conInOpen(); });
+    };
+    fr.readAsDataURL(f);
+  }
+  next();
+}
+// группы: файлы с одинаковой пометкой «группа» — один договор (фото страниц); без пометки — каждый файл сам по себе
+function conInGroups(){
+  var g={}, order=[];
+  CONIN.files.forEach(function(x,i){ if(!x.on) return; var k=String(x.grp||'').trim()||('_'+i); if(!g[k]){ g[k]=[]; order.push(k); } g[k].push(i); });
+  return order.map(function(k){ return g[k]; });
+}
+function conInRecogAll(){
+  var groups=conInGroups().filter(function(ix){ return !CONIN.files[ix[0]].rec; });
+  if(!groups.length) return;
+  CONINBUSY=1; render(); var i=0;
+  function next(){
+    if(i>=groups.length){ CONINBUSY=0; render(); return; }
+    var ix=groups[i], ids=ix.map(function(j){ return CONIN.files[j].f.id; }).join(',');
+    api({vapi:'hrconrecog',files:ids}).then(function(r){
+      var rec=r&&r.ok?{fields:r.fields,emp:r.emp,sure:r.sure,piiFound:r.piiFound,cand:r.candidates||[]}:{error:(r&&r.error)||'ошибка'};
+      ix.forEach(function(j){ CONIN.files[j].rec=rec; }); i++; render(); next();
+    }).catch(function(e){ ix.forEach(function(j){ CONIN.files[j].rec={error:'сеть: '+e.message}; }); i++; render(); next(); });
+  }
+  next();
+}
+function conInApply(){
+  var items=[]; conInGroups().forEach(function(ix){ var x=CONIN.files[ix[0]]; if(!x.rec||x.rec.error||!x.rec.emp) return;
+    var f=x.rec.fields; items.push({files:ix.map(function(j){ return CONIN.files[j].f.id; }),emp:x.rec.emp,kind:f.kind||'подряд',num:f.num,date:f.date,end:f.end,pos:f.pos,
+      salary:f.salary,tariff:f.tariff,advance:f.advance,rate:f.rate,wStart:f.wStart,wEnd:f.wEnd,vacMain:f.vacMain}); });
+  if(!items.length){ alert('Нет распознанных договоров с выбранным сотрудником.'); return; }
+  if(!confirm('Завести '+items.length+' договор(ов)? Сканы будут переложены в папки сотрудников, пустые реквизиты карточек заполнены.')) return;
+  CONINBUSY=1; render();
+  apiPost({vapi:'hrconapply',items:JSON.stringify(items)}).then(function(r){
+    CONINBUSY=0; if(!r||!r.ok){ alert((r&&r.error)||'ошибка'); render(); return; }
+    var bad=(r.results||[]).filter(function(x){ return !x.ok; });
+    apply(r); CONIN=null; TAB='con';
+    alert('Заведено: '+((r.results||[]).length-bad.length)+(bad.length?'\nНе удалось '+bad.length+':\n'+bad.map(function(x){ return x.error; }).join('\n'):''));
+    render();
+  }).catch(function(e){ CONINBUSY=0; alert('сеть: '+e.message); render(); });
+}
+function conInView(){
+  if(CONIN.loading) return '<div class="center">Смотрю папку входящих договоров…</div>';
+  var emps=(DATA.list||[]).map(function(x){ return x.emp; });
+  var groups=conInGroups(), ready=0, unrec=0;
+  groups.forEach(function(ix){ var r=CONIN.files[ix[0]].rec; if(r&&!r.error&&r.emp) ready++; if(!r) unrec++; });
+  var h=tb('<button class="btn sec" onclick="CONIN=null;render()">← к договорам</button>'+
+      '<label class="btn sec"'+(CONINBUSY?' style="opacity:.5"':'')+'>⬆ Загрузить файлы<input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.docx,application/pdf,image/*" style="display:none" onchange="conInUpload(this)"></label>',
+    (unrec?'<button class="btn sec"'+(CONINBUSY?' disabled':'')+' onclick="conInRecogAll()">🔎 Распознать ('+unrec+')</button>':'')+
+    '<button class="btn pri"'+(CONINBUSY||!ready?' disabled':'')+' onclick="conInApply()">✅ Завести договоры ('+ready+')</button>')+
+    '<div class="note"><div><b>📥 Подписанные договоры → в систему.</b> Файлы: PDF (один файл — один договор), фото страниц (у страниц одного договора поставьте одинаковую «группу»), Word .docx. '+
+    (CONIN.folderUrl?'Можно просто положить файлы в папку <a href="'+esc(CONIN.folderUrl)+'" target="_blank">'+esc('Кадры / 00 Входящие договоры')+'</a> на Диске и нажать «Распознать». ':esc(CONIN.note||''))+
+    'После заведения скан переезжает в папку сотрудника, пустые реквизиты карточки (паспорт, адрес, счёт) заполняются из договора. Проверьте ФИО и даты перед «Завести».</div></div>';
+  if(!CONIN.files.length) return h+'<div class="card"><div class="empty">Во входящей папке пусто — загрузите файлы или положите их в папку на Диске.</div></div>';
+  var kinds=['контракт','подряд','нпд','обучение'];
+  h+='<div class="card tbwrap"><table class="tbl mob"><thead><tr><th></th><th>Файл</th><th>Группа</th><th>Сотрудник</th><th>Вид</th><th>№</th><th>Дата</th><th>Окончание</th><th>Работы / должность</th><th>Реквизиты</th></tr></thead><tbody>';
+  CONIN.files.forEach(function(x,i){
+    var p='CONIN.files['+i+']', r=x.rec, f=r&&r.fields;
+    var cell=function(k,w){ return '<input value="'+esc(f?f[k]:'')+'" style="width:'+w+'px" oninput="'+p+'.rec.fields.'+k+'=this.value">'; };
+    h+='<tr'+(x.f.kind==='old'||x.f.kind==='other'?' class="muted"':'')+'><td style="width:26px"><input type="checkbox"'+(x.on?' checked':'')+' onchange="'+p+'.on=this.checked;render()"></td>'+
+      '<td><a href="'+esc(x.f.url)+'" target="_blank">'+esc(x.f.name)+'</a> <span class="muted" style="font:var(--t-small)">'+esc(x.f.created)+(x.f.kind==='old'?' · сохраните как .docx или PDF':'')+'</span>'+
+        (r&&r.error?'<div style="color:var(--red);font:var(--t-small)">'+esc(r.error)+'</div>':'')+'</td>'+
+      '<td data-l="Группа"><input value="'+esc(x.grp)+'" placeholder="фото: №" style="width:46px" oninput="'+p+'.grp=this.value"></td>';
+    if(!f){ h+='<td colspan="7" class="muted">'+(r?'':'— ещё не распознан —')+'</td></tr>'; return; }
+    h+='<td data-l="Сотрудник"><select style="max-width:220px" onchange="'+p+'.rec.emp=this.value">'+'<option value="">— выберите —</option>'+
+        emps.map(function(e){ return '<option value="'+esc(e.id)+'"'+(e.id===r.emp?' selected':'')+'>'+esc(e.fio)+'</option>'; }).join('')+'</select>'+
+        (r.emp?(r.sure?'':'<div class="muted" style="font:var(--t-small)">не уверен — проверьте</div>'):'<div style="color:var(--red);font:var(--t-small)">в договоре: '+esc(f.fio||'?')+' — карточки нет</div>')+'</td>'+
+      '<td data-l="Вид"><select onchange="'+p+'.rec.fields.kind=this.value">'+kinds.map(function(k){ return '<option'+(k===f.kind?' selected':'')+'>'+k+'</option>'; }).join('')+'</select></td>'+
+      '<td data-l="№">'+cell('num',70)+'</td><td data-l="Дата">'+cell('date',96)+'</td><td data-l="Окончание">'+cell('end',96)+'</td>'+
+      '<td data-l="Работы">'+cell('pos',200)+(f.salary?'<div class="muted" style="font:var(--t-small)">оклад '+esc(f.salary)+'</div>':'')+'</td>'+
+      '<td data-l="Реквизиты" class="muted">'+(r.piiFound?'найдено '+r.piiFound:'—')+'</td></tr>';
+  });
+  return h+'</tbody></table></div>';
 }
 // ─── 📂 Разбор папок сотрудников: подписанные сканы (PDF/фото) → в карточки. Файлы остаются на месте — пишется ссылка ───
 var FOLD=null, FOLDBUSY=0;
