@@ -564,9 +564,10 @@ function loadWeek(silent){
 function wbCell(n){ return WD.byName[n]||null; }
 function wbHtml(n, card){
   var b=wbCell(n), B=WD.b;
-  if(WK<B.start) return '<span class="muted" style="font:var(--t-tiny)">недельная премия — с '+esc(ruDate(B.start))+'</span>';
-  var out='';
-  if(b&&b.threshold>0&&b.amount>0){
+  var early=WK<B.start, out='';   // неделя до старта: порог ставят заранее, начислять начнём с B.start
+  if(early&&!(b&&B.editable)) return '<span class="muted" style="font:var(--t-tiny)">недельная премия — с '+esc(ruDate(B.start))+'</span>';
+  if(early) out+='<div class="muted" style="font:var(--t-tiny)">'+(b.threshold>0&&b.amount>0?'✓ '+money(b.threshold)+' ₽ → '+money(b.amount)+' ₽, ':'')+'действует с '+esc(ruDate(B.start))+'</div>';
+  else if(b&&b.threshold>0&&b.amount>0){
     var pct=Math.min(100,Math.round(b.earned/b.threshold*100)), done=b.earned>=b.threshold;
     out+='<div class="wbar"><i style="width:'+pct+'%;background:'+(done?'var(--green)':'var(--amber)')+'"></i></div>'
       +'<div style="font:var(--t-tiny)">'+money(b.earned)+' из '+money(b.threshold)+' ₽ · '
