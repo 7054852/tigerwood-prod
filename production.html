@@ -17,8 +17,13 @@
   table.items td,table.items th{ padding:var(--s-1) var(--s-2); }
   table.items .c-nm{ width:auto; white-space:normal; }
   table.items .c-n{ width:74px; }
-  table.items .c-x{ width:88px; white-space:nowrap; }
+  table.items .c-x{ width:108px; white-space:nowrap; }
   .imv button{ padding:0 4px; }
+  .grip{ cursor:grab; color:var(--muted); margin-right:var(--s-1); user-select:none; }
+  table.items tr[draggable]{ cursor:grab; }
+  table.items tr.dragging{ opacity:.4; }
+  table.items tr.drop-before td{ box-shadow:inset 0 2px 0 var(--accent); }
+  table.items tr.drop-after td{ box-shadow:inset 0 -2px 0 var(--accent); }
   /* ОДНА строка на позицию: 17 изделий должны читаться одним взглядом, без прокрутки
      ни вбок, ни вниз. Различает варианты модель — она и стоит первой; оборудование,
      себестоимость и статус состава уезжают в подсказку при наведении. */
@@ -1508,7 +1513,7 @@ function itemRowHtml(it,batchId){
   var asmBadge = it.assembled
     ? '<span class="asm pill ok" title="состав собран">✓</span>'
     : '<a href="'+catUrl(it.sku||it.model)+'" target="_blank" class="asm pill warn" title="не собрано — открыть в каталоге, проверить состав и отметить">⚠<span class="t">не собрано</span></a>';
-  return '<tr data-item="'+esc(it.id)+'">'
+  return '<tr data-item="'+esc(it.id)+'" draggable="true" ondragstart="dragItem(event,\''+batchId+'\',\''+it.id+'\')" ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="dropItem(event,\''+batchId+'\',\''+it.id+'\')" ondragend="dragEnd()">'
     +'<td class="c-nm" title="'+esc([it.equip,it.sku,(it.unitCost?(it.unitCost.toFixed(2).replace('.',',')+' р/шт'):'')].filter(Boolean).join(' · '))+'">'
       // оборудование + модель (22.10.2026: «Hill» есть у колец, упоров и стойки — по одной модели строки не различить)
       +'<div class="inm">'+asmBadge+'<b>'+esc(it.equip||it.model||it.sku||'—')+'</b>'+(it.equip&&it.model&&it.model!==it.equip?(' <span>'+esc(it.model)+'</span>'):'')
@@ -1517,7 +1522,7 @@ function itemRowHtml(it,batchId){
     +'<td class="num">'+packedCellHtml(it)+'</td>'
     +'<td class="num"><input class="q" value="'+(it.done||0)+'" onchange="saveDone(\''+batchId+'\',\''+esc(it.sku)+'\',\''+esc(it.model)+'\',this.value)"></td>'
     +'<td class="num">'+shipCellHtml(it)+'</td>'
-    +'<td class="c-x"><span class="imv"><button class="ic" title="выше" onclick="moveItem(\''+batchId+'\',\''+it.id+'\',-1)">▲</button><button class="ic" title="ниже" onclick="moveItem(\''+batchId+'\',\''+it.id+'\',1)">▼</button></span>'
+    +'<td class="c-x"><span class="grip" title="перетащите строку, чтобы поменять порядок">☰</span><span class="imv"><button class="ic" title="выше" onclick="moveItem(\''+batchId+'\',\''+it.id+'\',-1)">▲</button><button class="ic" title="ниже" onclick="moveItem(\''+batchId+'\',\''+it.id+'\',1)">▼</button></span>'
       +'<button class="ic" title="убрать" onclick="rmItem(\''+it.id+'\')">🗑</button></td></tr>';
 }
 /* порядок позиций (владелец 27.10.2026): ▲▼ — в этом порядке идут товары во всех вкладках и в ведомости; от него же зависит,
@@ -1526,6 +1531,24 @@ function moveItem(batchId,itemId,dir){
   var ids=((DETAIL&&DETAIL.items)||[]).map(function(x){ return x.id; }), i=ids.indexOf(itemId), j=i+dir;
   if(i<0||j<0||j>=ids.length) return;
   ids.splice(i,1); ids.splice(j,0,itemId);
+  saveItemOrder(batchId,ids);
+}
+/* перетаскивание строк мышью (стрелки остаются для телефона): бросили выше середины строки — встанет перед ней, ниже — после */
+var DRAG=null;
+function dragItem(ev,batchId,itemId){ DRAG=itemId; ev.dataTransfer.effectAllowed='move'; try{ ev.dataTransfer.setData('text/plain',itemId); }catch(e){} ev.target.closest('tr').classList.add('dragging'); }
+function dragOver(ev){ if(!DRAG) return; ev.preventDefault(); ev.dataTransfer.dropEffect='move'; var tr=ev.target.closest('tr'); if(!tr) return;
+  var r=tr.getBoundingClientRect(), below=ev.clientY>r.top+r.height/2; tr.classList.toggle('drop-after',below); tr.classList.toggle('drop-before',!below); }
+function dragLeave(ev){ var tr=ev.target.closest('tr'); if(tr){ tr.classList.remove('drop-after'); tr.classList.remove('drop-before'); } }
+function dragEnd(){ DRAG=null; Array.prototype.forEach.call(document.querySelectorAll('tr.dragging,tr.drop-after,tr.drop-before'),function(tr){ tr.classList.remove('dragging'); tr.classList.remove('drop-after'); tr.classList.remove('drop-before'); }); }
+function dropItem(ev,batchId,targetId){
+  ev.preventDefault(); var src=DRAG; var tr=ev.target.closest('tr'), after=tr&&tr.classList.contains('drop-after'); dragEnd();
+  if(!src||src===targetId) return;
+  var ids=((DETAIL&&DETAIL.items)||[]).map(function(x){ return x.id; }); ids.splice(ids.indexOf(src),1);
+  var j=ids.indexOf(targetId)+(after?1:0); ids.splice(j,0,src);
+  saveItemOrder(batchId,ids);
+}
+function saveItemOrder(batchId,ids){
+  var tb=$('items_'+batchId); if(tb) ids.forEach(function(id){ var tr=tb.querySelector('tr[data-item="'+id+'"]'); if(tr) tb.appendChild(tr); });   // сразу показать новый порядок
   var m=$('bm_'+batchId); if(m) m.textContent='переставляю…';
   api({vapi:'itemorder',batch:batchId,items:ids.join(',')}).then(function(r){
     if(!r||!r.ok){ if(m) m.textContent=(r&&r.error)||'не удалось'; return; }
