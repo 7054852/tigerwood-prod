@@ -752,17 +752,23 @@ function rwCells(id,detail,keys){
 }
 /* ── порядок колонок-операций: слить цепочки деталей (операции изделия — в конце) ── */
 function opColumns(ops){
-  var seqs={}, order=[], prodSeq=[];
-  ops.forEach(function(o){ var dk=(o.level==='изделие'?'§':'')+o.detail; if(!seqs[dk]){ seqs[dk]=[]; (o.level==='изделие'?prodSeq:order).push(dk); } seqs[dk].push(o.op); });
-  var cols=[];
-  // длинные цепочки задают каркас; короткая без общих операций (коробка, фурнитура) встаёт в конец, а не в начало
-  var packOnly=function(k){ return seqs[k].every(function(op){ return /^Упаковка/i.test(op); })?1:0; };   // упаковка фурнитуры — в самый конец, после сборки коробки
-  order.sort(function(a,b){ return (packOnly(a)-packOnly(b)) || (seqs[b].length-seqs[a].length); });
-  order.forEach(function(dk){ var seq=seqs[dk], prev=-1; seq.forEach(function(op,i){ var at=cols.indexOf(op);
-    if(at<0){ var next=-1; for(var j=i+1;j<seq.length&&next<0;j++) next=cols.indexOf(seq[j]); at=prev>=0?prev+1:(next>=0?next:cols.length); cols.splice(at,0,op); }
-    if(at>prev) prev=at; }); });
-  prodSeq.forEach(function(dk){ seqs[dk].forEach(function(op){ if(cols.indexOf(op)<0) cols.push(op); }); });
-  return cols;
+  // Тот же алгоритм, что mergeColumns на сервере (ведомость переучёта): цепочки деталей — рёбра, рёбра против техпорядка
+  // справочника (o.rank) — только если не замыкают цикл (сначала с меньшим нарушением), затем топосорт по техпорядку.
+  // Операции только уровня «изделие» (сборка коробки, упаковка) — после всех деталей.
+  var seqs={}, keys=[], rk={}, det={};
+  ops.forEach(function(o){ var dk=(o.level==='изделие'?'§':'')+o.detail; if(!seqs[dk]){ seqs[dk]=[]; keys.push(dk); } if(seqs[dk].indexOf(o.op)<0) seqs[dk].push(o.op);
+    if(o.level!=='изделие') det[o.op]=1; var r=Number(o.rank); if(!(r>=0)) r=999; if(rk[o.op]===undefined||r<rk[o.op]) rk[o.op]=r; });
+  var rank=function(x){ return (rk[x]===undefined?999:rk[x])+(det[x]?0:1000); }, cmp=function(a,b){ return rank(a)-rank(b)||(a<b?-1:a>b?1:0); };
+  var nodes=[], after={};
+  keys.forEach(function(k){ seqs[k].forEach(function(x){ if(!after[x]){ after[x]={}; nodes.push(x); } }); });
+  var reach=function(a,b){ var st=[a], v={}; while(st.length){ var x=st.pop(); if(x===b) return true; if(v[x]) continue; v[x]=1; Object.keys(after[x]).forEach(function(y){ st.push(y); }); } return false; };
+  var edges=[]; keys.forEach(function(k){ var s=seqs[k]; for(var i=1;i<s.length;i++) if(s[i-1]!==s[i]) edges.push([s[i-1],s[i]]); });
+  edges.forEach(function(e){ if(cmp(e[0],e[1])<0) after[e[0]][e[1]]=1; });
+  edges.filter(function(e){ return cmp(e[0],e[1])>0; }).sort(function(x,y){ return (rank(x[0])-rank(x[1]))-(rank(y[0])-rank(y[1])); }).forEach(function(e){ if(!reach(e[1],e[0])) after[e[0]][e[1]]=1; });
+  var indeg={}; nodes.forEach(function(x){ indeg[x]=0; }); nodes.forEach(function(a){ Object.keys(after[a]).forEach(function(b){ indeg[b]++; }); });
+  var out=[], left=nodes.slice();
+  while(left.length){ var c=left.filter(function(x){ return indeg[x]===0; }).sort(cmp); var x=c[0]; out.push(x); left.splice(left.indexOf(x),1); Object.keys(after[x]).forEach(function(b){ indeg[b]--; }); }
+  return out;
 }
 /* участок и цвет каждой операции — для ленты над колонками */
 function opGroups(ops){ var g={}; (ops||[]).forEach(function(o){ if(o.group&&!g[o.op]) g[o.op]={ group:o.group, color:o.color||'' }; }); return g; }
