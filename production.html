@@ -621,10 +621,9 @@ function renderOps(id,r){
   // что было раскрыто — остаётся раскрытым после перерисовки (правка «лежит», пересборка)
   var open={}; Array.prototype.forEach.call(box.parentNode.querySelectorAll('.pcard.open,.gcard.open,details[open]'), function(c){ open[c.id]=1; });
   var flags=(r.checks&&r.checks.opFlags)||{};
-  // на переделке (вернули с покраски): пул по детали заказа; в карточке изделия — доля по его потребности, как в расчёте «лежит»
-  var RW=RWPOOL[id]={pool:{},needBy:{}};
-  (((r.kpi||{}).rework||{}).details||[]).forEach(function(x){ RW.pool[x.detail.toLowerCase()]={sand:x.sand||0,paint:x.paint||0}; });
-  (r.products||[]).forEach(function(p){ var seen={}; (p.ops||[]).forEach(function(o){ if(o.level==='изделие'||seen[o.detail]) return; seen[o.detail]=1; var k=o.detail.toLowerCase(); RW.needBy[k]=(RW.needBy[k]||0)+(Number(o.need)||0); }); });
+  // на переделке (вернули с покраски): у варианта — целыми штуками на последней отделочной операции (o.rework), в сводной — сумма по цветам
+  var RW=RWPOOL[id]={};
+  (r.products||[]).forEach(function(p){ (p.ops||[]).forEach(function(o){ if(!o.rework) return; var k=(p.eq+'|'+p.model+'|'+o.detail).toLowerCase(); var x=RW[k]=RW[k]||{sand:0,paint:0}; x.sand+=o.rework.sand||0; x.paint+=o.rework.paint||0; }); });
   var prods=(r.products||[]).map(function(p,pi){ return prodMatrixCard(id,p,pi,flags); }).join('');
   var nP=(r.products||[]).length, issues=((r.checks||{}).issues||[]).length;
   var chk=issues?'<details class="chkd"'+(open['chk_'+id]?' open':'')+' id="chk_'+id+'"><summary>⚠ проверки логики: '+plural(issues,'замечание','замечания','замечаний')+' — показать</summary>'+opsChecksHtml(id,r.checks||{})+'</details>':'';
@@ -640,11 +639,11 @@ function renderOps(id,r){
   Array.prototype.forEach.call(box.parentNode.querySelectorAll('.pcard,.gcard'), function(c){ if(open[c.id]) c.classList.add('open'); });
 }
 var RWPOOL={};
-function rwOf(id,detail){ var k=String(detail||'').toLowerCase(), x=(RWPOOL[id]||{pool:{}}).pool[k]; return x?{sand:x.sand,paint:x.paint,total:x.sand+x.paint}:null; }
-function rwCell(id,detail,need,whole){
-  var x=rwOf(id,detail); if(!x||x.total<=0.001) return '<td class="num"><span class="flf z">·</span></td>';
-  var nb=(RWPOOL[id].needBy[String(detail).toLowerCase()]||0), v=whole||nb<=0?x.total:x.total*need/nb;
-  return '<td class="lie" title="'+esc(detail+': вернули с покраски и ещё не переделали — шлифовка '+r1(x.sand)+', малярка '+r1(x.paint)+(whole?'':'; доля этого изделия по потребности'))+'"><span class="flf">'+r1(v)+'</span></td>';
+/* две клетки «↺ шлифовка / ↺ малярка»: keys — варианты (eq|model|detail) строки; в сводной — все цвета детали */
+function rwCells(id,detail,keys){
+  var RW=RWPOOL[id]||{}, sand=0, paint=0; keys.forEach(function(k){ var x=RW[String(k).toLowerCase()]; if(x){ sand+=x.sand; paint+=x.paint; } });
+  var one=function(v,what){ return v>0?'<td class="lie" title="'+esc(detail+': вернули с покраски на '+what+' и ещё не переделали — на операциях не лежат: '+r1(v))+'"><span class="flf">'+r1(v)+'</span></td>':'<td class="num"><span class="flf z">·</span></td>'; };
+  return one(sand,'шлифовку')+one(paint,'малярку');
 }
 /* ── порядок колонок-операций: слить цепочки деталей (операции изделия — в конце) ── */
 function opColumns(ops){
@@ -664,7 +663,7 @@ function mxHead(cols,fin){
   return '<thead><tr><th class="dn">Деталь</th><th class="num" title="сколько нужно по заказу">Нужно</th>'
     +cols.map(function(c){ return '<th title="'+esc(c)+'">'+esc(c)+'</th>'; }).join('')
     +(fin?'<th class="fin" title="прошли все операции детали и лежат (у изделия — упакованы)">✓ прошли всё</th>':'')
-    +(fin!==null?'<th title="вернули с покраски на переделку и ещё не переделали: на операциях не лежат">↺ переделка</th>':'')+'</tr></thead>';
+    +(fin!==null?'<th title="вернули с покраски на шлифовку и ещё не переделали: на операциях не лежат">↺ шлифовка</th><th title="вернули на малярку (перекрасить) и ещё не переделали: на операциях не лежат">↺ малярка</th>':'')+'</tr></thead>';
 }
 /* строки матрицы: деталь → по операции её строка расчёта; prev — предыдущая операция в цепочке детали */
 function mxRows(ops){
@@ -708,11 +707,11 @@ function prodMatrixCard(id,p,pi,flags){
   var pct=Math.min(100,p.pct||0);
   var t1='<div class="mxcap">Сделано / нужно<span class="th">зелёная — операция закрыта, тёмная — такой операции у детали нет</span></div>'
     +'<div class="tbl-wrap flwrap"><table class="tbl floor mx">'+mxHead(cols,false)+'<tbody>'
-    +rows.map(function(row){ return '<tr>'+mxName(row)+'<td class="num">'+r1(row.need)+'</td>'+cols.map(function(c){ return mxDoneCell(id,row.cells[c],flags); }).join('')+(row.prod?'<td class="no"></td>':rwCell(id,row.name,row.need,false))+'</tr>'; }).join('')
+    +rows.map(function(row){ return '<tr>'+mxName(row)+'<td class="num">'+r1(row.need)+'</td>'+cols.map(function(c){ return mxDoneCell(id,row.cells[c],flags); }).join('')+(row.prod?'<td class="no"></td><td class="no"></td>':rwCells(id,row.name,[p.eq+'|'+p.model+'|'+row.name]))+'</tr>'; }).join('')
     +'</tbody></table></div>';
   var t2='<div class="mxcap">Ждут операции — готовы к работе<span class="th">прошли все предыдущие операции, эту ещё нет; «прошли всё» — лежат готовыми</span></div>'
     +'<div class="tbl-wrap flwrap"><table class="tbl floor mx">'+mxHead(cols,true)+'<tbody>'
-    +rows.map(function(row){ return '<tr>'+mxName(row)+'<td class="num">'+r1(row.need)+'</td>'+cols.map(function(c){ return mxWaitCell(id,row,c); }).join('')+mxFinCell(id,row)+(row.prod?'<td class="no"></td>':rwCell(id,row.name,row.need,false))+'</tr>'; }).join('')
+    +rows.map(function(row){ return '<tr>'+mxName(row)+'<td class="num">'+r1(row.need)+'</td>'+cols.map(function(c){ return mxWaitCell(id,row,c); }).join('')+mxFinCell(id,row)+(row.prod?'<td class="no"></td><td class="no"></td>':rwCells(id,row.name,[p.eq+'|'+p.model+'|'+row.name]))+'</tr>'; }).join('')
     +'</tbody></table></div>';
   return '<div class="pcard" id="pc_'+id+'_'+pi+'">'
     +'<div class="phead" onclick="toggleProd(\''+id+'\','+pi+')">'
@@ -743,9 +742,9 @@ function summaryMatrixHtml(id,r){
     var b=blocks[key], cols=opColumns(b.ops), rows=[], idx={};
     b.ops.forEach(function(o){
       var dk=(o.level==='изделие'?'§':'')+o.detail.toLowerCase();
-      if(idx[dk]===undefined){ idx[dk]=rows.length; rows.push({ name:o.detail, prod:o.level==='изделие', need:0, cells:{}, models:{} }); }
+      if(idx[dk]===undefined){ idx[dk]=rows.length; rows.push({ name:o.detail, prod:o.level==='изделие', need:0, cells:{}, models:{}, keys:{} }); }
       var row=rows[idx[dk]], c=row.cells[o.op]=row.cells[o.op]||{ need:0, ready:0, fact:0, left:0, ids:[] };
-      row.models[o.model]=1;
+      row.models[o.model]=1; row.keys[o.eq+'|'+o.model+'|'+o.detail]=1;
       // у каждого цвета своя потребность и своя доля работы (общую операцию расчёт уже разложил по цветам) — складываем всегда
       c.need+=Number(o.need)||0; c.ready+=Number(o.readyEff!=null?o.readyEff:o.ready)||0; c.fact+=Number(o.fact)||0; c.left+=Number(o.left)||0; c.ids.push(o.id);
     });
@@ -758,7 +757,7 @@ function summaryMatrixHtml(id,r){
         var x=row.cells[c]; if(!x) return '<td class="no"></td>';
         var v=x.fact, tip=row.name+' · '+c+'\nлежат после операции: '+r1(v)+'\nсделано '+r1(x.ready)+' из '+r1(x.need)+' · осталось '+r1(x.left)+'\nнажми — поправить «лежит сейчас»';
         return '<td class="'+(v>0?'lie':(x.left<=0.001?'cdone':''))+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+x.ids.join(',')+'\')"><span class="flf'+(v>0?'':' z')+'">'+(v>0?r1(v):'·')+'</span><span class="sub">'+r1(x.ready)+'/'+r1(x.need)+'</span></td>';
-      }).join('')+(row.prod?'<td class="no"></td>':rwCell(id,row.name,row.need,true))+'</tr>';
+      }).join('')+(row.prod?'<td class="no"></td><td class="no"></td>':rwCells(id,row.name,Object.keys(row.keys)))+'</tr>';
     }).join('');
     var cid='sc_'+id+'_'+bi, isOpen=open[cid]===undefined?true:open[cid];
     var lying=0; rows.forEach(function(row){ cols.forEach(function(c){ var x=row.cells[c]; if(x) lying+=x.fact; }); });
@@ -767,7 +766,7 @@ function summaryMatrixHtml(id,r){
       +'<span class="pname">'+esc(b.title)+' <span class="muted">· '+plural(rows.length,'деталь','детали','деталей')+' · лежит '+r1(lying)+'</span></span></div>'
       +'<div class="pbody"><div class="tbl-wrap flwrap"><table class="tbl floor mx">'+mxHead(cols,false)+'<tbody>'+body+'</tbody></table></div></div></div>';
   }).join('')
-  +'<div class="muted small">крупно — лежит после операции (как в ведомости переучёта), мелко — сделано / нужно; деталь одной строкой — сумма по всем цветам изделия; «↺ переделка» — вернули с покраски, на операциях не лежат</div>';
+  +'<div class="muted small">крупно — лежит после операции (как в ведомости переучёта), мелко — сделано / нужно; деталь одной строкой — сумма по всем цветам изделия; «↺ шлифовка / малярка» — вернули с покраски на переделку, на операциях не лежат</div>';
 }
 function toggleProd(id,pi){ var c=$('pc_'+id+'_'+pi); if(c) c.classList.toggle('open'); }
 function toggleGroup(id,gi){ var c=$('gc_'+id+'_'+gi); if(c) c.classList.toggle('open'); }
