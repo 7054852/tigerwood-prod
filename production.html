@@ -115,12 +115,17 @@
   table.floor.mx tbody tr:hover td.lie, table.floor.mx td.lie.colh, table.floor.mx tbody tr:hover td.cdone, table.floor.mx td.cdone.colh{ background-color:var(--green-bg); box-shadow:inset 0 0 0 1px var(--green); }
   table.floor.mx th.gs, table.floor.mx td.gs{ border-left:2px solid var(--line2); }
   table.floor.mx td{ position:relative; }
-  table.floor.mx td .pb{ position:absolute; left:4px; right:4px; bottom:4px; height:3px; background:var(--grid); border-radius:2px; overflow:hidden; }
-  table.floor.mx td .pb i{ display:block; height:100%; background:var(--green); opacity:.7; }
+  table.floor.mx td .pb{ position:absolute; left:5px; right:5px; bottom:4px; height:3px; background:var(--line2); border-radius:2px; overflow:hidden; display:flex; }
+  table.floor.mx td .pb i{ display:block; height:100%; flex:none; }
+  table.floor.mx td .pb i.a{ background:var(--green); }
+  table.floor.mx td .pb i.q{ background:repeating-linear-gradient(90deg,var(--green) 0 2px,transparent 2px 4px); opacity:.8; }
+  /* разделение клеток: вертикальные линии на тон темнее, чтобы зебра их не съедала */
+  table.floor.mx td, table.floor.mx thead tr:last-child th{ border-right-color:var(--line2); }
   .mxlg{ display:inline-flex; gap:var(--s-3); flex-wrap:wrap; font:var(--t-tiny); color:var(--muted); text-transform:none; letter-spacing:0; }
   .mxlg i{ display:inline-block; width:10px; height:10px; border-radius:2px; vertical-align:-1px; margin-right:4px; border:1px solid var(--line); box-sizing:border-box; }
   .mxlg i.c1{ background:var(--green-bg); border-color:var(--green); } .mxlg i.c2{ background:repeating-linear-gradient(135deg,var(--grey-bg),var(--grey-bg) 2px,var(--line2) 2px,var(--line2) 4px); }
-  .mxlg i.c3{ background:linear-gradient(to top,var(--green) 2px,transparent 2px); } .mxlg i.c4{ background:var(--card2); }
+  .mxlg i.c3{ background:linear-gradient(to top,var(--green) 3px,transparent 3px); } .mxlg i.c4{ background:var(--card2); }
+  .mxlg i.c5{ background:linear-gradient(to top,transparent 0,transparent 0) , repeating-linear-gradient(90deg,var(--green) 0 2px,transparent 2px 4px) bottom/100% 3px no-repeat; }
   .mxlg b{ color:var(--amber); font-weight:600; }
   table.floor.mx thead tr.grp th{ font:var(--t-tiny); line-height:14px; height:20px; padding:0 4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:0; text-align:left; text-transform:none; letter-spacing:0; border-top:3px solid var(--gc,var(--line2)); color:var(--muted); }
   table.floor.mx thead tr.grp th.dn{ border-top-color:var(--line); }
@@ -792,9 +797,14 @@ function mxDoneCell(id,o,flags,rowNeed){
   var cls=left<=0.001?'cdone':(ready>need+0.001?'over':''), fl=flags&&flags[o.id]?' <span class="chk '+flags[o.id]+'" title="есть замечание">⚠</span>':'';
   var tip=o.detail+' · '+o.op+'\nсделано '+r1(ready)+' из '+r1(need)+(o.stock?(' (нач. остатки '+r1(o.stock)+')'):'')+'\nосталось '+r1(left)
     +(pend?('\nподано, не принято: '+r1(pend)):'')+(Number(o.over)>0?('\nперевыполнено на '+r1(o.over)):'')+'\nнажми — поправить «лежит сейчас» на этой операции';
-  var pb=(!cls&&need>0&&ready>0)?'<span class="pb"><i style="width:'+Math.min(100,Math.round(ready/need*100))+'%"></i></span>':'';
+  // полоска: сплошная — принято, пунктир — подано (ждёт проверки/ОТК); у незакрытой операции хвост дорожки виден всегда,
+  // даже при 99 % — чтобы «почти всё» не путалось с «всё» (закрытая клетка зелёная, без полоски)
+  var pb='';
+  if(!cls&&need>0&&(ready>0||pend>0)){ var CAP=90, a=Math.min(CAP,ready/need*100), q=Math.min(CAP-a,pend/need*100);
+    pb='<span class="pb"><i class="a" style="width:'+a.toFixed(1)+'%"></i>'+(q>0?'<i class="q" style="width:'+q.toFixed(1)+'%"></i>':'')+'</span>'; }
+  if(rowNeed!=null&&Math.abs(need-rowNeed)>0.001) tip='нужно на этой операции: '+r1(need)+'\n'+tip;
   return '<td class="'+cls+'" data-op="'+esc(o.id)+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+esc(o.id)+'\')"><span class="flf'+(ready>0?'':' z')+'">'+(ready>0?r1(ready):'·')+'</span>'+fl+pb
-    +((rowNeed!=null&&Math.abs(need-rowNeed)>0.001)||pend?'<span class="sub">'+[rowNeed!=null&&Math.abs(need-rowNeed)>0.001?'/'+r1(need):'', pend?'⏳'+r1(pend):''].filter(Boolean).join(' ')+'</span>':'')+'</td>';
+    +(ready<=0&&pend>0?'<span class="sub">⏳</span>':'')+'</td>';
 }
 /* клетка «ждут операции»: прошли все предыдущие, эту ещё нет (avail). Первая операция цепочки — ещё не начато (серым). */
 function mxWaitCell(id,row,op){
@@ -814,7 +824,7 @@ function prodMatrixCard(id,p,pi,flags){
   rows.forEach(function(row){ row.done=row.seq.every(function(op){ return (Number(row.cells[op].left)||0)<=0.001; }); });
   var pct=Math.min(100,p.pct||0);
   var grp=opGroups(ops);
-  var t1='<div class="mx-done"><div class="mxcap">Сделано<span class="mxlg" title="цифра — сколько прошло операцию; «/n» — нужно, если отличается от строки"><span><i class="c1"></i>закрыта</span><span><i class="c3"></i>полоска — доля сделанного</span><span><i class="c2"></i>нет у детали</span><span>⏳ подано, не принято</span><span><b>жёлтая</b> — сверх плана</span></span></div>'
+  var t1='<div class="mx-done"><div class="mxcap">Сделано<span class="mxlg" title="цифра — сколько прошло операцию; «/n» — нужно, если отличается от строки"><span><i class="c1"></i>закрыта</span><span><i class="c3"></i>принято</span><span><i class="c5"></i>подано, ждёт проверки</span><span><i class="c2"></i>нет у детали</span><span><b>жёлтая</b> — сверх плана</span></span></div>'
     +'<div class="tbl-wrap flwrap"><table class="tbl floor mx">'+mxHead(cols,false,grp)+'<tbody>'
     +rows.map(function(row){ return '<tr>'+mxName(row)+'<td class="num">'+r1(row.need)+'</td>'+cols.map(function(c){ return mxDoneCell(id,row.cells[c],flags,row.need); }).join('')+(row.prod?'<td class="no"></td><td class="no"></td>':rwCells(id,row.name,[p.eq+'|'+p.model+'|'+row.name]))+'</tr>'; }).join('')
     +'</tbody></table></div></div>';
