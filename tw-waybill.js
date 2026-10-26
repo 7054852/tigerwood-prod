@@ -21,12 +21,16 @@ function twWaybill(dealKey, kind, onDone){
     // строки накладной (07.10.2026): комплект — одной строкой (места/масса комплекса), остальное — своими строками; 0 — подсветка.
     // Частичная отгрузка (16.10.2026): «Отгружаем» — сколько везём этой накладной (умолчание: остаток, не больше упакованного по заказу);
     // места/масса по умолчанию пересчитываются пропорционально, пока их не ввели руками
+    // накладная по двум счетам (27.10.2026): строки других открытых сделок клиента с остатком — ниже своих, «отгружаем» по умолчанию 0
+    (p.others||[]).forEach(function(o){ (o.items||[]).forEach(function(it){ it.deal=o.dealId; it.dealNum=o.num; items.push(it); }); });
+    TWWB.items=items;
     var tn0=!!p.tn, partial=Array.isArray(p.prev), anyPrev=partial&&(items.some(function(it){ return Number(it.shipped)>0; })||(p.prev||[]).length>0);   // partial — сервер умеет частичную отгрузку
     items.forEach(function(it){ it.shipped0=Number(it.shipped)||0; it.places0=Number(it.places)||0; it.mass0=Number(it.mass)||0; it.qty0=Number(it.qty)||0; });
     var rows=items.map(function(it,i){
       var z=function(v){ return Number(v)>0?'':' style="border-color:var(--red);background:var(--red-bg)"'; };
       var pk=(it.packed!=null)?'<div class="sm muted">упаковано по заказу: '+esc(it.packed)+'</div>':'';
-      return '<tr id="wbr'+i+'"><td data-l="Наименование">'+esc(it.name)+(it.set?' <span class="pill info">комплект</span>':'')+(it.model&&it.model!==it.name?'<div class="sm">'+esc(it.model)+'</div>':'')+pk+'</td>'
+      var head=(it.deal&&(i===0||items[i-1].deal!==it.deal))?'<tr><td colspan="9" class="muted" style="padding-top:var(--s-3)">Также везём по <b>'+esc(it.dealNum||'')+'</b> того же клиента — впишите, сколько из остатка</td></tr>':'';
+      return head+'<tr id="wbr'+i+'"'+(it.deal?' style="background:var(--surface-2,transparent)"':'')+'><td data-l="Наименование">'+esc(it.name)+(it.set?' <span class="pill info">комплект</span>':'')+(it.model&&it.model!==it.name?'<div class="sm">'+esc(it.model)+'</div>':'')+pk+'</td>'
         +'<td data-l="Заказано" class="num">'+esc(it.qty)+' '+esc(it.unit||'')+'</td>'
         +(anyPrev?'<td data-l="Уже в накладных" class="num" id="wbs'+i+'">'+esc(it.shipped0)+'</td>':'')
         +(partial?'<td data-l="Отгружаем"><input type="number" min="0" max="'+esc(it.qty)+'" step="1" id="wbq'+i+'" value="'+esc(it.ship)+'" oninput="twWbShip('+i+',this.value)" autocomplete="off" style="width:5.5em"></td>':'')
@@ -94,7 +98,7 @@ function twWaybill(dealKey, kind, onDone){
       if(addr!==undefined) payload.address=addr;
       // «Отгружаем» — у всех строк; места/масса: ТТН — из окна (под отгружаемое), ТН — как были (в ТН не печатаются, строку сделки не трогаем)
       if(TWWB.__partial){
-        payload.items=(TWWB.items||[]).map(function(it){ return {id:it.id||'', kids:it.kids||[], ship:Number(it.ship)||0, places:tn?it.places0:(Number(it.places)||0), mass:tn?it.mass0:(Number(it.mass)||0)}; });
+        payload.items=(TWWB.items||[]).map(function(it){ return {id:it.id||'', deal:it.deal||'', kids:it.kids||[], ship:Number(it.ship)||0, places:tn?it.places0:(Number(it.places)||0), mass:tn?it.mass0:(Number(it.mass)||0)}; });
         payload.newBlank=!!TWWB.__newBlank;
         if(!(TWWB.items||[]).some(function(it){ return Number(it.ship)>0; })){ setm('wbm','err','Укажите, что отгружаем: количество хотя бы в одной строке'); return false; }
       } else if(!tn) payload.items=(TWWB.items||[]).map(function(it){ return {id:it.id||'', kids:it.kids||[], places:Number(it.places)||0, mass:Number(it.mass)||0}; });
@@ -230,13 +234,13 @@ function twWbShip(i,v){ var it=TWWB.items[i]; it.ship=Math.max(0,Number(v)||0);
 /* newBlank=1 — ещё одна накладная (остаток после всех выписанных); 0 — переформировать единственную (её количество снова свободно) */
 function twWbMode(nb, init){ TWWB.__newBlank=!!nb; var prev=(TWWB.prev||[])[0], ps={}; if(prev&&!nb) (prev.ship||[]).forEach(function(l){ ps[l.id]=Number(l.qty)||0; });
   (TWWB.items||[]).forEach(function(it,i){ var base=nb?it.shipped0:(prev?(prev.ship?Math.max(0,it.shipped0-(ps[it.id]||0)):Math.max(0,it.shipped0-it.qty0)):it.shipped0);
-    it.shipped=base; var left=Math.max(0,it.qty0-base); it.ship=(it.packed!=null)?Math.max(0,Math.min(left,Number(it.packed)-base)):left; it.left=left;
+    it.shipped=base; var left=Math.max(0,it.qty0-base); it.ship=it.deal?0:((it.packed!=null)?Math.max(0,Math.min(left,Number(it.packed)-base)):left); it.left=left;
     var q=el('wbq'+i), sh=el('wbs'+i); if(q) q.value=it.ship; if(sh) sh.textContent=base;
     if(!it.pm){ it.places=(it.qty0>0&&it.ship!==it.qty0)?Math.round(it.places0/it.qty0*it.ship):it.places0; it.mass=(it.qty0>0&&it.ship!==it.qty0)?Math.round(it.mass0/it.qty0*it.ship*100)/100:it.mass0;
       var a=el('wbp'+i), b=el('wbm'+i); if(a) a.value=it.places; if(b) b.value=it.mass; } });
   twWbSums(); }
 function twWbCheck(){ var c=TWWB&&TWWB.contractSum, box=el('wbcc'); if(!box) return; if(!c){ box.style.display='none'; return; }
-  var cur=0; (TWWB.items||[]).forEach(function(it){ cur+=(Number(it.ship)||0)*(Number(it.price)||0); }); cur=Math.round(cur*100)/100;
+  var cur=0; (TWWB.items||[]).forEach(function(it){ if(it.deal) return; cur+=(Number(it.ship)||0)*(Number(it.price)||0); }); cur=Math.round(cur*100)/100;
   var issued=TWWB.__newBlank?c.issued:Math.max(0,c.issued-((TWWB.prev||[])[0]?(TWWB.prev[0].sum||0):0)), diff=Math.round((issued+cur-c.amount)*100)/100;
   if(Math.abs(diff)<0.009 || !(cur>0)){ box.style.display='none'; return; }   // нечего отгружать — проверять нечего
   box.style.display=''; box.firstChild.innerHTML='⚠ Договор № '+esc(c.number)+' на '+twWbMoney(c.amount)+', а накладные в сумме дадут '+twWbMoney(issued+cur)
