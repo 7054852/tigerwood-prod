@@ -98,8 +98,9 @@
   .mxsw span{ font:var(--t-label); text-transform:none; letter-spacing:0; padding:2px var(--s-2); border-radius:var(--r-pill); cursor:pointer; color:var(--muted); }
   .mxsw span.on{ background:var(--card); color:var(--fg); box-shadow:var(--shadow-card); }
   .mxv-done .mx-wait, .mxv-wait .mx-done{ display:none; }
-  /* строка — ровно одна линия текста (владелец 28.10.2026: «по высоте поуже намного»): ничего не переносим, колонки шире */
-  table.floor.mx td{ cursor:pointer; padding:0 4px; height:20px; line-height:18px; white-space:nowrap; }
+  /* Строки одной высоты (32 px) независимо от содержимого, главная цифра у всех на одной линии сверху,
+     вторичное (подано ⏳, «/нужно») — мельче и бледнее строкой под ней. Ритм 4 px, ничего не переносим. */
+  table.floor.mx td{ cursor:pointer; padding:4px 6px 0; height:32px; line-height:16px; white-space:nowrap; vertical-align:top; box-sizing:border-box; }
   .pbody table.floor.mx{ table-layout:auto; width:auto; min-width:0; }   /* не растягиваем: лишняя ширина уходила в колонку «Деталь» */
   table.floor.mx thead th{ overflow-wrap:normal; word-break:normal; overflow:visible; text-overflow:clip; min-width:0; max-width:none; font:var(--t-tiny); line-height:1.2; padding:2px 3px; }
   table.floor.mx thead th.op{ vertical-align:bottom; width:36px; min-width:36px; max-width:none; padding:4px 0 3px; text-transform:none; letter-spacing:0; height:auto; }
@@ -110,19 +111,20 @@
   table.floor.mx thead tr.grp th.dn{ border-top-color:var(--line); }
   table.floor.mx thead tr.grp + tr th{ top:calc(var(--stk,0px) + 21px); }
   table.floor.mx thead th{ top:var(--stk,0px); }
-  table.floor.mx .flf{ white-space:nowrap; font:var(--t-small); line-height:18px; font-weight:600; }
+  table.floor.mx .flf{ white-space:nowrap; font:var(--t-small); line-height:16px; font-weight:600; display:inline-block; vertical-align:top; }
   table.floor.mx td.raw{ color:var(--muted); background:var(--card2); }
   table.floor.mx td.lie{ background:var(--green-bg); }
   table.floor.mx td.lie .flf{ color:var(--green); }
-  table.floor.mx td .sub{ display:inline; font:var(--t-tiny); line-height:18px; color:var(--muted); margin-left:3px; white-space:nowrap; }
+  table.floor.mx td .sub{ display:block; font:var(--t-tiny); line-height:11px; color:var(--muted); white-space:nowrap; margin:1px 0 0; }   /* margin целиком: у темы .sub имеет отступ снизу 24 px */
+  table.floor.mx td .chk{ vertical-align:top; line-height:16px; }
   table.floor.mx td.over .flf{ color:var(--amber); }
-  table.floor.mx td.num{ font:var(--t-small); font-variant-numeric:tabular-nums; color:var(--muted); }
-  table.floor.mx .dn{ max-width:240px; min-width:130px; padding:0 6px; font:var(--t-small); line-height:18px; }
+  table.floor.mx td.num{ font:var(--t-small); line-height:16px; font-variant-numeric:tabular-nums; color:var(--muted); }
+  table.floor.mx .dn{ max-width:240px; min-width:130px; padding:4px 8px 0; font:var(--t-small); line-height:16px; vertical-align:top; }
   table.floor.mx .dnx{ display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }   /* одна строка, хвост в подсказке */
   table.floor.mx .dn .pill.sh{ font:var(--t-tiny); line-height:14px; height:auto; padding:0 5px; margin-left:4px; vertical-align:top; }
   @media (max-width:640px){
-    table.floor.mx .dn{ max-width:124px; min-width:100px; padding:0 4px; line-height:15px; }
-    table.floor.mx .dnx{ white-space:normal; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }   /* на телефоне колонка узкая — две строки */
+    table.floor.mx .dn{ max-width:124px; min-width:100px; padding:2px 4px 0; line-height:13px; }
+    table.floor.mx .dnx{ white-space:normal; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }   /* на телефоне колонка узкая — две строки в те же 30 px */
     table.floor.mx thead th.op span{ max-height:88px; }
     .mxcap .th{ display:none; }   /* длинная подсказка на телефоне съедает экран — смысл клеток есть во всплывающих подсказках */
   }
@@ -762,8 +764,7 @@ function mxDoneCell(id,o,flags,rowNeed){
   var tip=o.detail+' · '+o.op+'\nсделано '+r1(ready)+' из '+r1(need)+(o.stock?(' (нач. остатки '+r1(o.stock)+')'):'')+'\nосталось '+r1(left)
     +(pend?('\nподано, не принято: '+r1(pend)):'')+(Number(o.over)>0?('\nперевыполнено на '+r1(o.over)):'')+'\nнажми — поправить «лежит сейчас» на этой операции';
   return '<td class="'+cls+'" data-op="'+esc(o.id)+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+esc(o.id)+'\')"><span class="flf'+(ready>0?'':' z')+'">'+(ready>0?r1(ready):'·')+'</span>'+fl
-    +(rowNeed!=null&&Math.abs(need-rowNeed)>0.001?'<span class="sub">/'+r1(need)+'</span>':'')
-    +(pend?'<span class="sub">⏳ '+r1(pend)+'</span>':'')+'</td>';
+    +((rowNeed!=null&&Math.abs(need-rowNeed)>0.001)||pend?'<span class="sub">'+[rowNeed!=null&&Math.abs(need-rowNeed)>0.001?'/'+r1(need):'', pend?'⏳'+r1(pend):''].filter(Boolean).join(' ')+'</span>':'')+'</td>';
 }
 /* клетка «ждут операции»: прошли все предыдущие, эту ещё нет (avail). Первая операция цепочки — ещё не начато (серым). */
 function mxWaitCell(id,row,op){
