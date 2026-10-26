@@ -653,7 +653,7 @@ function renderDetail(){
       +'<span class="grow"></span>'
       +'<span class="pill '+costCol+'" title="'+esc('состав изделий подтверждён в каталоге: '+costSum+'\nтруд по расценкам: '+money(b.labor||0)+' р')+'">'+(costCol==='ok'?'✓ ':(costCol==='warn'?'⏳ ':'✕ '))+'собрано '+costSum+'</span>'
       +prodPill
-      +(b.overflow?'<span class="pill bad" title="есть перевыполненные операции">⚠ перевыполнено</span>':'')
+      +(b.overflow?'<span class="pill bad" id="ovp_'+b.id+'" title="есть операции, сделанные сверх плана — нажми, чтобы перейти" onclick="jumpOver(\''+b.id+'\')" style="cursor:pointer">⚠ перевыполнено</span>':'')
     +'</div>'
     // действия: кнопки компактные, одной строкой (на телефоне переносятся); удаление — последним
     +'<div class="ohrow acts">'
@@ -758,6 +758,15 @@ function renderOps(id,r){
   ptabCount(id,'det',nP?String(nP):''); ptabCount(id,'site',nG?String(nG):'');
   Array.prototype.forEach.call(box.parentNode.querySelectorAll('.pcard,.gcard'), function(c){ if(open[c.id]) c.classList.add('open'); });
   applyMxView(); fitWraps();
+  OVER[id]=[]; (r.products||[]).forEach(function(p){ (p.ops||[]).forEach(function(o){ if(Number(o.over)>0) OVER[id].push({ id:o.id, text:p.model+' · '+o.detail+' · '+o.op+': сделано '+r1(o.ready)+' из '+r1(o.need)+' (+'+r1(o.over)+')' }); }); });
+  var ovp=$('ovp_'+id); if(ovp){ ovp.title=OVER[id].length?'сделано сверх плана — нажми, чтобы перейти'+(OVER[id].length>1?' (ещё раз — к следующей)':'')+':\n'+OVER[id].map(function(x){ return x.text; }).join('\n'):'перевыполнения нет'; }
+}
+/* где перевыполнение: клик по значку ведёт к клетке, повторный — к следующей */
+var OVER={}, OVERI={};
+function jumpOver(id){
+  var L=OVER[id]||[]; if(!L.length){ showPTab(id,'det'); return; }
+  var i=OVERI[id]=((OVERI[id]===undefined?-1:OVERI[id])+1)%L.length;
+  setMxView('done'); jumpToOp(id,L[i].id);
 }
 var RWPOOL={};
 /* две клетки «↺ шлифовка / ↺ малярка»: keys — варианты (eq|model|detail) строки; в сводной — все цвета детали */
@@ -948,7 +957,7 @@ function jumpToOp(id,opId){
   var tr=document.querySelector('[data-op="'+String(opId).replace(/"/g,'\\"')+'"]');
   if(!tr){ showOpIssues(id,opId); return; }
   var card=tr.closest('.pcard'); if(card&&!card.classList.contains('open')) card.classList.add('open');
-  var y=tr.getBoundingClientRect().top+window.pageYOffset-120; window.scrollTo(0,Math.max(0,y));
+  var y=tr.getBoundingClientRect().top+window.pageYOffset-250; window.scrollTo(0,Math.max(0,y));   /* ниже липких вкладок и шапки таблицы */
   tr.classList.add('hl'); setTimeout(function(){ tr.classList.remove('hl'); },2400);
 }
 // ПЕРЕНОС ВЫРАБОТКИ В ДРУГОЙ ЗАКАЗ.
@@ -1517,7 +1526,7 @@ function opsKpiHtml(k){
     +((k.outRub||k.preRub)?'<span class="muted" style="font-weight:400" title="'+OUT_T+'">у подрядчика '+money(k.outRub||0)+' р · привезено предварительно '+money(k.preRub||0)+' р</span>':'')
     +(k.ourRub!=null?'<span title="'+OUR_T+'">нам осталось <span style="color:var(--accent-text)">'+money(k.ourRub||0)+' р ('+(k.ourPct||0)+'%)</span></span>':'')
     +reworkKpiHtml(k.rework)
-    +(k.overflow?'<span class="pill bad" title="лишние операции сверх плана: в штуках и в деньгах (расценка × лишние штуки)">⚠ перевыполнение +'+Math.round(k.over)+' шт · +'+money(k.overRub||0)+' р</span>':'')+'</div>';
+    +(k.overflow?'<span class="pill bad" title="лишние операции сверх плана: в штуках и в деньгах (расценка × лишние штуки) — нажми, чтобы перейти" style="cursor:pointer" onclick="jumpOver(CUR)">⚠ перевыполнение +'+Math.round(k.over)+' шт · +'+money(k.overRub||0)+' р</span>':'')+'</div>';
 }
 // лежит на переделке после покраски: вернули с ОТК на шлифовку (материал) / маляру (его ошибка), ещё не переделали
 function reworkKpiHtml(r){
