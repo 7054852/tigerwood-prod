@@ -61,24 +61,69 @@
   /* ── лоток блока: утопленный фон отделяет группы друг от друга ── */
   .tray{ margin-top:var(--s-4); }
   /* ── вкладки карточки заказа (владелец 27.10.2026): длинная лента блоков → пять вкладок ── */
-  .ptabs{ display:flex; gap:var(--s-1); border-bottom:1px solid var(--line); margin:var(--s-3) 0 var(--s-3); overflow-x:auto; }
-  .ptab{ padding:var(--s-2) var(--s-3); cursor:pointer; color:var(--muted); border-bottom:2px solid transparent; margin-bottom:-1px; white-space:nowrap; font:var(--t-body); }
+  /* вкладки липнут к верху, пока листаешь карточку: с любого места видно, где ты, и можно перейти (владелец 28.10.2026) */
+  .ptabw{ position:sticky; top:0; z-index:20; background:var(--card); margin:var(--s-3) calc(-1*var(--s-4)) var(--s-3); padding:var(--s-2) var(--s-4); border-bottom:1px solid var(--line); }
+  .ptabs{ display:inline-flex; gap:2px; padding:3px; background:var(--card2); border:1px solid var(--line); border-radius:var(--r-ctl); max-width:100%; overflow-x:auto; scrollbar-width:none; }
+  .ptabs::-webkit-scrollbar{ display:none; }
+  .ptab{ padding:var(--s-1) var(--s-3); cursor:pointer; color:var(--muted); border-radius:calc(var(--r-ctl) - 3px); white-space:nowrap; font:var(--t-strong); border:1px solid transparent; display:inline-flex; align-items:center; gap:var(--s-1); }
   .ptab:hover{ color:var(--fg); }
-  .ptab.on{ color:var(--fg); border-bottom-color:var(--accent); font-weight:600; }
-  .ptab .cnt{ font:var(--t-tiny); color:var(--muted); margin-left:var(--s-1); }
+  .ptab.on{ color:var(--fg); background:var(--card); border-color:var(--line); box-shadow:var(--shadow-card); font-weight:600; }
+  .ptab .cnt{ font:var(--t-label); color:var(--muted); background:var(--grey-bg); border-radius:var(--r-pill); padding:0 6px; min-width:18px; text-align:center; }
+  .ptab .cnt:empty{ display:none; }
+  .ptab .s{ display:none; }
+  @media (max-width:640px){ .ptab .l{ display:none; } .ptab .s{ display:inline; } .ptab{ padding:var(--s-1) var(--s-2); } .ptabw{ margin-left:calc(-1*var(--s-3)); margin-right:calc(-1*var(--s-3)); padding-left:var(--s-3); padding-right:var(--s-3); } }
   .ppan{ display:none; } .ppan.on{ display:block; }
-  .mxcap{ font:var(--t-label); text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:var(--s-3) 0 var(--s-1); }
-  .mxcap .th{ text-transform:none; letter-spacing:0; font:var(--t-small); margin-left:var(--s-2); }
-  table.floor.mx td{ cursor:pointer; }
-  .pbody table.floor.mx{ table-layout:auto; width:auto; min-width:100%; }
-  table.floor.mx thead th{ overflow-wrap:normal; word-break:normal; overflow:visible; text-overflow:clip; min-width:72px; max-width:none; font:var(--t-tiny); line-height:1.2; }
+  /* ── компактная шапка заказа: одна строка «номер · имя · статус · срок · итоги», под ней действия ── */
+  .ohead{ display:flex; flex-direction:column; gap:var(--s-2); padding-bottom:var(--s-2); border-bottom:1px solid var(--line); }
+  .ohrow{ display:flex; align-items:center; gap:var(--s-2); flex-wrap:wrap; min-width:0; }
+  .ohrow .grow{ flex:1 1 auto; }
+  .ohrow .oname{ font:var(--t-strong); cursor:pointer; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:40vw; }
+  .ohrow .oname:hover{ color:var(--accent-text); }
+  .ohrow select{ min-height:var(--h-sm); padding:0 var(--s-2); font:var(--t-small); }
+  .ohrow .meta a{ text-decoration:none; }
+  .ohrow.acts button{ min-height:var(--h-sm); padding:0 var(--s-2); font:var(--t-small); }
+  .bcard.odet{ padding:var(--s-3) var(--s-4); }
+  @media (max-width:640px){
+    .bcard.odet{ padding:var(--s-2) var(--s-3); }
+    .ohrow .oname{ max-width:100%; flex:1 1 100%; }
+    /* телефон: кнопки действий одной лентой с прокруткой вбок, а не в четыре ряда */
+    .ohrow.acts{ flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; margin:0 calc(-1*var(--s-3)); padding:0 var(--s-3); }
+    .ohrow.acts::-webkit-scrollbar{ display:none; }
+    .ohrow.acts button{ flex:none; }
+  }
+  /* ── матрицы «деталь × операции»: узкие колонки с вертикальными заголовками, лента участков сверху ── */
+  .mxcap{ font:var(--t-label); text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:var(--s-2) 0 var(--s-1); display:flex; align-items:center; gap:var(--s-2); flex-wrap:wrap; }
+  .mxcap .th{ text-transform:none; letter-spacing:0; font:var(--t-tiny); }
+  .mxsw{ display:inline-flex; gap:2px; padding:2px; background:var(--card2); border:1px solid var(--line); border-radius:var(--r-pill); margin:var(--s-2) 0 0; }
+  .mxsw span{ font:var(--t-label); text-transform:none; letter-spacing:0; padding:2px var(--s-2); border-radius:var(--r-pill); cursor:pointer; color:var(--muted); }
+  .mxsw span.on{ background:var(--card); color:var(--fg); box-shadow:var(--shadow-card); }
+  .mxv-done .mx-wait, .mxv-wait .mx-done{ display:none; }
+  table.floor.mx td{ cursor:pointer; padding:2px 3px; height:24px; }
+  .pbody table.floor.mx{ table-layout:auto; width:auto; min-width:0; }   /* не растягиваем: лишняя ширина уходила в колонку «Деталь» */
+  table.floor.mx thead th{ overflow-wrap:normal; word-break:normal; overflow:visible; text-overflow:clip; min-width:0; max-width:none; font:var(--t-tiny); line-height:1.2; padding:2px 3px; }
+  table.floor.mx thead th.op{ vertical-align:bottom; width:30px; min-width:30px; max-width:30px; padding:4px 0 3px; text-transform:none; letter-spacing:0; height:auto; }
+  table.floor.mx thead th.op span{ writing-mode:vertical-rl; transform:rotate(180deg); display:inline-block; max-height:112px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; line-height:16px; color:var(--fg2,var(--fg)); font-weight:500; }
+  table.floor.mx thead th.op.fin{ background:var(--green-bg); } table.floor.mx thead th.op.fin span{ color:var(--green); font-weight:600; }
+  table.floor.mx thead th.op.rw span{ color:var(--amber); }
+  table.floor.mx thead tr.grp th{ font:var(--t-tiny); line-height:14px; height:20px; padding:0 4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:0; text-align:left; text-transform:none; letter-spacing:0; border-top:3px solid var(--gc,var(--line2)); color:var(--muted); }
+  table.floor.mx thead tr.grp th.dn{ border-top-color:var(--line); }
+  table.floor.mx thead tr.grp + tr th{ top:calc(var(--stk,0px) + 21px); }
+  table.floor.mx thead th{ top:var(--stk,0px); }
   table.floor.mx .flf{ white-space:nowrap; font:var(--t-small); font-weight:600; }
   table.floor.mx td.raw{ color:var(--muted); background:var(--card2); }
   table.floor.mx td.lie{ background:var(--green-bg); }
   table.floor.mx td.lie .flf{ color:var(--green); }
-  table.floor.mx td .sub{ display:block; font:var(--t-tiny); color:var(--muted); }
+  table.floor.mx td .sub{ display:block; font:var(--t-tiny); line-height:12px; color:var(--muted); }
   table.floor.mx td.over .flf{ color:var(--amber); }
-  table.floor.mx thead th.fin{ background:var(--green-bg); color:var(--green); }
+  table.floor.mx td.num{ font:var(--t-small); font-variant-numeric:tabular-nums; color:var(--muted); }
+  table.floor.mx .dn{ max-width:190px; min-width:130px; padding:2px 6px; font:var(--t-small); line-height:15px; }
+  table.floor.mx .dnx{ display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  table.floor.mx .dn .pill.sh{ font:var(--t-tiny); line-height:14px; height:auto; padding:0 5px; margin-left:4px; vertical-align:top; }
+  @media (max-width:640px){
+    table.floor.mx .dn{ max-width:124px; min-width:100px; padding:2px 4px; }
+    table.floor.mx thead th.op span{ max-height:88px; }
+    .mxcap .th{ display:none; }   /* длинная подсказка на телефоне съедает экран — смысл клеток есть во всплывающих подсказках */
+  }
   .chkd summary{ cursor:pointer; font:var(--t-small); color:var(--muted); margin:var(--s-2) 0; }
   .trayhd{ display:flex; align-items:baseline; gap:var(--s-2); margin-bottom:var(--s-3); flex-wrap:wrap; }
   .trayhd .tt{ font:var(--t-label); text-transform:uppercase; letter-spacing:.06em; color:var(--fg); }
@@ -129,11 +174,19 @@
   /* ⚠ Таблица прокручивается ВНУТРИ своей рамки (и вбок, и вниз). Иначе липкую шапку
      держать негде: контейнер с горизонтальной прокруткой сам становится скроллом,
      и «position:sticky» цепляется к нему, а не к экрану — шапка уезжала вместе с таблицей. */
-  .flwrap{ max-height:70vh; }
+  /* Внутренней вертикальной прокрутки больше нет (владелец 28.10.2026: колесо «залипало» в таблице, а страница
+     не двигалась). Таблица лежит в странице; если влезла по ширине — рамка без прокрутки (.fit, ставит fitWraps),
+     и липкая шапка цепляется к экрану; не влезла — крутится только вбок, шапка тогда едет вместе с таблицей. */
+  .flwrap{ max-height:none; overflow-x:auto; overflow-y:hidden; }
+  .flwrap.fit{ overflow:visible; }
+  /* рамка с прокруткой вбок — сама «окно» для липкой шапки: отступ под вкладки здесь не нужен, иначе шапка съезжает на первую строку */
+  .flwrap:not(.fit) table.floor thead th{ top:0; }
+  .flwrap:not(.fit) table.floor thead tr.ops th{ top:var(--flh1,28px); }
+  .flwrap:not(.fit) table.floor.mx thead tr.grp + tr th{ top:21px; }
   /* названия колонок видны всегда, пока листаешь длинный список деталей */
-  table.floor thead th{ position:sticky; top:0; z-index:3; }
-  table.floor thead tr.ops th{ top:var(--flh1,28px); }
-  table.floor thead tr:only-child th, table.floor thead tr.ops:first-child th{ top:0; }
+  table.floor thead th{ position:sticky; top:var(--stk,0px); z-index:3; }
+  table.floor thead tr.ops th{ top:calc(var(--stk,0px) + var(--flh1,28px)); }
+  table.floor thead tr:only-child th, table.floor thead tr.ops:first-child th{ top:var(--stk,0px); }
   table.floor thead .dn{ z-index:5; }
   table.floor{ border-collapse:separate; border-spacing:0; }
   table.floor th,table.floor td{ border-bottom:1px solid var(--line); border-right:1px solid var(--line);
@@ -239,8 +292,10 @@
   .mvn{ display:flex; align-items:center; gap:var(--s-2); flex-wrap:wrap; border-top:1px solid var(--line); padding:var(--s-2) 0; font:var(--t-small); }
   .mvn select{ max-width:100%; }
   /* ── изделие: сворачиваемая карточка ── */
-  .pcard{ border:1px solid var(--line); border-radius:var(--r-ctl); margin-bottom:var(--s-2); background:var(--card); overflow:hidden; }
-  .phead{ display:flex; align-items:center; gap:var(--s-3); padding:var(--s-3); cursor:pointer; user-select:none; flex-wrap:wrap; }
+  /* ⚠ без overflow:hidden — иначе карточка становится «окном прокрутки» для липкой шапки таблицы, и та не цепляется к экрану */
+  .pcard{ border:1px solid var(--line); border-radius:var(--r-ctl); margin-bottom:var(--s-2); background:var(--card); }
+  .phead{ display:flex; align-items:center; gap:var(--s-3); padding:var(--s-2) var(--s-3); cursor:pointer; user-select:none; flex-wrap:wrap; border-radius:var(--r-ctl); }
+  .pcard.open .phead{ border-radius:var(--r-ctl) var(--r-ctl) 0 0; }
   .phead:hover{ background:var(--card2); }
   .pname{ font-weight:600; flex:1; min-width:160px; }
   .ppct{ font-variant-numeric:tabular-nums; font-weight:600; min-width:44px; text-align:right; }
@@ -542,33 +597,36 @@ function renderDetail(){
   var costSum=(b.modelsAssembled||0)+'/'+(b.modelsTotal||0);
   var costCol=(b.modelsTotal&&b.modelsAssembled===b.modelsTotal)?'ok':(b.modelsAssembled?'warn':'bad');
   var datalist='<datalist id="modlist">'+MODELS.map(function(m){ return '<option value="'+esc(modLabel(m))+'">'; }).join('')+'</datalist>';
+  var prodPill='<span class="pill'+(b.opsCount?'':' mute')+'" title="'+esc('готовность по труду: сделано по принятым нарядам ÷ нужно по расценкам'+(subPct(b)>0?('\nс учётом поданного (на проверке / ждёт ОТК): '+b.pctLaborSub+'%'):'')+(b.ourRub!=null?('\n'+OUR_T.replace(/<[^>]+>/g,'')+': '+money(b.ourRub||0)+' р'):''))+'">по труду <b>'+(b.pctLabor||0)+'%</b>'+(subPct(b)>0?' <span class="muted">+'+subPct(b)+'%</span>':'')+(b.ourRub!=null?' <span class="muted">· нам '+money(b.ourRub||0)+' р</span>':'')+'</span>';
   app.innerHTML=datalist
-    // панель действий: слева назад и статус операции, справа действия с заказом (удаление — последним)
-    +'<div class="toolbar"><button class="sec" onclick="backToList()">← ко всем заказам</button>'
-      +'<span class="msg" id="bm_'+b.id+'"></span>'
-      +'<div class="end">'
-      +'<button class="sec" title="обычно это происходит само при открытии заказа; кнопка — если нужно прямо сейчас" onclick="recalcOps(\''+b.id+'\')">↻ Пересобрать сейчас</button>'
-      +'<button class="sec" title="печатный лист: пойти в цех и пересчитать детали по стадиям" onclick="inventSheet(\''+b.id+'\')">📋 Ведомость переучёта</button>'
-      +'<button class="sec" title="что делаем сами, что отдаём подрядчикам — по операции, с печатью" onclick="trfSheet(\''+b.id+'\')">🤝📋 Передача работы</button>'
-      +'<button class="sec" title="взять в этот заказ детали, оставшиеся от прошлых партий" onclick="wipOffer(\''+b.id+'\')">🧩 Склад деталей</button>'
-      +'<button class="sec" title="часть работы сделал подрядчик: заказ продвинется по нашей расценке, а долг перед ним появится в разделе «Подрядчики»" onclick="openSub(\''+b.id+'\')">🤝 Подряд</button>'
-      +'<button class="sec" onclick="ship(\''+b.id+'\')">📦 '+((b.shipped||0)>0?'Довезти остаток':'Отгрузить')+'</button>'
-      +((b.shipped||0)>0?('<button class="sec" title="что и когда увозили" onclick="shipLog(\''+b.id+'\')">🚚 История отгрузок</button>'):'')
-      +''
-      +'<button class="sec" title="удалить заказ" aria-label="удалить заказ" onclick="delBatch(\''+b.id+'\')">🗑</button>'
-      +'</div></div>'
-    +'<div class="bcard"><div class="bhead">'
+    +'<div class="bcard odet"><div class="ohead">'
+    +'<div class="ohrow">'
+      +'<button class="sec sm" onclick="backToList()" title="ко всем заказам">← заказы</button>'
       +'<span class="bnum">'+esc(b.num)+'</span>'
-      +'<span class="muted" style="cursor:pointer" onclick="renameBatch(\''+b.id+'\',\''+esc(b.name).replace(/\x27/g,"")+'\')">'+esc(b.name)+' ✎</span>'
+      +'<span class="oname" title="переименовать" onclick="renameBatch(\''+b.id+'\',\''+esc(b.name).replace(/\x27/g,"")+'\')">'+esc(b.name)+'</span>'
       +'<select onchange="setStatus(\''+b.id+'\',this.value)">'+opts+'</select>'
-      +'<span class="pill prio '+(prio?'bad':'mute')+'" onclick="togglePrio(\''+b.id+'\','+(prio?0:1)+')">'+(prio?'🔥 срочно':'обычный')+'</span>'
-      +'<span class="pill '+costCol+'">'+(costCol==='ok'?'✓ ':(costCol==='warn'?'⏳ ':'✕ '))+'собрано '+costSum+' · труд '+money(b.labor||0)+' р</span>'
-      +(b.opsCount?'<span class="pill" style="white-space:normal;height:auto">по труду '+(b.pctLabor||0)+'%'+(subPct(b)>0?' · с учётом поданного '+b.pctLaborSub+'%':'')+(b.ourRub!=null?' · <span title="'+OUR_T+'">нам осталось '+money(b.ourRub||0)+' р</span>':'')+'</span>':'')
+      +'<span class="pill prio '+(prio?'bad':'mute')+'" onclick="togglePrio(\''+b.id+'\','+(prio?0:1)+')" title="нажми — поменять приоритет">'+(prio?'🔥 срочно':'обычный')+'</span>'
+      +'<span class="meta">срок <b>'+(b.plan?esc(b.plan):'—')+'</b>'
+        +' <a href="javascript:void(0)" onclick="setDeadline(\''+b.id+'\',\''+esc(b.plan||'')+'\')" title="изменить срок отгрузки">✎</a>'
+        +' <a href="javascript:void(0)" onclick="deadlineLog(\''+b.id+'\')" title="история изменений срока">🕘</a></span>'
+      +'<span class="grow"></span>'
+      +'<span class="pill '+costCol+'" title="'+esc('состав изделий подтверждён в каталоге: '+costSum+'\nтруд по расценкам: '+money(b.labor||0)+' р')+'">'+(costCol==='ok'?'✓ ':(costCol==='warn'?'⏳ ':'✕ '))+'собрано '+costSum+'</span>'
+      +prodPill
       +(b.overflow?'<span class="pill bad" title="есть перевыполненные операции">⚠ перевыполнено</span>':'')
-      +'<span class="muted">срок отгрузки: '+(b.plan?('<b>'+esc(b.plan)+'</b>'):'—')
-        +' <a href="javascript:void(0)" onclick="setDeadline(\''+b.id+'\',\''+esc(b.plan||'')+'\')" title="изменить срок" style="text-decoration:none">✎</a>'
-        +' <a href="javascript:void(0)" onclick="deadlineLog(\''+b.id+'\')" title="история изменений срока" style="text-decoration:none">🕘</a></span>'
-      +'</div>'
+    +'</div>'
+    // действия: кнопки компактные, одной строкой (на телефоне переносятся); удаление — последним
+    +'<div class="ohrow acts">'
+      +'<button class="sec" onclick="ship(\''+b.id+'\')">📦 '+((b.shipped||0)>0?'Довезти остаток':'Отгрузить')+'</button>'
+      +((b.shipped||0)>0?('<button class="sec" title="что и когда увозили" onclick="shipLog(\''+b.id+'\')">🚚 История</button>'):'')
+      +'<button class="sec" title="печатный лист: пойти в цех и пересчитать детали по операциям" onclick="inventSheet(\''+b.id+'\')">📋 Переучёт</button>'
+      +'<button class="sec" title="что делаем сами, что отдаём подрядчикам — по операции, с печатью" onclick="trfSheet(\''+b.id+'\')">🤝📋 Передача</button>'
+      +'<button class="sec" title="часть работы сделал подрядчик: заказ продвинется по нашей расценке, а долг перед ним появится в разделе «Подрядчики»" onclick="openSub(\''+b.id+'\')">🤝 Подряд</button>'
+      +'<button class="sec" title="взять в этот заказ детали, оставшиеся от прошлых партий" onclick="wipOffer(\''+b.id+'\')">🧩 Склад деталей</button>'
+      +'<button class="sec" title="обычно это происходит само при открытии заказа; кнопка — если нужно прямо сейчас" onclick="recalcOps(\''+b.id+'\')">↻ Пересобрать</button>'
+      +'<span class="msg" id="bm_'+b.id+'"></span>'
+      +'<span class="grow"></span>'
+      +'<button class="sec" title="удалить заказ" aria-label="удалить заказ" onclick="delBatch(\''+b.id+'\')">🗑</button>'
+    +'</div></div>'
       +dealsLine(b)
       +shipBadgeHtml(b)
       +ptabsHtml(b.id)
@@ -595,13 +653,20 @@ function renderDetail(){
 }
 /* ── вкладки карточки заказа ── */
 var PTAB={};
-var PTABS=[['det','Детали и операции'],['sum','Сводно по заказу'],['site','Участки и операции'],['items','Состав заказа'],['ship','Отгрузка']];
+var PTABS=[['det','Детали и операции','Детали'],['sum','Сводно по заказу','Сводно'],['site','Участки и операции','Участки'],['items','Состав заказа','Состав'],['ship','Отгрузка','Отгрузка']];
 function ptabSaved(){ try{ return localStorage.getItem('tw_prod_tab')||''; }catch(e){ return ''; } }
-function ptabsHtml(id){ return '<div class="ptabs">'+PTABS.map(function(t){ return '<span class="ptab" id="ptab_'+t[0]+'_'+id+'" onclick="showPTab(\''+id+'\',\''+t[0]+'\')">'+t[1]+'<span class="cnt" id="ptabc_'+t[0]+'_'+id+'"></span></span>'; }).join('')+'</div>'; }
+function ptabsHtml(id){ return '<div class="ptabw" id="ptabw_'+id+'"><div class="ptabs">'+PTABS.map(function(t){ return '<span class="ptab" id="ptab_'+t[0]+'_'+id+'" onclick="showPTab(\''+id+'\',\''+t[0]+'\')"><span class="l">'+t[1]+'</span><span class="s">'+t[2]+'</span><span class="cnt" id="ptabc_'+t[0]+'_'+id+'"></span></span>'; }).join('')+'</div></div>'; }
 function showPTab(id,t){
   PTAB[id]=t; try{ localStorage.setItem('tw_prod_tab',t); }catch(e){}
-  PTABS.forEach(function(x){ var tb=$('ptab_'+x[0]+'_'+id), pn=$('pan_'+x[0]+'_'+id); if(tb) tb.className='ptab'+(x[0]===t?' on':''); if(pn) pn.className='ppan'+(x[0]===t?' on':''); });
+  PTABS.forEach(function(x){ var tb=$('ptab_'+x[0]+'_'+id), pn=$('pan_'+x[0]+'_'+id); if(tb) tb.className='ptab'+(x[0]===t?' on':''); if(pn) pn.classList.toggle('on',x[0]===t); });   // classList, не className — иначе слетает вид матриц (mxv-*)
+  fitWraps();
 }
+/* липкие шапки таблиц встают под полосой вкладок; рамка таблицы без прокрутки, если влезла по ширине (см. CSS .flwrap) */
+function fitWraps(){
+  var tw=document.querySelector('.ptabw'); document.documentElement.style.setProperty('--stk',(tw?tw.offsetHeight:0)+'px');
+  Array.prototype.forEach.call(document.querySelectorAll('.flwrap'), function(w){ var t=w.firstElementChild; if(!t||!w.offsetParent) return; w.classList.remove('fit'); if(t.scrollWidth<=w.clientWidth+1) w.classList.add('fit'); });
+}
+var _fitT=null; window.addEventListener('resize', function(){ clearTimeout(_fitT); _fitT=setTimeout(fitWraps,120); });
 function ptabCount(id,t,txt){ var c=$('ptabc_'+t+'_'+id); if(c) c.textContent=txt||''; }
 
 
@@ -637,6 +702,7 @@ function renderOps(id,r){
               '<div id="opsbyop_'+id+'">'+opsByOpHtml(id,dash)+'</div>');
   ptabCount(id,'det',nP?String(nP):''); ptabCount(id,'site',nG?String(nG):'');
   Array.prototype.forEach.call(box.parentNode.querySelectorAll('.pcard,.gcard'), function(c){ if(open[c.id]) c.classList.add('open'); });
+  applyMxView(); fitWraps();
 }
 var RWPOOL={};
 /* две клетки «↺ шлифовка / ↺ малярка»: keys — варианты (eq|model|detail) строки; в сводной — все цвета детали */
@@ -659,11 +725,19 @@ function opColumns(ops){
   prodSeq.forEach(function(dk){ seqs[dk].forEach(function(op){ if(cols.indexOf(op)<0) cols.push(op); }); });
   return cols;
 }
-function mxHead(cols,fin){
-  return '<thead><tr><th class="dn">Деталь</th><th class="num" title="сколько нужно по заказу">Нужно</th>'
-    +cols.map(function(c){ return '<th title="'+esc(c)+'">'+esc(c)+'</th>'; }).join('')
-    +(fin?'<th class="fin" title="прошли все операции детали и лежат (у изделия — упакованы)">✓ прошли всё</th>':'')
-    +(fin!==null?'<th title="вернули с покраски на шлифовку и ещё не переделали: на операциях не лежат">↺ шлифовка</th><th title="вернули на малярку (перекрасить) и ещё не переделали: на операциях не лежат">↺ малярка</th>':'')+'</tr></thead>';
+/* участок и цвет каждой операции — для ленты над колонками */
+function opGroups(ops){ var g={}; (ops||[]).forEach(function(o){ if(o.group&&!g[o.op]) g[o.op]={ group:o.group, color:o.color||'' }; }); return g; }
+function mxHead(cols,fin,grp){
+  var extra=(fin?1:0)+(fin!==null?2:0), band='';
+  if(grp){   // лента участков: подряд идущие колонки одного участка — одной ячейкой, цвет участка — полоской сверху
+    var cells=[], cur=null;
+    cols.forEach(function(c){ var g=grp[c]||{group:'',color:''}; if(cur&&cur.group===g.group){ cur.n++; } else { cur={ group:g.group, color:g.color, n:1 }; cells.push(cur); } });
+    band='<tr class="grp"><th class="dn"></th><th></th>'+cells.map(function(x){ return '<th colspan="'+x.n+'" title="'+esc(x.group)+'" style="--gc:'+(x.color||'var(--line2)')+'">'+(x.n>=2?esc(x.group):'')+'</th>'; }).join('')   // в одну колонку название не влезает — только полоска и подсказка+(extra?'<th colspan="'+extra+'"></th>':'')+'</tr>';
+  }
+  return '<thead>'+band+'<tr><th class="dn">Деталь</th><th class="num" title="сколько нужно по заказу">Нужно</th>'
+    +cols.map(function(c){ return '<th class="op" title="'+esc(c)+'"><span>'+esc(c)+'</span></th>'; }).join('')
+    +(fin?'<th class="op fin" title="прошли все операции детали и лежат (у изделия — упакованы)"><span>✓ прошли всё</span></th>':'')
+    +(fin!==null?'<th class="op rw" title="вернули с покраски на шлифовку и ещё не переделали: на операциях не лежат"><span>↺ шлифовка</span></th><th class="op rw" title="вернули на малярку (перекрасить) и ещё не переделали: на операциях не лежат"><span>↺ малярка</span></th>':'')+'</tr></thead>';
 }
 /* строки матрицы: деталь → по операции её строка расчёта; prev — предыдущая операция в цепочке детали */
 function mxRows(ops){
@@ -677,15 +751,16 @@ function mxRows(ops){
   rows.sort(function(a,b){ return (a.prod?1:0)-(b.prod?1:0) || a.name.localeCompare(b.name,'ru'); });
   return rows;
 }
-function mxName(row,noShared){ return '<td class="dn'+(row.done?' done':'')+'">'+(row.done?'✓ ':'')+esc(row.name)+(row.prod?' <span class="pill mute sh">изделие</span>':'')+(row.shared&&!noShared?' <span class="pill mute sh" title="до покраски деталь одинакова во всех цветах">общая</span>':'')+'</td>'; }
+function mxName(row,noShared){ return '<td class="dn'+(row.done?' done':'')+'" title="'+esc(row.name)+(row.done?' — все операции закрыты':'')+'"><span class="dnx">'+(row.done?'✓ ':'')+esc(row.name)+(row.prod?' <span class="pill mute sh">изделие</span>':'')+(row.shared&&!noShared?' <span class="pill mute sh" title="до покраски деталь одинакова во всех цветах">общая</span>':'')+'</span></td>'; }
 /* клетка «сделано / нужно» */
-function mxDoneCell(id,o,flags){
+function mxDoneCell(id,o,flags,rowNeed){
   if(!o) return '<td class="no" title="у этой детали такой операции нет"></td>';
   var ready=Number(o.readyEff!=null?o.readyEff:o.ready)||0, need=Number(o.need)||0, left=Number(o.left)||0, pend=(Number(o.pend)||0)+(Number(o.qc)||0);
   var cls=left<=0.001?'cdone':(ready>need+0.001?'over':''), fl=flags&&flags[o.id]?' <span class="chk '+flags[o.id]+'" title="есть замечание">⚠</span>':'';
   var tip=o.detail+' · '+o.op+'\nсделано '+r1(ready)+' из '+r1(need)+(o.stock?(' (нач. остатки '+r1(o.stock)+')'):'')+'\nосталось '+r1(left)
     +(pend?('\nподано, не принято: '+r1(pend)):'')+(Number(o.over)>0?('\nперевыполнено на '+r1(o.over)):'')+'\nнажми — поправить «лежит сейчас» на этой операции';
-  return '<td class="'+cls+'" data-op="'+esc(o.id)+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+esc(o.id)+'\')"><span class="flf'+(ready>0?'':' z')+'">'+r1(ready)+'/'+r1(need)+'</span>'+fl
+  return '<td class="'+cls+'" data-op="'+esc(o.id)+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+esc(o.id)+'\')"><span class="flf'+(ready>0?'':' z')+'">'+(ready>0?r1(ready):'·')+'</span>'+fl
+    +(rowNeed!=null&&Math.abs(need-rowNeed)>0.001?'<span class="sub">/'+r1(need)+'</span>':'')
     +(pend?'<span class="sub">⏳ '+r1(pend)+'</span>':'')+'</td>';
 }
 /* клетка «ждут операции»: прошли все предыдущие, эту ещё нет (avail). Первая операция цепочки — ещё не начато (серым). */
@@ -705,14 +780,15 @@ function prodMatrixCard(id,p,pi,flags){
   var ops=p.ops||[], cols=opColumns(ops), rows=mxRows(ops);
   rows.forEach(function(row){ row.done=row.seq.every(function(op){ return (Number(row.cells[op].left)||0)<=0.001; }); });
   var pct=Math.min(100,p.pct||0);
-  var t1='<div class="mxcap">Сделано / нужно<span class="th">зелёная — операция закрыта, тёмная — такой операции у детали нет</span></div>'
-    +'<div class="tbl-wrap flwrap"><table class="tbl floor mx">'+mxHead(cols,false)+'<tbody>'
-    +rows.map(function(row){ return '<tr>'+mxName(row)+'<td class="num">'+r1(row.need)+'</td>'+cols.map(function(c){ return mxDoneCell(id,row.cells[c],flags); }).join('')+(row.prod?'<td class="no"></td><td class="no"></td>':rwCells(id,row.name,[p.eq+'|'+p.model+'|'+row.name]))+'</tr>'; }).join('')
-    +'</tbody></table></div>';
-  var t2='<div class="mxcap">Ждут операции — готовы к работе<span class="th">прошли все предыдущие операции, эту ещё нет; «прошли всё» — лежат готовыми</span></div>'
-    +'<div class="tbl-wrap flwrap"><table class="tbl floor mx">'+mxHead(cols,true)+'<tbody>'
+  var grp=opGroups(ops);
+  var t1='<div class="mx-done"><div class="mxcap">Сделано<span class="th">цифра — сколько прошло операцию; зелёная — закрыта; тёмная — такой операции у детали нет; «/n» — нужно, если отличается от строки</span></div>'
+    +'<div class="tbl-wrap flwrap"><table class="tbl floor mx">'+mxHead(cols,false,grp)+'<tbody>'
+    +rows.map(function(row){ return '<tr>'+mxName(row)+'<td class="num">'+r1(row.need)+'</td>'+cols.map(function(c){ return mxDoneCell(id,row.cells[c],flags,row.need); }).join('')+(row.prod?'<td class="no"></td><td class="no"></td>':rwCells(id,row.name,[p.eq+'|'+p.model+'|'+row.name]))+'</tr>'; }).join('')
+    +'</tbody></table></div></div>';
+  var t2='<div class="mx-wait"><div class="mxcap">Ждут операции<span class="th">лежат перед операцией: прошли все предыдущие, эту ещё нет; «прошли всё» — готовые</span></div>'
+    +'<div class="tbl-wrap flwrap"><table class="tbl floor mx">'+mxHead(cols,true,grp)+'<tbody>'
     +rows.map(function(row){ return '<tr>'+mxName(row)+'<td class="num">'+r1(row.need)+'</td>'+cols.map(function(c){ return mxWaitCell(id,row,c); }).join('')+mxFinCell(id,row)+(row.prod?'<td class="no"></td><td class="no"></td>':rwCells(id,row.name,[p.eq+'|'+p.model+'|'+row.name]))+'</tr>'; }).join('')
-    +'</tbody></table></div>';
+    +'</tbody></table></div></div>';
   return '<div class="pcard" id="pc_'+id+'_'+pi+'">'
     +'<div class="phead" onclick="toggleProd(\''+id+'\','+pi+')">'
       +'<span class="pcar">▸</span>'
@@ -722,8 +798,13 @@ function prodMatrixCard(id,p,pi,flags){
       +'<a href="'+catUrl(p.sku||p.model)+'" target="_blank" onclick="event.stopPropagation()" class="asm pill '+(p.assembled?'ok':'warn')+'" title="открыть изделие в каталоге">'
         +(p.assembled?'✔':'⚠')+'<span class="t">'+(p.assembled?'состав':'состав не подтверждён')+'</span></a>'
     +'</div>'
-    +'<div class="pbody"><div class="muted" style="margin-bottom:var(--s-1)" id="opsp_'+id+'_'+pi+'">'+opProdStat(p)+'</div>'+t1+t2+'</div></div>';
+    +'<div class="pbody"><div class="muted small" id="opsp_'+id+'_'+pi+'">'+opProdStat(p)+'</div>'+mxSwitchHtml()+t1+t2+'</div></div>';
 }
+/* вид матриц изделия — один на все карточки, запоминается: «сделано» или «ждут операции» */
+function mxView(){ try{ return localStorage.getItem('tw_prod_mx')||'done'; }catch(e){ return 'done'; } }
+function mxSwitchHtml(){ var v=mxView(); return '<div class="mxsw"><span class="'+(v==='done'?'on':'')+'" onclick="setMxView(\'done\')">Сделано</span><span class="'+(v==='wait'?'on':'')+'" onclick="setMxView(\'wait\')">Ждут операции · лежат</span></div>'; }
+function setMxView(v){ try{ localStorage.setItem('tw_prod_mx',v); }catch(e){} applyMxView(); Array.prototype.forEach.call(document.querySelectorAll('.mxsw span'), function(x){ x.className=(x.textContent==='Сделано')===(v==='done')?'on':''; }); fitWraps(); }
+function applyMxView(){ Array.prototype.forEach.call(document.querySelectorAll('.ppan[id^=pan_det_]'), function(p){ p.classList.remove('mxv-done','mxv-wait'); p.classList.add('mxv-'+mxView()); }); }
 /* ── сводно по заказу: блоки по оборудованию, как в ведомости переучёта (владелец 27.10.2026); деталь одной строкой на все цвета,
    деталь нескольких оборудований — в блоке «Общие детали» в конце; клетка = лежат после операции, мелко — сделано / нужно ── */
 function summaryMatrixHtml(id,r){
@@ -739,7 +820,7 @@ function summaryMatrixHtml(id,r){
   order.sort(function(a,b){ return (a===COMMON?1:0)-(b===COMMON?1:0); });
   var open={}; Array.prototype.forEach.call(document.querySelectorAll('#pan_sum_'+id+' .pcard'), function(c){ open[c.id]=c.classList.contains('open'); });
   return order.map(function(key,bi){
-    var b=blocks[key], cols=opColumns(b.ops), rows=[], idx={};
+    var b=blocks[key], cols=opColumns(b.ops), rows=[], idx={}, grp=opGroups(b.ops);
     b.ops.forEach(function(o){
       var dk=(o.level==='изделие'?'§':'')+o.detail.toLowerCase();
       if(idx[dk]===undefined){ idx[dk]=rows.length; rows.push({ name:o.detail, prod:o.level==='изделие', need:0, cells:{}, models:{}, keys:{} }); }
@@ -756,19 +837,19 @@ function summaryMatrixHtml(id,r){
       return '<tr>'+nm+'<td class="num">'+r1(row.need)+'</td>'+cols.map(function(c){
         var x=row.cells[c]; if(!x) return '<td class="no"></td>';
         var v=x.fact, tip=row.name+' · '+c+'\nлежат после операции: '+r1(v)+'\nсделано '+r1(x.ready)+' из '+r1(x.need)+' · осталось '+r1(x.left)+'\nнажми — поправить «лежит сейчас»';
-        return '<td class="'+(v>0?'lie':(x.left<=0.001?'cdone':''))+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+x.ids.join(',')+'\')"><span class="flf'+(v>0?'':' z')+'">'+(v>0?r1(v):'·')+'</span><span class="sub">'+r1(x.ready)+'/'+r1(x.need)+'</span></td>';
+        return '<td class="'+(v>0?'lie':(x.left<=0.001?'cdone':''))+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+x.ids.join(',')+'\')"><span class="flf'+(v>0?'':' z')+'">'+(v>0?r1(v):'·')+'</span></td>';
       }).join('')+(row.prod?'<td class="no"></td><td class="no"></td>':rwCells(id,row.name,Object.keys(row.keys)))+'</tr>';
     }).join('');
     var cid='sc_'+id+'_'+bi, isOpen=open[cid]===undefined?true:open[cid];
     var lying=0; rows.forEach(function(row){ cols.forEach(function(c){ var x=row.cells[c]; if(x) lying+=x.fact; }); });
     return '<div class="pcard'+(isOpen?' open':'')+'" id="'+cid+'">'
-      +'<div class="phead" onclick="this.parentNode.classList.toggle(\'open\')"><span class="pcar">▸</span>'
+      +'<div class="phead" onclick="this.parentNode.classList.toggle(\'open\');fitWraps()"><span class="pcar">▸</span>'
       +'<span class="pname">'+esc(b.title)+' <span class="muted">· '+plural(rows.length,'деталь','детали','деталей')+' · лежит '+r1(lying)+'</span></span></div>'
-      +'<div class="pbody"><div class="tbl-wrap flwrap"><table class="tbl floor mx">'+mxHead(cols,false)+'<tbody>'+body+'</tbody></table></div></div></div>';
+      +'<div class="pbody"><div class="tbl-wrap flwrap"><table class="tbl floor mx">'+mxHead(cols,false,grp)+'<tbody>'+body+'</tbody></table></div></div></div>';
   }).join('')
-  +'<div class="muted small">крупно — лежит после операции (как в ведомости переучёта), мелко — сделано / нужно; деталь одной строкой — сумма по всем цветам изделия; «↺ шлифовка / малярка» — вернули с покраски на переделку, на операциях не лежат</div>';
+  +'<div class="muted small">цифра — лежит после операции (как в ведомости переучёта), зелёная клетка — операция закрыта; деталь одной строкой — сумма по всем цветам; «↺ шлифовка / малярка» — вернули с покраски на переделку, на операциях не лежат; наведи — сделано / нужно</div>';
 }
-function toggleProd(id,pi){ var c=$('pc_'+id+'_'+pi); if(c) c.classList.toggle('open'); }
+function toggleProd(id,pi){ var c=$('pc_'+id+'_'+pi); if(c) c.classList.toggle('open'); fitWraps(); }
 function toggleGroup(id,gi){ var c=$('gc_'+id+'_'+gi); if(c) c.classList.toggle('open'); }
 // панель «Проверки логики»: нестыковки в данных заказа, чтобы админ видел и проверял
 var CHKMSG={};   // id заказа → { opId: [сообщения] } — для клика по ⚠ на строке
