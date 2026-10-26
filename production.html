@@ -17,7 +17,8 @@
   table.items td,table.items th{ padding:var(--s-1) var(--s-2); }
   table.items .c-nm{ width:auto; white-space:normal; }
   table.items .c-n{ width:74px; }
-  table.items .c-x{ width:48px; }
+  table.items .c-x{ width:88px; white-space:nowrap; }
+  .imv button{ padding:0 4px; }
   /* ОДНА строка на позицию: 17 изделий должны читаться одним взглядом, без прокрутки
      ни вбок, ни вниз. Различает варианты модель — она и стоит первой; оборудование,
      себестоимость и статус состава уезжают в подсказку при наведении. */
@@ -1516,7 +1517,20 @@ function itemRowHtml(it,batchId){
     +'<td class="num">'+packedCellHtml(it)+'</td>'
     +'<td class="num"><input class="q" value="'+(it.done||0)+'" onchange="saveDone(\''+batchId+'\',\''+esc(it.sku)+'\',\''+esc(it.model)+'\',this.value)"></td>'
     +'<td class="num">'+shipCellHtml(it)+'</td>'
-    +'<td class="c-x"><button class="ic" title="убрать" onclick="rmItem(\''+it.id+'\')">🗑</button></td></tr>';
+    +'<td class="c-x"><span class="imv"><button class="ic" title="выше" onclick="moveItem(\''+batchId+'\',\''+it.id+'\',-1)">▲</button><button class="ic" title="ниже" onclick="moveItem(\''+batchId+'\',\''+it.id+'\',1)">▼</button></span>'
+      +'<button class="ic" title="убрать" onclick="rmItem(\''+it.id+'\')">🗑</button></td></tr>';
+}
+/* порядок позиций (владелец 27.10.2026): ▲▼ — в этом порядке идут товары во всех вкладках и в ведомости; от него же зависит,
+   какому изделию достаётся выработка без варианта (FIFO) */
+function moveItem(batchId,itemId,dir){
+  var ids=((DETAIL&&DETAIL.items)||[]).map(function(x){ return x.id; }), i=ids.indexOf(itemId), j=i+dir;
+  if(i<0||j<0||j>=ids.length) return;
+  ids.splice(i,1); ids.splice(j,0,itemId);
+  var m=$('bm_'+batchId); if(m) m.textContent='переставляю…';
+  api({vapi:'itemorder',batch:batchId,items:ids.join(',')}).then(function(r){
+    if(!r||!r.ok){ if(m) m.textContent=(r&&r.error)||'не удалось'; return; }
+    if(m) m.textContent=''; loadDetail(batchId);
+  });
 }
 /** «Упаковано» (12.10.2026): по одобренным нарядам операции изделия; null — у товара нет состава, считать не по чему; сервер ещё старый — поле не пришло */
 function packedCellHtml(it){
