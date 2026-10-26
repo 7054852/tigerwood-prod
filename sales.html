@@ -111,6 +111,7 @@
       <option value="" selected>Все стадии</option>
     </select>
     <select id="fsrc" onchange="renderList()" title="Источник"><option value="">все источники</option><option value="amoCRM">amoCRM</option><option value="сайт">сайт</option><option value="вручную">вручную</option></select>
+    <select id="fpay" onchange="renderList()" title="Оплата"><option value="">все оплаты</option><option value="debt">с долгом</option><option value="paid">оплачены</option></select>
     <select id="fch" onchange="renderList()" title="Канал"><option value="">опт и розница</option><option value="опт">опт</option><option value="розница">розница</option></select>
     <span class="meta" id="cnt"></span>
     <div class="end">
@@ -120,8 +121,8 @@
   </div>
   <div class="card"><div class="tbl-wrap fill">
     <table class="tbl mob adapt">
-      <thead><tr><th>№</th><th>Создано</th><th>Клиент</th><th>Канал</th><th class="num">Сумма</th><th>Стадия</th><th>Производство</th><th>Клиент привязан</th><th>Источник</th><th></th></tr></thead>
-      <tbody id="rows"><tr><td colspan="10" class="sm">Загрузка…</td></tr></tbody>
+      <thead><tr><th>№</th><th>Создано</th><th>Клиент</th><th>Канал</th><th class="num">Сумма</th><th class="num">Оплачено</th><th class="num">Долг</th><th>Стадия</th><th>Производство</th><th>Клиент привязан</th><th>Источник</th><th></th></tr></thead>
+      <tbody id="rows"><tr><td colspan="12" class="sm">Загрузка…</td></tr></tbody>
     </table>
   </div></div>
 </div>
@@ -322,22 +323,27 @@ window.addEventListener('popstate', route);
 var DEALS=[];
 function loadList(){
   get({vapi:'dealslist'}).then(function(r){
-    if(!r||!r.ok){ el('rows').innerHTML='<tr><td colspan="9" class="err">⚠️ '+esc(errText(r))+'</td></tr>'; return; }
+    if(!r||!r.ok){ el('rows').innerHTML='<tr><td colspan="12" class="err">⚠️ '+esc(errText(r))+'</td></tr>'; return; }
     DEALS=r.deals||[]; renderList();
-  }).catch(function(e){ el('rows').innerHTML='<tr><td colspan="9" class="err">'+esc(netText(e))+'</td></tr>'; });
+  }).catch(function(e){ el('rows').innerHTML='<tr><td colspan="12" class="err">'+esc(netText(e))+'</td></tr>'; });
 }
 function renderList(){
-  var q=val('q').toLowerCase().trim(), st=val('fst'), src=val('fsrc'), ch=val('fch');
+  var q=val('q').toLowerCase().trim(), st=val('fst'), src=val('fsrc'), ch=val('fch'), fp=val('fpay');
+  var debtOf=function(x){ return isClosed(x)?0:(Number(x.debt)||0); };
   var noStage=DEALS.length && !DEALS.some(function(x){ return x.stage; });
   var d=DEALS.filter(function(x){
     if(st && x.stage!==st) return false;
     if(src && x.source!==src) return false;
     if(ch && x.type!==ch) return false;
+    if(fp==='debt' && !(debtOf(x)>0.009)) return false;
+    if(fp==='paid' && (isClosed(x) || debtOf(x)>0.009)) return false;
     return !q || [x.num,x.inquiryNum,x.id,x.client,x.manager,x.type,x.clientType].join(' ').toLowerCase().indexOf(q)>=0;
   });
-  el('cnt').textContent='всего: '+DEALS.length+(d.length!==DEALS.length?(' · показано: '+d.length):'')+(noStage?' · сервер ещё не отдаёт стадию — фильтр по стадии не работает':'');
-  if(!DEALS.length){ el('rows').innerHTML='<tr><td colspan="10" class="sm">Пока нет сделок. Создайте первую кнопкой «Создать сделку» или подтяните из amoCRM.</td></tr>'; return; }
-  if(!d.length){ el('rows').innerHTML='<tr><td colspan="9" class="sm">Ничего не найдено.</td></tr>'; return; }
+  var debtSum={}; d.forEach(function(x){ var v=debtOf(x); if(v>0.009){ var c=!x.currency||x.currency==='BYN'?'руб':x.currency; debtSum[c]=(debtSum[c]||0)+v; } });
+  var debtTxt=Object.keys(debtSum).map(function(c){ return money(debtSum[c])+' '+c; }).join(' + ');
+  el('cnt').textContent='всего: '+DEALS.length+(d.length!==DEALS.length?(' · показано: '+d.length):'')+(debtTxt?' · долг: '+debtTxt:'')+(noStage?' · сервер ещё не отдаёт стадию — фильтр по стадии не работает':'');
+  if(!DEALS.length){ el('rows').innerHTML='<tr><td colspan="12" class="sm">Пока нет сделок. Создайте первую кнопкой «Создать сделку» или подтяните из amoCRM.</td></tr>'; return; }
+  if(!d.length){ el('rows').innerHTML='<tr><td colspan="12" class="sm">Ничего не найдено.</td></tr>'; return; }
   el('rows').innerHTML=d.map(function(x){
     var src=x.source==='amoCRM'?'<span class="pill info">amoCRM</span>':(x.source==='сайт'?'<span class="pill acc">сайт</span>':'<span class="pill">'+esc(x.source||'—')+'</span>');
     var buyer=x.hasBuyer?'<span class="pill ok">✓ да</span>':'<span class="pill bad">✕ нет</span>';
@@ -348,6 +354,8 @@ function renderList(){
       +'<td data-l="Клиент">'+esc(x.client||'—')+'</td>'
       +'<td data-l="Канал" class="sm">'+esc(x.type||'')+(x.clientType?' · '+esc(x.clientType):'')+'</td>'
       +'<td data-l="Сумма" class="num">'+money(x.sum)+' <span class="muted">'+esc(!x.currency||x.currency==='BYN'?'руб':x.currency)+'</span></td>'   // валюта у каждой суммы: руб (BYN), EUR, RUB (владелец 12.10.2026)
+      +'<td data-l="Оплачено" class="num">'+(Number(x.paid)>0?money(x.paid):'<span class="muted">—</span>')+'</td>'
+      +'<td data-l="Долг" class="num">'+(isClosed(x)?'<span class="muted">—</span>':debtOf(x)>0.009?'<b'+(isOrder(x)?' style="color:var(--red)"':'')+'>'+money(x.debt)+'</b>':'<span class="pill ok">оплачено</span>')+'</td>'
       +'<td data-l="Стадия">'+stagePill(x)+'</td>'
       +'<td data-l="Производство">'+(x.prodOrder?'<a href="'+esc(pageUrl('production.html','batch',x.prodOrder.id))+'" onclick="event.stopPropagation()" title="заказ на производство — открыть">🏭 '+esc(x.prodOrder.num)+(x.prodOrder.name?' <span class="muted">'+esc(x.prodOrder.name)+'</span>':'')+'</a>':'<span class="muted">—</span>')+'</td>'
       +'<td data-l="Клиент привязан">'+buyer+'</td>'

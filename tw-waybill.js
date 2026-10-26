@@ -26,6 +26,7 @@ function twWaybill(dealKey, kind, onDone){
     TWWB.items=items;
     var tn0=!!p.tn, partial=Array.isArray(p.prev), anyPrev=partial&&(items.some(function(it){ return Number(it.shipped)>0; })||(p.prev||[]).length>0);   // partial — сервер умеет частичную отгрузку
     items.forEach(function(it){ it.shipped0=Number(it.shipped)||0; it.places0=Number(it.places)||0; it.mass0=Number(it.mass)||0; it.qty0=Number(it.qty)||0; });
+    items.forEach(function(it,i){ if(it.mass0>0&&it.qty0>0) twWbPeer(i, it.mass0/it.qty0, true); });   // тот же товар без массы (строка другой сделки) — масса единицы как у этой строки
     var rows=items.map(function(it,i){
       var z=function(v){ return Number(v)>0?'':' style="border-color:var(--red);background:var(--red-bg)"'; };
       var pk=(it.packed!=null)?'<div class="sm muted">упаковано по заказу: '+esc(it.packed)+'</div>':'';
@@ -35,7 +36,7 @@ function twWaybill(dealKey, kind, onDone){
         +(anyPrev?'<td data-l="Уже в накладных" class="num" id="wbs'+i+'">'+esc(it.shipped0)+'</td>':'')
         +(partial?'<td data-l="Отгружаем"><input type="number" min="0" max="'+esc(it.qty)+'" step="1" id="wbq'+i+'" value="'+esc(it.ship)+'" oninput="twWbShip('+i+',this.value)" autocomplete="off" style="width:5.5em"></td>':'')
         +(tn0?'':'<td data-l="Мест"><input type="number" min="0" id="wbp'+i+'" value="'+esc(it.places)+'"'+z(it.places)+' oninput="TWWB.items['+i+'].places=this.value;TWWB.items['+i+'].pm=1;twWbSums()" autocomplete="off"></td>'
-        +'<td data-l="Масса, кг"><input type="number" min="0" step="0.01" id="wbm'+i+'" value="'+esc(it.mass)+'"'+z(it.mass)+' oninput="TWWB.items['+i+'].mass=this.value;TWWB.items['+i+'].pm=1;twWbSums()" autocomplete="off"></td>')+'</tr>';
+        +'<td data-l="Масса, кг"><input type="number" min="0" step="0.01" id="wbm'+i+'" value="'+esc(it.mass)+'"'+z(it.mass)+' oninput="TWWB.items['+i+'].mass=this.value;TWWB.items['+i+'].pm=1;twWbPeer('+i+');twWbSums()" autocomplete="off"></td>')+'</tr>';
     }).join('');
     // одна живая накладная этого вида и не подписана — можно переформировать на том же бланке; иначе эта — ещё одна, на новом бланке
     var prev=p.prev||[], canRedo=prev.length===1&&!prev[0].signed, anyLeft=items.some(function(it){ return Number(it.left)>0; });
@@ -231,6 +232,10 @@ function twWbShip(i,v){ var it=TWWB.items[i]; it.ship=Math.max(0,Number(v)||0);
   if(!it.pm && it.qty0>0){ it.places=Math.round(it.places0/it.qty0*it.ship); it.mass=Math.round(it.mass0/it.qty0*it.ship*100)/100;
     var a=el('wbp'+i), b=el('wbm'+i); if(a) a.value=it.places; if(b) b.value=it.mass; }
   twWbSums(); }
+/* масса одной штуки товара переходит на строки того же артикула без массы (накладная по двум счетам, 27.10.2026: 75 шт. — 525 кг → 18 шт. — 126 кг) */
+function twWbPeer(i, unit, init){ var it=TWWB.items[i], n=Number(it.ship)||it.qty0; if(unit==null) unit=n>0?(Number(it.mass)||0)/n:0; if(!(unit>0)||!it.sku) return;
+  TWWB.items.forEach(function(o,j){ if(j===i||o.sku!==it.sku||o.pm||o.mass0>0&&!o.peer) return;
+    o.peer=1; o.mass0=Math.round(unit*o.qty0*100)/100; o.mass=Math.round(unit*(o.ship!=null?Number(o.ship)||0:o.qty0)*100)/100; if(!init){ var b=el('wbm'+j); if(b) b.value=o.mass; } }); }
 /* newBlank=1 — ещё одна накладная (остаток после всех выписанных); 0 — переформировать единственную (её количество снова свободно) */
 function twWbMode(nb, init){ TWWB.__newBlank=!!nb; var prev=(TWWB.prev||[])[0], ps={}; if(prev&&!nb) (prev.ship||[]).forEach(function(l){ ps[l.id]=Number(l.qty)||0; });
   (TWWB.items||[]).forEach(function(it,i){ var base=nb?it.shipped0:(prev?(prev.ship?Math.max(0,it.shipped0-(ps[it.id]||0)):Math.max(0,it.shipped0-it.qty0)):it.shipped0);
