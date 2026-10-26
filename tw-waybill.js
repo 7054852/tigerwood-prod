@@ -99,7 +99,7 @@ function twWaybill(dealKey, kind, onDone){
       if(addr!==undefined) payload.address=addr;
       // «Отгружаем» — у всех строк; места/масса: ТТН — из окна (под отгружаемое), ТН — как были (в ТН не печатаются, строку сделки не трогаем)
       if(TWWB.__partial){
-        payload.items=(TWWB.items||[]).map(function(it){ return {id:it.id||'', deal:it.deal||'', kids:it.kids||[], ship:Number(it.ship)||0, places:tn?it.places0:(Number(it.places)||0), mass:tn?it.mass0:(Number(it.mass)||0)}; });
+        payload.items=(TWWB.items||[]).map(function(it){ return {id:it.id||'', deal:it.deal||'', kids:it.kids||[], ship:Number(it.ship)||0, places:tn?it.places0:(Number(it.places)||0), mass:tn?it.mass0:twWbWhole(it)}; });
         payload.newBlank=!!TWWB.__newBlank;
         if(!(TWWB.items||[]).some(function(it){ return Number(it.ship)>0; })){ setm('wbm','err','Укажите, что отгружаем: количество хотя бы в одной строке'); return false; }
       } else if(!tn) payload.items=(TWWB.items||[]).map(function(it){ return {id:it.id||'', kids:it.kids||[], places:Number(it.places)||0, mass:Number(it.mass)||0}; });
@@ -232,6 +232,8 @@ function twWbShip(i,v){ var it=TWWB.items[i]; it.ship=Math.max(0,Number(v)||0);
   if(!it.pm && it.qty0>0){ it.places=Math.round(it.places0/it.qty0*it.ship); it.mass=Math.round(it.mass0/it.qty0*it.ship*100)/100;
     var a=el('wbp'+i), b=el('wbm'+i); if(a) a.value=it.places; if(b) b.value=it.mass; }
   twWbSums(); }
+/* в строку сделки сохраняется масса ВСЕЙ строки (27.10.2026): вписали 126 кг на 18 из 68 шт. — сохранится 476, остаток следующей накладной получит верную массу */
+function twWbWhole(it){ var m=Number(it.mass)||0, s=Number(it.ship)||0; return (s>0&&it.qty0>0&&s!==it.qty0)?Math.round(m/s*it.qty0*100)/100:m; }
 /* масса одной штуки товара переходит на строки того же артикула без массы (накладная по двум счетам, 27.10.2026: 75 шт. — 525 кг → 18 шт. — 126 кг) */
 function twWbPeer(i, unit, init){ var it=TWWB.items[i], n=Number(it.ship)||it.qty0; if(unit==null) unit=n>0?(Number(it.mass)||0)/n:0; if(!(unit>0)||!it.sku) return;
   TWWB.items.forEach(function(o,j){ if(j===i||o.sku!==it.sku||o.pm||o.mass0>0&&!o.peer) return;
