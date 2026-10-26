@@ -70,6 +70,7 @@
   .mxcap{ font:var(--t-label); text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:var(--s-3) 0 var(--s-1); }
   .mxcap .th{ text-transform:none; letter-spacing:0; font:var(--t-small); margin-left:var(--s-2); }
   table.floor.mx td{ cursor:pointer; }
+  .pbody table.floor.mx{ table-layout:auto; width:auto; min-width:100%; }
   table.floor.mx thead th{ overflow-wrap:normal; word-break:normal; overflow:visible; text-overflow:clip; min-width:72px; max-width:none; font:var(--t-tiny); line-height:1.2; }
   table.floor.mx .flf{ white-space:nowrap; font:var(--t-small); font-weight:600; }
   table.floor.mx td.raw{ color:var(--muted); background:var(--card2); }
@@ -712,30 +713,50 @@ function prodMatrixCard(id,p,pi,flags){
     +'</div>'
     +'<div class="pbody"><div class="muted" style="margin-bottom:var(--s-1)" id="opsp_'+id+'_'+pi+'">'+opProdStat(p)+'</div>'+t1+t2+'</div></div>';
 }
-/* ── сводно по заказу: все изделия, деталь одной строкой, клетка = лежат после операции (как в ведомости переучёта) ── */
+/* ── сводно по заказу: блоки по оборудованию, как в ведомости переучёта (владелец 27.10.2026); деталь одной строкой на все цвета,
+   деталь нескольких оборудований — в блоке «Общие детали» в конце; клетка = лежат после операции, мелко — сделано / нужно ── */
 function summaryMatrixHtml(id,r){
-  var all=[]; (r.products||[]).forEach(function(p){ (p.ops||[]).forEach(function(o){ all.push(o); }); });
+  var all=[]; (r.products||[]).forEach(function(p){ (p.ops||[]).forEach(function(o){ var x=Object.assign({},o); x.eq=p.eq; x.model=p.model; all.push(x); }); });   // оборудование и цвет — у изделия, не у строки
   if(!all.length) return '<div class="muted">нет операций</div>';
-  var cols=opColumns(all), rows=[], idx={};
+  var detEq={}; all.forEach(function(o){ if(o.level==='изделие') return; (detEq[o.detail.toLowerCase()]=detEq[o.detail.toLowerCase()]||{})[o.eq]=1; });
+  var COMMON='§общие', blocks={}, order=[];
   all.forEach(function(o){
-    var dk=(o.level==='изделие'?'§':'')+o.detail.toLowerCase();
-    if(idx[dk]===undefined){ idx[dk]=rows.length; rows.push({ name:o.detail, prod:o.level==='изделие', need:0, cells:{}, shared:false }); }
-    var row=rows[idx[dk]], c=row.cells[o.op]=row.cells[o.op]||{ need:0, ready:0, fact:0, left:0, ids:[], seen:{} };
-    // общая операция (деталь одинакова во всех цветах): одна и та же работа видна в каждом варианте — считаем раз
-    if(o.shared){ row.shared=true; if(c.seen[o.detail]){ c.ids.push(o.id); return; } c.seen[o.detail]=1; }
-    c.need+=Number(o.need)||0; c.ready+=Number(o.readyEff!=null?o.readyEff:o.ready)||0; c.fact+=Number(o.fact)||0; c.left+=Number(o.left)||0; c.ids.push(o.id);
+    var common=o.level!=='изделие'&&Object.keys(detEq[o.detail.toLowerCase()]||{}).length>1, key=common?COMMON:o.eq;
+    if(!blocks[key]){ blocks[key]={ key:key, title:common?'Общие детали — входят в несколько изделий':o.eq, ops:[] }; order.push(key); }
+    blocks[key].ops.push(o);
   });
-  rows.forEach(function(row){ var n=0; cols.forEach(function(c){ var x=row.cells[c]; if(x&&x.need>n) n=x.need; }); row.need=n; row.done=cols.every(function(c){ var x=row.cells[c]; return !x||x.left<=0.001; }); });
-  rows.sort(function(a,b){ return (a.prod?1:0)-(b.prod?1:0) || a.name.localeCompare(b.name,'ru'); });
-  var body=rows.map(function(row){
-    return '<tr>'+mxName(row,true)+'<td class="num">'+r1(row.need)+'</td>'+cols.map(function(c){
-      var x=row.cells[c]; if(!x) return '<td class="no"></td>';
-      var v=x.fact, tip=row.name+' · '+c+'\nлежат после операции: '+r1(v)+'\nсделано '+r1(x.ready)+' из '+r1(x.need)+' · осталось '+r1(x.left)+'\nнажми — поправить «лежит сейчас»';
-      return '<td class="'+(v>0?'lie':(x.left<=0.001?'cdone':''))+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+x.ids.join(',')+'\')"><span class="flf'+(v>0?'':' z')+'">'+(v>0?r1(v):'·')+'</span><span class="sub">'+r1(x.ready)+'/'+r1(x.need)+'</span></td>';
-    }).join('')+'</tr>';
-  }).join('');
-  return '<div class="mxcap">Лежат после операции — те же клетки, что в ведомости переучёта<span class="th">крупно — лежит сейчас; мелко — сделано / нужно; общая деталь считается один раз</span></div>'
-    +'<div class="tbl-wrap flwrap"><table class="tbl floor mx">'+mxHead(cols,false)+'<tbody>'+body+'</tbody></table></div>';
+  order.sort(function(a,b){ return (a===COMMON?1:0)-(b===COMMON?1:0); });
+  var open={}; Array.prototype.forEach.call(document.querySelectorAll('#pan_sum_'+id+' .pcard'), function(c){ open[c.id]=c.classList.contains('open'); });
+  return order.map(function(key,bi){
+    var b=blocks[key], cols=opColumns(b.ops), rows=[], idx={};
+    b.ops.forEach(function(o){
+      var dk=(o.level==='изделие'?'§':'')+o.detail.toLowerCase();
+      if(idx[dk]===undefined){ idx[dk]=rows.length; rows.push({ name:o.detail, prod:o.level==='изделие', need:0, cells:{}, models:{} }); }
+      var row=rows[idx[dk]], c=row.cells[o.op]=row.cells[o.op]||{ need:0, ready:0, fact:0, left:0, ids:[], seen:{} };
+      row.models[o.model]=1;
+      // общая операция (деталь одинакова во всех цветах): одна и та же работа видна в каждом варианте — считаем раз
+      if(o.shared){ if(c.seen[o.detail]){ c.ids.push(o.id); return; } c.seen[o.detail]=1; }
+      c.need+=Number(o.need)||0; c.ready+=Number(o.readyEff!=null?o.readyEff:o.ready)||0; c.fact+=Number(o.fact)||0; c.left+=Number(o.left)||0; c.ids.push(o.id);
+    });
+    rows.forEach(function(row){ var n=0; cols.forEach(function(c){ var x=row.cells[c]; if(x&&x.need>n) n=x.need; }); row.need=n; row.done=cols.every(function(c){ var x=row.cells[c]; return !x||x.left<=0.001; }); });
+    rows.sort(function(a,b){ return (a.prod?1:0)-(b.prod?1:0) || a.name.localeCompare(b.name,'ru'); });
+    var body=rows.map(function(row){
+      var nm=mxName(row,true);
+      if(key===COMMON){ var ms=Object.keys(row.models).join(', '); nm=nm.replace('</td>',' <span class="sub">'+esc(ms)+'</span></td>'); }
+      return '<tr>'+nm+'<td class="num">'+r1(row.need)+'</td>'+cols.map(function(c){
+        var x=row.cells[c]; if(!x) return '<td class="no"></td>';
+        var v=x.fact, tip=row.name+' · '+c+'\nлежат после операции: '+r1(v)+'\nсделано '+r1(x.ready)+' из '+r1(x.need)+' · осталось '+r1(x.left)+'\nнажми — поправить «лежит сейчас»';
+        return '<td class="'+(v>0?'lie':(x.left<=0.001?'cdone':''))+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+x.ids.join(',')+'\')"><span class="flf'+(v>0?'':' z')+'">'+(v>0?r1(v):'·')+'</span><span class="sub">'+r1(x.ready)+'/'+r1(x.need)+'</span></td>';
+      }).join('')+'</tr>';
+    }).join('');
+    var cid='sc_'+id+'_'+bi, isOpen=open[cid]===undefined?true:open[cid];
+    var lying=0; rows.forEach(function(row){ cols.forEach(function(c){ var x=row.cells[c]; if(x) lying+=x.fact; }); });
+    return '<div class="pcard'+(isOpen?' open':'')+'" id="'+cid+'">'
+      +'<div class="phead" onclick="this.parentNode.classList.toggle(\'open\')"><span class="pcar">▸</span>'
+      +'<span class="pname">'+esc(b.title)+' <span class="muted">· '+plural(rows.length,'деталь','детали','деталей')+' · лежит '+r1(lying)+'</span></span></div>'
+      +'<div class="pbody"><div class="tbl-wrap flwrap"><table class="tbl floor mx">'+mxHead(cols,false)+'<tbody>'+body+'</tbody></table></div></div></div>';
+  }).join('')
+  +'<div class="muted small">крупно — лежит после операции (как в ведомости переучёта), мелко — сделано / нужно; деталь одной строкой на все цвета, общая операция считается один раз</div>';
 }
 function toggleProd(id,pi){ var c=$('pc_'+id+'_'+pi); if(c) c.classList.toggle('open'); }
 function toggleGroup(id,gi){ var c=$('gc_'+id+'_'+gi); if(c) c.classList.toggle('open'); }
