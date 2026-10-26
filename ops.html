@@ -777,8 +777,9 @@ function siteOpts(cur){ return ['',].concat(DATA.sites||[]).map(function(v){ ret
 // value = техпорядок, который получит операция: 0 — в начало, rank+1 — после соседа; у соседа без места встать нельзя
 function afterOpts(self){
   var cur=self?rankOf(self):null, ops=(DATA.opsCatalog||[]).filter(function(o){ return rankOf(o)!=null && (!self||o.name!==self.name); }).sort(byRank);
-  var h='<option value="0"'+(cur===0?' selected':'')+'>в начало</option>', last=null;
-  ops.forEach(function(o){ var v=rankOf(o)+1; h+='<option value="'+v+'"'+(cur!=null&&cur>0&&v===cur?' selected':'')+'>после «'+esc(o.name)+'»</option>'; last=v; });
+  var pred=null; ops.forEach(function(o){ if(cur!=null&&rankOf(o)<cur&&(!pred||rankOf(o)>rankOf(pred))) pred=o; });   // сосед слева — ближайший меньший ранг (дыры не страшны)
+  var h='<option value="0"'+(cur!=null&&!pred?' selected':'')+'>в начало</option>', last=null;
+  ops.forEach(function(o){ var v=rankOf(o)+1; h+='<option value="'+v+'"'+(o===pred?' selected':'')+'>после «'+esc(o.name)+'»</option>'; last=v; });
   if(self&&cur==null) h='<option value="" selected>— без места —</option>'+h;
   if(!self&&last!=null) h=h.replace('value="'+last+'"','value="'+last+'" selected');   // новая — в конец
   return h;
