@@ -144,6 +144,10 @@
   table.floor.mx .flf{ white-space:nowrap; font:var(--t-small); line-height:16px; font-weight:600; display:inline-block; vertical-align:top; }
   table.floor.mx td.raw{ color:var(--muted); background:var(--card2); }
   table.floor.mx td.lie{ background:var(--green-bg); }
+  table.floor.mx td.can{ background:var(--accent-bg); } table.floor.mx td.can .flf{ color:var(--accent-text); }   /* сводная: можно делать сейчас */
+  table.floor.mx td.todo .flf{ color:var(--fg); }   /* осталось сделать */
+  .sumtodo{ font:var(--t-small); margin:0 0 var(--s-2); } .sumtodo b{ font-weight:600; } .sumtodo.ok{ color:var(--green); }
+  .mxsw.sumsw{ margin:0 0 var(--s-1); }
   table.floor.mx td.lie .flf{ color:var(--green); }
   table.floor.mx td .sub{ display:inline-block; font:var(--t-tiny); line-height:16px; color:var(--muted); white-space:nowrap; margin:0 0 0 4px; vertical-align:top; }   /* в одну строку с главной цифрой, чтобы не наезжать на полоску; margin целиком: у темы .sub имеет отступ снизу 24 px */
   table.floor.mx td .chk{ vertical-align:top; line-height:16px; }
@@ -750,7 +754,7 @@ function renderOps(id,r){
   var nP=(r.products||[]).length, issues=((r.checks||{}).issues||[]).length;
   var chk=issues?'<details class="chkd"'+(open['chk_'+id]?' open':'')+' id="chk_'+id+'"><summary>⚠ проверки логики: '+plural(issues,'замечание','замечания','замечаний')+' — показать</summary>'+opsChecksHtml(id,r.checks||{})+'</details>':'';
   var det=$('pan_det_'+id); if(det) det.innerHTML=reb+warn+chk+(prods||'<div class="muted" style="margin-top:var(--s-4)">нет операций — у изделий заказа не задан состав в каталоге</div>');
-  var sum=$('pan_sum_'+id); if(sum) sum.innerHTML=summaryMatrixHtml(id,r);
+  OPSR[id]=r; var sum=$('pan_sum_'+id); if(sum) sum.innerHTML=summaryMatrixHtml(id,r);
   var dash=r.dash||{}, nG=(dash.groups||[]).length, nO=(dash.ops||[]).length;
   var site=$('pan_site_'+id); if(site) site.innerHTML='<div id="opskpi_'+id+'">'+opsKpiHtml(k)+'</div>'
     +trayHtml('Участки работ', nG?plural(nG,'участок','участка','участков'):'', 'сколько труда в участке и сколько осталось; раскрой — операции участка',
@@ -896,15 +900,19 @@ function summaryMatrixHtml(id,r){
   });
   order.sort(function(a,b){ return (a===COMMON?1:0)-(b===COMMON?1:0); });
   var open={}; Array.prototype.forEach.call(document.querySelectorAll('#pan_sum_'+id+' .pcard'), function(c){ open[c.id]=c.classList.contains('open'); });
-  return order.map(function(key,bi){
+  var SV=sumView();
+  var sw='<div class="mxsw sumsw">'+[['avail','Можно делать сейчас'],['left','Осталось сделать'],['lie','Лежит после операции']].map(function(t){ return '<span class="'+(SV===t[0]?'on':'')+'" onclick="setSumView(\''+t[0]+'\')">'+t[1]+'</span>'; }).join('')+'</div>'
+    +'<div class="muted small" style="margin:var(--s-1) 0 var(--s-2)">'+(SV==='avail'?'цифра — детали, прошедшие предыдущую операцию и ждущие эту: это работа, которую можно дать прямо сейчас; ✓ — операция закрыта'
+      :SV==='left'?'цифра — сколько штук ещё предстоит сделать по операции (нужно − сделано); ✓ — закрыта':'цифра — лежит после операции, как в ведомости переучёта; ✓ — закрыта')+'</div>';
+  return sw+order.map(function(key,bi){
     var b=blocks[key], cols=opColumns(b.ops), rows=[], idx={}, grp=opGroups(b.ops);
     b.ops.forEach(function(o){
       var dk=(o.level==='изделие'?'§':'')+o.detail.toLowerCase();
       if(idx[dk]===undefined){ idx[dk]=rows.length; rows.push({ name:o.detail, prod:o.level==='изделие', need:0, cells:{}, models:{}, keys:{} }); }
-      var row=rows[idx[dk]], c=row.cells[o.op]=row.cells[o.op]||{ need:0, ready:0, fact:0, left:0, ids:[] };
+      var row=rows[idx[dk]], c=row.cells[o.op]=row.cells[o.op]||{ need:0, ready:0, fact:0, left:0, avail:0, ids:[] };
       row.models[o.model]=1; row.keys[o.eq+'|'+o.model+'|'+o.detail]=1;
       // у каждого цвета своя потребность и своя доля работы (общую операцию расчёт уже разложил по цветам) — складываем всегда
-      c.need+=Number(o.need)||0; c.ready+=Number(o.readyEff!=null?o.readyEff:o.ready)||0; c.fact+=Number(o.fact)||0; c.left+=Number(o.left)||0; c.ids.push(o.id);
+      c.need+=Number(o.need)||0; c.ready+=Number(o.readyEff!=null?o.readyEff:o.ready)||0; c.fact+=Number(o.fact)||0; c.left+=Number(o.left)||0; c.avail+=Number(o.avail)||0; c.ids.push(o.id);
     });
     rows.forEach(function(row){ var n=0; cols.forEach(function(c){ var x=row.cells[c]; if(x&&x.need>n) n=x.need; }); row.need=n; row.done=cols.every(function(c){ var x=row.cells[c]; return !x||x.left<=0.001; }); });
     rows.sort(function(a,b){ return (a.prod?1:0)-(b.prod?1:0) || a.name.localeCompare(b.name,'ru'); });
@@ -913,19 +921,28 @@ function summaryMatrixHtml(id,r){
       if(key===COMMON){ var ms=Object.keys(row.models).join(', '); nm=nm.replace('</td>',' <span class="sub">'+esc(ms)+'</span></td>'); }
       return '<tr>'+nm+'<td class="num">'+r1(row.need)+'</td>'+cols.map(function(c){
         var x=row.cells[c]; if(!x) return '<td class="no"></td>';
-        var v=x.fact, tip=row.name+' · '+c+'\nлежат после операции: '+r1(v)+'\nсделано '+r1(x.ready)+' из '+r1(x.need)+' · осталось '+r1(x.left)+'\nнажми — поправить «лежит сейчас»';
-        return '<td class="'+(v>0?'lie':(x.left<=0.001?'cdone':''))+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+x.ids.join(',')+'\')"><span class="flf'+(v>0?'':' z')+'">'+(v>0?r1(v):'·')+'</span></td>';
+        var done=x.left<=0.001, tip=row.name+' · '+c+'\nможно делать сейчас (прошли предыдущую): '+r1(x.avail)+'\nосталось сделать: '+r1(x.left)+' · сделано '+r1(x.ready)+' из '+r1(x.need)+'\nлежат после операции: '+r1(x.fact)+'\nнажми — поправить «лежит сейчас»';
+        var v=SV==='avail'?x.avail:SV==='left'?x.left:x.fact, cls=done?'cdone':(SV==='avail'?(v>0?'can':''):SV==='left'?(v>0?'todo':''):(v>0?'lie':''));
+        return '<td class="'+cls+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+x.ids.join(',')+'\')"><span class="flf'+(v>0?'':' z')+'">'+(v>0?r1(v):(done?'✓':'·'))+'</span></td>';
       }).join('')+(row.prod?'<td class="no"></td><td class="no"></td>':rwCells(id,row.name,Object.keys(row.keys)))+'</tr>';
     }).join('');
     var cid='sc_'+id+'_'+bi, isOpen=open[cid]===undefined?true:open[cid];
-    var lying=0; rows.forEach(function(row){ cols.forEach(function(c){ var x=row.cells[c]; if(x) lying+=x.fact; }); });
+    var lying=0, left=0, byOp={}; rows.forEach(function(row){ cols.forEach(function(c){ var x=row.cells[c]; if(!x) return; lying+=x.fact; left+=x.left; if(x.avail>0&&x.left>0.001){ var a=Math.min(x.avail,x.left); byOp[c]=(byOp[c]||0)+a; } }); });
+    // что можно дать в работу прямо сейчас: операции с наибольшим числом ждущих деталей (не больше, чем осталось)
+    var todo=Object.keys(byOp).sort(function(a,b){ return byOp[b]-byOp[a]; }).slice(0,5);
+    var todoLine=todo.length?'<div class="sumtodo">👉 можно делать: '+todo.map(function(c){ return '<b>'+esc(c)+'</b> '+r1(byOp[c]); }).join(' · ')+(Object.keys(byOp).length>5?' · …':'')+'</div>'
+      :(left>0.001?'<div class="sumtodo muted">ждущих деталей нет — всё, что осталось, упирается в предыдущие операции</div>':'<div class="sumtodo ok">✓ все операции закрыты</div>');
     return '<div class="pcard'+(isOpen?' open':'')+'" id="'+cid+'">'
       +'<div class="phead" onclick="this.parentNode.classList.toggle(\'open\');fitWraps()"><span class="pcar">▸</span>'
-      +'<span class="pname">'+esc(b.title)+' <span class="muted">· '+plural(rows.length,'деталь','детали','деталей')+' · лежит '+r1(lying)+'</span></span></div>'
-      +'<div class="pbody"><div class="tbl-wrap flwrap"><table class="tbl floor mx">'+mxHead(cols,false,grp)+'<tbody>'+body+'</tbody></table></div></div></div>';
+      +'<span class="pname">'+esc(b.title)+' <span class="muted">· '+plural(rows.length,'деталь','детали','деталей')+' · осталось '+r1(left)+' · лежит '+r1(lying)+'</span></span></div>'
+      +'<div class="pbody">'+todoLine+'<div class="tbl-wrap flwrap"><table class="tbl floor mx">'+mxHead(cols,false,grp)+'<tbody>'+body+'</tbody></table></div></div></div>';
   }).join('')
   +'<div class="muted small">цифра — лежит после операции (как в ведомости переучёта), зелёная клетка — операция закрыта; деталь одной строкой — сумма по всем цветам; «↺ шлифовка / малярка» — вернули с покраски на переделку, на операциях не лежат; наведи — сделано / нужно</div>';
 }
+/* вид сводной: можно делать / осталось / лежит — запоминается */
+function sumView(){ try{ return localStorage.getItem('tw_prod_sumv')||'avail'; }catch(e){ return 'avail'; } }
+function setSumView(v){ try{ localStorage.setItem('tw_prod_sumv',v); }catch(e){} var sum=$('pan_sum_'+CUR); if(sum&&OPSR[CUR]){ sum.innerHTML=summaryMatrixHtml(CUR,OPSR[CUR]); fitWraps(); } }
+var OPSR={};
 function toggleProd(id,pi){ var c=$('pc_'+id+'_'+pi); if(c) c.classList.toggle('open'); fitWraps(); }
 function toggleGroup(id,gi){ var c=$('gc_'+id+'_'+gi); if(c) c.classList.toggle('open'); }
 // панель «Проверки логики»: нестыковки в данных заказа, чтобы админ видел и проверял
