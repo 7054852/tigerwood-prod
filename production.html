@@ -732,10 +732,9 @@ function summaryMatrixHtml(id,r){
     b.ops.forEach(function(o){
       var dk=(o.level==='изделие'?'§':'')+o.detail.toLowerCase();
       if(idx[dk]===undefined){ idx[dk]=rows.length; rows.push({ name:o.detail, prod:o.level==='изделие', need:0, cells:{}, models:{} }); }
-      var row=rows[idx[dk]], c=row.cells[o.op]=row.cells[o.op]||{ need:0, ready:0, fact:0, left:0, ids:[], seen:{} };
+      var row=rows[idx[dk]], c=row.cells[o.op]=row.cells[o.op]||{ need:0, ready:0, fact:0, left:0, ids:[] };
       row.models[o.model]=1;
-      // общая операция (деталь одинакова во всех цветах): одна и та же работа видна в каждом варианте — считаем раз
-      if(o.shared){ if(c.seen[o.detail]){ c.ids.push(o.id); return; } c.seen[o.detail]=1; }
+      // у каждого цвета своя потребность и своя доля работы (общую операцию расчёт уже разложил по цветам) — складываем всегда
       c.need+=Number(o.need)||0; c.ready+=Number(o.readyEff!=null?o.readyEff:o.ready)||0; c.fact+=Number(o.fact)||0; c.left+=Number(o.left)||0; c.ids.push(o.id);
     });
     rows.forEach(function(row){ var n=0; cols.forEach(function(c){ var x=row.cells[c]; if(x&&x.need>n) n=x.need; }); row.need=n; row.done=cols.every(function(c){ var x=row.cells[c]; return !x||x.left<=0.001; }); });
@@ -756,7 +755,7 @@ function summaryMatrixHtml(id,r){
       +'<span class="pname">'+esc(b.title)+' <span class="muted">· '+plural(rows.length,'деталь','детали','деталей')+' · лежит '+r1(lying)+'</span></span></div>'
       +'<div class="pbody"><div class="tbl-wrap flwrap"><table class="tbl floor mx">'+mxHead(cols,false)+'<tbody>'+body+'</tbody></table></div></div></div>';
   }).join('')
-  +'<div class="muted small">крупно — лежит после операции (как в ведомости переучёта), мелко — сделано / нужно; деталь одной строкой на все цвета, общая операция считается один раз</div>';
+  +'<div class="muted small">крупно — лежит после операции (как в ведомости переучёта), мелко — сделано / нужно; деталь одной строкой — сумма по всем цветам изделия</div>';
 }
 function toggleProd(id,pi){ var c=$('pc_'+id+'_'+pi); if(c) c.classList.toggle('open'); }
 function toggleGroup(id,gi){ var c=$('gc_'+id+'_'+gi); if(c) c.classList.toggle('open'); }
