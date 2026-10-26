@@ -209,14 +209,17 @@
 <!-- ═══ РЕЕСТР ОПЕРАЦИЙ ═══ -->
 <div id="pane_opreg" class="hide">
   <div class="toolbar"><input id="opregFilter" type="search" class="search" placeholder="🔎 код / операция" oninput="renderOpReg()"><span class="meta" id="opRegCnt"></span></div>
-  <div class="note"><div>Реестр — источник списка для «＋ операция» у детали. Здесь операция только заводится; расценка появится, когда вы добавите её конкретной детали. Меняете код — он пересчитывается во всех № операций системы.</div></div>
+  <div class="note"><div>Реестр — источник списка для «＋ операция» у детали. Здесь операция только заводится; расценка появится, когда вы добавите её конкретной детали. Меняете код — он пересчитывается во всех № операций системы.
+    Участок и место в техпорядке задают порядок колонок в карточке заказа и ведомости переучёта и ленту участков: выберите участок и «после какой операции» стоит новая — соседи сдвинутся сами. Цвет плашки — по участку, можно свой.</div></div>
   <div class="toolbar tray">
     <input id="newOpCode" placeholder="код" style="width:90px">
     <input id="newOpName" placeholder="название новой операции" style="min-width:260px">
+    <select id="newOpSite" title="участок"></select>
+    <select id="newOpAfter" title="место в техпорядке"></select>
     <button class="green" onclick="addOpRef()">➕ Добавить в реестр</button>
     <span id="opRegMsg" class="msg"></span>
   </div>
-  <div class="tbl-wrap"><table class="tbl sm" id="opRegTbl"><thead><tr><th style="width:110px">Код</th><th>Операция</th><th style="width:60px"></th></tr></thead><tbody></tbody></table></div>
+  <div class="tbl-wrap"><table class="tbl sm" id="opRegTbl"><thead><tr><th style="width:90px">Код</th><th>Операция</th><th style="width:130px">Участок</th><th style="width:300px">Техпорядок</th><th style="width:60px"></th></tr></thead><tbody></tbody></table></div>
 </div>
 
 <!-- ═══ РАСКРОЙ ЧПУ: расценка за целый лист ═══ -->
@@ -766,12 +769,37 @@ function renderDetReg(){ if(!DATA) return;
     +'<td style="white-space:nowrap"><button class="gray sm" title="добавить детали операцию с расценкой (первую или ещё одну)" onclick="firstOpFor('+jsq(d.name)+')">＋оп</button> '
     +'<button class="ic" title="убрать из реестра (только если нет расценок и составов)" onclick="delDetRef('+jsq(d.name)+')">🗑</button></td></tr>'; }).join('') || '<tr><td colspan="3" class="hint">нет деталей</td></tr>';
 }
+// Участок и техпорядок операции (колонки матриц карточки заказа и ведомости переучёта): опции «участок» и «после какой операции».
+var SITE_COLOR={'Механика':'#DBEAFE','Шлифовка':'#BAE6FD','Покрытие':'#D1FAE5','Сборка':'#FEF3C7','Прочее':'#EEF0F3'};
+function rankOf(o){ var r=Number(o.rank); return o.rank==null||!(r>=0)?null:r; }
+function byRank(a,b){ var x=rankOf(a),y=rankOf(b); return (x==null?1e9:x)-(y==null?1e9:y) || (Number(a.code)||9999)-(Number(b.code)||9999) || a.name.localeCompare(b.name,'ru'); }
+function siteOpts(cur){ return ['',].concat(DATA.sites||[]).map(function(v){ return '<option value="'+esc(v)+'"'+((cur||'')===v?' selected':'')+'>'+esc(v||'— нет —')+'</option>'; }).join(''); }
+// value = техпорядок, который получит операция: 0 — в начало, rank+1 — после соседа; у соседа без места встать нельзя
+function afterOpts(self){
+  var cur=self?rankOf(self):null, ops=(DATA.opsCatalog||[]).filter(function(o){ return rankOf(o)!=null && (!self||o.name!==self.name); }).sort(byRank);
+  var h='<option value="0"'+(cur===0?' selected':'')+'>в начало</option>', last=null;
+  ops.forEach(function(o){ var v=rankOf(o)+1; h+='<option value="'+v+'"'+(cur!=null&&cur>0&&v===cur?' selected':'')+'>после «'+esc(o.name)+'»</option>'; last=v; });
+  if(self&&cur==null) h='<option value="" selected>— без места —</option>'+h;
+  if(!self&&last!=null) h=h.replace('value="'+last+'"','value="'+last+'" selected');   // новая — в конец
+  return h;
+}
 function renderOpReg(){ if(!DATA) return;
   var f=(el('opregFilter')&&el('opregFilter').value||'').toLowerCase();
-  var rows=(DATA.opsCatalog||[]).filter(function(o){ return !f || (o.code+' '+o.name).toLowerCase().indexOf(f)>=0; }).sort(function(a,b){ return (Number(a.code)||9999)-(Number(b.code)||9999) || a.name.localeCompare(b.name,'ru'); });
+  var rows=(DATA.opsCatalog||[]).filter(function(o){ return !f || (o.code+' '+o.name+' '+(o.site||'')).toLowerCase().indexOf(f)>=0; }).sort(byRank);
   el('opRegCnt').textContent='операций: '+rows.length;
-  el('opRegTbl').querySelector('tbody').innerHTML = rows.map(function(o){ return '<tr><td style="white-space:nowrap">'+codeCell('op',o.name,o.code)+'</td><td>'+nameCell('op',o.name)+'</td>'
-    +'<td><button class="ic" title="убрать из реестра (только если по ней нет расценок)" onclick="delOpRef('+jsq(o.name)+')">🗑</button></td></tr>'; }).join('') || '<tr><td colspan="3" class="hint">нет операций</td></tr>';
+  if(el('newOpSite')) el('newOpSite').innerHTML=siteOpts(el('newOpSite').value||'Прочее');
+  if(el('newOpAfter')) el('newOpAfter').innerHTML=afterOpts(null);
+  el('opRegTbl').querySelector('tbody').innerHTML = rows.map(function(o){ var r=rankOf(o);
+    return '<tr><td style="white-space:nowrap">'+codeCell('op',o.name,o.code)+'</td><td>'+nameCell('op',o.name)+'</td>'
+    +'<td><select title="участок" onchange="opMeta('+jsq(o.name)+',{site:this.value})">'+siteOpts(o.site)+'</select></td>'
+    +'<td style="white-space:nowrap"><span class="sub2" style="display:inline-block;min-width:24px" title="номер в техпорядке">'+(r==null?'—':r+1)+'</span> '
+    +'<select title="после какой операции" onchange="opMeta('+jsq(o.name)+',{rank:this.value})">'+afterOpts(o)+'</select> '
+    +'<input type="color" value="'+esc(o.color||SITE_COLOR[o.site||'Прочее']||'#EEF0F3')+'" title="цвет плашки в матрицах (по участку; можно свой)" style="width:24px;min-height:0;height:20px;padding:0;border:0;background:none;vertical-align:middle;border-radius:var(--r-xs)" onchange="opMeta('+jsq(o.name)+',{color:this.value})"></td>'
+    +'<td><button class="ic" title="убрать из реестра (только если по ней нет расценок)" onclick="delOpRef('+jsq(o.name)+')">🗑</button></td></tr>'; }).join('') || '<tr><td colspan="5" class="hint">нет операций</td></tr>';
+}
+function opMeta(name, p){ p.vapi='opmeta-save'; p.op=name;
+  api(p).then(function(r){ if(!r||!r.ok){ refused('opRegMsg',r); load(); return; } setMsg('opRegMsg',true,'✓ «'+name+'»: '+(r.site||'без участка')+(r.techRank==null?'':', № '+(r.techRank+1))); load(); })
+    .catch(function(e){ refused('opRegMsg',{error:errOf(e)}); });
 }
 // первая операция для только что заведённой детали: без неё деталь не видна ни в расценках, ни в каталоге
 function firstOpFor(det){
@@ -803,7 +831,7 @@ function delDetRef(name){ ask('Убрать «'+name+'» из реестра д�
 function addOpRef(){
   var nm=(el('newOpName').value||'').trim(), cd=(el('newOpCode').value||'').trim();
   if(!nm){ setMsg('opRegMsg',false,'впишите название операции'); return; }
-  refCall({vapi:'addopref',name:nm,code:cd},'opRegMsg',function(r){ return '✓ «'+nm+'» в реестре, код '+r.code; },function(){ el('newOpName').value=''; el('newOpCode').value=''; });
+  refCall({vapi:'addopref',name:nm,code:cd,site:el('newOpSite').value,rank:el('newOpAfter').value},'opRegMsg',function(r){ return '✓ «'+nm+'» в реестре, код '+r.code+(r.site?', '+r.site:'')+(r.techRank==null?'':', № '+(r.techRank+1)); },function(){ el('newOpName').value=''; el('newOpCode').value=''; });
 }
 function delOpRef(name){ ask('Убрать «'+name+'» из реестра операций?', function(){
   refCall({vapi:'delopref',name:name},'opRegMsg',function(){ return '✓ убрано'; }); }, 'Убрать'); }
