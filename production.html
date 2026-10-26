@@ -49,8 +49,18 @@
   .bcard.click{ cursor:pointer; transition:border-color .15s var(--ease), background-color .15s var(--ease), transform .08s var(--ease); }
   .bcard.click:hover{ border-color:var(--line2); background:var(--card2); }
   .bcard.click:active{ transform:translateY(1px); }
-  .bcard .mrow{ display:flex; justify-content:space-between; gap:var(--s-2); align-items:baseline; padding:var(--s-2) 0; border-top:1px solid var(--line); }
-  .bcard .mrow:first-of-type{ border-top:0; }
+  /* факты заказа в списке: 4 клетки «подпись · значение · пояснение», на телефоне две колонки */
+  .bfacts{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:var(--s-3); margin-top:var(--s-3); padding-top:var(--s-2); border-top:1px solid var(--line); }
+  .bf{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+  .bf .t{ font:var(--t-tiny); color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+  .bf .v{ font:var(--t-strong); font-weight:600; font-variant-numeric:tabular-nums; display:flex; align-items:center; gap:var(--s-2); white-space:nowrap; }
+  .bf .v .bar{ flex:0 0 64px; min-width:64px; }
+  .bf .v a{ text-decoration:none; font-weight:400; }
+  .bf .s{ font:var(--t-tiny); color:var(--muted); }   /* переносится, а не режется: прогноз и запас терять нельзя */
+  .bf.ok .v{ color:var(--green); } .bf.warn .v{ color:var(--amber); } .bf.bad .v{ color:var(--red); }
+  .bf.bad .s{ color:var(--red); } .bf.warn .s{ color:var(--amber); }
+  @media (max-width:820px){ .bfacts{ grid-template-columns:repeat(2,minmax(0,1fr)); } }
+  @media (max-width:400px){ .bfacts{ grid-template-columns:1fr; } }
   .bhead{ display:flex; align-items:center; gap:var(--s-3); flex-wrap:wrap; }
   .bnum{ font:var(--t-heading); } .bpct{ font-variant-numeric:tabular-nums; }
   .bar{ flex:1; min-width:80px; }
@@ -526,17 +536,28 @@ function deadlineLog(id){
 }
 // ── СПИСОК: компактные карточки-обзор ──
 function renderList(){
+  // Карточка заказа в списке (владелец 28.10.2026): перечень изделий убран — он виден в самом заказе. Показываем то, по чему
+  // принимают решение: срок и запас, готовность по труду, сколько труда осталось и когда закончим, сколько изделий и что увезено,
+  // и флаги только там, где есть проблема. Сортировка та же: что делать первым — сверху.
   var cards=BATCHES.map(function(b){
-    var models=(b.items||[]).map(function(it){
-      var pct=it.pctLabor||0, sub=subPct(it);
-      return '<div class="mrow"><span>'+esc(itemName(it))+' <span class="muted">×'+it.qty+'</span>'+(it.over?' <span class="pill bad">✕ перевып +'+it.over+'</span>':'')+'</span>'
-        +'<span style="min-width:120px;display:flex;align-items:center;gap:var(--s-2);justify-content:flex-end">'
-        +'<span class="bar dual" style="width:70px"><i style="width:'+Math.min(100,pct)+'%'+(pct>=100?';background:var(--green)':'')+'"></i>'+(sub>0?'<i class="sub" style="width:'+sub+'%"></i>':'')+'</span>'
-        +'<span class="muted" style="font-variant-numeric:tabular-nums;min-width:34px;text-align:right" title="'+(sub>0?esc('подано, ещё не принято: ещё +'+sub+'% — на проверке '+money(it.pendRub||0)+' ₽, ждёт ОТК '+money(it.qcRub||0)+' ₽'):'')+'">'+pct+'%'+(sub>0?'<span class="subn">+'+sub+'% подано</span>':'')+'</span></span></div>';
-    }).join('')||'<div class="muted" style="padding:var(--s-2) 0">позиций нет</div>';
-    var prio=b.prio==='срочно';
+    var prio=b.prio==='срочно', its=b.items||[];
+    var qty=its.reduce(function(t,it){ return t+(Number(it.qty)||0); },0), shipped=its.reduce(function(t,it){ return t+(Number(it.shipped)||0); },0);
+    var pct=Math.min(100,b.pctLabor||0), sub=subPct(b);
+    // срок: цифра — дата, под ней — запас или прогноз; цвет по риску
+    var dlCls=b.risk==='late'?'bad':b.risk==='tight'?'warn':b.risk==='ok'||b.risk==='done'?'ok':'';
+    var dlSub=b.risk==='late'?'не успеваем'+(b.slack!=null?' на '+Math.abs(b.slack)+' дн':'')+(b.forecast?' · прогноз '+esc(b.forecast):'')
+      :b.risk==='tight'?'впритык · запас '+(b.slack!=null?b.slack+' дн':'')+(b.forecast?' · прогноз '+esc(b.forecast):'')
+      :b.risk==='ok'?'успеваем'+(b.slack!=null?' · запас '+b.slack+' дн':'')+(b.forecast?' · прогноз '+esc(b.forecast):'')
+      :b.risk==='done'?'готово':b.risk==='nodeadline'?'срок не задан'+(b.forecast?' · прогноз '+esc(b.forecast):''):b.risk==='noops'?'операции не собраны':'темп неизвестен';
+    var ready=b.opsCount?(b.leftRub>0?'осталось '+money(b.leftRub)+' р труда':'все операции закрыты'):'операции не собраны';
+    var pace=b.velocity?'темп '+money(b.velocity)+' р/дн · '+b.workDays+' раб. дн':'темпа нет';
+    var flags=[];
+    if(b.overflow) flags.push('<span class="pill bad" title="есть операции, сделанные сверх плана">⚠ перевыполнено</span>');
+    if(b.outRub) flags.push('<span class="pill mute" title="'+OUT_T+'">у подрядчика '+money(b.outRub)+' р</span>');
+    if((b.pendRub||0)+(b.qcRub||0)>0) flags.push('<span class="pill mute" title="подано, но ещё не принято мастером / ОТК">на проверке '+money((b.pendRub||0)+(b.qcRub||0))+' р</span>');
+    if(b.opsCount&&b.modelsTotal&&!its.length) flags.push('<span class="pill warn">позиций нет</span>');
     return '<div class="bcard click" onclick="openOrder(\''+b.id+'\')">'
-      +'<div class="bhead" style="padding-bottom:var(--s-2);border-bottom:1px solid var(--line);margin-bottom:var(--s-1)">'
+      +'<div class="bhead">'
       +'<span class="dot" style="background:'+(b.risk==='late'?'var(--red)':b.risk==='tight'?'var(--amber)':statusColor(b.status))+'"></span>'
       +(b.top?'<span class="pill warn">🎯 делать сейчас</span> ':'')
       +'<span class="bnum">'+esc(b.num)+'</span>'
@@ -545,23 +566,18 @@ function renderList(){
       +statusPill(b.status)
       +(prio?'<span class="pill prio bad">🔥 срочно</span>':'')
       +'<span style="flex:1"></span>'
-      +'<span class="pill">'+(b.pctLabor||0)+'% по труду</span>'
-      +(subPct(b)>0?'<span class="pill mute" title="'+esc('подано, ещё не принято: на проверке '+money(b.pendRub||0)+' ₽, ждёт ОТК '+money(b.qcRub||0)+' ₽ — с учётом поданного '+b.pctLaborSub+'%')+'">+'+subPct(b)+'% подано</span>':'')
-      +(b.outRub?'<span class="pill mute" title="'+OUT_T+'">у подрядчика '+money(b.outRub)+' ₽</span>':'')
-      +(b.overflow?'<span class="pill bad">⚠ перевыполнено</span>':'')
       +'<span id="aud_'+b.id+'"></span>'
       +'</div>'
-      +'<div class="row" style="gap:var(--s-3);font:var(--t-small);margin:var(--s-1) 0 var(--s-2);align-items:center">'
-        + riskBadge(b)
-        +'<span class="muted">Срок: '+(b.deadline?('<b>'+esc(b.deadline)+'</b>'):'—')+' <a href="javascript:void(0)" onclick="event.stopPropagation();setDeadline(\''+b.id+'\',\''+esc(b.deadline||'')+'\')" title="задать/изменить срок" style="text-decoration:none">✎</a> '
-          +'<a href="javascript:void(0)" onclick="event.stopPropagation();deadlineLog(\''+b.id+'\')" title="история изменений срока" style="text-decoration:none">🕘</a></span>'
-        +'<span class="muted">темп: <b>'+(b.velocity?money(b.velocity)+' ₽/дн':'—')+'</b></span>'
-        +'<span class="muted">осталось: <b>'+money(b.leftRub||0)+' ₽</b> труда</span>'
-        +(b.forecastSub&&b.forecastSub!==b.forecast?'<span class="muted" title="если всё поданное примут без замечаний">с учётом поданного — к <b>'+esc(b.forecastSub)+'</b></span>':'')
-        +(b.forecastOur&&b.forecastOur!==b.forecastSub&&b.forecastOur!==b.forecast?'<span class="muted" title="'+OUR_T+' — по нашему темпу, без работы подрядчика">нам осталось <b>'+money(b.ourRub||0)+' ₽</b> — к <b>'+esc(b.forecastOur)+'</b></span>':'')
+      +'<div class="bfacts">'
+        +'<div class="bf '+dlCls+'"><span class="t">Срок</span><span class="v">'+(b.deadline?esc(b.deadline):'—')
+          +' <a href="javascript:void(0)" onclick="event.stopPropagation();setDeadline(\''+b.id+'\',\''+esc(b.deadline||'')+'\')" title="задать/изменить срок">✎</a></span><span class="s">'+dlSub+'</span></div>'
+        +'<div class="bf"><span class="t">Готовность по труду</span><span class="v"><span class="bar dual"><i style="width:'+pct+'%'+(pct>=100?';background:var(--green)':'')+'"></i>'+(sub>0?'<i class="sub" style="width:'+sub+'%"></i>':'')+'</span>'+(b.pctLabor||0)+'%</span>'
+          +'<span class="s">'+(sub>0?'+'+sub+'% подано, не принято':ready)+'</span></div>'
+        +'<div class="bf"><span class="t">Труд</span><span class="v">'+(b.opsCount?money(b.leftRub||0)+' р осталось':'—')+'</span><span class="s">'+pace+(b.ourRub!=null&&b.outRub?' · нам '+money(b.ourRub)+' р':'')+'</span></div>'
+        +'<div class="bf"><span class="t">Изделия</span><span class="v">'+plural(its.length,'позиция','позиции','позиций')+' · '+Math.round(qty)+' шт</span>'
+          +'<span class="s">'+(shipped>0?'увезено '+Math.round(shipped)+' из '+Math.round(qty)+(shipped>=qty-0.001?' · всё':''):'ещё не отгружали')+'</span></div>'
       +'</div>'
-      +models
-      +'<div class="muted" style="margin-top:var(--s-2);font:var(--t-small);text-align:right">открыть заказ →</div>'
+      +(flags.length?'<div class="row" style="gap:var(--s-2);margin-top:var(--s-2)">'+flags.join('')+'</div>':'')
       +'</div>';
   }).join('');
   // каркас: панель действий → плитки пульса → уведомления → группа → карточки
