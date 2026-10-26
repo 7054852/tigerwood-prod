@@ -107,6 +107,21 @@
   table.floor.mx thead th.op span{ writing-mode:vertical-rl; transform:rotate(180deg); display:inline-block; max-height:112px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; line-height:16px; color:var(--fg2,var(--fg)); font-weight:500; }
   table.floor.mx thead th.op.fin{ background:var(--green-bg); } table.floor.mx thead th.op.fin span{ color:var(--green); font-weight:600; }
   table.floor.mx thead th.op.rw span{ color:var(--amber); }
+  /* читаемость широкой матрицы: зебра, перекрестие под курсором, разделители участков, полоска прогресса в клетке */
+  table.floor.mx tbody tr:nth-child(even) td{ background-color:var(--card2); }
+  table.floor.mx tbody tr:nth-child(even) td.dn{ background-color:var(--card2); }
+  table.floor.mx tbody tr:hover td, table.floor.mx td.colh{ background-color:var(--accent-bg); }
+  table.floor.mx tbody tr:hover td.no, table.floor.mx td.no.colh{ background:repeating-linear-gradient(135deg,var(--accent-bg),var(--accent-bg) 4px,var(--line2) 4px,var(--line2) 8px); }
+  table.floor.mx tbody tr:hover td.lie, table.floor.mx td.lie.colh, table.floor.mx tbody tr:hover td.cdone, table.floor.mx td.cdone.colh{ background-color:var(--green-bg); box-shadow:inset 0 0 0 1px var(--green); }
+  table.floor.mx th.gs, table.floor.mx td.gs{ border-left:2px solid var(--line2); }
+  table.floor.mx td{ position:relative; }
+  table.floor.mx td .pb{ position:absolute; left:3px; right:3px; bottom:2px; height:2px; background:var(--grid); border-radius:1px; overflow:hidden; }
+  table.floor.mx td .pb i{ display:block; height:100%; background:var(--green); opacity:.7; }
+  .mxlg{ display:inline-flex; gap:var(--s-3); flex-wrap:wrap; font:var(--t-tiny); color:var(--muted); text-transform:none; letter-spacing:0; }
+  .mxlg i{ display:inline-block; width:10px; height:10px; border-radius:2px; vertical-align:-1px; margin-right:4px; border:1px solid var(--line); box-sizing:border-box; }
+  .mxlg i.c1{ background:var(--green-bg); border-color:var(--green); } .mxlg i.c2{ background:repeating-linear-gradient(135deg,var(--grey-bg),var(--grey-bg) 2px,var(--line2) 2px,var(--line2) 4px); }
+  .mxlg i.c3{ background:linear-gradient(to top,var(--green) 2px,transparent 2px); } .mxlg i.c4{ background:var(--card2); }
+  .mxlg b{ color:var(--amber); font-weight:600; }
   table.floor.mx thead tr.grp th{ font:var(--t-tiny); line-height:14px; height:20px; padding:0 4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:0; text-align:left; text-transform:none; letter-spacing:0; border-top:3px solid var(--gc,var(--line2)); color:var(--muted); }
   table.floor.mx thead tr.grp th.dn{ border-top-color:var(--line); }
   table.floor.mx thead tr.grp + tr th{ top:calc(var(--stk,0px) + 21px); }
@@ -665,8 +680,22 @@ function showPTab(id,t){
   PTABS.forEach(function(x){ var tb=$('ptab_'+x[0]+'_'+id), pn=$('pan_'+x[0]+'_'+id); if(tb) tb.className='ptab'+(x[0]===t?' on':''); if(pn) pn.classList.toggle('on',x[0]===t); });   // classList, не className — иначе слетает вид матриц (mxv-*)
   fitWraps();
 }
+/* разделители участков с шапки — на клетки; перекрестие: столбец под курсором подсвечивается (строка — CSS) */
+function decorateMx(){
+  Array.prototype.forEach.call(document.querySelectorAll('table.floor.mx:not([data-dec])'), function(t){
+    t.setAttribute('data-dec','1');
+    var ths=t.querySelectorAll('thead tr:last-child th'), gs=[]; Array.prototype.forEach.call(ths, function(th,i){ if(th.classList.contains('gs')) gs.push(i); });
+    if(gs.length) Array.prototype.forEach.call(t.tBodies[0].rows, function(tr){ gs.forEach(function(i){ if(tr.cells[i]) tr.cells[i].classList.add('gs'); }); });
+  });
+}
+document.addEventListener('mouseover', function(e){
+  var td=e.target.closest&&e.target.closest('table.floor.mx td'); var t=td&&td.closest('table');
+  Array.prototype.forEach.call(document.querySelectorAll('td.colh'), function(x){ if(!t||x.closest('table')!==t||x.cellIndex!==td.cellIndex) x.classList.remove('colh'); });
+  if(td&&td.cellIndex>0) Array.prototype.forEach.call(t.tBodies[0].rows, function(tr){ var c=tr.cells[td.cellIndex]; if(c) c.classList.add('colh'); });
+});
 /* липкие шапки таблиц встают под полосой вкладок; рамка таблицы без прокрутки, если влезла по ширине (см. CSS .flwrap) */
 function fitWraps(){
+  decorateMx();
   var tw=document.querySelector('.ptabw'); document.documentElement.style.setProperty('--stk',(tw?tw.offsetHeight:0)+'px');
   Array.prototype.forEach.call(document.querySelectorAll('.flwrap'), function(w){ var t=w.firstElementChild; if(!t||!w.offsetParent) return; w.classList.remove('fit'); if(t.scrollWidth<=w.clientWidth+1) w.classList.add('fit'); });
 }
@@ -739,7 +768,7 @@ function mxHead(cols,fin,grp){
     band='<tr class="grp"><th class="dn"></th><th></th>'+cells.map(function(x){ return '<th colspan="'+x.n+'" title="'+esc(x.group)+'" style="--gc:'+(x.color||'var(--line2)')+'">'+(x.n>=2?esc(x.group):'')+'</th>'; }).join('')   // в одну колонку название не влезает — только полоска и подсказка+(extra?'<th colspan="'+extra+'"></th>':'')+'</tr>';
   }
   return '<thead>'+band+'<tr><th class="dn">Деталь</th><th class="num" title="сколько нужно по заказу">Нужно</th>'
-    +cols.map(function(c){ return '<th class="op" title="'+esc(c)+'"><span>'+esc(c)+'</span></th>'; }).join('')
+    +cols.map(function(c,i){ var gs=grp&&i>0&&(grp[c]||{}).group!==(grp[cols[i-1]]||{}).group; return '<th class="op'+(gs?' gs':'')+'" title="'+esc(c)+'"><span>'+esc(c)+'</span></th>'; }).join('')
     +(fin?'<th class="op fin" title="прошли все операции детали и лежат (у изделия — упакованы)"><span>✓ прошли всё</span></th>':'')
     +(fin!==null?'<th class="op rw" title="вернули с покраски на шлифовку и ещё не переделали: на операциях не лежат"><span>↺ шлифовка</span></th><th class="op rw" title="вернули на малярку (перекрасить) и ещё не переделали: на операциях не лежат"><span>↺ малярка</span></th>':'')+'</tr></thead>';
 }
@@ -763,7 +792,8 @@ function mxDoneCell(id,o,flags,rowNeed){
   var cls=left<=0.001?'cdone':(ready>need+0.001?'over':''), fl=flags&&flags[o.id]?' <span class="chk '+flags[o.id]+'" title="есть замечание">⚠</span>':'';
   var tip=o.detail+' · '+o.op+'\nсделано '+r1(ready)+' из '+r1(need)+(o.stock?(' (нач. остатки '+r1(o.stock)+')'):'')+'\nосталось '+r1(left)
     +(pend?('\nподано, не принято: '+r1(pend)):'')+(Number(o.over)>0?('\nперевыполнено на '+r1(o.over)):'')+'\nнажми — поправить «лежит сейчас» на этой операции';
-  return '<td class="'+cls+'" data-op="'+esc(o.id)+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+esc(o.id)+'\')"><span class="flf'+(ready>0?'':' z')+'">'+(ready>0?r1(ready):'·')+'</span>'+fl
+  var pb=(!cls&&need>0&&ready>0)?'<span class="pb"><i style="width:'+Math.min(100,Math.round(ready/need*100))+'%"></i></span>':'';
+  return '<td class="'+cls+'" data-op="'+esc(o.id)+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+esc(o.id)+'\')"><span class="flf'+(ready>0?'':' z')+'">'+(ready>0?r1(ready):'·')+'</span>'+fl+pb
     +((rowNeed!=null&&Math.abs(need-rowNeed)>0.001)||pend?'<span class="sub">'+[rowNeed!=null&&Math.abs(need-rowNeed)>0.001?'/'+r1(need):'', pend?'⏳'+r1(pend):''].filter(Boolean).join(' ')+'</span>':'')+'</td>';
 }
 /* клетка «ждут операции»: прошли все предыдущие, эту ещё нет (avail). Первая операция цепочки — ещё не начато (серым). */
@@ -784,11 +814,11 @@ function prodMatrixCard(id,p,pi,flags){
   rows.forEach(function(row){ row.done=row.seq.every(function(op){ return (Number(row.cells[op].left)||0)<=0.001; }); });
   var pct=Math.min(100,p.pct||0);
   var grp=opGroups(ops);
-  var t1='<div class="mx-done"><div class="mxcap">Сделано<span class="th">цифра — сколько прошло операцию; зелёная — закрыта; тёмная — такой операции у детали нет; «/n» — нужно, если отличается от строки</span></div>'
+  var t1='<div class="mx-done"><div class="mxcap">Сделано<span class="mxlg" title="цифра — сколько прошло операцию; «/n» — нужно, если отличается от строки"><span><i class="c1"></i>закрыта</span><span><i class="c3"></i>полоска — доля сделанного</span><span><i class="c2"></i>нет у детали</span><span>⏳ подано, не принято</span><span><b>жёлтая</b> — сверх плана</span></span></div>'
     +'<div class="tbl-wrap flwrap"><table class="tbl floor mx">'+mxHead(cols,false,grp)+'<tbody>'
     +rows.map(function(row){ return '<tr>'+mxName(row)+'<td class="num">'+r1(row.need)+'</td>'+cols.map(function(c){ return mxDoneCell(id,row.cells[c],flags,row.need); }).join('')+(row.prod?'<td class="no"></td><td class="no"></td>':rwCells(id,row.name,[p.eq+'|'+p.model+'|'+row.name]))+'</tr>'; }).join('')
     +'</tbody></table></div></div>';
-  var t2='<div class="mx-wait"><div class="mxcap">Ждут операции<span class="th">лежат перед операцией: прошли все предыдущие, эту ещё нет; «прошли всё» — готовые</span></div>'
+  var t2='<div class="mx-wait"><div class="mxcap">Ждут операции<span class="mxlg" title="лежат перед операцией: прошли все предыдущие, эту ещё нет"><span><i class="c1"></i>лежат, ждут</span><span><i class="c4"></i>первая операция — не начато</span><span><i class="c2"></i>нет у детали</span><span>«прошли всё» — готовые</span></span></div>'
     +'<div class="tbl-wrap flwrap"><table class="tbl floor mx">'+mxHead(cols,true,grp)+'<tbody>'
     +rows.map(function(row){ return '<tr>'+mxName(row)+'<td class="num">'+r1(row.need)+'</td>'+cols.map(function(c){ return mxWaitCell(id,row,c); }).join('')+mxFinCell(id,row)+(row.prod?'<td class="no"></td><td class="no"></td>':rwCells(id,row.name,[p.eq+'|'+p.model+'|'+row.name]))+'</tr>'; }).join('')
     +'</tbody></table></div></div>';
