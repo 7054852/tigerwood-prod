@@ -1329,19 +1329,21 @@ function payMonth(p){ var m=['январь','февраль','март','апр�
   var x=String(p||'').split('-'); return x[1]?(m[Number(x[1])-1]+' '+x[0]):(p||'—'); }
 function payView(){
   if(PAYEDIT) return payEditView();
-  var body=PAYMODE==='debt'?debtView():PAYMODE==='reg'?regView():payDocsView();
+  var body=PAYMODE==='debt'?debtView():PAYMODE==='reg'?regView():PAYMODE==='tax'?taxView():payDocsView();
   // листалка месяца, выгрузка, загрузка ведомости — в панели действий; видны там же, где раньше (когда данные пришли)
   var reg=PAYMODE==='reg'&&REG&&REG.ok, docs=PAYMODE==='docs'&&PAYDATA&&PAYDATA.ok;
   return tb('<div class="seg">'+
       '<button class="'+(PAYMODE==='debt'?'on':'')+'" onclick="PAYMODE=\'debt\';render()">📊 Долг</button>'+
       '<button class="'+(PAYMODE==='docs'?'on':'')+'" onclick="PAYMODE=\'docs\';render()">📄 Расчёты бухгалтера</button>'+
-      '<button class="'+(PAYMODE==='reg'?'on':'')+'" onclick="PAYMODE=\'reg\';render()">🧾 Реестр выплат</button></div>'+
+      '<button class="'+(PAYMODE==='reg'?'on':'')+'" onclick="PAYMODE=\'reg\';render()">🧾 Реестр выплат</button>'+
+      '<button class="'+(PAYMODE==='tax'?'on':'')+'" onclick="PAYMODE=\'tax\';render()">🏛 Налоги</button></div>'+
       (reg?'<div class="pnav"><button onclick="regYmShift(-1)" title="предыдущий месяц" aria-label="предыдущий месяц">‹</button>'+
         '<span class="lbl">'+esc(payMonth(REG.ym))+'</span>'+
         '<button onclick="regYmShift(1)" title="следующий месяц" aria-label="следующий месяц">›</button></div>':'')+
       (docs?'<span class="meta">Excel, фото или PDF — на всех или на одного (подряд, премия)</span>':''),
     (PAYMODE==='debt'?'<button class="btn sec" onclick="DEBT=null;render()" title="пересчитать">⟳</button>':'')+
     (PAYMODE==='reg'?'<button class="btn sec" onclick="REG=null;render()" title="пересчитать">⟳</button>':'')+
+    (PAYMODE==='tax'?'<button class="btn sec" onclick="TAXES=null;render()" title="пересчитать">⟳</button>':'')+
     (reg?'<button class="btn sec" onclick="regExport()">⬇ Выгрузить</button>':'')+
     (docs?'<button class="btn sec" onclick="quickOpen()">➕ Сумма по контракту</button>':'')+
     (docs?'<button class="btn pri" onclick="payUpload()">⬆ Загрузить ведомость</button>':''))+
@@ -1504,6 +1506,29 @@ function payDel(doc){
   busy(1); api({vapi:'hrpaydel',doc:doc}).then(function(r){ busy(0); if(!r||!r.ok){ alert((r&&r.error)||'ошибка'); return; } PAYDATA=r; DEBT=null; REG=null; render(); });
 }
 // ─── 📊 Долг по сотрудникам: единый расчёт Прохаба (payroll/debt.ts) — тот же, что «Долг по сотрудникам» в «Финансах» ───
+/* налоги с зарплаты по месяцам (27.10.2026): по ведомости бухгалтера и уплачено — сумма платежей «ЗА <месяц>» из выписки (налог платят частями) */
+var TAXES=null, TAXLOADING=0;
+function taxView(){
+  if(!TAXES){
+    if(!TAXLOADING){ TAXLOADING=1; api({vapi:'hrpaytaxes'}).then(function(r){ TAXLOADING=0; TAXES=r; if(TAB==='pay'&&PAYMODE==='tax') render(); }); }
+    return '<div class="center">Собираю налоги по месяцам…</div>'; }
+  if(!TAXES.ok) return '<div class="center">Ошибка: '+esc(TAXES.error||'')+'</div>';
+  var K=[['pn','Подоходный'],['fszn','ФСЗН'],['bgs','Белгосстрах']];
+  var cell=function(c){ var paid=money(c.paid)+(c.n>1?' <span class="muted">· '+c.n+' плат.</span>':'');
+    if(c.due==null) return paid+'<div class="muted" style="font:var(--t-small)">ведомости нет</div>';
+    var d=c.diff, st=Math.abs(d)<0.005?'<span style="color:var(--green)">сходится</span>':d>0?'<b style="color:var(--red)">не доплачено '+money(d)+'</b>':'<b style="color:var(--amber,#b26a00)">переплачено '+money(-d)+'</b>';
+    return paid+'<div style="font:var(--t-small)">по ведомости '+money(c.due)+' · '+st+'</div>'; };
+  var ms=TAXES.months||[], h='<div class="card"><div class="muted" style="font:var(--t-small)">Уплачено — платежи статьи «Налог на ФОТ» из выписки, месяц — «ЗА &lt;месяц&gt;» в назначении (налог за месяц уходит частями при каждой выплате). По ведомости — итоги загруженных расчётов бухгалтера за этот месяц.</div></div>';
+  if(!ms.length) return h+'<div class="card"><div class="empty">Налоговых платежей пока нет.</div></div>';
+  h+='<div class="card tbl-wrap"><table class="tbl mob"><thead><tr><th>Месяц</th>'+K.map(function(k){ return '<th class="num">'+k[1]+'</th>'; }).join('')+'<th class="num">Всего уплачено</th></tr></thead><tbody>'+
+    ms.map(function(m){ var tot=K.reduce(function(s,k){ return s+(m[k[0]].paid||0); },0);
+      return '<tr><td><b>'+esc(payMonth(m.ym))+'</b></td>'+K.map(function(k){ return '<td class="num" data-l="'+k[1]+'">'+cell(m[k[0]])+'</td>'; }).join('')+'<td class="num" data-l="Всего"><b>'+money(tot)+'</b></td></tr>'; }).join('')+
+    '</tbody></table></div>';
+  var lo=TAXES.loose||[];
+  if(lo.length) h+='<div class="card"><b>Не разобрать вид или месяц</b> <span class="muted">— в назначении нет «ЗА &lt;месяц&gt;» или вида налога</span>'+
+    lo.map(function(x){ return '<div style="font:var(--t-small);margin-top:var(--s-1)">'+esc(x.date)+' · '+money(x.sum)+' · '+esc(x.text)+'</div>'; }).join('')+'</div>';
+  return h;
+}
 var PAYMODE='debt', DEBT=null, DEBTLOADING=0, DEBTOPEN={}, DEBTPAY=null, DEBTADJ=null;
 function debtTodayIso(){ var d=new Date(); return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2); }
 function debtDmy(iso){ return iso?iso.slice(8,10)+'.'+iso.slice(5,7)+'.'+iso.slice(0,4):''; }
@@ -1609,7 +1634,7 @@ function regView(){
       '<td data-l="В выписке">'+(x.fact?esc(x.fact.date)+' · '+money(x.fact.sum)+(x.status==='diff'?' <span class="muted">(разница '+money(x.fact.sum-x.expected)+')</span>':''):'—')+'</td>'+
       '<td>'+pill(RECST,x.status)+'</td></tr>'; }).join('')+'</tbody></table></div>'
     :'<div class="muted" style="margin-top:var(--s-1)">В этом месяце выплат по ведомостям нет — или ведомости не загружены.</div>')+
-    '<div class="muted" style="font:var(--t-small);margin-top:var(--s-1)">Выплата реестром ищется в «Расходах» Фин.гения по сумме и дате: аванс — около 30-го, остаток — в течение месяца, налоги — по суммам из ведомости.</div></div>';
+    '<div class="muted" style="font:var(--t-small);margin-top:var(--s-1)">Выплата реестром ищется в расходах «Финансов» по сумме и дате: аванс — около 30-го, остаток — в течение месяца; налоги — сумма всех платежей «за месяц» каждого вида (вкладка «🏛 Налоги»).</div></div>';
   h+='<div class="card tbwrap"><table class="tbl mob"><thead><tr><th>Срок</th><th>Кому</th><th>На каких условиях</th><th class="num">Сумма</th><th>Статус</th></tr></thead><tbody>'+
     (REG.lines.length?REG.lines.map(function(l){ return '<tr><td><b>'+esc(l.due)+'</b></td><td data-l="Кому">'+esc(l.who)+'</td>'+
       '<td data-l="Условия" style="font:var(--t-small)">'+esc(l.terms)+'</td><td class="num" data-l="Сумма">'+money(l.sum)+'</td>'+
