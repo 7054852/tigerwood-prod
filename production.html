@@ -103,7 +103,7 @@
   table.floor.mx td{ cursor:pointer; padding:5px 6px 0; height:32px; line-height:16px; white-space:nowrap; vertical-align:top; box-sizing:border-box; }
   .pbody table.floor.mx{ table-layout:auto; width:auto; min-width:0; }   /* не растягиваем: лишняя ширина уходила в колонку «Деталь» */
   table.floor.mx thead th{ overflow-wrap:normal; word-break:normal; overflow:visible; text-overflow:clip; min-width:0; max-width:none; font:var(--t-tiny); line-height:1.2; padding:2px 3px; }
-  table.floor.mx thead th.op{ vertical-align:bottom; width:36px; min-width:36px; max-width:none; padding:4px 0 3px; text-transform:none; letter-spacing:0; height:auto; }
+  table.floor.mx thead th.op{ vertical-align:bottom; width:64px; min-width:64px; max-width:none; padding:4px 0 3px; text-transform:none; letter-spacing:0; height:auto; }
   table.floor.mx thead th.op span{ writing-mode:vertical-rl; transform:rotate(180deg); display:inline-block; max-height:112px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; line-height:16px; color:var(--fg2,var(--fg)); font-weight:500; }
   table.floor.mx thead th.op.fin{ background:var(--green-bg); } table.floor.mx thead th.op.fin span{ color:var(--green); font-weight:600; }
   table.floor.mx thead th.op.rw span{ color:var(--amber); }
@@ -137,6 +137,7 @@
   table.floor.mx td.lie .flf{ color:var(--green); }
   table.floor.mx td .sub{ display:inline-block; font:var(--t-tiny); line-height:16px; color:var(--muted); white-space:nowrap; margin:0 0 0 4px; vertical-align:top; }   /* в одну строку с главной цифрой, чтобы не наезжать на полоску; margin целиком: у темы .sub имеет отступ снизу 24 px */
   table.floor.mx td .chk{ vertical-align:top; line-height:16px; }
+  table.floor.mx td .sub.q{ color:var(--green); font-weight:600; }   /* подано, ждёт проверки — зелёным, как и полоска */
   table.floor.mx td.over .flf{ color:var(--amber); }
   table.floor.mx td.num{ font:var(--t-small); line-height:16px; font-variant-numeric:tabular-nums; color:var(--muted); }
   table.floor.mx .dn{ max-width:240px; min-width:130px; padding:5px 8px 0; font:var(--t-small); line-height:16px; vertical-align:top; }
@@ -804,7 +805,7 @@ function mxDoneCell(id,o,flags,rowNeed){
     pb='<span class="pb"><i class="a" style="width:'+a.toFixed(1)+'%"></i>'+(q>0?'<i class="q" style="width:'+q.toFixed(1)+'%"></i>':'')+'</span>'; }
   if(rowNeed!=null&&Math.abs(need-rowNeed)>0.001) tip='нужно на этой операции: '+r1(need)+'\n'+tip;
   return '<td class="'+cls+'" data-op="'+esc(o.id)+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+esc(o.id)+'\')"><span class="flf'+(ready>0?'':' z')+'">'+(ready>0?r1(ready):'·')+'</span>'+fl+pb
-    +(ready<=0&&pend>0?'<span class="sub">⏳</span>':'')+'</td>';
+    +(pend>0?'<span class="sub q" title="подано, ждёт проверки: '+r1(pend)+'">+'+r1(pend)+'</span>':'')+'</td>';
 }
 /* клетка «ждут операции»: прошли все предыдущие, эту ещё нет (avail). Первая операция цепочки — ещё не начато (серым). */
 function mxWaitCell(id,row,op){
@@ -824,7 +825,7 @@ function prodMatrixCard(id,p,pi,flags){
   rows.forEach(function(row){ row.done=row.seq.every(function(op){ return (Number(row.cells[op].left)||0)<=0.001; }); });
   var pct=Math.min(100,p.pct||0);
   var grp=opGroups(ops);
-  var t1='<div class="mx-done"><div class="mxcap">Сделано<span class="mxlg" title="цифра — сколько прошло операцию; «/n» — нужно, если отличается от строки"><span><i class="c1"></i>закрыта</span><span><i class="c3"></i>принято</span><span><i class="c5"></i>подано, ждёт проверки</span><span><i class="c2"></i>нет у детали</span><span><b>жёлтая</b> — сверх плана</span></span></div>'
+  var t1='<div class="mx-done"><div class="mxcap">Сделано<span class="mxlg" title="цифра — сколько прошло операцию; «/n» — нужно, если отличается от строки"><span><i class="c1"></i>закрыта</span><span><i class="c3"></i>принято</span><span><i class="c5"></i><b style="color:var(--green)">+n</b> подано, ждёт проверки</span><span><i class="c2"></i>нет у детали</span><span><b>жёлтая</b> — сверх плана</span></span></div>'
     +'<div class="tbl-wrap flwrap"><table class="tbl floor mx">'+mxHead(cols,false,grp)+'<tbody>'
     +rows.map(function(row){ return '<tr>'+mxName(row)+'<td class="num">'+r1(row.need)+'</td>'+cols.map(function(c){ return mxDoneCell(id,row.cells[c],flags,row.need); }).join('')+(row.prod?'<td class="no"></td><td class="no"></td>':rwCells(id,row.name,[p.eq+'|'+p.model+'|'+row.name]))+'</tr>'; }).join('')
     +'</tbody></table></div></div>';
