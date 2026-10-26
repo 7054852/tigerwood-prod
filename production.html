@@ -634,7 +634,8 @@ function opColumns(ops){
   ops.forEach(function(o){ var dk=(o.level==='изделие'?'§':'')+o.detail; if(!seqs[dk]){ seqs[dk]=[]; (o.level==='изделие'?prodSeq:order).push(dk); } seqs[dk].push(o.op); });
   var cols=[];
   // длинные цепочки задают каркас; короткая без общих операций (коробка, фурнитура) встаёт в конец, а не в начало
-  order.sort(function(a,b){ return seqs[b].length-seqs[a].length; });
+  var packOnly=function(k){ return seqs[k].every(function(op){ return /^Упаковка/i.test(op); })?1:0; };   // упаковка фурнитуры — в самый конец, после сборки коробки
+  order.sort(function(a,b){ return (packOnly(a)-packOnly(b)) || (seqs[b].length-seqs[a].length); });
   order.forEach(function(dk){ var seq=seqs[dk], prev=-1; seq.forEach(function(op,i){ var at=cols.indexOf(op);
     if(at<0){ var next=-1; for(var j=i+1;j<seq.length&&next<0;j++) next=cols.indexOf(seq[j]); at=prev>=0?prev+1:(next>=0?next:cols.length); cols.splice(at,0,op); }
     if(at>prev) prev=at; }); });

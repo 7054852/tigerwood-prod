@@ -284,24 +284,24 @@ function draw(){
   var acc=document.getElementById('showAcc').checked;
   // ⚠ где деталь расходится по цветам — решает сервер (INV_SPLIT_AT). Раньше здесь стояло
   // имя стадии, и добавление «Грунтовано» молча сдвинуло бы стрелки ↑ на чужую колонку.
-  var SPLIT=(R.splitAt!=null?R.splitAt:R.stages.indexOf('Покрашено')), ST=R.stages.concat(R.rework||[]);
+  var ALLST=R.stages;   // колонки — операции заказа; у каждого блока свои (p.stages), расхождение по цветам — у каждой детали своё (d.splitAt)
   var legend='<div class="legend">'
     +'Пишите, сколько деталей <b>сейчас физически лежит</b> в этом состоянии — каждую деталь считаем один раз, в самой поздней пройденной стадии. '
     +'Заштрихованная клетка — такой операции у детали нет, писать в неё не нужно. '
     +'<b>Пустая клетка — не считали</b>: в программе останется как есть. Если реально ноль — так и напишите цифру 0.'
-    +' У шлифовки, перетирки и покраски <b>две клетки</b>: «ждёт ОТК» — сделано, но контролёр ещё не принял; «принято ✓» — после приёмки. Деталь пишем в одну из них.'
+    +' Колонки — операции этого изделия в порядке работы. У операций, которые принимает ОТК, <b>две клетки</b>: «ждёт ОТК» — сделано, но контролёр ещё не принял; «принято ✓» — после приёмки. Деталь пишем в одну из них.'
     +' Строка с пометкой <b>изделие</b> — само собранное изделие: его не пилят и не красят, физически считают только упакованные коробки.'
     +((R.rework||[]).length?' <b>Переделка</b> — сколько деталей вернули с покраски и ещё не переделали: «шлифовка» — лежат на шлифовке (дефект материала), «малярка» — у маляра (его ошибка). Эти детали в стадиях слева не пишем.':'')
-    +(R.mode==='detail'?('<br>До грунтовки деталь одна на все цвета — её считаем в строке детали. '
-      +'С грунта она расходится по вариантам (грунт под лак и под цвет разный), поэтому ниже идут строки по каждому цвету: '
+    +(R.mode==='detail'?('<br>Пока деталь одна на все цвета — её считаем в строке детали. '
+      +'С операции, где цвет расходится (обычно грунт), ниже идут строки по каждому цвету: '
       +'<b>↓</b> — считать в строках ниже, <b>↑</b> — уже посчитано в строке детали.'):'')
     +'</div>';
   // в колонке — короткое пояснение (шире не влезет), полное — в подсказке при наведении
-  var SH=stageHeads(ST,R.hints||{},R.hintsShort||{}), RWP0=(R.rework||[])[0];
-  var head='<tr><th class="det" rowspan="2">Деталь</th><th rowspan="2">Нужно<br>по заказу<span class="hint">справочно — не исправлять</span></th>'
-    +SH.top+'<th rowspan="2">Заметка</th></tr><tr>'+SH.bot+'</tr>';
-
+  var RWP0=(R.rework||[])[0];
   var groups=R.products.map(function(p){
+    var ST=(p.stages||ALLST).concat(R.rework||[]), SH=stageHeads(ST,R.hints||{},R.hintsShort||{});
+    var head='<tr><th class="det" rowspan="2">Деталь</th><th rowspan="2">Нужно<br>по заказу<span class="hint">справочно — не исправлять</span></th>'
+      +SH.top+'<th rowspan="2">Заметка</th></tr><tr>'+SH.bot+'</tr>';
     var title=(R.mode==='detail') ? esc(p.title||p.eq||'Детали заказа')
       : (esc(p.eq)+' · '+esc(p.model)+' <span class="qty">×'+p.ordered+'</span>');
     var rows=p.details.map(function(d){
@@ -319,12 +319,13 @@ function draw(){
         +(d.shared?' <span class="sh">общая</span>':'')+'</td>'
         +'<td class="n">'+d.need+'</td>'+cells+'<td class="cell"></td></tr>';
       if(!vars.length) return head;
+      var SPLIT=(d.splitAt!=null?d.splitAt:Infinity);
       return head+vars.map(function(v){
-        var vc=ST.map(function(s,si){
-          var st=v.stages[s];
-          // до покраски деталь общая → «↑»; после покраски пусто = такой операции у детали нет → штриховка
+        var vc=ST.map(function(s){
+          var st=v.stages[s], si=ALLST.indexOf(s);
+          // до расхождения по цветам деталь общая → «↑»; после — пусто = такой операции у детали нет → штриховка
           var rw1=(s===RWP0)?' rw1':'';
-          if(!st||!st.has) return (si<SPLIT) ? '<td class="cell up">↑</td>' : '<td class="cell no'+rw1+'"></td>';
+          if(!st||!st.has) return (si>=0&&si<SPLIT) ? '<td class="cell up">↑</td>' : '<td class="cell no'+rw1+'"></td>';
           return '<td class="cell'+(acc?' acc':'')+rw1+'">'+(acc?progLies(st):'')+'</td>';
         }).join('');
         return '<tr class="vrow"><td class="det vd">└ '+esc(v.model)+'</td>'
@@ -399,7 +400,7 @@ function progHtml(stg){ if(!SHOWPROG) return ''; var v=progVal(stg); return v==n
 function drawLoad(){
   var box=document.getElementById('pane_load'), d=DRAFT;
   var st=d.stat||{}, C=d.cells||{}, INFO=d.info||{};
-  var SPLIT=(d.splitAt!=null?d.splitAt:(d.stages||[]).indexOf('Покрашено')), ST=(d.stages||[]).concat(d.rework||[]), RWP0=(d.rework||[])[0], RWS=[];
+  var ALLST=(d.stages||[]), RWP0=(d.rework||[])[0], RWS=[];
   var upl='<div class="card"><div class="row" style="margin-bottom:var(--s-2)"><b>📷 Страницы переучёта</b>'
     +'<span class="muted">загружено файлов: '+(d.head.files||0)+'</span></div>'
     +'<input type="file" id="pages" accept="image/*,application/pdf" multiple onchange="pickPages(this.files)">'
@@ -416,16 +417,14 @@ function drawLoad(){
       +(stale?(' — <b>начат '+AGE+' дн. назад, последняя правка '+IDLE+' дн. назад</b>. Цифры могли устареть: если в цеху с тех пор работали, удалите черновик и посчитайте заново.')
              :' — по заказу может быть только один незакрытый черновик. Загруженные страницы лягут поверх того, что здесь уже есть.')
       +'<div style="margin-top:var(--s-2)"><button class="sec sm" onclick="discardInv()">🗑 Удалить черновик и начать заново</button></div></div></div>'):'';
-  var cellNote='<div class="note"><div><b>Пишите, сколько деталей лежит на участке сейчас</b> — только в той стадии, где они лежат. '
-    +'Покрашенные 10 шт пишете в «Покрашено», загрунтованные 20 шт — в «Грунтовано». Что покрашенные прошли грунт, шлифовку и раскрой, программа досчитает сама при проведении. '
+  var cellNote='<div class="note"><div><b>Пишите, сколько деталей лежит на участке сейчас</b> — только в той операции, которую они прошли последней. '
+    +'Покрашенные 10 шт пишете в колонку покраски, загрунтованные 20 шт — в колонку грунтовки. Что покрашенные прошли грунт, шлифовку и раскрой, программа досчитает сама при проведении. '
     +'<b>Переучёт — единственная правда:</b> после проведения в системе останутся ровно эти цифры. У посчитанной детали пустая клетка = на этой стадии ничего нет (0). '
     +'Деталь, у которой не заполнена ни одна клетка, не считалась — её не трогаем. '
     +'Рамка клетки: 🟡 в очереди · 🟢 записано · 🔴 не ушло, повторю сам.'
     +((d.products||[]).length?'<br>Цифру в любой клетке можно поправить руками — сверяйтесь с бумажным листом.':'')+'</div></div>';
 
   var hints=d.hints||{}, hshort=d.hintsShort||{};
-  var SH=stageHeads(ST,hints,hshort);
-  var head='<tr><th class="det" rowspan="2">Деталь</th><th rowspan="2">Нужно<br>по заказу</th>'+SH.top+'</tr><tr>'+SH.bot+'</tr>';
 
   function cellHtml(det,mod,stage,stg,isVar){
     var k=ikey(det,mod,stage), c=C[k], nf=(!c&&INFO[k])?INFO[k]:null;
@@ -509,16 +508,18 @@ function drawLoad(){
   var SHORTS=[];
   var grid=(d.products||[]).map(function(p){
     var title=esc(p.title||p.eq||'Детали заказа');
+    var ST=(p.stages||ALLST).concat(d.rework||[]), SH=stageHeads(ST,hints,hshort);
+    var head='<tr><th class="det" rowspan="2">Деталь</th><th rowspan="2">Нужно<br>по заказу</th>'+SH.top+'</tr><tr>'+SH.bot+'</tr>';
     var rows=(p.details||[]).map(function(x){
-      var vars=x.variants||[];
+      var vars=x.variants||[], SPLIT=(x.splitAt!=null?x.splitAt:Infinity);
       var cells=ST.map(function(sname){ return cellHtml(x.detail,'',sname,x.stages[sname],false); }).join('');
       var out='<tr'+(vars.length?' class="hasv"':'')+'><td class="det">'+esc(x.detail)
         +(x.isProduct?' <span class="pb">изделие</span>':'')+(x.shared?' <span class="sh">общая</span>':'')+'</td>'
         +'<td class="n">'+x.need+'</td>'+cells+'</tr>';
       vars.forEach(function(v){
-        var vc=ST.map(function(sname,si){
-          var stg=v.stages[sname];
-          if((!stg||!stg.has)&&si<SPLIT) return '<td class="cell up">↑</td>';
+        var vc=ST.map(function(sname){
+          var stg=v.stages[sname], si=ALLST.indexOf(sname);
+          if((!stg||!stg.has)&&si>=0&&si<SPLIT) return '<td class="cell up">↑</td>';
           return cellHtml(x.detail,v.model,sname,stg,true);
         }).join('');
         out+='<tr class="vrow"><td class="det vd">└ '+esc(v.model)+'</td><td class="n">'+v.need+'</td>'+vc+'</tr>';
