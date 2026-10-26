@@ -901,9 +901,8 @@ function summaryMatrixHtml(id,r){
   order.sort(function(a,b){ return (a===COMMON?1:0)-(b===COMMON?1:0); });
   var open={}; Array.prototype.forEach.call(document.querySelectorAll('#pan_sum_'+id+' .pcard'), function(c){ open[c.id]=c.classList.contains('open'); });
   var SV=sumView();
-  var sw='<div class="mxsw sumsw">'+[['avail','Можно делать сейчас'],['left','Осталось сделать'],['lie','Лежит после операции']].map(function(t){ return '<span class="'+(SV===t[0]?'on':'')+'" onclick="setSumView(\''+t[0]+'\')">'+t[1]+'</span>'; }).join('')+'</div>'
-    +'<div class="muted small" style="margin:var(--s-1) 0 var(--s-2)">'+(SV==='avail'?'цифра — детали, прошедшие предыдущую операцию и ждущие эту: это работа, которую можно дать прямо сейчас; ✓ — операция закрыта'
-      :SV==='left'?'цифра — сколько штук ещё предстоит сделать по операции (нужно − сделано); ✓ — закрыта':'цифра — лежит после операции, как в ведомости переучёта; ✓ — закрыта')+'</div>';
+  var sw='<div class="mxsw sumsw">'+[['lie','Лежит после операции'],['left','Осталось сделать']].map(function(t){ return '<span class="'+(SV===t[0]?'on':'')+'" onclick="setSumView(\''+t[0]+'\')">'+t[1]+'</span>'; }).join('')+'</div>'
+    +'<div class="muted small" style="margin:var(--s-1) 0 var(--s-2)">'+(SV==='left'?'цифра — сколько штук ещё предстоит сделать по операции (нужно − сделано); ✓ — закрыта':'цифра — сколько деталей лежит после операции (прошли её, на следующую не ушли), как в ведомости переучёта; ✓ — закрыта')+'</div>';
   return sw+order.map(function(key,bi){
     var b=blocks[key], cols=opColumns(b.ops), rows=[], idx={}, grp=opGroups(b.ops);
     b.ops.forEach(function(o){
@@ -922,7 +921,7 @@ function summaryMatrixHtml(id,r){
       return '<tr>'+nm+'<td class="num">'+r1(row.need)+'</td>'+cols.map(function(c){
         var x=row.cells[c]; if(!x) return '<td class="no"></td>';
         var done=x.left<=0.001, tip=row.name+' · '+c+'\nможно делать сейчас (прошли предыдущую): '+r1(x.avail)+'\nосталось сделать: '+r1(x.left)+' · сделано '+r1(x.ready)+' из '+r1(x.need)+'\nлежат после операции: '+r1(x.fact)+'\nнажми — поправить «лежит сейчас»';
-        var v=SV==='avail'?x.avail:SV==='left'?x.left:x.fact, cls=done?'cdone':(SV==='avail'?(v>0?'can':''):SV==='left'?(v>0?'todo':''):(v>0?'lie':''));
+        var v=SV==='left'?x.left:x.fact, cls=done?'cdone':(SV==='left'?(v>0?'todo':''):(v>0?'lie':''));
         return '<td class="'+cls+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+x.ids.join(',')+'\')"><span class="flf'+(v>0?'':' z')+'">'+(v>0?r1(v):(done?'✓':'·'))+'</span></td>';
       }).join('')+(row.prod?'<td class="no"></td><td class="no"></td>':rwCells(id,row.name,Object.keys(row.keys)))+'</tr>';
     }).join('');
@@ -930,7 +929,7 @@ function summaryMatrixHtml(id,r){
     var lying=0, left=0, byOp={}; rows.forEach(function(row){ cols.forEach(function(c){ var x=row.cells[c]; if(!x) return; lying+=x.fact; left+=x.left; if(x.avail>0&&x.left>0.001){ var a=Math.min(x.avail,x.left); byOp[c]=(byOp[c]||0)+a; } }); });
     // что можно дать в работу прямо сейчас: операции с наибольшим числом ждущих деталей (не больше, чем осталось)
     var todo=Object.keys(byOp).sort(function(a,b){ return byOp[b]-byOp[a]; }).slice(0,5);
-    var todoLine=todo.length?'<div class="sumtodo">👉 можно делать: '+todo.map(function(c){ return '<b>'+esc(c)+'</b> '+r1(byOp[c]); }).join(' · ')+(Object.keys(byOp).length>5?' · …':'')+'</div>'
+    var todoLine=todo.length?'<div class="sumtodo" title="детали, которые лежат после предыдущей операции и ждут эту">👉 можно делать: '+todo.map(function(c){ return '<b>'+esc(c)+'</b> '+r1(byOp[c]); }).join(' · ')+(Object.keys(byOp).length>5?' · …':'')+'</div>'
       :(left>0.001?'<div class="sumtodo muted">ждущих деталей нет — всё, что осталось, упирается в предыдущие операции</div>':'<div class="sumtodo ok">✓ все операции закрыты</div>');
     return '<div class="pcard'+(isOpen?' open':'')+'" id="'+cid+'">'
       +'<div class="phead" onclick="this.parentNode.classList.toggle(\'open\');fitWraps()"><span class="pcar">▸</span>'
@@ -940,7 +939,7 @@ function summaryMatrixHtml(id,r){
   +'<div class="muted small">цифра — лежит после операции (как в ведомости переучёта), зелёная клетка — операция закрыта; деталь одной строкой — сумма по всем цветам; «↺ шлифовка / малярка» — вернули с покраски на переделку, на операциях не лежат; наведи — сделано / нужно</div>';
 }
 /* вид сводной: можно делать / осталось / лежит — запоминается */
-function sumView(){ try{ return localStorage.getItem('tw_prod_sumv')||'avail'; }catch(e){ return 'avail'; } }
+function sumView(){ try{ var v=localStorage.getItem('tw_prod_sumv'); return v==='left'?'left':'lie'; }catch(e){ return 'lie'; } }
 function setSumView(v){ try{ localStorage.setItem('tw_prod_sumv',v); }catch(e){} var sum=$('pan_sum_'+CUR); if(sum&&OPSR[CUR]){ sum.innerHTML=summaryMatrixHtml(CUR,OPSR[CUR]); fitWraps(); } }
 var OPSR={};
 function toggleProd(id,pi){ var c=$('pc_'+id+'_'+pi); if(c) c.classList.toggle('open'); fitWraps(); }
