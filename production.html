@@ -104,9 +104,13 @@
   /* ── матрицы «деталь × операции»: узкие колонки с вертикальными заголовками, лента участков сверху ── */
   .mxcap{ font:var(--t-label); text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:var(--s-2) 0 var(--s-1); display:flex; align-items:center; gap:var(--s-2); flex-wrap:wrap; }
   .mxcap .th{ text-transform:none; letter-spacing:0; font:var(--t-tiny); }
-  .mxsw{ display:inline-flex; gap:2px; padding:2px; background:var(--card2); border:1px solid var(--line); border-radius:var(--r-pill); margin:var(--s-2) 0 0; }
-  .mxsw span{ font:var(--t-label); text-transform:none; letter-spacing:0; padding:2px var(--s-2); border-radius:var(--r-pill); cursor:pointer; color:var(--muted); }
-  .mxsw span.on{ background:var(--card); color:var(--fg); box-shadow:var(--shadow-card); }
+  /* переключатель вида таблиц — заметный, как вкладки (владелец 29.10.2026: «не видно, что можно переключить») */
+  .mxswrow{ display:flex; align-items:center; gap:var(--s-2); flex-wrap:wrap; margin:var(--s-2) 0 var(--s-2); }
+  .mxswl{ font:var(--t-small); color:var(--muted); }
+  .mxsw{ display:inline-flex; gap:2px; padding:3px; background:var(--card2); border:1px solid var(--line); border-radius:var(--r-ctl); }
+  .mxsw span{ font:var(--t-strong); text-transform:none; letter-spacing:0; padding:var(--s-1) var(--s-3); border-radius:calc(var(--r-ctl) - 3px); cursor:pointer; color:var(--muted); border:1px solid transparent; }
+  .mxsw span:hover{ color:var(--fg); }
+  .mxsw span.on{ background:var(--accent-bg); color:var(--accent-text); border-color:var(--accent); font-weight:600; }
   .mxv-done .mx-wait, .mxv-wait .mx-done{ display:none; }
   /* Строки одной высоты (32 px) независимо от содержимого, главная цифра у всех на одной линии сверху,
      вторичное (подано ⏳, «/нужно») — мельче и бледнее строкой под ней. Ритм 4 px, ничего не переносим. */
@@ -147,7 +151,6 @@
   table.floor.mx td.can{ background:var(--accent-bg); } table.floor.mx td.can .flf{ color:var(--accent-text); }   /* сводная: можно делать сейчас */
   table.floor.mx td.todo .flf{ color:var(--fg); }   /* осталось сделать */
   .sumtodo{ font:var(--t-small); margin:0 0 var(--s-2); } .sumtodo b{ font-weight:600; } .sumtodo.ok{ color:var(--green); }
-  .mxsw.sumsw{ margin:0 0 var(--s-1); }
   table.floor.mx td.lie .flf{ color:var(--green); }
   table.floor.mx td .sub{ display:inline-block; font:var(--t-tiny); line-height:16px; color:var(--muted); white-space:nowrap; margin:0 0 0 4px; vertical-align:top; }   /* в одну строку с главной цифрой, чтобы не наезжать на полоску; margin целиком: у темы .sub имеет отступ снизу 24 px */
   table.floor.mx td .chk{ vertical-align:top; line-height:16px; }
@@ -753,7 +756,7 @@ function renderOps(id,r){
   var prods=(r.products||[]).map(function(p,pi){ return prodMatrixCard(id,p,pi,flags); }).join('');
   var nP=(r.products||[]).length, issues=((r.checks||{}).issues||[]).length;
   var chk=issues?'<details class="chkd"'+(open['chk_'+id]?' open':'')+' id="chk_'+id+'"><summary>⚠ проверки логики: '+plural(issues,'замечание','замечания','замечаний')+' — показать</summary>'+opsChecksHtml(id,r.checks||{})+'</details>':'';
-  var det=$('pan_det_'+id); if(det) det.innerHTML=reb+warn+chk+(prods||'<div class="muted" style="margin-top:var(--s-4)">нет операций — у изделий заказа не задан состав в каталоге</div>');
+  var det=$('pan_det_'+id); if(det) det.innerHTML=reb+warn+chk+(prods?mxSwitchHtml():'')+(prods||'<div class="muted" style="margin-top:var(--s-4)">нет операций — у изделий заказа не задан состав в каталоге</div>');
   OPSR[id]=r; var sum=$('pan_sum_'+id); if(sum) sum.innerHTML=summaryMatrixHtml(id,r);
   var dash=r.dash||{}, nG=(dash.groups||[]).length, nO=(dash.ops||[]).length;
   var site=$('pan_site_'+id); if(site) site.innerHTML='<div id="opskpi_'+id+'">'+opsKpiHtml(k)+'</div>'
@@ -879,12 +882,13 @@ function prodMatrixCard(id,p,pi,flags){
       +'<a href="'+catUrl(p.sku||p.model)+'" target="_blank" onclick="event.stopPropagation()" class="asm pill '+(p.assembled?'ok':'warn')+'" title="открыть изделие в каталоге">'
         +(p.assembled?'✔':'⚠')+'<span class="t">'+(p.assembled?'состав':'состав не подтверждён')+'</span></a>'
     +'</div>'
-    +'<div class="pbody"><div class="muted small" id="opsp_'+id+'_'+pi+'">'+opProdStat(p)+'</div>'+mxSwitchHtml()+t1+t2+'</div></div>';
+    +'<div class="pbody"><div class="muted small" id="opsp_'+id+'_'+pi+'">'+opProdStat(p)+'</div>'+t1+t2+'</div></div>';
 }
 /* вид матриц изделия — один на все карточки, запоминается: «сделано» или «ждут операции» */
 function mxView(){ try{ return localStorage.getItem('tw_prod_mx')||'done'; }catch(e){ return 'done'; } }
-function mxSwitchHtml(){ var v=mxView(); return '<div class="mxsw"><span class="'+(v==='done'?'on':'')+'" onclick="setMxView(\'done\')">Сделано</span><span class="'+(v==='wait'?'on':'')+'" onclick="setMxView(\'wait\')">Ждут операции · лежат</span></div>'; }
-function setMxView(v){ try{ localStorage.setItem('tw_prod_mx',v); }catch(e){} applyMxView(); Array.prototype.forEach.call(document.querySelectorAll('.mxsw span'), function(x){ x.className=(x.textContent==='Сделано')===(v==='done')?'on':''; }); fitWraps(); }
+function mxSwitchHtml(){ var v=mxView(); return '<div class="mxswrow mxswdet"><span class="mxswl">Вид таблиц:</span><div class="mxsw"><span class="'+(v==='done'?'on':'')+'" onclick="setMxView(\'done\')">Сделано</span><span class="'+(v==='wait'?'on':'')+'" onclick="setMxView(\'wait\')">Ждут операции · лежат</span></div>'
+    +'<span class="muted small">'+(v==='done'?'сколько прошло каждую операцию и сколько подано':'сколько деталей лежит перед операцией и ждёт её')+'</span></div>'; }
+function setMxView(v){ try{ localStorage.setItem('tw_prod_mx',v); }catch(e){} applyMxView(); Array.prototype.forEach.call(document.querySelectorAll('.mxswrow.mxswdet'), function(x){ x.outerHTML=mxSwitchHtml(); }); fitWraps(); }   // только переключатель вкладки «Детали», у сводной свой
 function applyMxView(){ Array.prototype.forEach.call(document.querySelectorAll('.ppan[id^=pan_det_]'), function(p){ p.classList.remove('mxv-done','mxv-wait'); p.classList.add('mxv-'+mxView()); }); }
 /* ── сводно по заказу: блоки по оборудованию, как в ведомости переучёта (владелец 27.10.2026); деталь одной строкой на все цвета,
    деталь нескольких оборудований — в блоке «Общие детали» в конце; клетка = лежат после операции, мелко — сделано / нужно ── */
@@ -901,8 +905,8 @@ function summaryMatrixHtml(id,r){
   order.sort(function(a,b){ return (a===COMMON?1:0)-(b===COMMON?1:0); });
   var open={}; Array.prototype.forEach.call(document.querySelectorAll('#pan_sum_'+id+' .pcard'), function(c){ open[c.id]=c.classList.contains('open'); });
   var SV=sumView();
-  var sw='<div class="mxsw sumsw">'+[['lie','Лежит после операции'],['left','Осталось сделать']].map(function(t){ return '<span class="'+(SV===t[0]?'on':'')+'" onclick="setSumView(\''+t[0]+'\')">'+t[1]+'</span>'; }).join('')+'</div>'
-    +'<div class="muted small" style="margin:var(--s-1) 0 var(--s-2)">'+(SV==='left'?'цифра — сколько штук ещё предстоит сделать по операции (нужно − сделано); ✓ — закрыта':'цифра — сколько деталей лежит после операции (прошли её, на следующую не ушли), как в ведомости переучёта; ✓ — закрыта')+'</div>';
+  var sw='<div class="mxswrow"><span class="mxswl">Вид таблиц:</span><div class="mxsw">'+[['lie','Лежит после операции'],['left','Осталось сделать']].map(function(t){ return '<span class="'+(SV===t[0]?'on':'')+'" onclick="setSumView(\''+t[0]+'\')">'+t[1]+'</span>'; }).join('')+'</div>'
+    +'<span class="muted small">'+(SV==='left'?'сколько штук ещё предстоит по операции (нужно − сделано); ✓ — закрыта':'сколько деталей лежит после операции, как в ведомости переучёта; ✓ — закрыта')+'</span></div>';
   return sw+order.map(function(key,bi){
     var b=blocks[key], cols=opColumns(b.ops), rows=[], idx={}, grp=opGroups(b.ops);
     b.ops.forEach(function(o){
