@@ -961,10 +961,11 @@ function summaryMatrixHtml(id,r){
         var g=sig[k], fin=g.ops.filter(function(op){ return !/^(Сборка|Упаковка)/i.test(op); }).length>0;
         // подпись — чем отделывают, дальше товары без общего начала названия («BK Tower Foldable …» → «LAK UV»); полный список — в подсказке
         var how=g.ops.some(function(op){ return /в цвет|под цвет/i.test(op); })?'покраска':g.ops.some(function(op){ return /лак/i.test(op); })?'лак':g.ops.some(function(op){ return /масл/i.test(op); })?'масло':(fin?'отделка':'без покрытия');
-        var sub={ name:row.name, sub:true, label:how+' · '+shortModels(g.models,ms), full:g.models.join(', '), need:0, cells:{}, keys:{}, part:{} };
+        var sub={ name:row.name, sub:true, label:how+' · '+shortModels(g.models,ms), full:g.models.join(', '), need:0, cells:{}, keys:{}, up:{} };
         g.models.forEach(function(m){ sub.need+=row.mneed[m]||0; sub.keys[row.mkey[m]]=1;
-          (row.mseq[m]||[]).forEach(function(op){ var x=(row.mc[m]||{})[op]; if(x){ var c=sub.cells[op]=sub.cells[op]||sumCell(); sumMerge(c,x); } }); });
-        common.forEach(function(c){ sub.part[c]=1; });   // доля общей операции — приглушённо: сумма подстрок = строка детали
+          g.ops.forEach(function(op){ var x=(row.mc[m]||{})[op]; if(x){ var c=sub.cells[op]=sub.cells[op]||sumCell(); sumMerge(c,x); } }); });
+        // до развилки деталь общая (владелец 29.10.2026): её цифры — только в строке детали; в подстроке эти колонки серые, без чисел
+        common.forEach(function(c){ sub.up[c]=1; });
         out.push(sub);
       });
     });
@@ -975,6 +976,7 @@ function summaryMatrixHtml(id,r){
       if(key===COMMON&&!row.sub&&row.models){ var ms=Object.keys(row.models).join(', '); nm=nm.replace('</span></td>','</span><span class="sub">'+esc(ms)+'</span></td>'); }
       return '<tr'+(row.sub?' class="sumsub"':'')+'>'+nm+'<td class="num">'+r1(row.need)+'</td>'+cols.map(function(c){
         if(row.split&&row.split[c]) return '<td class="spl" title="по отделке — смотрите строки «↳» ниже">↓</td>';
+        if(row.up&&row.up[c]) return '<td class="spl" title="до развилки деталь общая — цифра в строке детали выше"></td>';
         var x=row.cells[c]; if(!x) return '<td class="no"></td>';
         var done=x.left<=0.001, tip=row.name+' · '+c+'\nможно делать сейчас (прошли предыдущую): '+r1(x.avail)+'\nосталось сделать: '+r1(x.left)+' · сделано '+r1(x.ready)+' из '+r1(x.need)+'\nлежат после операции: '+r1(x.fact)+'\nнажми — поправить «лежит сейчас»';
         if(SV==='done'){   // как клетка «Сделано» в карточке товара: принято, «+подано», полоска принято/подано с видимым хвостом
