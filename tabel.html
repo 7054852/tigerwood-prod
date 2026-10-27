@@ -94,7 +94,10 @@
   table.pay tbody tr:hover td{ background:var(--card2); }
   table.pay tbody tr:hover .nmc{ background:var(--card2); } table.pay tbody tr:hover .totc{ background:var(--green-bg); }
   /* выходные: клетки — утопленный фон; в шапке (она сама на утопленном фоне) — на ступень темнее */
-  table.pay td.wknd{ background:var(--grey-bg); } table.pay th.wknd{ background:var(--line); }
+  /* выходные — как во вкладке «Месяц»: число в шапке красным, колонка заметно серее (на белом --grey-bg почти не видно, владелец 29.10.2026) */
+  table.pay td.wknd{ background:var(--line); } table.pay th.wknd{ background:var(--line); color:var(--red); }
+  table.pay tbody tr:hover td.wknd{ background:var(--line2); }
+  table.pay tfoot td.wknd{ background:var(--line); color:var(--fg); }
   table.pay .tdy{ box-shadow:inset 0 0 0 2px var(--amber); }
   table.pay thead th.tdy{ background:var(--amber-bg); color:var(--amber); }
   table.pay .zero{ color:var(--line2); }
@@ -266,7 +269,9 @@ function renderPay(){
   for(var d=1;d<=dim;d++){ allDays.push(d); if(r.dayTotals[d]) useDays.push(d); }
   var cols=(ZONLY&&useDays.length)?useDays:allDays;
   var hidden=allDays.length-cols.length;
-  var wkd=function(d){ var g=new Date(Number(ym[0]),Number(ym[1])-1,d).getDay(); return g===0||g===6; };
+  // выходной — по производственному календарю сервера (праздники РБ, переносы), как во вкладке «Месяц»; без него — сб/вс
+  var OFF={}, WORK={}, HOL=r.holidayNames||{}; (r.off||[]).forEach(function(d){ OFF[d]=1; }); (r.work||[]).forEach(function(d){ WORK[d]=1; });
+  var wkd=function(d){ if(r.off) return !!OFF[d]||!!HOL[d]; var g=new Date(Number(ym[0]),Number(ym[1])-1,d).getDay(); return !WORK[d]&&(g===0||g===6); };
   var dow=['вс','пн','вт','ср','чт','пт','сб'];
   var rub=function(v){ return v?String(Math.round(v)):''; };   // в клетках — целые рубли (сетка читается)
   // сводка сверху
@@ -306,7 +311,7 @@ function renderPay(){
     +cols.map(function(){ return '<col class="c-d">'; }).join('')+'</colgroup>';
   var th='<thead><tr><th class="nmc">Рабочий</th><th class="totc">Итого ₽</th><th class="c-sm">дн</th>'
     +'<th class="c-sm" title="часы по табелю: уход − приход">ч</th><th class="c-sm" title="заработок за час">₽/ч</th>'
-    +cols.map(function(d){ return '<th class="'+(d===todayD?'tdy':(wkd(d)?'wknd':''))+'" title="'+d+' '+esc(mLabel)+', '+dow[new Date(Number(ym[0]),Number(ym[1])-1,d).getDay()]+'">'+d+'</th>'; }).join('')
+    +cols.map(function(d){ return '<th class="'+(d===todayD?'tdy':(wkd(d)?'wknd':''))+'" title="'+d+' '+esc(mLabel)+', '+dow[new Date(Number(ym[0]),Number(ym[1])-1,d).getDay()]+(HOL[d]?' · '+esc(HOL[d]):'')+(WORK[d]?' · рабочий (перенос)':'')+'">'+d+'</th>'; }).join('')
     +'</tr></thead>';
   var body='<tbody>'+r.workers.map(function(w){
     var tds=cols.map(function(d){
