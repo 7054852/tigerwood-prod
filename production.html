@@ -111,7 +111,7 @@
   .mxsw span{ font:var(--t-strong); text-transform:none; letter-spacing:0; padding:var(--s-1) var(--s-3); border-radius:calc(var(--r-ctl) - 3px); cursor:pointer; color:var(--muted); border:1px solid transparent; }
   .mxsw span:hover{ color:var(--fg); }
   .mxsw span.on{ background:var(--accent-bg); color:var(--accent-text); border-color:var(--accent); font-weight:600; }
-  .mxv-done .mx-wait, .mxv-wait .mx-done{ display:none; }
+  .mxv-done .mx-lie, .mxv-done .mx-left, .mxv-lie .mx-done, .mxv-lie .mx-left, .mxv-left .mx-done, .mxv-lie .mx-left, .mxv-left .mx-lie{ display:none; }
   /* Строки одной высоты (32 px) независимо от содержимого, главная цифра у всех на одной линии сверху,
      вторичное (подано ⏳, «/нужно») — мельче и бледнее строкой под ней. Ритм 4 px, ничего не переносим. */
   table.floor.mx td{ cursor:pointer; padding:5px 4px 0; height:32px; line-height:16px; white-space:nowrap; vertical-align:top; box-sizing:border-box; }
@@ -848,17 +848,19 @@ function mxDoneCell(id,o,flags,rowNeed){
     +(pend>0?'<span class="sub q" title="подано, ждёт проверки: '+r1(pend)+'">+'+r1(pend)+'</span>':'')+'</td>';
 }
 /* клетка «ждут операции»: прошли все предыдущие, эту ещё нет (avail). Первая операция цепочки — ещё не начато (серым). */
-function mxWaitCell(id,row,op){
+/* клетка «на участке»: лежат после операции (прошли её, на следующую не ушли) — те же числа, что в ведомости переучёта и в сводной */
+function mxLieCell(id,row,op){
   var o=row.cells[op]; if(!o) return '<td class="no" title="у этой детали такой операции нет"></td>';
-  var v=Number(o.avail)||0, prev=row.prev[op], po=prev?row.cells[prev]:null;
-  if(!prev) return '<td class="raw" title="'+esc(o.detail+': первая операция — '+r1(v)+' шт ещё не начато')+'"><span class="flf z">'+(v>0?r1(v):'')+'</span></td>';
-  var tip=o.detail+'\nпрошли «'+prev+'», ждут «'+op+'»: '+r1(v)+'\nнажми — поправить, сколько лежит после «'+prev+'»';
-  return '<td class="'+(v>0?'lie':'')+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+esc(po.id)+'\')"><span class="flf'+(v>0?'':' z')+'">'+(v>0?r1(v):'·')+'</span></td>';
+  var v=Number(o.fact)||0, done=(Number(o.left)||0)<=0.001;
+  var tip=o.detail+' · '+op+'\nлежат после операции: '+r1(v)+'\nсделано '+r1(Number(o.readyEff!=null?o.readyEff:o.ready)||0)+' из '+r1(o.need)+' · осталось '+r1(o.left)+'\nнажми — поправить «лежит сейчас»';
+  return '<td class="'+(v>0?'lie':(done?'cdone':''))+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+esc(o.id)+'\')"><span class="flf'+(v>0?'':' z')+'">'+(v>0?r1(v):(done?'✓':'·'))+'</span></td>';
 }
-function mxFinCell(id,row){
-  var o=row.cells[row.last]; if(!o) return '<td class="no"></td>';
-  var v=Number(o.fact)||0;
-  return '<td class="'+(v>0?'lie':'')+'" title="'+esc(o.detail+': прошли «'+row.last+'» и лежат — '+r1(v))+'" onclick="openFact(\''+id+'\',\''+esc(o.id)+'\')"><span class="flf'+(v>0?'':' z')+'">'+(v>0?r1(v):'·')+'</span></td>';
+/* клетка «осталось»: нужно − сделано */
+function mxLeftCell(id,row,op){
+  var o=row.cells[op]; if(!o) return '<td class="no" title="у этой детали такой операции нет"></td>';
+  var v=Number(o.left)||0, done=v<=0.001;
+  var tip=o.detail+' · '+op+'\nосталось сделать: '+r1(v)+' · сделано '+r1(Number(o.readyEff!=null?o.readyEff:o.ready)||0)+' из '+r1(o.need)+'\nнажми — поправить «лежит сейчас»';
+  return '<td class="'+(done?'cdone':'todo')+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+esc(o.id)+'\')"><span class="flf'+(v>0?'':' z')+'">'+(v>0?r1(v):'✓')+'</span></td>';
 }
 function prodMatrixCard(id,p,pi,flags){
   var ops=p.ops||[], cols=opColumns(ops), rows=mxRows(ops);
@@ -869,9 +871,13 @@ function prodMatrixCard(id,p,pi,flags){
     +'<div class="tbl-wrap flwrap"><table class="tbl floor mx">'+mxHead(cols,false,grp)+'<tbody>'
     +rows.map(function(row){ return '<tr>'+mxName(row)+'<td class="num">'+r1(row.need)+'</td>'+cols.map(function(c){ return mxDoneCell(id,row.cells[c],flags,row.need); }).join('')+(row.prod?'<td class="no"></td><td class="no"></td>':rwCells(id,row.name,[p.eq+'|'+p.model+'|'+row.name]))+'</tr>'; }).join('')
     +'</tbody></table></div></div>';
-  var t2='<div class="mx-wait"><div class="mxcap">Ждут операции<span class="mxlg" title="лежат перед операцией: прошли все предыдущие, эту ещё нет"><span><i class="c1"></i>лежат, ждут</span><span><i class="c4"></i>первая операция — не начато</span><span><i class="c2"></i>нет у детали</span><span>«прошли всё» — готовые</span></span></div>'
-    +'<div class="tbl-wrap flwrap"><table class="tbl floor mx">'+mxHead(cols,true,grp)+'<tbody>'
-    +rows.map(function(row){ return '<tr>'+mxName(row)+'<td class="num">'+r1(row.need)+'</td>'+cols.map(function(c){ return mxWaitCell(id,row,c); }).join('')+mxFinCell(id,row)+(row.prod?'<td class="no"></td><td class="no"></td>':rwCells(id,row.name,[p.eq+'|'+p.model+'|'+row.name]))+'</tr>'; }).join('')
+  var t2='<div class="mx-lie"><div class="mxcap">На участке<span class="mxlg" title="лежат после операции: прошли её, на следующую ещё не ушли — как в ведомости переучёта"><span><i class="c1"></i>лежат после операции</span><span>✓ — закрыта, ничего не лежит</span><span><i class="c2"></i>нет у детали</span></span></div>'
+    +'<div class="tbl-wrap flwrap"><table class="tbl floor mx">'+mxHead(cols,false,grp)+'<tbody>'
+    +rows.map(function(row){ return '<tr>'+mxName(row)+'<td class="num">'+r1(row.need)+'</td>'+cols.map(function(c){ return mxLieCell(id,row,c); }).join('')+(row.prod?'<td class="no"></td><td class="no"></td>':rwCells(id,row.name,[p.eq+'|'+p.model+'|'+row.name]))+'</tr>'; }).join('')
+    +'</tbody></table></div></div>';
+  var t3='<div class="mx-left"><div class="mxcap">Осталось<span class="mxlg" title="нужно − сделано по каждой операции"><span>цифра — сколько штук ещё предстоит</span><span><i class="c1"></i>✓ — закрыта</span><span><i class="c2"></i>нет у детали</span></span></div>'
+    +'<div class="tbl-wrap flwrap"><table class="tbl floor mx">'+mxHead(cols,false,grp)+'<tbody>'
+    +rows.map(function(row){ return '<tr>'+mxName(row)+'<td class="num">'+r1(row.need)+'</td>'+cols.map(function(c){ return mxLeftCell(id,row,c); }).join('')+(row.prod?'<td class="no"></td><td class="no"></td>':rwCells(id,row.name,[p.eq+'|'+p.model+'|'+row.name]))+'</tr>'; }).join('')
     +'</tbody></table></div></div>';
   return '<div class="pcard" id="pc_'+id+'_'+pi+'">'
     +'<div class="phead" onclick="toggleProd(\''+id+'\','+pi+')">'
@@ -882,14 +888,14 @@ function prodMatrixCard(id,p,pi,flags){
       +'<a href="'+catUrl(p.sku||p.model)+'" target="_blank" onclick="event.stopPropagation()" class="asm pill '+(p.assembled?'ok':'warn')+'" title="открыть изделие в каталоге">'
         +(p.assembled?'✔':'⚠')+'<span class="t">'+(p.assembled?'состав':'состав не подтверждён')+'</span></a>'
     +'</div>'
-    +'<div class="pbody"><div class="muted small" id="opsp_'+id+'_'+pi+'">'+opProdStat(p)+'</div>'+t1+t2+'</div></div>';
+    +'<div class="pbody"><div class="muted small" id="opsp_'+id+'_'+pi+'">'+opProdStat(p)+'</div>'+t1+t2+t3+'</div></div>';
 }
 /* вид матриц изделия — один на все карточки, запоминается: «сделано» или «ждут операции» */
-function mxView(){ try{ return localStorage.getItem('tw_prod_mx')||'done'; }catch(e){ return 'done'; } }
-function mxSwitchHtml(){ var v=mxView(); return '<div class="mxswrow mxswdet"><span class="mxswl">Вид таблиц:</span><div class="mxsw"><span class="'+(v==='done'?'on':'')+'" onclick="setMxView(\'done\')">Сделано</span><span class="'+(v==='wait'?'on':'')+'" onclick="setMxView(\'wait\')">На участке · ждут</span></div>'
-    +'<span class="muted small">'+(v==='done'?'сколько прошло каждую операцию и сколько подано':'сколько деталей лежит перед операцией и ждёт её')+'</span></div>'; }
+function mxView(){ try{ var v=localStorage.getItem('tw_prod_mx'); return v==='lie'||v==='left'?v:'done'; }catch(e){ return 'done'; } }
+function mxSwitchHtml(){ var v=mxView(); return '<div class="mxswrow mxswdet"><span class="mxswl">Вид таблиц:</span><div class="mxsw">'+[['done','Сделано'],['lie','На участке'],['left','Осталось']].map(function(t){ return '<span class="'+(v===t[0]?'on':'')+'" onclick="setMxView(\''+t[0]+'\')">'+t[1]+'</span>'; }).join('')+'</div>'
+    +'<span class="muted small">'+(v==='done'?'сколько прошло каждую операцию и сколько подано':v==='lie'?'сколько деталей лежит после операции, как в ведомости переучёта':'сколько штук ещё предстоит по операции (нужно − сделано)')+'</span></div>'; }
 function setMxView(v){ try{ localStorage.setItem('tw_prod_mx',v); }catch(e){} applyMxView(); Array.prototype.forEach.call(document.querySelectorAll('.mxswrow.mxswdet'), function(x){ x.outerHTML=mxSwitchHtml(); }); fitWraps(); }   // только переключатель вкладки «Детали», у сводной свой
-function applyMxView(){ Array.prototype.forEach.call(document.querySelectorAll('.ppan[id^=pan_det_]'), function(p){ p.classList.remove('mxv-done','mxv-wait'); p.classList.add('mxv-'+mxView()); }); }
+function applyMxView(){ Array.prototype.forEach.call(document.querySelectorAll('.ppan[id^=pan_det_]'), function(p){ p.classList.remove('mxv-done','mxv-lie','mxv-left'); p.classList.add('mxv-'+mxView()); }); }
 /* ── сводно по заказу: блоки по оборудованию, как в ведомости переучёта (владелец 27.10.2026); деталь одной строкой на все цвета,
    деталь нескольких оборудований — в блоке «Общие детали» в конце; клетка = лежат после операции, мелко — сделано / нужно ── */
 function summaryMatrixHtml(id,r){
