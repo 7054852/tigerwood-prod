@@ -886,7 +886,7 @@ function prodMatrixCard(id,p,pi,flags){
 }
 /* вид матриц изделия — один на все карточки, запоминается: «сделано» или «ждут операции» */
 function mxView(){ try{ return localStorage.getItem('tw_prod_mx')||'done'; }catch(e){ return 'done'; } }
-function mxSwitchHtml(){ var v=mxView(); return '<div class="mxswrow mxswdet"><span class="mxswl">Вид таблиц:</span><div class="mxsw"><span class="'+(v==='done'?'on':'')+'" onclick="setMxView(\'done\')">Сделано</span><span class="'+(v==='wait'?'on':'')+'" onclick="setMxView(\'wait\')">Ждут операции · лежат</span></div>'
+function mxSwitchHtml(){ var v=mxView(); return '<div class="mxswrow mxswdet"><span class="mxswl">Вид таблиц:</span><div class="mxsw"><span class="'+(v==='done'?'on':'')+'" onclick="setMxView(\'done\')">Сделано</span><span class="'+(v==='wait'?'on':'')+'" onclick="setMxView(\'wait\')">На участке · ждут</span></div>'
     +'<span class="muted small">'+(v==='done'?'сколько прошло каждую операцию и сколько подано':'сколько деталей лежит перед операцией и ждёт её')+'</span></div>'; }
 function setMxView(v){ try{ localStorage.setItem('tw_prod_mx',v); }catch(e){} applyMxView(); Array.prototype.forEach.call(document.querySelectorAll('.mxswrow.mxswdet'), function(x){ x.outerHTML=mxSwitchHtml(); }); fitWraps(); }   // только переключатель вкладки «Детали», у сводной свой
 function applyMxView(){ Array.prototype.forEach.call(document.querySelectorAll('.ppan[id^=pan_det_]'), function(p){ p.classList.remove('mxv-done','mxv-wait'); p.classList.add('mxv-'+mxView()); }); }
@@ -905,17 +905,18 @@ function summaryMatrixHtml(id,r){
   order.sort(function(a,b){ return (a===COMMON?1:0)-(b===COMMON?1:0); });
   var open={}; Array.prototype.forEach.call(document.querySelectorAll('#pan_sum_'+id+' .pcard'), function(c){ open[c.id]=c.classList.contains('open'); });
   var SV=sumView();
-  var sw='<div class="mxswrow"><span class="mxswl">Вид таблиц:</span><div class="mxsw">'+[['lie','Лежит после операции'],['left','Осталось сделать']].map(function(t){ return '<span class="'+(SV===t[0]?'on':'')+'" onclick="setSumView(\''+t[0]+'\')">'+t[1]+'</span>'; }).join('')+'</div>'
-    +'<span class="muted small">'+(SV==='left'?'сколько штук ещё предстоит по операции (нужно − сделано); ✓ — закрыта':'сколько деталей лежит после операции, как в ведомости переучёта; ✓ — закрыта')+'</span></div>';
+  var sw='<div class="mxswrow"><span class="mxswl">Вид таблиц:</span><div class="mxsw">'+[['done','Сделано'],['lie','На участке'],['left','Осталось']].map(function(t){ return '<span class="'+(SV===t[0]?'on':'')+'" onclick="setSumView(\''+t[0]+'\')">'+t[1]+'</span>'; }).join('')+'</div>'
+    +'<span class="muted small">'+(SV==='done'?'сколько прошло операцию по всем цветам, зелёным «+n» — подано, не принято; полоска — доля принятого; ✓ — закрыта'
+      :SV==='left'?'сколько штук ещё предстоит по операции (нужно − сделано); ✓ — закрыта':'сколько деталей лежит после операции, как в ведомости переучёта; ✓ — закрыта')+'</span></div>';
   return sw+order.map(function(key,bi){
     var b=blocks[key], cols=opColumns(b.ops), rows=[], idx={}, grp=opGroups(b.ops);
     b.ops.forEach(function(o){
       var dk=(o.level==='изделие'?'§':'')+o.detail.toLowerCase();
       if(idx[dk]===undefined){ idx[dk]=rows.length; rows.push({ name:o.detail, prod:o.level==='изделие', need:0, cells:{}, models:{}, keys:{} }); }
-      var row=rows[idx[dk]], c=row.cells[o.op]=row.cells[o.op]||{ need:0, ready:0, fact:0, left:0, avail:0, ids:[] };
+      var row=rows[idx[dk]], c=row.cells[o.op]=row.cells[o.op]||{ need:0, ready:0, fact:0, left:0, avail:0, pend:0, ids:[] };
       row.models[o.model]=1; row.keys[o.eq+'|'+o.model+'|'+o.detail]=1;
       // у каждого цвета своя потребность и своя доля работы (общую операцию расчёт уже разложил по цветам) — складываем всегда
-      c.need+=Number(o.need)||0; c.ready+=Number(o.readyEff!=null?o.readyEff:o.ready)||0; c.fact+=Number(o.fact)||0; c.left+=Number(o.left)||0; c.avail+=Number(o.avail)||0; c.ids.push(o.id);
+      c.need+=Number(o.need)||0; c.ready+=Number(o.readyEff!=null?o.readyEff:o.ready)||0; c.fact+=Number(o.fact)||0; c.left+=Number(o.left)||0; c.avail+=Number(o.avail)||0; c.pend+=(Number(o.pend)||0)+(Number(o.qc)||0); c.ids.push(o.id);
     });
     rows.forEach(function(row){ var n=0; cols.forEach(function(c){ var x=row.cells[c]; if(x&&x.need>n) n=x.need; }); row.need=n; row.done=cols.every(function(c){ var x=row.cells[c]; return !x||x.left<=0.001; }); });
     rows.sort(function(a,b){ return (a.prod?1:0)-(b.prod?1:0) || a.name.localeCompare(b.name,'ru'); });
@@ -925,6 +926,13 @@ function summaryMatrixHtml(id,r){
       return '<tr>'+nm+'<td class="num">'+r1(row.need)+'</td>'+cols.map(function(c){
         var x=row.cells[c]; if(!x) return '<td class="no"></td>';
         var done=x.left<=0.001, tip=row.name+' · '+c+'\nможно делать сейчас (прошли предыдущую): '+r1(x.avail)+'\nосталось сделать: '+r1(x.left)+' · сделано '+r1(x.ready)+' из '+r1(x.need)+'\nлежат после операции: '+r1(x.fact)+'\nнажми — поправить «лежит сейчас»';
+        if(SV==='done'){   // как клетка «Сделано» в карточке товара: принято, «+подано», полоска принято/подано с видимым хвостом
+          var rd=x.ready, pb='';
+          if(!done&&x.need>0&&(rd>0||x.pend>0)){ var CAP=90, a=Math.min(CAP,rd/x.need*100), q=Math.min(CAP-a,x.pend/x.need*100);
+            pb='<span class="pb"><i class="a" style="width:'+a.toFixed(1)+'%"></i>'+(q>0?'<i class="q" style="width:'+q.toFixed(1)+'%"></i>':'')+'</span>'; }
+          return '<td class="'+(done?'cdone':(rd>x.need+0.001?'over':''))+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+x.ids.join(',')+'\')"><span class="flf'+(rd>0?'':' z')+'">'+(rd>0?r1(rd):'·')+'</span>'
+            +(x.pend>0?'<span class="sub q">+'+r1(x.pend)+'</span>':'')+pb+'</td>';
+        }
         var v=SV==='left'?x.left:x.fact, cls=done?'cdone':(SV==='left'?(v>0?'todo':''):(v>0?'lie':''));
         return '<td class="'+cls+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+x.ids.join(',')+'\')"><span class="flf'+(v>0?'':' z')+'">'+(v>0?r1(v):(done?'✓':'·'))+'</span></td>';
       }).join('')+(row.prod?'<td class="no"></td><td class="no"></td>':rwCells(id,row.name,Object.keys(row.keys)))+'</tr>';
@@ -943,7 +951,7 @@ function summaryMatrixHtml(id,r){
   +'<div class="muted small">цифра — лежит после операции (как в ведомости переучёта), зелёная клетка — операция закрыта; деталь одной строкой — сумма по всем цветам; «↺ шлифовка / малярка» — вернули с покраски на переделку, на операциях не лежат; наведи — сделано / нужно</div>';
 }
 /* вид сводной: можно делать / осталось / лежит — запоминается */
-function sumView(){ try{ var v=localStorage.getItem('tw_prod_sumv'); return v==='left'?'left':'lie'; }catch(e){ return 'lie'; } }
+function sumView(){ try{ var v=localStorage.getItem('tw_prod_sumv'); return v==='left'||v==='done'?v:'lie'; }catch(e){ return 'lie'; } }
 function setSumView(v){ try{ localStorage.setItem('tw_prod_sumv',v); }catch(e){} var sum=$('pan_sum_'+CUR); if(sum&&OPSR[CUR]){ sum.innerHTML=summaryMatrixHtml(CUR,OPSR[CUR]); fitWraps(); } }
 var OPSR={};
 function toggleProd(id,pi){ var c=$('pc_'+id+'_'+pi); if(c) c.classList.toggle('open'); fitWraps(); }
