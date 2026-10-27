@@ -769,6 +769,7 @@ function renderOps(id,r){
   // на переделке (вернули с покраски): у варианта — целыми штуками на последней отделочной операции (o.rework), в сводной — сумма по цветам
   var RW=RWPOOL[id]={};
   (r.products||[]).forEach(function(p){ (p.ops||[]).forEach(function(o){ if(!o.rework) return; var k=(p.eq+'|'+p.model+'|'+o.detail).toLowerCase(); var x=RW[k]=RW[k]||{sand:0,paint:0}; x.sand+=o.rework.sand||0; x.paint+=o.rework.paint||0; }); });
+  COMMONX[id]=buildCommon(r);
   var prods=(r.products||[]).map(function(p,pi){ return prodMatrixCard(id,p,pi,flags); }).join('');
   var nP=(r.products||[]).length, issues=((r.checks||{}).issues||[]).length;
   var chk=issues?'<details class="chkd"'+(open['chk_'+id]?' open':'')+' id="chk_'+id+'"><summary>⚠ проверки логики: '+plural(issues,'замечание','замечания','замечаний')+' — показать</summary>'+opsChecksHtml(id,r.checks||{})+'</details>':'';
@@ -851,7 +852,8 @@ function mxName(row,noShared){ return '<td class="dn'+(row.done?' done':'')+'" t
 function mxDoneCell(id,o,flags,rowNeed){
   if(!o) return '<td class="no" title="у этой детали такой операции нет"></td>';
   var ready=Number(o.readyEff!=null?o.readyEff:o.ready)||0, need=Number(o.need)||0, left=Number(o.left)||0, pend=(Number(o.pend)||0)+(Number(o.qc)||0);
-  var cls=left<=0.001?'cdone':(ready>need+0.001?'over':''), fl=flags&&flags[o.id]?' <span class="chk '+flags[o.id]+'" title="есть замечание">⚠</span>':'';
+  var fk=flags?String(o.id).split(',').map(function(x){ return flags[x]; }).filter(Boolean)[0]:'';
+  var cls=left<=0.001?'cdone':(ready>need+0.001?'over':''), fl=fk?' <span class="chk '+fk+'" title="есть замечание">⚠</span>':'';
   var tip=o.detail+' · '+o.op+'\nсделано '+r1(ready)+' из '+r1(need)+(o.stock?(' (нач. остатки '+r1(o.stock)+')'):'')+'\nосталось '+r1(left)
     +(pend?('\nподано, не принято: '+r1(pend)):'')+(Number(o.over)>0?('\nперевыполнено на '+r1(o.over)):'')+'\nнажми — поправить «лежит сейчас» на этой операции';
   // полоска: сплошная — принято, пунктир — подано (ждёт проверки/ОТК); у незакрытой операции хвост дорожки виден всегда,
@@ -878,22 +880,69 @@ function mxLeftCell(id,row,op){
   var tip=o.detail+' · '+op+'\nосталось сделать: '+r1(v)+' · сделано '+r1(Number(o.readyEff!=null?o.readyEff:o.ready)||0)+' из '+r1(o.need)+'\nнажми — поправить «лежит сейчас»';
   return '<td class="'+(done?'cdone':'todo')+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+esc(o.id)+'\')"><span class="flf'+(v>0?'':' z')+'">'+(v>0?r1(v):'✓')+'</span></td>';
 }
+/* Общая часть детали, которая идёт в несколько цветов с разной отделкой (владелец 29.10.2026): до развилки деталь одна на все цвета —
+   её цифры по всем цветам вместе; после развилки — у каждого товара свои. Та же логика, что строки «↳» в «Сводно по заказу». */
+var COMMONX={};
+function buildCommon(r){
+  var D={};
+  (r.products||[]).forEach(function(p){ (p.ops||[]).forEach(function(o){ if(o.level==='изделие') return;
+    var d=D[o.detail.toLowerCase()]=D[o.detail.toLowerCase()]||{ seq:{}, shared:{}, agg:{}, need:{} }, m=p.eq+'|'+p.model;
+    (d.seq[m]=d.seq[m]||[]).push(o.op); if(o.shared) d.shared[o.op]=1;
+    if((Number(o.need)||0)>(d.need[m]||0)) d.need[m]=Number(o.need)||0;
+    var a=d.agg[o.op]=d.agg[o.op]||{ id:'', ids:[], detail:o.detail, op:o.op, need:0, ready:0, readyEff:0, left:0, fact:0, pend:0, qc:0, over:0, stock:0, avail:0 };
+    a.ids.push(o.id); a.id=a.ids.join(','); a.need+=Number(o.need)||0; var rd=Number(o.readyEff!=null?o.readyEff:o.ready)||0; a.ready+=rd; a.readyEff+=rd;
+    a.left+=Number(o.left)||0; a.fact+=Number(o.fact)||0; a.pend+=Number(o.pend)||0; a.qc+=Number(o.qc)||0; a.stock+=Number(o.stock)||0; a.avail+=Number(o.avail)||0; a.over=Math.max(0,a.ready-a.need); }); });
+  var out={};
+  Object.keys(D).forEach(function(k){ var d=D[k], ms=Object.keys(d.seq); if(ms.length<2) return;
+    var common=[]; d.seq[ms[0]].forEach(function(op){ if(d.shared[op]&&ms.every(function(m){ return d.seq[m].indexOf(op)>=0; })) common.push(op); });
+    if(!common.length) return;
+    var sig={}; ms.forEach(function(m){ var q=d.seq[m].filter(function(op){ return common.indexOf(op)<0; }); sig[q.some(function(op){ return /в цвет|под цвет/i.test(op); })?'§'+m:q.join('→')]=1; });
+    if(Object.keys(sig).length<2) return;   // отделка у всех одинаковая — делить нечего
+    var need=0; ms.forEach(function(m){ need+=d.need[m]; });
+    out[k]={ common:common, agg:d.agg, need:need };
+  });
+  return out;
+}
+/* ячейка-стрелка: «↓» — цифры в строках по товару ниже, «↑» — общая часть, цифра в строке детали выше */
+function mxArrow(row,c){
+  if(row.split&&row.split[c]) return '<td class="spl" title="после развилки у каждого цвета своё — строка «↳» ниже">↓</td>';
+  if(row.up&&row.up[c]) return '<td class="spl" title="до развилки деталь общая для всех цветов — цифра в строке выше">↑</td>';
+  return '';
+}
+function mxRwTail(id,p,row){ return row.prod?'<td class="no"></td><td class="no"></td>':row.comm?'<td class="spl">↓</td><td class="spl">↓</td>':rwCells(id,row.name,[p.eq+'|'+p.model+'|'+row.name]); }
+function mxRowName(row,p){
+  if(row.sub) return '<td class="dn sumsub" title="'+esc(row.name+' — этот товар: '+p.model)+'"><span class="dnx">↳ этот товар</span></td>';
+  var nm=mxName(row,row.comm);
+  return row.comm?nm.replace('</span></td>',' <span class="pill mute sh" title="до развилки деталь одна на все цвета — цифры по всем цветам вместе">все цвета</span></span></td>'):nm;
+}
 function prodMatrixCard(id,p,pi,flags){
-  var ops=p.ops||[], cols=opColumns(ops), rows=mxRows(ops);
+  var ops=p.ops||[], cols=opColumns(ops), rows=mxRows(ops), CX=COMMONX[id]||{};
   rows.forEach(function(row){ row.done=row.seq.every(function(op){ return (Number(row.cells[op].left)||0)<=0.001; }); });
+  // общая деталь: строка «все цвета» с общей частью + строка «↳ этот товар» с его отделкой
+  var rr=[]; rows.forEach(function(row){
+    var X=!row.prod&&CX[row.name.toLowerCase()];
+    if(!X||!row.seq.some(function(op){ return X.common.indexOf(op)>=0; })){ rr.push(row); return; }
+    var cm={ name:row.name, comm:true, need:X.need, cells:{}, seq:[], split:{}, shared:true };
+    row.seq.forEach(function(op){ if(X.common.indexOf(op)>=0){ cm.cells[op]=X.agg[op]; cm.seq.push(op); } else cm.split[op]=1; });
+    cm.prev={}; cm.seq.forEach(function(op,i){ cm.prev[op]=i?cm.seq[i-1]:''; }); cm.last=cm.seq[cm.seq.length-1];
+    cm.done=cm.seq.every(function(op){ return (Number(cm.cells[op].left)||0)<=0.001; });
+    row.sub=true; row.up={}; X.common.forEach(function(op){ row.up[op]=1; });
+    rr.push(cm, row);
+  });
+  rows=rr;
   var pct=Math.min(100,p.pct||0);
   var grp=opGroups(ops);
   var t1='<div class="mx-done"><div class="mxcap">Сделано<span class="mxlg" title="цифра — сколько прошло операцию; «/n» — нужно, если отличается от строки"><span><i class="c1"></i>закрыта</span><span><i class="c3"></i>принято</span><span><i class="c5"></i><b style="color:var(--green)">+n</b> подано, ждёт проверки</span><span><i class="c2"></i>нет у детали</span><span><b>жёлтая</b> — сверх плана</span></span></div>'
     +'<div class="tbl-wrap flwrap"><table class="tbl floor mx">'+mxHead(cols,false,grp)+'<tbody>'
-    +rows.map(function(row){ return '<tr>'+mxName(row)+'<td class="num">'+r1(row.need)+'</td>'+cols.map(function(c){ return mxDoneCell(id,row.cells[c],flags,row.need); }).join('')+(row.prod?'<td class="no"></td><td class="no"></td>':rwCells(id,row.name,[p.eq+'|'+p.model+'|'+row.name]))+'</tr>'; }).join('')
+    +rows.map(function(row){ return '<tr'+(row.sub?' class="sumsub"':'')+'>'+mxRowName(row,p)+'<td class="num">'+r1(row.need)+'</td>'+cols.map(function(c){ return mxArrow(row,c)||mxDoneCell(id,row.cells[c],flags,row.need); }).join('')+mxRwTail(id,p,row)+'</tr>'; }).join('')
     +'</tbody></table></div></div>';
   var t2='<div class="mx-lie"><div class="mxcap">На участке<span class="mxlg" title="лежат после операции: прошли её, на следующую ещё не ушли — как в ведомости переучёта"><span><i class="c1"></i>лежат после операции</span><span>✓ — закрыта, ничего не лежит</span><span><i class="c2"></i>нет у детали</span></span></div>'
     +'<div class="tbl-wrap flwrap"><table class="tbl floor mx">'+mxHead(cols,false,grp)+'<tbody>'
-    +rows.map(function(row){ return '<tr>'+mxName(row)+'<td class="num">'+r1(row.need)+'</td>'+cols.map(function(c){ return mxLieCell(id,row,c); }).join('')+(row.prod?'<td class="no"></td><td class="no"></td>':rwCells(id,row.name,[p.eq+'|'+p.model+'|'+row.name]))+'</tr>'; }).join('')
+    +rows.map(function(row){ return '<tr'+(row.sub?' class="sumsub"':'')+'>'+mxRowName(row,p)+'<td class="num">'+r1(row.need)+'</td>'+cols.map(function(c){ return mxArrow(row,c)||mxLieCell(id,row,c); }).join('')+mxRwTail(id,p,row)+'</tr>'; }).join('')
     +'</tbody></table></div></div>';
   var t3='<div class="mx-left"><div class="mxcap">Осталось<span class="mxlg" title="нужно − сделано по каждой операции"><span>цифра — сколько штук ещё предстоит</span><span><i class="c1"></i>✓ — закрыта</span><span><i class="c2"></i>нет у детали</span></span></div>'
     +'<div class="tbl-wrap flwrap"><table class="tbl floor mx">'+mxHead(cols,false,grp)+'<tbody>'
-    +rows.map(function(row){ return '<tr>'+mxName(row)+'<td class="num">'+r1(row.need)+'</td>'+cols.map(function(c){ return mxLeftCell(id,row,c); }).join('')+(row.prod?'<td class="no"></td><td class="no"></td>':rwCells(id,row.name,[p.eq+'|'+p.model+'|'+row.name]))+'</tr>'; }).join('')
+    +rows.map(function(row){ return '<tr'+(row.sub?' class="sumsub"':'')+'>'+mxRowName(row,p)+'<td class="num">'+r1(row.need)+'</td>'+cols.map(function(c){ return mxArrow(row,c)||mxLeftCell(id,row,c); }).join('')+mxRwTail(id,p,row)+'</tr>'; }).join('')
     +'</tbody></table></div></div>';
   return '<div class="pcard" id="pc_'+id+'_'+pi+'">'
     +'<div class="phead" onclick="toggleProd(\''+id+'\','+pi+')">'
@@ -976,7 +1025,7 @@ function summaryMatrixHtml(id,r){
       if(key===COMMON&&!row.sub&&row.models){ var ms=Object.keys(row.models).join(', '); nm=nm.replace('</span></td>','</span><span class="sub">'+esc(ms)+'</span></td>'); }
       return '<tr'+(row.sub?' class="sumsub"':'')+'>'+nm+'<td class="num">'+r1(row.need)+'</td>'+cols.map(function(c){
         if(row.split&&row.split[c]) return '<td class="spl" title="по отделке — смотрите строки «↳» ниже">↓</td>';
-        if(row.up&&row.up[c]) return '<td class="spl" title="до развилки деталь общая — цифра в строке детали выше"></td>';
+        if(row.up&&row.up[c]) return '<td class="spl" title="до развилки деталь общая — цифра в строке детали выше">↑</td>';
         var x=row.cells[c]; if(!x) return '<td class="no"></td>';
         var done=x.left<=0.001, tip=row.name+' · '+c+'\nможно делать сейчас (прошли предыдущую): '+r1(x.avail)+'\nосталось сделать: '+r1(x.left)+' · сделано '+r1(x.ready)+' из '+r1(x.need)+'\nлежат после операции: '+r1(x.fact)+'\nнажми — поправить «лежит сейчас»';
         if(SV==='done'){   // как клетка «Сделано» в карточке товара: принято, «+подано», полоска принято/подано с видимым хвостом
@@ -1046,7 +1095,7 @@ function showOpIssues(id,opId){ var m=(CHKMSG[id]||{})[opId]; if(m&&m.length) al
 // клик «показать →» → раскрыть изделие с этой операцией и подсветить строку
 function jumpToOp(id,opId){
   showPTab(id,'det');
-  var tr=document.querySelector('[data-op="'+String(opId).replace(/"/g,'\\"')+'"]');
+  var tr=null; Array.prototype.some.call(document.querySelectorAll('[data-op]'), function(x){ if(x.getAttribute('data-op').split(',').indexOf(String(opId))>=0){ tr=x; return true; } });   // клетка общей детали несёт id всех цветов
   if(!tr){ showOpIssues(id,opId); return; }
   var card=tr.closest('.pcard'); if(card&&!card.classList.contains('open')) card.classList.add('open');
   var y=tr.getBoundingClientRect().top+window.pageYOffset-250; window.scrollTo(0,Math.max(0,y));   /* ниже липких вкладок и шапки таблицы */
