@@ -162,6 +162,7 @@
   /* «↑ / ↓» — данных в клетке нет, цифра в соседней строке: заметно темнее обычных клеток в обеих темах */
   table.floor.mx tbody tr td.spl{ color:var(--fg2,var(--fg)); font:var(--t-small); font-weight:600; cursor:default; background:var(--line); }   /* tbody tr — сильнее зебры (nth-child)  */
   table.floor.mx tbody tr:hover td.spl, table.floor.mx td.spl.colh{ background:var(--line2); }
+  table.floor.mx td.cutc .sub{ display:block; font:var(--t-tiny); line-height:11px; margin:1px 0 0; } table.floor.mx td.cutc .cutsh{ color:var(--red); font-weight:600; } table.floor.mx td.cutc .cutok{ color:var(--green); }
   table.floor.mx td.part .flf{ font-weight:400; color:var(--muted); }   /* доля общей операции у отделки — приглушённо */
   .sumtodo{ font:var(--t-small); margin:0 0 var(--s-2); } .sumtodo b{ font-weight:600; } .sumtodo.ok{ color:var(--green); }
   table.floor.mx td.lie .flf{ color:var(--green); }
@@ -754,7 +755,9 @@ function ptabCount(id,t,txt){ var c=$('ptabc_'+t+'_'+id); if(c) c.textContent=tx
 
 function loadOps(id){
   var box=$('ops_'+id); if(!box) return;
-  api({vapi:'orderops',batch:id}).then(function(r){ if(!r||!r.ok){ box.innerHTML='<div class="err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; } renderOps(id,r); });
+  Promise.all([api({vapi:'orderops',batch:id}), api({vapi:'cutstock'}).catch(function(){ return null; })]).then(function(res){ var r=res[0], cs=res[1];
+    CUTS={}; ((cs&&cs.items)||[]).forEach(function(x){ CUTS[String(x.detail).toLowerCase()]=Number(x.stock)||0; });
+    if(!r||!r.ok){ box.innerHTML='<div class="err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; } renderOps(id,r); });
 }
 function renderOps(id,r){
   var box=$('ops_'+id); if(!box) return;
@@ -868,8 +871,18 @@ function mxDoneCell(id,o,flags,rowNeed){
 }
 /* клетка «ждут операции»: прошли все предыдущие, эту ещё нет (avail). Первая операция цепочки — ещё не начато (серым). */
 /* клетка «на участке»: лежат после операции (прошли её, на следующую не ушли) — те же числа, что в ведомости переучёта и в сводной */
+/* «Раскрой» на участке = склад раскроя (владелец 29.10.2026): сколько этой детали распилено и лежит на складе (общий для всех заказов);
+   подпись — хватает ли на то, что этому заказу ещё предстоит пропустить через первую операцию после раскроя */
+var CUTS={};
+function cutCell(detail,leftNext,title){
+  var st=CUTS[String(detail).toLowerCase()]||0, d=r1(st-leftNext);
+  var sub=leftNext<=0.001?'':(d<0?'<span class="sub cutsh">не хв. '+r1(-d)+'</span>':'<span class="sub cutok">запас '+d+'</span>');
+  var tip=detail+' · склад раскроя: '+r1(st)+' шт (общий для всех заказов)\nэтому заказу ещё пропустить через следующую операцию: '+r1(leftNext)+(leftNext>0.001?(d<0?'\nне хватает '+r1(-d)+' — нужно раскроить':'\nзапас '+d):'')+(title?'\n'+title:'');
+  return '<td class="cutc'+(st>0?' lie':'')+'" title="'+esc(tip)+'"><span class="flf'+(st>0?'':' z')+'">'+(st>0?r1(st):'0')+'</span>'+sub+'</td>';
+}
 function mxLieCell(id,row,op){
   var o=row.cells[op]; if(!o) return '<td class="no" title="у этой детали такой операции нет"></td>';
+  if(op==='Раскрой'&&!row.prod){ var i=row.seq.indexOf(op), nx=i>=0?row.cells[row.seq[i+1]]:null; return cutCell(row.name, nx?Number(nx.left)||0:Number(o.left)||0, 'в заказе раскроено '+r1(Number(o.readyEff!=null?o.readyEff:o.ready)||0)+' из '+r1(o.need)); }
   var v=Number(o.fact)||0, done=(Number(o.left)||0)<=0.001;
   var tip=o.detail+' · '+op+'\nлежат после операции: '+r1(v)+'\nсделано '+r1(Number(o.readyEff!=null?o.readyEff:o.ready)||0)+' из '+r1(o.need)+' · осталось '+r1(o.left)+'\nнажми — поправить «лежит сейчас»';
   return '<td class="'+(v>0?'lie':(done?'cdone':''))+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+esc(o.id)+'\')"><span class="flf'+(v>0?'':' z')+'">'+(v>0?r1(v):(done?'✓':'·'))+'</span></td>';
@@ -1025,6 +1038,8 @@ function summaryMatrixHtml(id,r){
           return '<td class="'+(done?'cdone':(rd>x.need+0.001?'over':''))+(row.part&&row.part[c]?' part':'')+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+x.ids.join(',')+'\')"><span class="flf'+(rd>0?'':' z')+'">'+(rd>0?r1(rd):'·')+'</span>'
             +(x.pend>0?'<span class="sub q">+'+r1(x.pend)+'</span>':'')+pb+'</td>';
         }
+        if(SV==='lie'&&c==='Раскрой'&&!row.prod&&!row.sub){ var ci=cols.indexOf(c), nx=null; for(var j=ci+1;j<cols.length&&!nx;j++) if(row.cells[cols[j]]||(row.split&&row.split[cols[j]])) nx=row.cells[cols[j]]||null;
+          return cutCell(row.name, nx?nx.left:x.left, 'в заказе раскроено '+r1(x.ready)+' из '+r1(x.need)); }
         var v=SV==='left'?x.left:x.fact, cls=done?'cdone':(SV==='left'?(v>0?'todo':''):(v>0?'lie':''));
         return '<td class="'+cls+(row.part&&row.part[c]?' part':'')+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+x.ids.join(',')+'\')"><span class="flf'+(v>0?'':' z')+'">'+(v>0?r1(v):(done?'✓':'·'))+'</span></td>';
       }).join('')+(row.prod?'<td class="no"></td><td class="no"></td>':row.noRw?'<td class="spl">↓</td><td class="spl">↓</td>':rwCells(id,row.name,Object.keys(row.keys)))+'</tr>';
