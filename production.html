@@ -159,7 +159,8 @@
   table.floor.mx td.can{ background:var(--accent-bg); } table.floor.mx td.can .flf{ color:var(--accent-text); }   /* сводная: можно делать сейчас */
   table.floor.mx td.todo .flf{ color:var(--fg); }   /* осталось сделать */
   table.floor.mx tr.sumsub td.dn{ padding-left:20px; color:var(--muted); font:var(--t-tiny); line-height:16px; }
-  table.floor.mx td.spl{ color:var(--line2); font:var(--t-tiny); cursor:default; }
+  table.floor.mx td.spl{ color:var(--muted); font:var(--t-tiny); cursor:default; background:var(--card2); }
+  table.floor.mx td.part .flf{ font-weight:400; color:var(--muted); }   /* доля общей операции у отделки — приглушённо */
   .sumtodo{ font:var(--t-small); margin:0 0 var(--s-2); } .sumtodo b{ font-weight:600; } .sumtodo.ok{ color:var(--green); }
   table.floor.mx td.lie .flf{ color:var(--green); }
   table.floor.mx td .sub{ display:inline-block; font:var(--t-tiny); line-height:16px; color:var(--muted); white-space:nowrap; margin:0 0 0 4px; vertical-align:top; }   /* в одну строку с главной цифрой, чтобы не наезжать на полоску; margin целиком: у темы .sub имеет отступ снизу 24 px */
@@ -938,46 +939,53 @@ function summaryMatrixHtml(id,r){
       var mc=row.mc[o.model]=row.mc[o.model]||{}; sumAdd(mc[o.op]=mc[o.op]||sumCell(), o);
       if((Number(o.need)||0)>(row.mneed[o.model]||0)) row.mneed[o.model]=Number(o.need)||0;
       row.mkey[o.model]=o.eq+'|'+o.model+'|'+o.detail;
-      if(o.shared) row.shared[o.op]=1; else (row.mseq[o.model]=row.mseq[o.model]||[]).push(o.op);
+      if(o.shared) row.shared[o.op]=1; (row.mseq[o.model]=row.mseq[o.model]||[]).push(o.op);
     });
     rows.sort(function(a,b){ return (a.prod?1:0)-(b.prod?1:0) || a.name.localeCompare(b.name,'ru'); });
     // деталь, общая для цветов, после развилки (лак / покраска / ничего) — строками по отделке, как в ведомости переучёта (владелец 29.10.2026:
     // «крючки лакированные и просто шлифованные — в таблице не вижу»): до развилки — одна строка на все цвета, после — своя строка у каждой отделки
     var out=[];
     rows.forEach(function(row){
-      var ms=Object.keys(row.models), sig={}, gl=[];
-      ms.forEach(function(m){ var q=row.mseq[m]||[], k=q.some(function(op){ return /в цвет|под цвет/i.test(op); })?'§'+m:q.join('→'); if(!sig[k]){ sig[k]={ ops:q, models:[] }; gl.push(k); } sig[k].models.push(m); });
-      if(row.prod||ms.length<2||!Object.keys(row.shared).length||gl.length<2){ out.push(row); return; }
+      var ms=Object.keys(row.models);
+      // общая часть — операции, которые есть у всех цветов детали и делаются одинаково; остальное (лак не у всех, покраска в цвет) — по отделке
+      var common=cols.filter(function(c){ return row.shared[c]&&ms.every(function(m){ return (row.mseq[m]||[]).indexOf(c)>=0; }); });
+      var sig={}, gl=[];
+      ms.forEach(function(m){ var q=(row.mseq[m]||[]).filter(function(op){ return common.indexOf(op)<0; }), k=q.some(function(op){ return /в цвет|под цвет/i.test(op); })?'§'+m:q.join('→');
+        if(!sig[k]){ sig[k]={ ops:q, models:[] }; gl.push(k); } sig[k].models.push(m); });
+      if(row.prod||ms.length<2||!common.length||gl.length<2){ out.push(row); return; }
       var main={ name:row.name, need:0, cells:{}, keys:row.keys, split:{}, noRw:true, models:row.models };
-      cols.forEach(function(c){ if(row.shared[c]&&row.cells[c]) main.cells[c]=row.cells[c]; else if(row.cells[c]) main.split[c]=1; });
+      cols.forEach(function(c){ if(!row.cells[c]) return; if(common.indexOf(c)>=0) main.cells[c]=row.cells[c]; else main.split[c]=1; });
       ms.forEach(function(m){ main.need+=row.mneed[m]||0; });
       out.push(main);
       gl.forEach(function(k){
-        var g=sig[k], sub={ name:row.name, sub:true, label:g.ops.length?g.models.join(', '):g.models.join(', ')+' — дальше без покрытия', need:0, cells:{}, keys:{}, up:{} };
-        g.models.forEach(function(m){ sub.need+=row.mneed[m]||0; sub.keys[row.mkey[m]]=1; g.ops.forEach(function(op){ var x=(row.mc[m]||{})[op]; if(x){ var c=sub.cells[op]=sub.cells[op]||sumCell(); sumMerge(c,x); } }); });
-        cols.forEach(function(c){ if(main.cells[c]) sub.up[c]=1; });
+        var g=sig[k], fin=g.ops.filter(function(op){ return !/^(Сборка|Упаковка)/i.test(op); }).length>0;
+        // подпись — чем отделывают, дальше товары без общего начала названия («BK Tower Foldable …» → «LAK UV»); полный список — в подсказке
+        var how=g.ops.some(function(op){ return /в цвет|под цвет/i.test(op); })?'покраска':g.ops.some(function(op){ return /лак/i.test(op); })?'лак':g.ops.some(function(op){ return /масл/i.test(op); })?'масло':(fin?'отделка':'без покрытия');
+        var sub={ name:row.name, sub:true, label:how+' · '+shortModels(g.models,ms), full:g.models.join(', '), need:0, cells:{}, keys:{}, part:{} };
+        g.models.forEach(function(m){ sub.need+=row.mneed[m]||0; sub.keys[row.mkey[m]]=1;
+          (row.mseq[m]||[]).forEach(function(op){ var x=(row.mc[m]||{})[op]; if(x){ var c=sub.cells[op]=sub.cells[op]||sumCell(); sumMerge(c,x); } }); });
+        common.forEach(function(c){ sub.part[c]=1; });   // доля общей операции — приглушённо: сумма подстрок = строка детали
         out.push(sub);
       });
     });
     rows=out;
     rows.forEach(function(row){ if(!row.need){ var n=0; cols.forEach(function(c){ var x=row.cells[c]; if(x&&x.need>n) n=x.need; }); row.need=n; } row.done=cols.every(function(c){ var x=row.cells[c]; return !x||x.left<=0.001; }); });
     var body=rows.map(function(row){
-      var nm=row.sub?'<td class="dn sumsub" title="'+esc(row.name+' · '+row.label)+'"><span class="dnx">↳ '+esc(row.label)+'</span></td>':mxName(row,true);
+      var nm=row.sub?'<td class="dn sumsub" title="'+esc(row.name+' · '+row.label+'\n'+row.full)+'"><span class="dnx">↳ '+esc(row.label)+'</span></td>':mxName(row,true);
       if(key===COMMON&&!row.sub&&row.models){ var ms=Object.keys(row.models).join(', '); nm=nm.replace('</span></td>','</span><span class="sub">'+esc(ms)+'</span></td>'); }
       return '<tr'+(row.sub?' class="sumsub"':'')+'>'+nm+'<td class="num">'+r1(row.need)+'</td>'+cols.map(function(c){
-        if(row.split&&row.split[c]) return '<td class="spl" title="дальше по отделке — строки ниже">↓</td>';
-        if(row.up&&row.up[c]) return '<td class="spl" title="общая для всех цветов — в строке детали выше"></td>';   // пусто: не шумим стрелками в каждой подстроке
+        if(row.split&&row.split[c]) return '<td class="spl" title="по отделке — смотрите строки «↳» ниже">↓</td>';
         var x=row.cells[c]; if(!x) return '<td class="no"></td>';
         var done=x.left<=0.001, tip=row.name+' · '+c+'\nможно делать сейчас (прошли предыдущую): '+r1(x.avail)+'\nосталось сделать: '+r1(x.left)+' · сделано '+r1(x.ready)+' из '+r1(x.need)+'\nлежат после операции: '+r1(x.fact)+'\nнажми — поправить «лежит сейчас»';
         if(SV==='done'){   // как клетка «Сделано» в карточке товара: принято, «+подано», полоска принято/подано с видимым хвостом
           var rd=x.ready, pb='';
           if(!done&&x.need>0&&(rd>0||x.pend>0)){ var CAP=90, a=Math.min(CAP,rd/x.need*100), q=Math.min(CAP-a,x.pend/x.need*100);
             pb='<span class="pb"><i class="a" style="width:'+a.toFixed(1)+'%"></i>'+(q>0?'<i class="q" style="width:'+q.toFixed(1)+'%"></i>':'')+'</span>'; }
-          return '<td class="'+(done?'cdone':(rd>x.need+0.001?'over':''))+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+x.ids.join(',')+'\')"><span class="flf'+(rd>0?'':' z')+'">'+(rd>0?r1(rd):'·')+'</span>'
+          return '<td class="'+(done?'cdone':(rd>x.need+0.001?'over':''))+(row.part&&row.part[c]?' part':'')+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+x.ids.join(',')+'\')"><span class="flf'+(rd>0?'':' z')+'">'+(rd>0?r1(rd):'·')+'</span>'
             +(x.pend>0?'<span class="sub q">+'+r1(x.pend)+'</span>':'')+pb+'</td>';
         }
         var v=SV==='left'?x.left:x.fact, cls=done?'cdone':(SV==='left'?(v>0?'todo':''):(v>0?'lie':''));
-        return '<td class="'+cls+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+x.ids.join(',')+'\')"><span class="flf'+(v>0?'':' z')+'">'+(v>0?r1(v):(done?'✓':'·'))+'</span></td>';
+        return '<td class="'+cls+(row.part&&row.part[c]?' part':'')+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+x.ids.join(',')+'\')"><span class="flf'+(v>0?'':' z')+'">'+(v>0?r1(v):(done?'✓':'·'))+'</span></td>';
       }).join('')+(row.prod?'<td class="no"></td><td class="no"></td>':row.noRw?'<td class="spl">↓</td><td class="spl">↓</td>':rwCells(id,row.name,Object.keys(row.keys)))+'</tr>';
     }).join('');
     var cid='sc_'+id+'_'+bi, isOpen=open[cid]===undefined?true:open[cid];
@@ -992,6 +1000,12 @@ function summaryMatrixHtml(id,r){
       +'<div class="pbody">'+todoLine+'<div class="tbl-wrap flwrap"><table class="tbl floor mx">'+mxHead(cols,false,grp)+'<tbody>'+body+'</tbody></table></div></div></div>';
   }).join('')
   +'<div class="muted small">цифра — лежит после операции (как в ведомости переучёта), зелёная клетка — операция закрыта; деталь одной строкой — сумма по всем цветам; «↺ шлифовка / малярка» — вернули с покраски на переделку, на операциях не лежат; наведи — сделано / нужно</div>';
+}
+/* «BK Tower Foldable LAK UV», «BK Tower Fold BLUE+UV» → «LAK UV», «BLUE+UV»: убрать слова, общие для всех цветов детали, и «Fold/Foldable» */
+function shortModels(list,all){
+  var w=all.map(function(m){ return String(m).split(/\s+/); }), n=0;
+  while(w.every(function(x){ return x[n]!==undefined&&x[n]===w[0][n]; })) n++;
+  return list.map(function(m){ var x=String(m).split(/\s+/).slice(n); if(x.length>1&&/^fold(able)?$/i.test(x[0])) x=x.slice(1); return x.join(' ')||m; }).join(', ');
 }
 function sumCell(){ return { need:0, ready:0, fact:0, left:0, avail:0, pend:0, ids:[] }; }
 function sumAdd(c,o){ c.need+=Number(o.need)||0; c.ready+=Number(o.readyEff!=null?o.readyEff:o.ready)||0; c.fact+=Number(o.fact)||0; c.left+=Number(o.left)||0; c.avail+=Number(o.avail)||0; c.pend+=(Number(o.pend)||0)+(Number(o.qc)||0); c.ids.push(o.id); }
