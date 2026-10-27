@@ -72,7 +72,15 @@
   .tray{ margin-top:var(--s-4); }
   /* ── вкладки карточки заказа (владелец 27.10.2026): длинная лента блоков → пять вкладок ── */
   /* вкладки липнут к верху, пока листаешь карточку: с любого места видно, где ты, и можно перейти (владелец 28.10.2026) */
-  .ptabw{ position:sticky; top:0; z-index:20; background:var(--card); margin:var(--s-3) calc(-1*var(--s-4)) var(--s-3); padding:var(--s-2) var(--s-4); border-bottom:1px solid var(--line); }
+  .ptabw{ position:sticky; top:0; z-index:20; background:var(--card); margin:var(--s-3) calc(-1*var(--s-4)) var(--s-3); padding:var(--s-2) var(--s-4); border-bottom:1px solid var(--line);
+    display:flex; align-items:center; gap:var(--s-2); flex-wrap:wrap; }
+  /* вид таблиц — в липкой полосе вкладок, справа: переключать, не возвращаясь наверх (владелец 29.10.2026); один на «Детали» и «Сводно» */
+  .ptabv{ margin-left:auto; display:none; }
+  .ptabw.vw .ptabv{ display:inline-flex; }
+  .ptabv .mxsw{ padding:2px; }
+  .ptabv .mxsw span{ font:var(--t-small); font-weight:500; padding:2px var(--s-2); }
+  .ptabv .mxsw span.on{ font-weight:600; }
+  @media (max-width:640px){ .ptabv{ margin-left:0; width:100%; } .ptabv .mxsw{ width:100%; } .ptabv .mxsw span{ flex:1; text-align:center; } }
   .ptabs{ display:inline-flex; gap:2px; padding:3px; background:var(--card2); border:1px solid var(--line); border-radius:var(--r-ctl); max-width:100%; overflow-x:auto; scrollbar-width:none; }
   .ptabs::-webkit-scrollbar{ display:none; }
   .ptab{ padding:var(--s-1) var(--s-3); cursor:pointer; color:var(--muted); border-radius:calc(var(--r-ctl) - 3px); white-space:nowrap; font:var(--t-strong); border:1px solid transparent; display:inline-flex; align-items:center; gap:var(--s-1); }
@@ -705,10 +713,15 @@ function renderDetail(){
 var PTAB={};
 var PTABS=[['det','Детали и операции','Детали'],['sum','Сводно по заказу','Сводно'],['site','Участки и операции','Участки'],['items','Состав заказа','Состав'],['ship','Отгрузка','Отгрузка']];
 function ptabSaved(){ try{ return localStorage.getItem('tw_prod_tab')||''; }catch(e){ return ''; } }
-function ptabsHtml(id){ return '<div class="ptabw" id="ptabw_'+id+'"><div class="ptabs">'+PTABS.map(function(t){ return '<span class="ptab" id="ptab_'+t[0]+'_'+id+'" onclick="showPTab(\''+id+'\',\''+t[0]+'\')"><span class="l">'+t[1]+'</span><span class="s">'+t[2]+'</span><span class="cnt" id="ptabc_'+t[0]+'_'+id+'"></span></span>'; }).join('')+'</div></div>'; }
+function ptabsHtml(id){ return '<div class="ptabw" id="ptabw_'+id+'"><div class="ptabs">'+PTABS.map(function(t){ return '<span class="ptab" id="ptab_'+t[0]+'_'+id+'" onclick="showPTab(\''+id+'\',\''+t[0]+'\')"><span class="l">'+t[1]+'</span><span class="s">'+t[2]+'</span><span class="cnt" id="ptabc_'+t[0]+'_'+id+'"></span></span>'; }).join('')+'</div><div class="ptabv" id="ptabv_'+id+'">'+viewBarHtml()+'</div></div>'; }
+/* вид таблиц: один на обе вкладки, хранится в tw_prod_mx */
+function viewBarHtml(){ var v=mxView(), T={done:'сколько прошло операцию; зелёное «+n» — подано, не принято; полоска — доля принятого',lie:'сколько деталей лежит после операции — как в ведомости переучёта',left:'сколько штук ещё предстоит по операции (нужно − сделано)'};
+  return '<div class="mxsw">'+[['done','Сделано'],['lie','На участке'],['left','Осталось']].map(function(t){ return '<span class="'+(v===t[0]?'on':'')+'" title="'+esc(T[t[0]])+'" onclick="setViewAll(\''+t[0]+'\')">'+t[1]+'</span>'; }).join('')+'</div>'; }
+function setViewAll(v){ setMxView(v); setSumView(v); Array.prototype.forEach.call(document.querySelectorAll('.ptabv'), function(x){ x.innerHTML=viewBarHtml(); }); }
 function showPTab(id,t){
   PTAB[id]=t; try{ localStorage.setItem('tw_prod_tab',t); }catch(e){}
   PTABS.forEach(function(x){ var tb=$('ptab_'+x[0]+'_'+id), pn=$('pan_'+x[0]+'_'+id); if(tb) tb.className='ptab'+(x[0]===t?' on':''); if(pn) pn.classList.toggle('on',x[0]===t); });   // classList, не className — иначе слетает вид матриц (mxv-*)
+  var tw=$('ptabw_'+id); if(tw) tw.classList.toggle('vw', t==='det'||t==='sum');
   fitWraps();
 }
 /* разделители участков с шапки — на клетки; перекрестие: столбец под курсором подсвечивается (строка — CSS) */
@@ -756,7 +769,7 @@ function renderOps(id,r){
   var prods=(r.products||[]).map(function(p,pi){ return prodMatrixCard(id,p,pi,flags); }).join('');
   var nP=(r.products||[]).length, issues=((r.checks||{}).issues||[]).length;
   var chk=issues?'<details class="chkd"'+(open['chk_'+id]?' open':'')+' id="chk_'+id+'"><summary>⚠ проверки логики: '+plural(issues,'замечание','замечания','замечаний')+' — показать</summary>'+opsChecksHtml(id,r.checks||{})+'</details>':'';
-  var det=$('pan_det_'+id); if(det) det.innerHTML=reb+warn+chk+(prods?mxSwitchHtml():'')+(prods||'<div class="muted" style="margin-top:var(--s-4)">нет операций — у изделий заказа не задан состав в каталоге</div>');
+  var det=$('pan_det_'+id); if(det) det.innerHTML=reb+warn+chk+(prods||'<div class="muted" style="margin-top:var(--s-4)">нет операций — у изделий заказа не задан состав в каталоге</div>');
   OPSR[id]=r; var sum=$('pan_sum_'+id); if(sum) sum.innerHTML=summaryMatrixHtml(id,r);
   var dash=r.dash||{}, nG=(dash.groups||[]).length, nO=(dash.ops||[]).length;
   var site=$('pan_site_'+id); if(site) site.innerHTML='<div id="opskpi_'+id+'">'+opsKpiHtml(k)+'</div>'
@@ -911,10 +924,7 @@ function summaryMatrixHtml(id,r){
   order.sort(function(a,b){ return (a===COMMON?1:0)-(b===COMMON?1:0); });
   var open={}; Array.prototype.forEach.call(document.querySelectorAll('#pan_sum_'+id+' .pcard'), function(c){ open[c.id]=c.classList.contains('open'); });
   var SV=sumView();
-  var sw='<div class="mxswrow"><span class="mxswl">Вид таблиц:</span><div class="mxsw">'+[['done','Сделано'],['lie','На участке'],['left','Осталось']].map(function(t){ return '<span class="'+(SV===t[0]?'on':'')+'" onclick="setSumView(\''+t[0]+'\')">'+t[1]+'</span>'; }).join('')+'</div>'
-    +'<span class="muted small">'+(SV==='done'?'сколько прошло операцию по всем цветам, зелёным «+n» — подано, не принято; полоска — доля принятого; ✓ — закрыта'
-      :SV==='left'?'сколько штук ещё предстоит по операции (нужно − сделано); ✓ — закрыта':'сколько деталей лежит после операции, как в ведомости переучёта; ✓ — закрыта')+'</span></div>';
-  return sw+order.map(function(key,bi){
+  return order.map(function(key,bi){
     var b=blocks[key], cols=opColumns(b.ops), rows=[], idx={}, grp=opGroups(b.ops);
     b.ops.forEach(function(o){
       var dk=(o.level==='изделие'?'§':'')+o.detail.toLowerCase();
@@ -957,8 +967,8 @@ function summaryMatrixHtml(id,r){
   +'<div class="muted small">цифра — лежит после операции (как в ведомости переучёта), зелёная клетка — операция закрыта; деталь одной строкой — сумма по всем цветам; «↺ шлифовка / малярка» — вернули с покраски на переделку, на операциях не лежат; наведи — сделано / нужно</div>';
 }
 /* вид сводной: можно делать / осталось / лежит — запоминается */
-function sumView(){ try{ var v=localStorage.getItem('tw_prod_sumv'); return v==='left'||v==='done'?v:'lie'; }catch(e){ return 'lie'; } }
-function setSumView(v){ try{ localStorage.setItem('tw_prod_sumv',v); }catch(e){} var sum=$('pan_sum_'+CUR); if(sum&&OPSR[CUR]){ sum.innerHTML=summaryMatrixHtml(CUR,OPSR[CUR]); fitWraps(); } }
+function sumView(){ return mxView(); }   // один вид на обе вкладки
+function setSumView(v){ try{ localStorage.setItem('tw_prod_mx',v); }catch(e){} var sum=$('pan_sum_'+CUR); if(sum&&OPSR[CUR]){ sum.innerHTML=summaryMatrixHtml(CUR,OPSR[CUR]); fitWraps(); } }
 var OPSR={};
 function toggleProd(id,pi){ var c=$('pc_'+id+'_'+pi); if(c) c.classList.toggle('open'); fitWraps(); }
 function toggleGroup(id,gi){ var c=$('gc_'+id+'_'+gi); if(c) c.classList.toggle('open'); }
