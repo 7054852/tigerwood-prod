@@ -159,7 +159,9 @@
   table.floor.mx td.can{ background:var(--accent-bg); } table.floor.mx td.can .flf{ color:var(--accent-text); }   /* сводная: можно делать сейчас */
   table.floor.mx td.todo .flf{ color:var(--fg); }   /* осталось сделать */
   table.floor.mx tr.sumsub td.dn{ padding-left:20px; color:var(--muted); font:var(--t-tiny); line-height:16px; }
-  table.floor.mx td.spl{ color:var(--muted); font:var(--t-tiny); cursor:default; background:var(--card2); }
+  /* «↑ / ↓» — данных в клетке нет, цифра в соседней строке: заметно темнее обычных клеток в обеих темах */
+  table.floor.mx tbody tr td.spl{ color:var(--fg2,var(--fg)); font:var(--t-small); font-weight:600; cursor:default; background:var(--line); }   /* tbody tr — сильнее зебры (nth-child)  */
+  table.floor.mx tbody tr:hover td.spl, table.floor.mx td.spl.colh{ background:var(--line2); }
   table.floor.mx td.part .flf{ font-weight:400; color:var(--muted); }   /* доля общей операции у отделки — приглушённо */
   .sumtodo{ font:var(--t-small); margin:0 0 var(--s-2); } .sumtodo b{ font-weight:600; } .sumtodo.ok{ color:var(--green); }
   table.floor.mx td.lie .flf{ color:var(--green); }
@@ -769,7 +771,6 @@ function renderOps(id,r){
   // на переделке (вернули с покраски): у варианта — целыми штуками на последней отделочной операции (o.rework), в сводной — сумма по цветам
   var RW=RWPOOL[id]={};
   (r.products||[]).forEach(function(p){ (p.ops||[]).forEach(function(o){ if(!o.rework) return; var k=(p.eq+'|'+p.model+'|'+o.detail).toLowerCase(); var x=RW[k]=RW[k]||{sand:0,paint:0}; x.sand+=o.rework.sand||0; x.paint+=o.rework.paint||0; }); });
-  COMMONX[id]=buildCommon(r);
   var prods=(r.products||[]).map(function(p,pi){ return prodMatrixCard(id,p,pi,flags); }).join('');
   var nP=(r.products||[]).length, issues=((r.checks||{}).issues||[]).length;
   var chk=issues?'<details class="chkd"'+(open['chk_'+id]?' open':'')+' id="chk_'+id+'"><summary>⚠ проверки логики: '+plural(issues,'замечание','замечания','замечаний')+' — показать</summary>'+opsChecksHtml(id,r.checks||{})+'</details>':'';
@@ -918,18 +919,7 @@ function mxRowName(row,p){
 function prodMatrixCard(id,p,pi,flags){
   var ops=p.ops||[], cols=opColumns(ops), rows=mxRows(ops), CX=COMMONX[id]||{};
   rows.forEach(function(row){ row.done=row.seq.every(function(op){ return (Number(row.cells[op].left)||0)<=0.001; }); });
-  // общая деталь: строка «все цвета» с общей частью + строка «↳ этот товар» с его отделкой
-  var rr=[]; rows.forEach(function(row){
-    var X=!row.prod&&CX[row.name.toLowerCase()];
-    if(!X||!row.seq.some(function(op){ return X.common.indexOf(op)>=0; })){ rr.push(row); return; }
-    var cm={ name:row.name, comm:true, need:X.need, cells:{}, seq:[], split:{}, shared:true };
-    row.seq.forEach(function(op){ if(X.common.indexOf(op)>=0){ cm.cells[op]=X.agg[op]; cm.seq.push(op); } else cm.split[op]=1; });
-    cm.prev={}; cm.seq.forEach(function(op,i){ cm.prev[op]=i?cm.seq[i-1]:''; }); cm.last=cm.seq[cm.seq.length-1];
-    cm.done=cm.seq.every(function(op){ return (Number(cm.cells[op].left)||0)<=0.001; });
-    row.sub=true; row.up={}; X.common.forEach(function(op){ row.up[op]=1; });
-    rr.push(cm, row);
-  });
-  rows=rr;
+  // ⚠ разбивку «все цвета / ↳ этот товар» здесь владелец отверг (29.10.2026: «всё съехало, вернуть как было») — она только в «Сводно по заказу»
   var pct=Math.min(100,p.pct||0);
   var grp=opGroups(ops);
   var t1='<div class="mx-done"><div class="mxcap">Сделано<span class="mxlg" title="цифра — сколько прошло операцию; «/n» — нужно, если отличается от строки"><span><i class="c1"></i>закрыта</span><span><i class="c3"></i>принято</span><span><i class="c5"></i><b style="color:var(--green)">+n</b> подано, ждёт проверки</span><span><i class="c2"></i>нет у детали</span><span><b>жёлтая</b> — сверх плана</span></span></div>'
