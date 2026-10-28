@@ -367,6 +367,17 @@
   .pbody col.c-det{ width:21%; } .pbody col.c-op{ width:19%; }
   .pbody col.c-need{ width:8%; } .pbody col.c-stock{ width:12%; }
   .pbody col.c-done{ width:9%; } .pbody col.c-factc{ width:11%; } .pbody col.c-rest{ width:20%; }
+  /* компактная шапка операций (владелец 28.10.2026): листаешь заказ вниз — названия операций закреплены под вкладками,
+     мелко в 2–3 строки вместо высоких вертикальных; едет вбок вместе с таблицей. Своя липкая шапка матрицы больше не нужна:
+     в широкой таблице она цеплялась к рамке прокрутки и уезжала вверх вместе с таблицей */
+  table.floor.mx thead th{ position:static; }
+  #mxfh{ position:fixed; z-index:19; display:none; overflow:hidden; height:42px; background:var(--card); border-bottom:1px solid var(--line2); box-shadow:0 2px 6px rgba(0,0,0,.08); }
+  #mxfh .fs{ position:absolute; top:0; left:0; height:100%; }
+  #mxfh i{ position:absolute; top:0; height:3px; }
+  #mxfh b{ position:absolute; top:3px; bottom:0; display:flex; align-items:center; justify-content:center; text-align:center; box-sizing:border-box; padding:0 2px;
+    font-size:10px; line-height:11px; font-weight:500; color:var(--fg2,var(--fg)); overflow:hidden; overflow-wrap:break-word; hyphens:auto; border-right:1px solid var(--line); }
+  #mxfh b[data-pin]{ background:var(--card); z-index:1; justify-content:flex-start; text-align:left; font-weight:600; padding-left:var(--s-2); }
+  #mxfh b.fin{ color:var(--green); background:var(--green-bg); } #mxfh b.rw{ color:var(--amber); }
 </style>
 </head>
 <body>
@@ -748,8 +759,37 @@ function fitWraps(){
   decorateMx();
   var tw=document.querySelector('.ptabw'); document.documentElement.style.setProperty('--stk',(tw?tw.offsetHeight:0)+'px');
   Array.prototype.forEach.call(document.querySelectorAll('.flwrap'), function(w){ var t=w.firstElementChild; if(!t||!w.offsetParent) return; w.classList.remove('fit'); if(t.scrollWidth<=w.clientWidth+1) w.classList.add('fit'); });
+  MXFT=null; mxFloatSoon();   // вид/вкладка сменились — шапку собрать заново
 }
 var _fitT=null; window.addEventListener('resize', function(){ clearTimeout(_fitT); _fitT=setTimeout(fitWraps,120); });
+/* компактная шапка операций — см. #mxfh в стилях. Одна на страницу: показывает шапку той матрицы, по которой сейчас листают */
+var MXFH=null, MXFT=null, _mxfR=0;
+function mxFloat(){
+  _mxfR=0;
+  var fh=MXFH||(MXFH=document.body.appendChild(Object.assign(document.createElement('div'),{id:'mxfh'})));
+  var tw=document.querySelector('.ptabw'), top=tw?Math.max(0,tw.getBoundingClientRect().bottom):0, t=null;
+  Array.prototype.some.call(document.querySelectorAll('table.floor.mx'), function(x){
+    if(!x.offsetParent||!x.tHead) return false;
+    if(x.tHead.getBoundingClientRect().bottom<top && x.getBoundingClientRect().bottom>top+60){ t=x; return true; } return false; });
+  if(!t){ fh.style.display='none'; return; }
+  if(MXFT!==t){ MXFT=t; fh.innerHTML=mxFloatHtml(t); }
+  var w=t.parentNode, r=w.getBoundingClientRect();
+  fh.style.cssText='display:block;top:'+top+'px;left:'+r.left+'px;width:'+w.clientWidth+'px';
+  fh.firstChild.style.transform='translateX('+(-w.scrollLeft)+'px)';
+}
+function mxFloatHtml(t){
+  var out='', grp=t.tHead.querySelector('tr.grp'), row=t.tHead.rows[t.tHead.rows.length-1];
+  if(grp) Array.prototype.forEach.call(grp.cells, function(th){ var gc=th.style.getPropertyValue('--gc'); if(gc) out+='<i style="left:'+th.offsetLeft+'px;width:'+th.offsetWidth+'px;background:'+gc+'"></i>'; });
+  // колонка «Деталь» в строках не закреплена — в шапке тоже едет вбок со всеми, иначе колонки разойдутся
+  Array.prototype.forEach.call(row.cells, function(th){
+    var txt=(th.textContent||'').trim();
+    out+='<b '+(th.classList.contains('dn')?'data-pin ':'')+'class="'+esc(th.className)+'" style="left:'+th.offsetLeft+'px;width:'+th.offsetWidth+'px" title="'+esc(th.title||txt)+'">'+esc(txt)+'</b>';
+  });
+  return '<div class="fs" style="width:'+t.scrollWidth+'px">'+out+'</div>';
+}
+function mxFloatSoon(){ if(!_mxfR) _mxfR=requestAnimationFrame(mxFloat); }
+document.addEventListener('scroll', mxFloatSoon, {capture:true, passive:true});   // и страница, и рамка таблицы (вбок)
+window.addEventListener('resize', function(){ MXFT=null; mxFloatSoon(); });
 function ptabCount(id,t,txt){ var c=$('ptabc_'+t+'_'+id); if(c) c.textContent=txt||''; }
 
 
