@@ -38,6 +38,9 @@
   .drow button{ margin-left:auto; }
   table.reg tr.sp td{ color:var(--muted); text-decoration:line-through; }
   details > summary{ cursor:pointer; font-weight:600; }
+#rkSeg, #rsSeg{ max-width:100%; overflow-x:auto; flex:none; }   /* узкий экран: сегмент прокручивается, а не режется */
+.seg .cnt{ font:var(--t-tiny); color:var(--muted); font-weight:500; } .seg button.on .cnt{ color:var(--accent); }
+.tabs{ margin-bottom:var(--s-3); }
 </style>
 </head>
 <body>
@@ -103,10 +106,10 @@
 
 <!-- ═══ НАКЛАДНЫЕ И ДОКУМЕНТЫ (бывшая DocsPanel) ═══ -->
 <div id="tab_docs" class="hide">
-  <div class="toolbar">
+  <!-- шапка в одну строку (владелец 28.10.2026: место — под накладные): следующий бланк слева, действия справа -->
+  <div class="toolbar" style="margin-bottom:var(--s-2)"><span class="sm" id="nextBlanks">Следующий свободный бланк — загрузка…</span>
     <div class="end"><button class="sec ib" onclick="loadRegistry();loadBlanksStatus()" title="Обновить">↻</button><button class="sec ib" onclick="regCsv()" title="Скачать реестр в CSV">⬇</button><button onclick="toggleWb()"><span id="wbico">✍️</span> Выписать накладную</button></div>
   </div>
-  <div class="note info"><div id="nextBlanks">Следующий свободный бланк — загрузка…</div></div>
 
   <div id="wbPanel" class="card hide">
     <div class="note"><div>Выберите сделку — появятся документы, которые выписываются по её договору (ТН / ТТН / товарный чек), резерв бланка и уже выписанные накладные.
@@ -124,12 +127,14 @@
   </div>
 
   <div class="card">
-    <div class="row" style="margin-bottom:var(--s-2);align-items:center">
+    <!-- фильтры одной строкой, счётчики — прямо в кнопках статусов (28.10.2026) -->
+    <div class="row" style="margin-bottom:var(--s-2);align-items:center;flex-wrap:wrap;gap:var(--s-2)">
       <div class="seg" id="rkSeg"><button data-k="" class="on" onclick="regSet('kind','')">Все</button><button data-k="ТН" onclick="regSet('kind','ТН')">ТН</button><button data-k="ТТН" onclick="regSet('kind','ТТН')">ТТН</button><button data-k="ЧЕК" onclick="regSet('kind','ЧЕК')">Чеки</button></div>
+      <div class="seg" id="rsSeg"><button data-s="" class="on" onclick="regSet('status','')">Все</button><button data-s="issued" onclick="regSet('status','issued')">Ждут подписи</button><button data-s="signed" onclick="regSet('status','signed')">Подписаны</button><button data-s="reserved" onclick="regSet('status','reserved')">Резерв</button><button data-s="free" onclick="regSet('status','free')">Пустые</button><button data-s="spoiled" onclick="regSet('status','spoiled')">Испорчены</button></div>
       <select id="rgYear" style="flex:0 0 110px;width:auto" onchange="regSet('year',this.value)"><option value="">все годы</option></select>
       <input id="rgQ" placeholder="поиск: клиент, № бланка, заказ" style="flex:1;min-width:180px" oninput="regSearch()">
+      <span class="sm muted" id="rgShown"></span>
     </div>
-    <div class="seg" id="rsSeg" style="margin-bottom:var(--s-3)"><button data-s="" class="on" onclick="regSet('status','')">Все</button><button data-s="issued" onclick="regSet('status','issued')">Ждут подписи</button><button data-s="signed" onclick="regSet('status','signed')">Подписаны</button><button data-s="reserved" onclick="regSet('status','reserved')">Резерв</button><button data-s="free" onclick="regSet('status','free')">Пустые</button><button data-s="spoiled" onclick="regSet('status','spoiled')">Испорчены</button></div>
     <div id="regBox" class="sm">Загрузка…</div>
   </div>
 
@@ -502,7 +507,11 @@ function loadRegistry(){
     if(!r||!r.ok){ box.innerHTML='<span class="err">⚠️ '+esc(errText(r))+'</span>'; return; }
     var ys=el('rgYear'), cur=REG.year; if(r.years&&ys.options.length<=1) ys.innerHTML='<option value="">все годы</option>'+r.years.map(function(y){ return '<option>'+y+'</option>'; }).join(''); ys.value=cur;
     var c=r.counts||{}, rows=REG_ROWS=r.rows||[];
-    var head='<div class="row" style="margin-bottom:var(--s-2)"><span class="pill warn">ждут подписи '+(c.issued||0)+'</span><span class="pill ok">подписаны '+(c.signed||0)+'</span><span class="pill info">резерв '+(c.reserved||0)+'</span>'+(c.free?'<span class="pill ok" title="бланки, пропущенные при выписке: выбираются в окне накладной в поле «Бланк»">пустые '+c.free+'</span>':'')+'<span class="pill muted">испорчены '+(c.spoiled||0)+'</span><span class="sm">· показано '+esc(r.count)+'</span></div>';
+    // счётчики — в кнопках статусов, «показано» — рядом с поиском: ряд пилюль над таблицей убран (28.10.2026)
+    var LBL={'':'Все',issued:'Ждут подписи',signed:'Подписаны',reserved:'Резерв',free:'Пустые',spoiled:'Испорчены'};
+    Array.prototype.forEach.call(el('rsSeg').querySelectorAll('button'), function(b){ var k=b.getAttribute('data-s'), n=k?(c[k]||0):0; b.innerHTML=esc(LBL[k])+(n?' <span class="cnt">'+n+'</span>':''); if(k==='free') b.title='бланки, пропущенные при выписке: выбираются в окне накладной в поле «Бланк»'; });
+    el('rgShown').textContent='показано '+r.count;
+    var head='';
     if(!rows.length){ box.innerHTML=head+'<div class="empty">Ничего не найдено.</div>'; return; }
     box.innerHTML=head+'<div class="tbl-wrap fill"><table class="tbl reg mob adapt"><thead><tr><th>Бланк / дата</th><th>Клиент</th><th>Заказ</th><th>Договор</th><th class="num">Сумма</th><th>Оплата ЕРИП</th><th>Статус</th><th></th></tr></thead><tbody>'
       +rows.map(function(x, i){
