@@ -1155,7 +1155,7 @@ function loadPending(){
 // приходилось удалять и вводить заново, теряя наряд и дату; теперь меняются все её части.
 function lev(id){ var e=document.getElementById(id); return e?String(e.value||'').trim():''; }
 function leClose(id){ var b=document.getElementById('le-'+id); if(b) b.innerHTML=''; }
-function lineEditOpen(id, full, op, qty, kind, batchId){
+function lineEditOpen(id, full, op, qty, kind, batchId, toStock){
   var box=document.getElementById('le-'+id); if(!box) return;
   if(box.innerHTML){ box.innerHTML=''; return; }                       // повторное нажатие — закрыть
   var p=String(full||'').split(' — '), eq=p[0]||'', det=p.slice(1).join(' — ');
@@ -1175,7 +1175,8 @@ function lineEditOpen(id, full, op, qty, kind, batchId){
     +'<select id="le-det-'+id+'" onchange="lineEditOps(\''+id+'\')" style="max-width:230px"></select>'
     +'<select id="le-op-'+id+'" style="max-width:190px"></select>'
     +'<input id="le-qty-'+id+'" type="number" step="1" min="0" value="'+qty+'" style="width:84px">'
-    +'<select id="le-bt-'+id+'" style="max-width:170px"><option value=""'+(batchId?'':' selected')+'>🧰 вне заказа</option>'+bl+'</select>'
+    +(toStock?'<span class="pill info" title="участок раскроя: детали идут на склад раскроя, заказ берёт их со склада — заказ у строки не выбирается">📦 на склад раскроя</span>'
+      :'<select id="le-bt-'+id+'" style="max-width:170px"><option value=""'+(batchId?'':' selected')+'>🧰 вне заказа</option>'+bl+'</select>')
     +'<button class="sm" onclick="lineEditSave(\''+id+'\',\'\')">Сохранить</button>'
     +'<button class="sm sec" onclick="leClose(\''+id+'\')">Отмена</button>'
     +'<span id="le-msg-'+id+'" class="msg"></span></div>';
@@ -1199,7 +1200,7 @@ function lineEditOps(id, op){
 function lineEditSave(id, kind){
   var msg=document.getElementById('le-msg-'+id), d={qty:lev('le-qty-'+id)};
   if(kind==='лист') d.detail=lev('le-mat-'+id);
-  else { d.equip=lev('le-eq-'+id); d.detail=lev('le-det-'+id); d.op=lev('le-op-'+id); d.batch=lev('le-bt-'+id); }
+  else { d.equip=lev('le-eq-'+id); d.detail=lev('le-det-'+id); d.op=lev('le-op-'+id); if(document.getElementById('le-bt-'+id)) d.batch=lev('le-bt-'+id); }
   if(!(Number(String(d.qty).replace(',','.'))>0)){ if(msg) msg.textContent='кол-во должно быть больше нуля'; return; }
   if(kind!=='лист' && !d.op){ if(msg) msg.textContent='выберите операцию'; return; }
   act({vapi:'editoutline',id:id,data:JSON.stringify(d)}, msg);
@@ -1234,6 +1235,10 @@ function act(p, msg, done){
 // поэтому оплату за раскрой нельзя приписать одному из них. Но «🧰 вне заказа» читалось как
 // потерянная работа — пишем прямо, что это раскрой. Смысл прежний, меняется только подпись.
 function isCutLine(x){ return !!(x && x.kind==='лист'); }
+function lineOrd(l){   // заказ строки в сборном наряде; у листа заказа нет
+  if(isCutLine(l)) return '';
+  var t=batchTag(l); return t?(' '+(t.indexOf('<span')===0?t:'<span class="pill" title="заказ строки">'+t+'</span>')):'';
+}
 function batchTag(x){
   if(isCutLine(x)) return x.cutTool==='saw' ? '<span class="pill mute" title="пила: листы — учёт расхода, оплата за детали">🔪 Пила</span>'
     : '<span class="pill warn" title="раскрой листа на ЧПУ: оплата за лист; детали — на склад раскроя">🪚 Раскрой</span>';
@@ -1256,6 +1261,9 @@ function renderPending0(r){
     if(!reps.length){ el.innerHTML='<div class="muted">'+(master?'Нет нарядов на проверке.':'У вас нет нарядов на проверке — всё обработано.')+'</div>'; return; }
     el.innerHTML=reps.map(function(rp){
       var rid=rp.report;
+      var hasCut=(rp.lines||[]).some(isCutLine);
+      // ⚠ строки разных заказов (владелец 28.10.2026): шапка тогда пишет «Раскрой»/«сборный» — заказ видно у каждой строки
+      var perLine=hasCut||rp.mixed;
       var lines=rp.lines.map(function(l){
         var koef=kOf(l.koef), kbadge=(!master&&koef!==1)?' <span class="muted" style="font:var(--t-small)">×'+koef+'</span>':'';   // мастеру коэффициент виден в поле строки
         // подрядчик привёз эту операцию «предварительно» (заказ не двигал) — рабочий доделывает, диспетчер ставит ×0,75/×0,5 (владелец 02.10.2026)
@@ -1264,7 +1272,7 @@ function renderPending0(r){
         var dupb=l.dup?(' <span class="pill bad" title="'+esc(l.dup)+'">⚠ дубль</span>'):'';
         var acts='';
         if(master){
-          acts=(isDev(l)?' ':' <button class="sm sec" onclick="lineEditOpen(\''+esc(l.id)+'\',\''+attr(l.detail)+'\',\''+attr(l.op)+'\','+l.qty+',\''+attr(l.kind||'')+'\',\''+attr(l.batchId||'')+'\')" title="изменить строку: деталь, операция, количество, заказ">✏️</button>')
+          acts=(isDev(l)?' ':' <button class="sm sec" onclick="lineEditOpen(\''+esc(l.id)+'\',\''+attr(l.detail)+'\',\''+attr(l.op)+'\','+l.qty+',\''+attr(l.kind||'')+'\',\''+attr(l.batchId||'')+'\','+(l.toStock?1:0)+')" title="изменить строку: деталь, операция, количество, заказ">✏️</button>')
             +'<input class="kin" type="number" step="0.05" min="0" inputmode="decimal" value="'+koef+'" data-rep="'+esc(rid)+'" data-line="'+esc(l.id)+'" data-k0="'+koef+'" oninput="kinChg(this)" title="коэффициент к сумме: 1 — без изменений, 1.2 — +20 %, 0.8 — −20 %. Сохраняется кнопкой «Сохранить» или вместе с «Одобрить»">'
             +'<button class="sm sec" onclick="appr(\''+esc(l.id)+'\',0)" title="убрать эту строку из наряда">✖</button>';
         } else {   // свой наряд на проверке — можно поправить, пока мастер не подтвердил
@@ -1284,7 +1292,7 @@ function renderPending0(r){
             +'<span class="ok">+'+l.sum+' р.'+(master?(' <button class="sm sec" onclick="delJournal(\''+esc(l.id)+'\')" title="убрать премию">🗑</button><span id="jm-'+esc(l.id)+'" class="msg"></span>'):'')+'</span></div></div>';
         }
         return '<div style="border-top:1px solid var(--line);padding-top:var(--s-1)">'
-          +'<div class="row"><span>'+kindBadge(l)+lineTxt(l)+kbadge+dupb+'</span>'
+          +'<div class="row"><span>'+kindBadge(l)+lineTxt(l)+(perLine?lineOrd(l):'')+kbadge+dupb+'</span>'
           +'<span>'+(l.paid===false?'<span class="muted">0 р. · '+payNote(l)+'</span>'+payFixBtn(master,l,rid):(l.sum+' р.'))+acts+'</span></div>'
           +vsel+'<div id="le-'+esc(l.id)+'"></div></div>';
       }).join('');
@@ -1308,7 +1316,6 @@ function renderPending0(r){
         : '<div class="row" style="margin-top:var(--s-2)">'
           +(rp.single?'':'<button class="sm" onclick="startAdd(\''+esc(rid)+'\',\''+esc(rp.date+' · '+rp.batch)+'\')">➕ Дополнить наряд</button>')
           +'<span class="muted" style="font:var(--t-small)">⏳ ждёт подтверждения мастера</span></div>';
-      var hasCut=(rp.lines||[]).some(isCutLine);
       var bTag=hasCut?batchTag({kind:'лист'})
         :(rp.mixed?'<span class="pill info" title="в наряде строки разных заказов">🧩 сборный</span>':batchTag(rp));
       // ⚠ ДАТА СМЕНЫ — ЗАМЕТНОЙ, а не серым хвостиком после ФИО. Мастеру важно, за какой день
