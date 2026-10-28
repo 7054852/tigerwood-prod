@@ -6,6 +6,7 @@
 <script src="tw-theme.js"></script>
 <script src="tw-config.js"></script>
 <script src="tw-waybill.js?v=20261019c"></script>
+<script src="tw-tolling.js?v=20261028a"></script>
 <title>Тигервуд — Договоры, счета, накладные</title>
 <!-- Замена GAS-панелей хаба ContractsPanel (?page=contracts), InvoicesPanel (?page=invoices), DocsPanel (?page=docs).
      ?tab=contracts|invoices|docs — открыть вкладку (так ведут пункты меню). Вкладки видны по разделам роли (people/model.ts ROLE_SECTIONS).
@@ -120,6 +121,12 @@
       <div class="sm" id="bar" style="margin-top:var(--s-3)">Загрузка сделок…</div>
       <div id="dlist" style="margin-top:var(--s-2)"></div>
     </details>
+  </div>
+
+  <div class="card" id="tollCard">
+    <div class="row" style="align-items:center;justify-content:space-between"><b>📦 Давальческая передача</b><button class="sm" onclick="twTolling(twTlRefresh, TOLL_CP)">＋ Передать на переработку</button></div>
+    <div class="sm muted" style="margin-top:var(--s-1)">Материалы или детали уезжают переработчику по ТН / ТТН без сделки: цена закупочная с НДС, в накладной «Без НДС», материал остаётся нашим. Когда вернулось — отметьте.</div>
+    <div id="tollBox" class="sm" style="margin-top:var(--s-2)">Загрузка…</div>
   </div>
 
   <div class="card">
@@ -291,7 +298,8 @@ function setTab(t){
   TABS.forEach(function(k){ el('tab_'+k).className=(k===t)?'':'hide'; });
   if(!LOADED[t]){ LOADED[t]=1; refresh(t); }
 }
-function refresh(t){ if(t==='contracts') loadContracts(); else if(t==='invoices') loadInvoices(); else if(t==='docs'){ loadRegistry(); loadBlanksStatus(); loadSalesList(); } else if(t==='erip') loadErip(); }
+var TOLL_CP=qp('tolling')||'';   // ?tolling=<контрагент> — список передач одного переработчика (ссылка из карточки контрагента)
+function refresh(t){ if(t==='contracts') loadContracts(); else if(t==='invoices') loadInvoices(); else if(t==='docs'){ loadRegistry(); loadBlanksStatus(); loadSalesList(); twTollingBlock('tollBox', TOLL_CP); } else if(t==='erip') loadErip(); }
 function start(){
   el('cNewLink').href=contractUrl(null);
   var want=qp('tab'); if(TABS.indexOf(want)<0) want='';
