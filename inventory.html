@@ -746,7 +746,14 @@ function showReport(id){
     var k=r.kpi||{}, t=r.totals||{};
     var dPct=Math.round(((k.pctNew||0)-(k.pctWas||0))*10)/10;
     var dLeft=Math.round(((k.leftNew||0)-(k.leftWas||0))*100)/100;
-    var rows=(r.rows||[]).map(function(x){
+    // снимок ввода (владелец 28.10.2026): что вписал человек — отдельно от того, что система вывела по цепочке
+    var ent=(r.entered||[]).map(function(e){
+      var ops=(e.ops||[]).filter(function(o){ return Math.abs(o.now-o.was)>0.001; }).map(function(o){ return esc(o.op)+' '+o.was+' → <b>'+o.now+'</b>'; }).join(', ');
+      return '<div class="rowline"><span style="min-width:230px"><b>'+esc(e.detail)+'</b>'+(e.model?(' <span class="mini">'+esc(e.model)+'</span>'):'')+'</span>'
+        +'<span class="mini" style="min-width:150px">'+esc(e.stage)+'</span><span class="pill info">вписано '+e.qty+'</span>'
+        +'<span class="mini">'+(ops||'остатки не изменились')+'</span>'+((e.flags||[]).length?'<span class="mini muted">'+esc(e.flags.join(' · '))+'</span>':'')+'</div>';
+    }).join('');
+    var rowOf=function(x){
       var up=x.delta>0;
       return '<div class="rowline"><span style="min-width:230px"><b>'+esc(x.detail)+'</b>'
         +(x.model?(' <span class="mini">'+esc(x.model)+'</span>'):'')+'</span>'
@@ -756,7 +763,9 @@ function showReport(id){
         +'<span class="mini">'+(up?'+':'')+x.rub+' р. труда</span>'
         +'<span class="mini" title="начальный остаток — ручная часть; к ней прибавляются наряды">остаток '+x.was+' → '+x.now+' · по нарядам '+x.done+'</span>'
         +(x.note?('<span class="pill bad">✕ '+esc(x.note)+'</span>'):'')+'</div>';
-    }).join('');
+    };
+    var manual=(r.rows||[]).filter(function(x){ return !x.derived; }).map(rowOf).join(''), auto=(r.rows||[]).filter(function(x){ return x.derived; }).map(rowOf).join('');
+    var rows=manual+auto;
     box.innerHTML='<div class="card"><div class="row" style="margin-bottom:var(--s-2)">'
       +'<b>📊 Что изменил переучёт №'+(r.head.num||'')+'</b>'
       +'<button class="tb sec sm" onclick="loadHist()">← к списку</button></div>'
@@ -767,8 +776,10 @@ function showReport(id){
       +'<div class="mini">Изменено операций: <b>'+(t.changed||0)+'</b> — остаток вырос у '+(t.up||0)
       +' (на '+(t.qtyUp||0)+' шт, +'+(t.rubUp||0)+' р.), упал у '+(t.down||0)+' (на '+(t.qtyDown||0)+' шт, −'+(t.rubDown||0)+' р.).'
       +'<br>Начальные остатки — это то, что было сделано ДО программы. Наряды рабочих не менялись.</div></div>'
-      +(rows?('<div class="card"><div style="font:var(--t-heading);margin-bottom:var(--s-1)">Сдвиги, начиная с самых крупных</div>'+rows+'</div>')
-            :'<div class="card muted">Остатки не изменились.</div>')
+      +(ent?('<div class="card"><div style="font:var(--t-heading);margin-bottom:var(--s-1)">✍️ Что вписали вручную: '+(r.entered||[]).length+' клеток</div><div class="mini muted" style="margin-bottom:var(--s-2)">Снимок ввода: клетка → сколько вписано → во что легло по операциям. Всё остальное ниже система вывела сама по цепочке операций.</div>'+ent+'</div>'):'')
+      +(manual?('<div class="card"><div style="font:var(--t-heading);margin-bottom:var(--s-1)">Сдвиги по вписанным клеткам</div>'+manual+'</div>'):'')
+      +(auto?('<div class="card"><div style="font:var(--t-heading);margin-bottom:var(--s-1)">Выведено автоматически по цепочке</div>'+auto+'</div>'):'')
+      +(rows?'':'<div class="card muted">Остатки не изменились.</div>')
       +((r.rework||[]).length?('<div class="card"><div style="font:var(--t-heading);margin-bottom:var(--s-1)">↺ На переделке</div>'
         +r.rework.map(function(x){ return '<div class="rowline">'+esc(x.text)+'</div>'; }).join('')+'</div>'):'');
   }).catch(function(){ box.innerHTML='<div class="card err">сеть недоступна</div>'; });
