@@ -6,7 +6,7 @@
 <script src="tw-theme.js"></script>
 <script src="tw-config.js"></script>
 <script src="tw-waybill.js?v=20261019c"></script>
-<script src="tw-tolling.js?v=20261028a"></script>
+<script src="tw-tolling.js?v=20261028b"></script>
 <title>Тигервуд — Договоры, счета, накладные</title>
 <!-- Замена GAS-панелей хаба ContractsPanel (?page=contracts), InvoicesPanel (?page=invoices), DocsPanel (?page=docs).
      ?tab=contracts|invoices|docs — открыть вкладку (так ведут пункты меню). Вкладки видны по разделам роли (people/model.ts ROLE_SECTIONS).
@@ -123,12 +123,6 @@
     </details>
   </div>
 
-  <div class="card" id="tollCard">
-    <div class="row" style="align-items:center;justify-content:space-between"><b>📦 Давальческая передача</b><button class="sm" onclick="twTolling(twTlRefresh, TOLL_CP)">＋ Передать на переработку</button></div>
-    <div class="sm muted" style="margin-top:var(--s-1)">Материалы или детали уезжают переработчику по ТН / ТТН без сделки: цена закупочная с НДС, в накладной «Без НДС», материал остаётся нашим. Когда вернулось — отметьте.</div>
-    <div id="tollBox" class="sm" style="margin-top:var(--s-2)">Загрузка…</div>
-  </div>
-
   <div class="card">
     <div class="row" style="margin-bottom:var(--s-2);align-items:center">
       <div class="seg" id="rkSeg"><button data-k="" class="on" onclick="regSet('kind','')">Все</button><button data-k="ТН" onclick="regSet('kind','ТН')">ТН</button><button data-k="ТТН" onclick="regSet('kind','ТТН')">ТТН</button><button data-k="ЧЕК" onclick="regSet('kind','ЧЕК')">Чеки</button></div>
@@ -138,6 +132,13 @@
     <div class="seg" id="rsSeg" style="margin-bottom:var(--s-3)"><button data-s="" class="on" onclick="regSet('status','')">Все</button><button data-s="issued" onclick="regSet('status','issued')">Ждут подписи</button><button data-s="signed" onclick="regSet('status','signed')">Подписаны</button><button data-s="reserved" onclick="regSet('status','reserved')">Резерв</button><button data-s="free" onclick="regSet('status','free')">Пустые</button><button data-s="spoiled" onclick="regSet('status','spoiled')">Испорчены</button></div>
     <div id="regBox" class="sm">Загрузка…</div>
   </div>
+
+  <!-- давальческая передача — свёрнутой строкой под реестром (владелец 28.10.2026: главное на экране — накладные); раскрыта по ссылке ?tolling= из карточки контрагента -->
+  <details class="card" id="tollCard">
+    <summary>📦 Давальческая передача <span id="tollSum" class="sm muted"></span></summary>
+    <div class="row" style="margin-top:var(--s-2);align-items:center;justify-content:space-between"><span class="sm muted">Материалы или детали уезжают переработчику по ТН / ТТН без сделки: цена закупочная с НДС, в накладной «без НДС», материал остаётся нашим. Когда вернулось — отметьте.</span><button class="sm" onclick="twTolling(twTlRefresh, TOLL_CP)">＋ Передать на переработку</button></div>
+    <div id="tollBox" class="sm" style="margin-top:var(--s-2)">Загрузка…</div>
+  </details>
 
   <details class="card" id="blanks">
     <summary>🧾 Бланки строгой отчётности (ТН / ТТН)</summary>
@@ -299,7 +300,7 @@ function setTab(t){
   if(!LOADED[t]){ LOADED[t]=1; refresh(t); }
 }
 var TOLL_CP=qp('tolling')||'';   // ?tolling=<контрагент> — список передач одного переработчика (ссылка из карточки контрагента)
-function refresh(t){ if(t==='contracts') loadContracts(); else if(t==='invoices') loadInvoices(); else if(t==='docs'){ loadRegistry(); loadBlanksStatus(); loadSalesList(); twTollingBlock('tollBox', TOLL_CP); } else if(t==='erip') loadErip(); }
+function refresh(t){ if(t==='contracts') loadContracts(); else if(t==='invoices') loadInvoices(); else if(t==='docs'){ loadRegistry(); loadBlanksStatus(); loadSalesList(); twTollingBlock('tollBox', TOLL_CP); if(TOLL_CP) el('tollCard').open=true; } else if(t==='erip') loadErip(); }
 function start(){
   el('cNewLink').href=contractUrl(null);
   var want=qp('tab'); if(TABS.indexOf(want)<0) want='';

@@ -114,17 +114,19 @@ function twTollingBlock(boxId, cpKey){
   get({vapi:'tollinglist', counterparty:cpKey||''}).then(function(r){
     if(!r||!r.ok){ box.innerHTML='<span class="err">⚠️ '+esc(errText(r))+'</span>'; return; }
     var rows=TWTLB.rows=r.rows||[];
-    var head='<div class="row" style="margin-bottom:var(--s-2)"><span class="pill warn">у переработчика '+esc(r.atContractor||0)+(r.atContractorSum?' · '+money(r.atContractorSum)+' р.':'')+'</span><span class="sm">· передач '+rows.length+'</span></div>';
+    // свёрнутая строка-заголовок (salesdocs #tollSum): главное видно без раскрытия
+    var sum=el('tollSum'); if(sum) sum.textContent=(r.atContractor?'· у переработчика '+r.atContractor+' на '+money(r.atContractorSum)+' р.':'· у переработчика ничего')+' · передач '+rows.length;
+    var head=sum?'':'<div class="row" style="margin-bottom:var(--s-2)"><span class="pill warn">у переработчика '+esc(r.atContractor||0)+(r.atContractorSum?' · '+money(r.atContractorSum)+' р.':'')+'</span><span class="sm">· передач '+rows.length+'</span></div>';
     if(!rows.length){ box.innerHTML=head+'<div class="empty">Передач ещё не было.</div>'; return; }
     box.innerHTML=head+'<div class="tbl-wrap fill"><table class="tbl reg mob adapt"><thead><tr><th>№ / дата</th><th>Переработчик</th><th>Что передали</th><th class="num">Сумма</th><th>Статус</th><th></th></tr></thead><tbody>'
       +rows.map(function(x,i){ var st=TL_ST[x.status]||['',''];
-        var what=(x.lines||[]).map(function(l){ return esc(l.name)+' — '+twTlNum(l.qty)+' '+esc(l.unit); }).join('<br>');
+        var what=(x.lines||[]).map(function(l){ return esc(l.name)+' — '+twTlNum(l.qty)+' '+esc(l.unit); }).join('; ');
         var act=(x.docUrl?'<a href="'+esc(x.docUrl)+'" target="_blank" rel="noopener">файл ↗</a>':'')+(x.signedUrl?'<a href="'+esc(x.signedUrl)+'" target="_blank" rel="noopener">скан ↗</a>':'')
           +(x.status==='issued'?'<button onclick="twTlReturn('+i+')" title="материал вернулся от переработчика">↩ вернулось</button><button class="danger" onclick="twTlCancel('+i+')" title="отменить накладную (бланк станет испорченным)">✕</button>':'')
           +(x.status==='returned'?'<button class="sec" onclick="twTlUnreturn('+i+')" title="отметили возврат по ошибке">снова у переработчика</button>':'');
         return '<tr'+(x.status==='cancelled'?' class="sp"':'')+'><td data-l="№" style="white-space:nowrap"><b>'+esc(x.number)+'</b><span class="sub2">'+esc([x.kind+(x.blank?' '+x.blank:''), x.date].join(' · '))+'</span></td>'
-          +'<td data-l="Переработчик">'+esc(x.counterparty)+'<div class="sm muted">'+esc(x.basis)+'</div></td><td data-l="Что" class="sm">'+what+(x.note?'<div class="muted">'+esc(x.note)+'</div>':'')+'</td>'
-          +'<td data-l="Сумма" class="num">'+money(x.amount)+'</td><td data-l="Статус"><span class="pill '+st[0]+'">'+st[1]+(x.status==='returned'&&x.returnedAt?' '+esc(x.returnedAt):'')+'</span>'+(x.returnNote?'<div class="sm">'+esc(x.returnNote)+'</div>':'')+'</td>'
+          +'<td data-l="Переработчик" title="'+esc(x.basis)+'">'+esc(x.counterparty)+'</td><td data-l="Что" class="sm" title="'+esc([x.basis, x.note].filter(Boolean).join(' · '))+'">'+what+'</td>'
+          +'<td data-l="Сумма" class="num">'+money(x.amount)+'</td><td data-l="Статус"><span class="pill '+st[0]+'">'+st[1]+(x.status==='returned'&&x.returnedAt?' '+esc(x.returnedAt):'')+'</span>'+(x.returnNote?'<span class="sm muted" title="'+esc(x.returnNote)+'"> ⓘ</span>':'')+'</td>'
           +'<td class="acts2">'+act+'</td></tr>'; }).join('')+'</tbody></table></div>';
   }).catch(function(e){ box.innerHTML='<span class="err">'+esc(netText(e))+'</span>'; });
 }
