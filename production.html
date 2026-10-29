@@ -173,6 +173,7 @@
   table.floor.mx td .sub{ display:inline-block; font:var(--t-tiny); line-height:16px; color:var(--muted); white-space:nowrap; margin:0 0 0 4px; vertical-align:top; }   /* в одну строку с главной цифрой, чтобы не наезжать на полоску; margin целиком: у темы .sub имеет отступ снизу 24 px */
   table.floor.mx td .chk{ vertical-align:top; line-height:16px; }
   table.floor.mx td .sub.q{ color:var(--green); font-weight:600; }   /* подано, ждёт проверки — зелёным, как и полоска */
+  table.floor.mx td .sub.gap{ color:var(--orange,#e8820c); font-weight:600; }   /* «ждём N» — следующие операции отчитались больше, чем эта: чей-то наряд не подан/не принят (29.10.2026) */
   table.floor.mx td.over{ background-color:var(--amber-bg); }   /* сверх плана — видно фоном, а не только цветом цифры */
   table.floor.mx td.over .flf{ color:var(--amber); }
   table.floor.mx tbody tr:hover td.over, table.floor.mx td.over.colh{ background-color:var(--amber-bg); box-shadow:inset 0 0 0 1px var(--amber); }
@@ -909,6 +910,8 @@ function qcTd(qc,c,x,row){
   var v=Number(x.qc)||0;
   return '<td class="qcw'+(v>0?' has':'')+'" title="'+esc((x.detail||row.name)+' · '+c+'\nждёт ОТК: сделано и подано нарядом, контролёр ещё не принял — '+r1(v)+'\nпосле приёмки перейдут в «'+c+'»')+'"><span class="flf'+(v>0?'':' z')+'">'+(v>0?r1(v):'·')+'</span></td>';
 }
+/* «ждём N» (оранжевым): следующие операции цепочки подали или приняли на N больше, чем здесь отчитались — наряд по этой операции не подан или не принят */
+function gapSub(x,op){ var g=Number(x&&x.gap)||0; return g>0?'<span class="sub gap" title="'+esc((x.detail||'')+' · '+(op||'')+'\nследующие операции подали или приняли на '+r1(g)+' больше, чем здесь отчитались — найдите, чей наряд по этой операции не подан или не принят')+'">ждём '+r1(g)+'</span>':''; }
 /* клетка «сделано / нужно» */
 function mxDoneCell(id,o,flags,rowNeed){
   if(!o) return '<td class="no" title="у этой детали такой операции нет"></td>';
@@ -924,7 +927,7 @@ function mxDoneCell(id,o,flags,rowNeed){
     pb='<span class="pb"><i class="a" style="width:'+a.toFixed(1)+'%"></i>'+(q>0?'<i class="q" style="width:'+q.toFixed(1)+'%"></i>':'')+'</span>'; }
   if(rowNeed!=null&&Math.abs(need-rowNeed)>0.001) tip='нужно на этой операции: '+r1(need)+'\n'+tip;
   return '<td class="'+cls+'" data-op="'+esc(o.id)+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+esc(o.id)+'\')"><span class="flf'+(ready>0?'':' z')+'">'+(ready>0?r1(ready):'·')+'</span>'+fl+pb
-    +(pend>0?'<span class="sub q" title="подано, ждёт проверки: '+r1(pend)+'">+'+r1(pend)+'</span>':'')+'</td>';
+    +(pend>0?'<span class="sub q" title="подано, ждёт проверки: '+r1(pend)+'">+'+r1(pend)+'</span>':'')+gapSub(o,o.op)+'</td>';
 }
 /* клетка «ждут операции»: прошли все предыдущие, эту ещё нет (avail). Первая операция цепочки — ещё не начато (серым). */
 /* клетка «на участке»: лежат после операции (прошли её, на следующую не ушли) — те же числа, что в ведомости переучёта и в сводной */
@@ -949,7 +952,7 @@ function mxLieCell(id,row,op){
   if(op==='Раскрой'&&!row.prod){ var i=row.seq.indexOf(op), nx=i>=0?row.cells[row.seq[i+1]]:null; return cutCell(row.name, nx?Number(nx.left)||0:Number(o.left)||0, 'в заказе раскроено '+r1(Number(o.readyEff!=null?o.readyEff:o.ready)||0)+' из '+r1(o.need)); }
   var v=Number(o.fact)||0, done=(Number(o.left)||0)<=0.001;
   var tip=o.detail+' · '+op+'\nлежат после операции: '+r1(v)+'\nсделано '+r1(Number(o.readyEff!=null?o.readyEff:o.ready)||0)+' из '+r1(o.need)+' · осталось '+r1(o.left)+'\nнажми — поправить «лежит сейчас»';
-  return '<td class="'+(v>0?'lie':(done?'cdone':''))+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+esc(o.id)+'\')"><span class="flf'+(v>0?'':' z')+'">'+(v>0?r1(v):(done?'✓':'·'))+'</span>'+wipSub(o)+'</td>';
+  return '<td class="'+(v>0?'lie':(done?'cdone':''))+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+esc(o.id)+'\')"><span class="flf'+(v>0?'':' z')+'">'+(v>0?r1(v):(done?'✓':'·'))+'</span>'+wipSub(o)+gapSub(o,op)+'</td>';
 }
 /* клетка «осталось»: нужно − сделано */
 function mxLeftCell(id,row,op){
@@ -957,7 +960,7 @@ function mxLeftCell(id,row,op){
   if(op==='Раскрой'&&!row.prod){ var i=row.seq.indexOf(op), nx=i>=0?row.cells[row.seq[i+1]]:null; return cutLeftCell(row.name, nx?Number(nx.left)||0:Number(o.left)||0); }
   var v=Number(o.left)||0, done=v<=0.001;
   var tip=o.detail+' · '+op+'\nосталось сделать: '+r1(v)+' · сделано '+r1(Number(o.readyEff!=null?o.readyEff:o.ready)||0)+' из '+r1(o.need)+'\nнажми — поправить «лежит сейчас»';
-  return '<td class="'+(done?'cdone':'todo')+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+esc(o.id)+'\')"><span class="flf'+(v>0?'':' z')+'">'+(v>0?r1(v):'✓')+'</span></td>';
+  return '<td class="'+(done?'cdone':'todo')+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+esc(o.id)+'\')"><span class="flf'+(v>0?'':' z')+'">'+(v>0?r1(v):'✓')+'</span>'+gapSub(o,op)+'</td>';
 }
 /* Общая часть детали, которая идёт в несколько цветов с разной отделкой (владелец 29.10.2026): до развилки деталь одна на все цвета —
    её цифры по всем цветам вместе; после развилки — у каждого товара свои. Та же логика, что строки «↳» в «Сводно по заказу». */
@@ -968,9 +971,9 @@ function buildCommon(r){
     var d=D[o.detail.toLowerCase()]=D[o.detail.toLowerCase()]||{ seq:{}, shared:{}, agg:{}, need:{} }, m=p.eq+'|'+p.model;
     (d.seq[m]=d.seq[m]||[]).push(o.op); if(o.shared) d.shared[o.op]=1;
     if((Number(o.need)||0)>(d.need[m]||0)) d.need[m]=Number(o.need)||0;
-    var a=d.agg[o.op]=d.agg[o.op]||{ id:'', ids:[], detail:o.detail, op:o.op, need:0, ready:0, readyEff:0, left:0, fact:0, pend:0, qc:0, over:0, stock:0, avail:0 };
+    var a=d.agg[o.op]=d.agg[o.op]||{ id:'', ids:[], detail:o.detail, op:o.op, need:0, ready:0, readyEff:0, left:0, fact:0, pend:0, qc:0, gap:0, over:0, stock:0, avail:0 };
     a.ids.push(o.id); a.id=a.ids.join(','); a.need+=Number(o.need)||0; var rd=Number(o.readyEff!=null?o.readyEff:o.ready)||0; a.ready+=rd; a.readyEff+=rd;
-    a.left+=Number(o.left)||0; a.fact+=Number(o.fact)||0; a.pend+=Number(o.pend)||0; a.qc+=Number(o.qc)||0; a.stock+=Number(o.stock)||0; a.avail+=Number(o.avail)||0; a.over=Math.max(0,a.ready-a.need); }); });
+    a.left+=Number(o.left)||0; a.fact+=Number(o.fact)||0; a.pend+=Number(o.pend)||0; a.qc+=Number(o.qc)||0; a.gap+=Number(o.gap)||0; a.stock+=Number(o.stock)||0; a.avail+=Number(o.avail)||0; a.over=Math.max(0,a.ready-a.need); }); });
   var out={};
   Object.keys(D).forEach(function(k){ var d=D[k], ms=Object.keys(d.seq); if(ms.length<2) return;
     var common=[]; d.seq[ms[0]].forEach(function(op){ if(d.shared[op]&&ms.every(function(m){ return d.seq[m].indexOf(op)>=0; })) common.push(op); });
@@ -1101,7 +1104,7 @@ function summaryMatrixHtml(id,r){
           if(!done&&x.need>0&&(rd>0||x.pend>0)){ var CAP=90, a=Math.min(CAP,rd/x.need*100), q=Math.min(CAP-a,x.pend/x.need*100);
             pb='<span class="pb"><i class="a" style="width:'+a.toFixed(1)+'%"></i>'+(q>0?'<i class="q" style="width:'+q.toFixed(1)+'%"></i>':'')+'</span>'; }
           return '<td class="'+(done?'cdone':(rd>x.need+0.001?'over':''))+(row.part&&row.part[c]?' part':'')+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+x.ids.join(',')+'\')"><span class="flf'+(rd>0?'':' z')+'">'+(rd>0?r1(rd):'·')+'</span>'
-            +(x.pend>0?'<span class="sub q">+'+r1(x.pend)+'</span>':'')+pb+'</td>';
+            +(x.pend>0?'<span class="sub q">+'+r1(x.pend)+'</span>':'')+pb+gapSub({gap:x.gap,detail:row.name},c)+'</td>';
         }
         if(SV==='lie'&&c==='Раскрой'&&!row.prod&&!row.sub){ var ci=cols.indexOf(c), nx=null; for(var j=ci+1;j<cols.length&&!nx;j++) if(row.cells[cols[j]]||(row.split&&row.split[cols[j]])) nx=row.cells[cols[j]]||null;
           return cutCell(row.name, nx?nx.left:x.left, 'в заказе раскроено '+r1(x.ready)+' из '+r1(x.need)); }
@@ -1110,7 +1113,7 @@ function summaryMatrixHtml(id,r){
         var v=SV==='left'?x.left:x.fact, cls=done?'cdone':(SV==='left'?(v>0?'todo':''):(v>0?'lie':''));
         // склад деталей — и в сводной (владелец 29.10.2026): у строки детали, по первой операции клетки, у которой есть остаток на складе
         var ws=''; if(SV==='lie'&&!row.sub){ for(var wi=0;wi<x.ids.length;wi++){ if(WIPS[x.ids[wi]]&&WIPS[x.ids[wi]].wip>0){ ws=wipSub({id:x.ids[wi]}); break; } } }
-        return '<td class="'+cls+(row.part&&row.part[c]?' part':'')+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+x.ids.join(',')+'\')"><span class="flf'+(v>0?'':' z')+'">'+(v>0?r1(v):(done?'✓':'·'))+'</span>'+ws+'</td>';
+        return '<td class="'+cls+(row.part&&row.part[c]?' part':'')+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+x.ids.join(',')+'\')"><span class="flf'+(v>0?'':' z')+'">'+(v>0?r1(v):(done?'✓':'·'))+'</span>'+ws+gapSub({gap:x.gap,detail:row.name},c)+'</td>';
       })(); }).join('')+(row.prod?'<td class="no"></td><td class="no"></td>':row.noRw?'<td class="spl">↓</td><td class="spl">↓</td>':rwCells(id,row.name,Object.keys(row.keys)))+'</tr>';
     }).join('');
     var cid='sc_'+id+'_'+bi, isOpen=open[cid]===undefined?true:open[cid];
@@ -1132,9 +1135,9 @@ function shortModels(list,all){
   while(w.every(function(x){ return x[n]!==undefined&&x[n]===w[0][n]; })) n++;
   return list.map(function(m){ var x=String(m).split(/\s+/).slice(n); if(x.length>1&&/^fold(able)?$/i.test(x[0])) x=x.slice(1); return x.join(' ')||m; }).join(', ');
 }
-function sumCell(){ return { need:0, ready:0, fact:0, left:0, avail:0, pend:0, qc:0, ids:[] }; }
-function sumAdd(c,o){ c.need+=Number(o.need)||0; c.ready+=Number(o.readyEff!=null?o.readyEff:o.ready)||0; c.fact+=Number(o.fact)||0; c.left+=Number(o.left)||0; c.avail+=Number(o.avail)||0; c.pend+=(Number(o.pend)||0)+(Number(o.qc)||0); c.qc+=Number(o.qc)||0; c.ids.push(o.id); }
-function sumMerge(c,x){ ['need','ready','fact','left','avail','pend','qc'].forEach(function(k){ c[k]+=x[k]; }); c.ids=c.ids.concat(x.ids); }
+function sumCell(){ return { need:0, ready:0, fact:0, left:0, avail:0, pend:0, qc:0, gap:0, ids:[] }; }
+function sumAdd(c,o){ c.need+=Number(o.need)||0; c.ready+=Number(o.readyEff!=null?o.readyEff:o.ready)||0; c.fact+=Number(o.fact)||0; c.left+=Number(o.left)||0; c.avail+=Number(o.avail)||0; c.pend+=(Number(o.pend)||0)+(Number(o.qc)||0); c.qc+=Number(o.qc)||0; c.gap+=Number(o.gap)||0; c.ids.push(o.id); }
+function sumMerge(c,x){ ['need','ready','fact','left','avail','pend','qc','gap'].forEach(function(k){ c[k]+=x[k]; }); c.ids=c.ids.concat(x.ids); }
 /* вид сводной: можно делать / осталось / лежит — запоминается */
 function sumView(){ return mxView(); }   // один вид на обе вкладки
 function setSumView(v){ try{ localStorage.setItem('tw_prod_mx',v); }catch(e){} var sum=$('pan_sum_'+CUR); if(sum&&OPSR[CUR]){ sum.innerHTML=summaryMatrixHtml(CUR,OPSR[CUR]); fitWraps(); } }
