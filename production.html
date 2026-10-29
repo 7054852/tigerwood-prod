@@ -920,9 +920,16 @@ function qcTd(qc,c,x,row){
 }
 /* «ждём N» (оранжевым): следующие операции цепочки подали или приняли на N больше, чем здесь отчитались — наряд по этой операции не подан или не принят */
 function gapSub(x,op){ var g=(op==='Раскрой')?0:(Number(x&&x.lifted)||0); return g>0?'<span class="sub gap" title="'+esc((x.detail||'')+' · '+(op||'')+'\nследующая операция взяла на '+r1(g)+' больше, чем здесь было (принятые и ждущие ОТК наряды) — наряд по этой операции не подан или не принят. Переучёт запишет факт и снимет ожидание')+'">ждём '+r1(g)+'</span>':''; }
+/* «Сделано» для раскроя (владелец 29.10.2026): раскроено = ушло в заказ + на складе раскроя, но не больше потребности (склад общий для всех заказов) */
+function cutDoneCell(o,rowName,need){
+  var st=CUTS[String(rowName).toLowerCase()]||0, rd=Number(o.readyEff!=null?o.readyEff:o.ready)||0, use=Math.min(st,Math.max(0,need-rd)), v=r1(Math.min(need,rd+st)), done=v>=need-0.001;
+  var tip=rowName+' · Раскрой\nраскроено: '+v+' из '+r1(need)+'\nушло в заказ: '+r1(rd)+' · на складе раскроя: '+r1(st)+' (общий для всех заказов'+(st>use+0.001?', в счёт этого заказа '+r1(use):'')+')';
+  return '<td class="'+(done?'cdone':'')+'" title="'+esc(tip)+'"><span class="flf'+(v>0?'':' z')+'">'+(v>0?v:'·')+'</span>'+(use>0?'<span class="sub cutok" title="со склада раскроя">+'+r1(use)+' склад</span>':'')+'</td>';
+}
 /* клетка «сделано / нужно» */
 function mxDoneCell(id,o,flags,rowNeed){
   if(!o) return '<td class="no" title="у этой детали такой операции нет"></td>';
+  if(o.op==='Раскрой'&&o.level!=='изделие') return cutDoneCell(o,o.detail,Number(o.need)||0);
   var ready=Number(o.readyEff!=null?o.readyEff:o.ready)||0, need=Number(o.need)||0, left=Number(o.left)||0, pend=(Number(o.pend)||0)+(Number(o.qc)||0);
   var fk=flags?String(o.id).split(',').map(function(x){ return flags[x]; }).filter(Boolean)[0]:'';
   var cls=left<=0.001?'cdone':(ready>need+0.001?'over':''), fl=fk?' <span class="chk '+fk+'" title="есть замечание">⚠</span>':'';
@@ -1108,6 +1115,7 @@ function summaryMatrixHtml(id,r){
         var x=row.cells[c]; if(!x) return '<td class="no"></td>';
         var done=x.left<=0.001, tip=row.name+' · '+c+'\nможно делать сейчас (прошли предыдущую): '+r1(x.avail)+'\nосталось сделать: '+r1(x.left)+' · сделано '+r1(x.ready)+' из '+r1(x.need)+'\nлежат после операции: '+r1(x.fact)+'\nнажми — поправить «лежит сейчас»';
         if(SV==='done'){   // как клетка «Сделано» в карточке товара: принято, «+подано», полоска принято/подано с видимым хвостом
+          if(c==='Раскрой'&&!row.prod&&!row.sub) return cutDoneCell(x,row.name,x.need);
           var rd=x.ready, pb='';
           if(!done&&x.need>0&&(rd>0||x.pend>0)){ var CAP=90, a=Math.min(CAP,rd/x.need*100), q=Math.min(CAP-a,x.pend/x.need*100);
             pb='<span class="pb"><i class="a" style="width:'+a.toFixed(1)+'%"></i>'+(q>0?'<i class="q" style="width:'+q.toFixed(1)+'%"></i>':'')+'</span>'; }
