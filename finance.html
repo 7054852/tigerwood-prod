@@ -221,11 +221,16 @@
 
 <!-- ═══ ЗАРПЛАТА ═══ -->
 <div id="tab_salary" class="hide">
-  <div class="tabs" id="salTabs" style="margin-bottom:var(--s-2)"><button data-st="debt" class="on" onclick="salTab('debt')">Долг по сотрудникам</button><button data-st="bank" onclick="salTab('bank')">Выплаты из банка</button></div>
+  <div class="tabs" id="salTabs" style="margin-bottom:var(--s-2)"><button data-st="debt" class="on" onclick="salTab('debt')">Долг по сотрудникам</button><button data-st="bank" onclick="salTab('bank')">Выплаты из банка</button><button data-st="month" onclick="salTab('month')">По месяцам</button></div>
   <div id="sal_debt">
     <div class="toolbar"><input id="pdQ" type="search" class="search" placeholder="🔎 сотрудник" oninput="renderPd()"><label class="mut"><input type="checkbox" id="pdAll" onchange="renderPd()"> и нулевые</label><div class="end"><button class="sec" onclick="pdOpen('')">💵 Наличными / отсечка</button></div></div>
     <div class="note hint">Долг на руки = долг на дату отсечки + принятые наряды × k + правки итога − выплаты с отсечки. k — по договору, действовавшему в день наряда: штат 1, подряд 0,86 (удерживаем подоходный и пенсионный), без договора — 1 с пометкой; НПД и обучение не считаются. Выплата = оплаченный расход на человека (часть банковского реестра, наличные) и оплаты контрагенту «за него». Ведомость долг не меняет. Тот же расчёт — в «Кадрах». Клик по строке — отсечка, примечание, выдача наличными.</div>
     <div id="pdSum" class="pdsum"></div><div id="pdBox"></div><div id="pdMsg" class="msg"></div>
+  </div>
+  <div id="sal_month" class="hide">
+    <div class="toolbar"><input id="smM" type="month" onchange="renderSm()"><label class="mut"><input type="checkbox" id="smCash" onchange="renderSm()"> и наличные</label><div class="end"><button class="sec" onclick="smExport()">⬇ Скачать Excel</button></div></div>
+    <div class="note hint">Кому и сколько выплачено за месяц (по дате выплаты). Платёжка банка разложена по сотрудникам; «ЗП за» — месяц из назначения платежа. Неразнесённая часть платёжки — отдельной строкой: её разносят во вкладке «Выплаты из банка».</div>
+    <div id="smSum" class="pdsum"></div><div id="smBox"></div>
   </div>
   <div id="sal_bank" class="hide">
     <div class="note hint">Выплата зарплаты банком приходит из выписки одной суммой. Здесь она раскладывается по людям и отделам — сумма выплаты при этом не меняется.</div>
@@ -817,8 +822,8 @@ function unpost(id){
 
 /* ═══════════ ЗАРПЛАТА ═══════════ */
 var SAL=null, SP=null;
-function salLoad(){ get({vapi:'finsalary'}).then(function(r){ if(!r||!r.ok){ noAccess(r); return; } SAL=r; renderSal(); }); pdLoad(); }
-function salTab(t){ var b=el('salTabs').querySelectorAll('button'); for(var i=0;i<b.length;i++) b[i].className=b[i].getAttribute('data-st')===t?'on':''; el('sal_debt').className=t==='debt'?'':'hide'; el('sal_bank').className=t==='bank'?'':'hide'; }
+function salLoad(){ get({vapi:'finsalary'}).then(function(r){ if(!r||!r.ok){ noAccess(r); return; } SAL=r; renderSal(); renderSm(); }); pdLoad(); }
+function salTab(t){ var b=el('salTabs').querySelectorAll('button'); for(var i=0;i<b.length;i++) b[i].className=b[i].getAttribute('data-st')===t?'on':''; ['debt','bank','month'].forEach(function(k){ el('sal_'+k).className=t===k?'':'hide'; }); if(t==='month') renderSm(); }
 /* ── долг по сотрудникам: единый расчёт Прохаба (payroll/debt.ts), тот же экран в «Кадрах» ── */
 var PD=null, PDX=null, PDOPEN={};
 var MON=['','янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];
@@ -875,6 +880,53 @@ function renderSal(){
   el('salBox').innerHTML='<div class="tbl-wrap"><table class="reg"><thead><tr><th>Дата</th><th>Кошелёк</th><th>Реестр</th><th class="num">Сумма</th><th>Состояние</th><th>Кому</th><th></th></tr></thead><tbody>'
     +SAL.items.map(function(x, i){ return '<tr><td class="n">'+dmy(x.dateIso)+'</td><td>'+esc(x.wallet)+'</td><td>'+esc(x.contr)+'</td><td class="num">'+money(x.total)+'</td><td><span class="pill '+pill[x.status]+'">'+x.status+'</span>'+(x.rem>0.004&&x.parts.length?' <span class="mut">остаток '+money(x.rem)+'</span>':'')+'</td>'
       +'<td class="purp">'+esc(x.parts.map(function(p){ return p.name+' '+money(p.sum); }).join(', '))+'</td><td class="go"><button class="sec" onclick="salOpen('+i+')">Разнести</button></td></tr>'; }).join('')+'</tbody></table></div>';
+}
+/* ── по месяцам: кому сколько выплачено за месяц + выгрузка бухгалтеру (29.10.2026) ── */
+var MONF=['','январь','февраль','март','апрель','май','июнь','июль','август','сентябрь','октябрь','ноябрь','декабрь'];
+function smYm(){ var m=el('smM'); if(m&&!m.value) m.value=((B&&B.today)||new Date().toISOString()).slice(0,7); return m?m.value:''; }
+function smData(){
+  var ym=smYm(), cash=el('smCash')&&el('smCash').checked, regs=[], P={}, total=0, rem=0;
+  SAL.items.filter(function(x){ return x.dateIso.slice(0,7)===ym&&(cash||!x.cash); })
+    .sort(function(a,b){ return a.dateIso<b.dateIso?-1:a.dateIso>b.dateIso?1:b.total-a.total; })
+    .forEach(function(x){
+      var rows=x.parts.map(function(p){ return { name:p.name, dept:p.dept, sum:p.sum, per:p.period?MONF[+p.period.slice(5,7)]:(x.forMonth||'') }; });
+      if(x.rem>0.004) rows.push({ name:'', dept:'', sum:x.rem, per:x.forMonth||'', un:1 });
+      rows.forEach(function(r){ if(r.un) return; var q=P[r.name]||(P[r.name]={ name:r.name, dept:r.dept, sum:0, pays:[] }); q.sum+=r.sum; q.pays.push(dm(x.dateIso)+' — '+money(r.sum)); });
+      total+=x.total; rem+=x.rem; regs.push({ x:x, rows:rows });
+    });
+  var people=Object.keys(P).map(function(k){ return P[k]; }).sort(function(a,b){ return a.name.localeCompare(b.name,'ru'); });
+  return { ym:ym, title:MONF[+ym.slice(5,7)]+' '+ym.slice(0,4), regs:regs, people:people, total:Math.round(total*100)/100, rem:Math.round(rem*100)/100 };
+}
+function renderSm(){
+  if(!SAL||!el('smBox')) return; var d=smData();
+  el('smSum').innerHTML='<b>Выплачено за '+esc(d.title)+': '+money(d.total)+'</b> <span class="mut">· платёжек '+d.regs.length+' · сотрудников '+d.people.length+'</span>'+(d.rem>0.004?' · <b class="neg">не разнесено '+money(d.rem)+'</b>':'');
+  if(!d.regs.length){ el('smBox').innerHTML='<div class="empty">За этот месяц выплат нет.</div>'; return; }
+  el('smBox').innerHTML='<div class="tbl-wrap fill"><table class="tbl sm"><thead><tr><th>Дата</th><th class="num">Платёжка</th><th>ЗП за</th><th>Сотрудник</th><th>Отдел</th><th class="num">Сумма</th></tr></thead><tbody>'
+    +d.regs.map(function(g){ return g.rows.map(function(r,i){ return '<tr'+(i===0?' style="border-top:2px solid var(--line)"':'')+'><td class="n">'+(i?'':dmy(g.x.dateIso))+'</td><td class="num">'+(i?'':money(g.x.total)+(g.x.cash?' <span class="mut">'+esc(g.x.wallet)+'</span>':''))+'</td><td>'+esc(r.per)+'</td>'
+      +'<td>'+(r.un?'<span class="pill bad">не разнесено</span>':esc(r.name))+'</td><td class="mut">'+esc(r.dept)+'</td><td class="num">'+money(r.sum)+'</td></tr>'; }).join(''); }).join('')
+    +'</tbody></table></div><div class="sect">Итого по сотрудникам</div><div class="tbl-wrap fill"><table class="tbl sm"><thead><tr><th>Сотрудник</th><th>Отдел</th><th class="num">Выплачено</th><th>Выплаты</th></tr></thead><tbody>'
+    +d.people.map(function(q){ return '<tr><td>'+esc(q.name)+'</td><td class="mut">'+esc(q.dept)+'</td><td class="num"><b>'+money(q.sum)+'</b></td><td class="mut">'+esc(q.pays.join('; '))+'</td></tr>'; }).join('')
+    +(d.rem>0.004?'<tr><td><span class="pill bad">не разнесено</span></td><td></td><td class="num">'+money(d.rem)+'</td><td></td></tr>':'')
+    +'<tr><td><b>Итого</b></td><td></td><td class="num"><b>'+money(d.total)+'</b></td><td></td></tr></tbody></table></div>';
+  if(window.twFitTables) twFitTables();
+}
+function smExport(){
+  if(typeof XLSX==='undefined'){ alert('Не загрузилась библиотека Excel — проверьте интернет и откройте страницу заново.'); return; }
+  var d=smData(), r2=function(n){ return Math.round(n*100)/100; };
+  if(!d.regs.length){ alert('За этот месяц выплат нет.'); return; }
+  var a=[['Выплаты заработной платы — '+d.title],[],['Дата выплаты','Платёжка (сумма)','ЗП за','№','Сотрудник','Отдел','Сумма, BYN','Примечание']];
+  d.regs.forEach(function(g){
+    g.rows.forEach(function(r,i){ a.push([i?'':dmy(g.x.dateIso), i?'':g.x.total, i?'':r.per, i+1, r.un?'— не разнесено —':r.name, r.dept, r2(r.sum), r.un?'платёжка не разнесена по сотрудникам':(g.x.cash?'наличными · '+g.x.wallet:'')]); });
+    a.push(['','','','','Итого по платёжке '+dmy(g.x.dateIso),'',g.x.total,'']);
+  });
+  a.push([]); a.push(['','','','','ВСЕГО выплачено за '+d.title,'',d.total,'']);
+  var b=[['Сотрудник','Отдел','Выплачено, BYN','Выплаты (дата — сумма)']].concat(d.people.map(function(q){ return [q.name,q.dept,r2(q.sum),q.pays.join('; ')]; }));
+  if(d.rem>0.004) b.push(['— не разнесено —','',d.rem,'']);
+  b.push(['ВСЕГО','',d.total,'']);
+  var wb=XLSX.utils.book_new(), s1=XLSX.utils.aoa_to_sheet(a), s2=XLSX.utils.aoa_to_sheet(b);
+  s1['!cols']=[{wch:13},{wch:14},{wch:11},{wch:4},{wch:34},{wch:18},{wch:12},{wch:40}]; s2['!cols']=[{wch:34},{wch:18},{wch:14},{wch:60}];
+  XLSX.utils.book_append_sheet(wb,s1,'Выплаты по платёжкам'); XLSX.utils.book_append_sheet(wb,s2,'Итого по сотрудникам');
+  XLSX.writeFile(wb,'Выплаты ЗП '+d.ym+'.xlsx');
 }
 function salOpen(i){
   SP={ it:SAL.items[i], rows:SAL.items[i].parts.map(function(p){ return { dept:p.dept||'рабочие', personId:p.personId||'', name:p.name, sum:p.sum, period:p.period }; }) }; if(!SP.rows.length) SP.rows.push({dept:'рабочие',personId:'',sum:0});
