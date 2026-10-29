@@ -916,6 +916,12 @@ function mxDoneCell(id,o,flags,rowNeed){
    подпись — хватает ли на то, что этому заказу ещё предстоит пропустить через первую операцию после раскроя */
 var CUTS={}, WIPS={};
 function wipSub(o){ var w=WIPS[o.id]; return (w&&w.wip>0)?'<span class="sub cutok" title="на складе деталей, стадия «'+esc(w.stage)+'»: сверх потребности заказа, можно взять выдачей">+'+r1(w.wip)+' склад</span>':''; }
+/* «Осталось» для раскроя (владелец 29.10.2026): раскрой идёт на склад, заказ берёт оттуда — осталось раскроить = следующей операции нужно − на складе раскроя */
+function cutLeftCell(detail,leftNext){
+  var st=CUTS[String(detail).toLowerCase()]||0, v=r1(Math.max(0,leftNext-st)), done=v<=0.001;
+  var tip=detail+' · раскроить ещё: '+v+'\nследующей операции этого заказа нужно '+r1(leftNext)+', на складе раскроя '+r1(st)+' (общий для всех заказов)';
+  return '<td class="'+(done?'cdone':'todo')+'" title="'+esc(tip)+'"><span class="flf'+(v>0?'':' z')+'">'+(v>0?v:'✓')+'</span></td>';
+}
 function cutCell(detail,leftNext,title){
   var st=CUTS[String(detail).toLowerCase()]||0, d=r1(st-leftNext);
   var sub=leftNext<=0.001?'':(d<0?'<span class="sub cutsh">не хв. '+r1(-d)+'</span>':'<span class="sub cutok">запас '+d+'</span>');
@@ -932,6 +938,7 @@ function mxLieCell(id,row,op){
 /* клетка «осталось»: нужно − сделано */
 function mxLeftCell(id,row,op){
   var o=row.cells[op]; if(!o) return '<td class="no" title="у этой детали такой операции нет"></td>';
+  if(op==='Раскрой'&&!row.prod){ var i=row.seq.indexOf(op), nx=i>=0?row.cells[row.seq[i+1]]:null; return cutLeftCell(row.name, nx?Number(nx.left)||0:Number(o.left)||0); }
   var v=Number(o.left)||0, done=v<=0.001;
   var tip=o.detail+' · '+op+'\nосталось сделать: '+r1(v)+' · сделано '+r1(Number(o.readyEff!=null?o.readyEff:o.ready)||0)+' из '+r1(o.need)+'\nнажми — поправить «лежит сейчас»';
   return '<td class="'+(done?'cdone':'todo')+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+esc(o.id)+'\')"><span class="flf'+(v>0?'':' z')+'">'+(v>0?r1(v):'✓')+'</span></td>';
@@ -1082,6 +1089,8 @@ function summaryMatrixHtml(id,r){
         }
         if(SV==='lie'&&c==='Раскрой'&&!row.prod&&!row.sub){ var ci=cols.indexOf(c), nx=null; for(var j=ci+1;j<cols.length&&!nx;j++) if(row.cells[cols[j]]||(row.split&&row.split[cols[j]])) nx=row.cells[cols[j]]||null;
           return cutCell(row.name, nx?nx.left:x.left, 'в заказе раскроено '+r1(x.ready)+' из '+r1(x.need)); }
+        if(SV==='left'&&c==='Раскрой'&&!row.prod&&!row.sub){ var ci2=cols.indexOf(c), nx2=null; for(var j2=ci2+1;j2<cols.length&&!nx2;j2++) if(row.cells[cols[j2]]||(row.split&&row.split[cols[j2]])) nx2=row.cells[cols[j2]]||null;
+          return cutLeftCell(row.name, nx2?nx2.left:x.left); }
         var v=SV==='left'?x.left:x.fact, cls=done?'cdone':(SV==='left'?(v>0?'todo':''):(v>0?'lie':''));
         // склад деталей — и в сводной (владелец 29.10.2026): у строки детали, по первой операции клетки, у которой есть остаток на складе
         var ws=''; if(SV==='lie'&&!row.sub){ for(var wi=0;wi<x.ids.length;wi++){ if(WIPS[x.ids[wi]]&&WIPS[x.ids[wi]].wip>0){ ws=wipSub({id:x.ids[wi]}); break; } } }
