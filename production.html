@@ -140,6 +140,11 @@
   table.floor.mx thead th.qcw span{ color:var(--muted); font-weight:400; font-size:11px; }
   table.floor.mx td.qcw{ color:var(--muted); } table.floor.mx td.qcw .flf{ font-weight:400; } table.floor.mx td.qcw.has .flf{ color:var(--amber); font-weight:600; }
   #mxfh b.qcw{ color:var(--muted); font-weight:400; font-size:11px; }
+  /* вторая строка шапки у контрольных операций — как в ведомости переучёта: «ждёт ОТК» (янтарная) | «принято ✓» (зелёная) под общим именем операции */
+  table.floor.mx thead th.op.qcg{ text-align:center; }
+  table.floor.mx thead tr.qsub th.qs{ font-size:10px; font-weight:500; padding:2px 3px; white-space:nowrap; text-transform:none; letter-spacing:0; color:var(--muted); text-align:center; }
+  table.floor.mx thead tr.qsub th.qs.w{ background:var(--amber-bg); color:var(--amber); }
+  table.floor.mx thead tr.qsub th.qs.a{ background:var(--green-bg); color:var(--green); }
   table.floor.mx td{ position:relative; }
   table.floor.mx td .pb{ position:absolute; left:5px; right:5px; bottom:4px; height:3px; background:var(--line2); border-radius:2px; overflow:hidden; display:flex; }
   table.floor.mx td .pb i{ display:block; height:100%; flex:none; }
@@ -783,7 +788,7 @@ function mxFloat(){
   fh.firstChild.style.transform='translateX('+(-w.scrollLeft)+'px)';
 }
 function mxFloatHtml(t){
-  var out='', grp=t.tHead.querySelector('tr.grp'), row=t.tHead.rows[t.tHead.rows.length-1];
+  var out='', grp=t.tHead.querySelector('tr.grp'), row=t.tHead.rows[grp?1:0];   // строка с именами операций (ниже может быть «ждёт ОТК | принято ✓»)
   if(grp) Array.prototype.forEach.call(grp.cells, function(th){ var gc=th.style.getPropertyValue('--gc'); if(gc) out+='<i style="left:'+th.offsetLeft+'px;width:'+th.offsetWidth+'px;background:'+gc+'"></i>'; });
   // колонка «Деталь» в строках не закреплена — в шапке тоже едет вбок со всеми, иначе колонки разойдутся
   Array.prototype.forEach.call(row.cells, function(th){
@@ -880,12 +885,15 @@ function mxHead(cols,fin,grp,qc){
     cols.forEach(function(c){ var g=grp[c]||{group:'',color:''}, w=(qc&&qc[c])?2:1; if(cur&&cur.group===g.group){ cur.n+=w; } else { cur={ group:g.group, color:g.color, n:w }; cells.push(cur); } });   // «ждёт ОТК» — в том же участке
     band='<tr class="grp"><th class="dn"></th><th></th>'+cells.map(function(x){ return '<th colspan="'+x.n+'" title="'+esc(x.group)+'" style="--gc:'+(x.color||'var(--line2)')+'">'+(x.n>=2?esc(x.group):'')+'</th>'; }).join('')   // в одну колонку название не влезает — только полоска и подсказка+(extra?'<th colspan="'+extra+'"></th>':'')+'</tr>';
   }
-  return '<thead>'+band+'<tr><th class="dn">Деталь</th><th class="num" title="сколько нужно по заказу">Нужно</th>'
-    +cols.map(function(c,i){ var gs=grp&&i>0&&(grp[c]||{}).group!==(grp[cols[i-1]]||{}).group, tw=!!(qc&&qc[c]);
-      // операцию принимает ОТК — перед ней колонка «ждёт ОТК», как в ведомости переучёта (владелец 29.10.2026)
-      return (tw?'<th class="op qcw'+(gs?' gs':'')+'" title="'+esc(c+': ждёт ОТК — сделано и подано нарядом, контролёр ещё не принял')+'"><span>ждёт ОТК</span></th>':'')+'<th class="op'+(gs&&!tw?' gs':'')+'" title="'+esc(c)+'"><span>'+esc(c)+'</span></th>'; }).join('')
-    +(fin?'<th class="op fin" title="прошли все операции детали и лежат (у изделия — упакованы)"><span>✓ прошли всё</span></th>':'')
-    +(fin!==null?'<th class="op rw" title="вернули с покраски на шлифовку и ещё не переделали: на операциях не лежат"><span>↺ шлифовка</span></th><th class="op rw" title="вернули на малярку (перекрасить) и ещё не переделали: на операциях не лежат"><span>↺ малярка</span></th>':'')+'</tr></thead>';
+  var anyQc=!!(qc&&cols.some(function(c){ return qc[c]; })), sub='';
+  // операцию принимает ОТК — общее имя над ДВУМЯ подколонками «ждёт ОТК | принято ✓», как в ведомости переучёта (владелец 29.10.2026)
+  var head=cols.map(function(c,i){ var gs=grp&&i>0&&(grp[c]||{}).group!==(grp[cols[i-1]]||{}).group, tw=!!(qc&&qc[c]);
+      if(tw){ sub+='<th class="qs w'+(gs?' gs':'')+'" title="'+esc(c+': сделано и подано нарядом, контролёр ещё не принял')+'">ждёт ОТК</th><th class="qs a" title="'+esc(c+': принято ОТК')+'">принято ✓</th>';
+        return '<th class="op qcg'+(gs?' gs':'')+'" colspan="2" title="'+esc(c+': сделано → приёмка ОТК')+'"><span>'+esc(c)+'</span></th>'; }
+      return '<th class="op'+(gs?' gs':'')+'"'+(anyQc?' rowspan="2"':'')+' title="'+esc(c)+'"><span>'+esc(c)+'</span></th>'; }).join('');
+  return '<thead>'+band+'<tr><th class="dn"'+(anyQc?' rowspan="2"':'')+'>Деталь</th><th class="num"'+(anyQc?' rowspan="2"':'')+' title="сколько нужно по заказу">Нужно</th>'+head
+    +(fin?'<th class="op fin"'+(anyQc?' rowspan="2"':'')+' title="прошли все операции детали и лежат (у изделия — упакованы)"><span>✓ прошли всё</span></th>':'')
+    +(fin!==null?'<th class="op rw"'+(anyQc?' rowspan="2"':'')+' title="вернули с покраски на шлифовку и ещё не переделали: на операциях не лежат"><span>↺ шлифовка</span></th><th class="op rw"'+(anyQc?' rowspan="2"':'')+' title="вернули на малярку (перекрасить) и ещё не переделали: на операциях не лежат"><span>↺ малярка</span></th>':'')+(anyQc?'</tr><tr class="qsub">'+sub:'')+'</tr></thead>';
 }
 /* строки матрицы: деталь → по операции её строка расчёта; prev — предыдущая операция в цепочке детали */
 function mxRows(ops){
@@ -911,7 +919,7 @@ function qcTd(qc,c,x,row){
   return '<td class="qcw'+(v>0?' has':'')+'" title="'+esc((x.detail||row.name)+' · '+c+'\nждёт ОТК: сделано и подано нарядом, контролёр ещё не принял — '+r1(v)+'\nпосле приёмки перейдут в «'+c+'»')+'"><span class="flf'+(v>0?'':' z')+'">'+(v>0?r1(v):'·')+'</span></td>';
 }
 /* «ждём N» (оранжевым): следующие операции цепочки подали или приняли на N больше, чем здесь отчитались — наряд по этой операции не подан или не принят */
-function gapSub(x,op){ var g=Number(x&&x.gap)||0; return g>0?'<span class="sub gap" title="'+esc((x.detail||'')+' · '+(op||'')+'\nследующие операции подали или приняли на '+r1(g)+' больше, чем здесь отчитались — найдите, чей наряд по этой операции не подан или не принят')+'">ждём '+r1(g)+'</span>':''; }
+function gapSub(x,op){ var g=(op==='Раскрой')?0:(Number(x&&x.lifted)||0); return g>0?'<span class="sub gap" title="'+esc((x.detail||'')+' · '+(op||'')+'\nследующая операция взяла на '+r1(g)+' больше, чем здесь было (принятые и ждущие ОТК наряды) — наряд по этой операции не подан или не принят. Переучёт запишет факт и снимет ожидание')+'">ждём '+r1(g)+'</span>':''; }
 /* клетка «сделано / нужно» */
 function mxDoneCell(id,o,flags,rowNeed){
   if(!o) return '<td class="no" title="у этой детали такой операции нет"></td>';
@@ -971,9 +979,9 @@ function buildCommon(r){
     var d=D[o.detail.toLowerCase()]=D[o.detail.toLowerCase()]||{ seq:{}, shared:{}, agg:{}, need:{} }, m=p.eq+'|'+p.model;
     (d.seq[m]=d.seq[m]||[]).push(o.op); if(o.shared) d.shared[o.op]=1;
     if((Number(o.need)||0)>(d.need[m]||0)) d.need[m]=Number(o.need)||0;
-    var a=d.agg[o.op]=d.agg[o.op]||{ id:'', ids:[], detail:o.detail, op:o.op, need:0, ready:0, readyEff:0, left:0, fact:0, pend:0, qc:0, gap:0, over:0, stock:0, avail:0 };
+    var a=d.agg[o.op]=d.agg[o.op]||{ id:'', ids:[], detail:o.detail, op:o.op, need:0, ready:0, readyEff:0, left:0, fact:0, pend:0, qc:0, lifted:0, over:0, stock:0, avail:0 };
     a.ids.push(o.id); a.id=a.ids.join(','); a.need+=Number(o.need)||0; var rd=Number(o.readyEff!=null?o.readyEff:o.ready)||0; a.ready+=rd; a.readyEff+=rd;
-    a.left+=Number(o.left)||0; a.fact+=Number(o.fact)||0; a.pend+=Number(o.pend)||0; a.qc+=Number(o.qc)||0; a.gap+=Number(o.gap)||0; a.stock+=Number(o.stock)||0; a.avail+=Number(o.avail)||0; a.over=Math.max(0,a.ready-a.need); }); });
+    a.left+=Number(o.left)||0; a.fact+=Number(o.fact)||0; a.pend+=Number(o.pend)||0; a.qc+=Number(o.qc)||0; a.lifted+=Number(o.lifted)||0; a.stock+=Number(o.stock)||0; a.avail+=Number(o.avail)||0; a.over=Math.max(0,a.ready-a.need); }); });
   var out={};
   Object.keys(D).forEach(function(k){ var d=D[k], ms=Object.keys(d.seq); if(ms.length<2) return;
     var common=[]; d.seq[ms[0]].forEach(function(op){ if(d.shared[op]&&ms.every(function(m){ return d.seq[m].indexOf(op)>=0; })) common.push(op); });
@@ -1104,7 +1112,7 @@ function summaryMatrixHtml(id,r){
           if(!done&&x.need>0&&(rd>0||x.pend>0)){ var CAP=90, a=Math.min(CAP,rd/x.need*100), q=Math.min(CAP-a,x.pend/x.need*100);
             pb='<span class="pb"><i class="a" style="width:'+a.toFixed(1)+'%"></i>'+(q>0?'<i class="q" style="width:'+q.toFixed(1)+'%"></i>':'')+'</span>'; }
           return '<td class="'+(done?'cdone':(rd>x.need+0.001?'over':''))+(row.part&&row.part[c]?' part':'')+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+x.ids.join(',')+'\')"><span class="flf'+(rd>0?'':' z')+'">'+(rd>0?r1(rd):'·')+'</span>'
-            +(x.pend>0?'<span class="sub q">+'+r1(x.pend)+'</span>':'')+pb+gapSub({gap:x.gap,detail:row.name},c)+'</td>';
+            +(x.pend>0?'<span class="sub q">+'+r1(x.pend)+'</span>':'')+pb+gapSub({lifted:x.lifted,detail:row.name},c)+'</td>';
         }
         if(SV==='lie'&&c==='Раскрой'&&!row.prod&&!row.sub){ var ci=cols.indexOf(c), nx=null; for(var j=ci+1;j<cols.length&&!nx;j++) if(row.cells[cols[j]]||(row.split&&row.split[cols[j]])) nx=row.cells[cols[j]]||null;
           return cutCell(row.name, nx?nx.left:x.left, 'в заказе раскроено '+r1(x.ready)+' из '+r1(x.need)); }
@@ -1113,7 +1121,7 @@ function summaryMatrixHtml(id,r){
         var v=SV==='left'?x.left:x.fact, cls=done?'cdone':(SV==='left'?(v>0?'todo':''):(v>0?'lie':''));
         // склад деталей — и в сводной (владелец 29.10.2026): у строки детали, по первой операции клетки, у которой есть остаток на складе
         var ws=''; if(SV==='lie'&&!row.sub){ for(var wi=0;wi<x.ids.length;wi++){ if(WIPS[x.ids[wi]]&&WIPS[x.ids[wi]].wip>0){ ws=wipSub({id:x.ids[wi]}); break; } } }
-        return '<td class="'+cls+(row.part&&row.part[c]?' part':'')+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+x.ids.join(',')+'\')"><span class="flf'+(v>0?'':' z')+'">'+(v>0?r1(v):(done?'✓':'·'))+'</span>'+ws+gapSub({gap:x.gap,detail:row.name},c)+'</td>';
+        return '<td class="'+cls+(row.part&&row.part[c]?' part':'')+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+x.ids.join(',')+'\')"><span class="flf'+(v>0?'':' z')+'">'+(v>0?r1(v):(done?'✓':'·'))+'</span>'+ws+gapSub({lifted:x.lifted,detail:row.name},c)+'</td>';
       })(); }).join('')+(row.prod?'<td class="no"></td><td class="no"></td>':row.noRw?'<td class="spl">↓</td><td class="spl">↓</td>':rwCells(id,row.name,Object.keys(row.keys)))+'</tr>';
     }).join('');
     var cid='sc_'+id+'_'+bi, isOpen=open[cid]===undefined?true:open[cid];
@@ -1135,9 +1143,9 @@ function shortModels(list,all){
   while(w.every(function(x){ return x[n]!==undefined&&x[n]===w[0][n]; })) n++;
   return list.map(function(m){ var x=String(m).split(/\s+/).slice(n); if(x.length>1&&/^fold(able)?$/i.test(x[0])) x=x.slice(1); return x.join(' ')||m; }).join(', ');
 }
-function sumCell(){ return { need:0, ready:0, fact:0, left:0, avail:0, pend:0, qc:0, gap:0, ids:[] }; }
-function sumAdd(c,o){ c.need+=Number(o.need)||0; c.ready+=Number(o.readyEff!=null?o.readyEff:o.ready)||0; c.fact+=Number(o.fact)||0; c.left+=Number(o.left)||0; c.avail+=Number(o.avail)||0; c.pend+=(Number(o.pend)||0)+(Number(o.qc)||0); c.qc+=Number(o.qc)||0; c.gap+=Number(o.gap)||0; c.ids.push(o.id); }
-function sumMerge(c,x){ ['need','ready','fact','left','avail','pend','qc','gap'].forEach(function(k){ c[k]+=x[k]; }); c.ids=c.ids.concat(x.ids); }
+function sumCell(){ return { need:0, ready:0, fact:0, left:0, avail:0, pend:0, qc:0, lifted:0, ids:[] }; }
+function sumAdd(c,o){ c.need+=Number(o.need)||0; c.ready+=Number(o.readyEff!=null?o.readyEff:o.ready)||0; c.fact+=Number(o.fact)||0; c.left+=Number(o.left)||0; c.avail+=Number(o.avail)||0; c.pend+=(Number(o.pend)||0)+(Number(o.qc)||0); c.qc+=Number(o.qc)||0; c.lifted+=Number(o.lifted)||0; c.ids.push(o.id); }
+function sumMerge(c,x){ ['need','ready','fact','left','avail','pend','qc','lifted'].forEach(function(k){ c[k]+=x[k]; }); c.ids=c.ids.concat(x.ids); }
 /* вид сводной: можно делать / осталось / лежит — запоминается */
 function sumView(){ return mxView(); }   // один вид на обе вкладки
 function setSumView(v){ try{ localStorage.setItem('tw_prod_mx',v); }catch(e){} var sum=$('pan_sum_'+CUR); if(sum&&OPSR[CUR]){ sum.innerHTML=summaryMatrixHtml(CUR,OPSR[CUR]); fitWraps(); } }
