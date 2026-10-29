@@ -951,20 +951,23 @@ function mxDoneCell(id,o,flags,rowNeed){
 var CUTS={}, WIPS={};
 function wipSub(o){ var w=WIPS[o.id]; return (w&&w.wip>0)?'<span class="sub cutok" title="на складе деталей, стадия «'+esc(w.stage)+'»: сверх потребности заказа, можно взять выдачей">+'+r1(w.wip)+' склад</span>':''; }
 /* «Осталось» для раскроя (владелец 29.10.2026): раскрой идёт на склад, заказ берёт оттуда — осталось раскроить = следующей операции нужно − на складе раскроя */
-function cutLeftCell(detail,leftNext){
-  var st=CUTS[String(detail).toLowerCase()]||0, v=r1(Math.max(0,leftNext-st)), done=v<=0.001;
-  var tip=detail+' · раскроить ещё: '+v+'\nследующей операции этого заказа нужно '+r1(leftNext)+', на складе раскроя '+r1(st)+' (общий для всех заказов)';
+function cutLeftCell(detail,left){
+  // left — сколько этому заказу ещё предстоит раскроить (потребность − прошло раскрой, в т.ч. лежащие после раскроя в заказе); склад раскроя закрывает часть
+  var st=CUTS[String(detail).toLowerCase()]||0, v=r1(Math.max(0,left-st)), done=v<=0.001;
+  var tip=detail+' · раскроить ещё: '+v+'\nзаказу ещё не хватает раскроенных: '+r1(left)+' (уже прошедшие раскрой в заказе не считаются), на складе раскроя '+r1(st)+' (общий для всех заказов)';
   return '<td class="'+(done?'cdone':'todo')+'" title="'+esc(tip)+'"><span class="flf'+(v>0?'':' z')+'">'+(v>0?v:'✓')+'</span></td>';
 }
-function cutCell(detail,leftNext,title){
-  var st=CUTS[String(detail).toLowerCase()]||0, d=r1(st-leftNext);
-  var sub=leftNext<=0.001?'':(d<0?'<span class="sub cutsh">не хв. '+r1(-d)+'</span>':'<span class="sub cutok">запас '+d+'</span>');
-  var tip=detail+' · склад раскроя: '+r1(st)+' шт (общий для всех заказов)\nэтому заказу ещё пропустить через следующую операцию: '+r1(leftNext)+(leftNext>0.001?(d<0?'\nне хватает '+r1(-d)+' — нужно раскроить':'\nзапас '+d):'')+(title?'\n'+title:'');
-  return '<td class="cutc'+(st>0?' lie':'')+'" title="'+esc(tip)+'"><span class="flf'+(st>0?'':' z')+'">'+(st>0?r1(st):'0')+'</span>'+sub+'</td>';
+function cutCell(detail,fact,left,title){
+  // «На участке» для раскроя (владелец 29.10.2026): лежит после раскроя в заказе (fact) + подпись «+N склад»; нехватка/запас — склад против того, что заказу ещё раскроить (left)
+  var st=CUTS[String(detail).toLowerCase()]||0, d=r1(st-left);
+  var sub=(st>0?'<span class="sub cutok" title="на складе раскроя — общий для всех заказов">+'+r1(st)+' склад</span>':'')
+    +(left<=0.001?'':(d<0?'<span class="sub cutsh">не хв. '+r1(-d)+'</span>':'<span class="sub cutok">запас '+d+'</span>'));
+  var tip=detail+' · лежит после раскроя в заказе: '+r1(fact)+'\nна складе раскроя: '+r1(st)+' (общий для всех заказов)\nзаказу ещё раскроить: '+r1(left)+(left>0.001?(d<0?' — не хватает '+r1(-d)+', нужно раскроить':' — на складе хватает, запас '+d):' — раскрой закрыт')+(title?'\n'+title:'');
+  return '<td class="cutc'+((fact>0||st>0)?' lie':'')+'" title="'+esc(tip)+'"><span class="flf'+(fact>0?'':' z')+'">'+(fact>0?r1(fact):'·')+'</span>'+sub+'</td>';
 }
 function mxLieCell(id,row,op){
   var o=row.cells[op]; if(!o) return '<td class="no" title="у этой детали такой операции нет"></td>';
-  if(op==='Раскрой'&&!row.prod){ var i=row.seq.indexOf(op), nx=i>=0?row.cells[row.seq[i+1]]:null; return cutCell(row.name, nx?Number(nx.left)||0:Number(o.left)||0, 'в заказе раскроено '+r1(Number(o.readyEff!=null?o.readyEff:o.ready)||0)+' из '+r1(o.need)); }
+  if(op==='Раскрой'&&!row.prod){ return cutCell(row.name, Number(o.fact)||0, Number(o.left)||0, 'в заказе раскроено '+r1(Number(o.readyEff!=null?o.readyEff:o.ready)||0)+' из '+r1(o.need)); }
   var v=Number(o.fact)||0, done=(Number(o.left)||0)<=0.001;
   var tip=o.detail+' · '+op+'\nлежат после операции: '+r1(v)+'\nсделано '+r1(Number(o.readyEff!=null?o.readyEff:o.ready)||0)+' из '+r1(o.need)+' · осталось '+r1(o.left)+'\nнажми — поправить «лежит сейчас»';
   return '<td class="'+(v>0?'lie':(done?'cdone':''))+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+esc(o.id)+'\')"><span class="flf'+(v>0?'':' z')+'">'+(v>0?r1(v):(done?'✓':'·'))+'</span>'+wipSub(o)+gapSub(o,op)+'</td>';
@@ -972,7 +975,7 @@ function mxLieCell(id,row,op){
 /* клетка «осталось»: нужно − сделано */
 function mxLeftCell(id,row,op){
   var o=row.cells[op]; if(!o) return '<td class="no" title="у этой детали такой операции нет"></td>';
-  if(op==='Раскрой'&&!row.prod){ var i=row.seq.indexOf(op), nx=i>=0?row.cells[row.seq[i+1]]:null; return cutLeftCell(row.name, nx?Number(nx.left)||0:Number(o.left)||0); }
+  if(op==='Раскрой'&&!row.prod){ return cutLeftCell(row.name, Number(o.left)||0); }
   var v=Number(o.left)||0, done=v<=0.001;
   var tip=o.detail+' · '+op+'\nосталось сделать: '+r1(v)+' · сделано '+r1(Number(o.readyEff!=null?o.readyEff:o.ready)||0)+' из '+r1(o.need)+'\nнажми — поправить «лежит сейчас»';
   return '<td class="'+(done?'cdone':'todo')+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+esc(o.id)+'\')"><span class="flf'+(v>0?'':' z')+'">'+(v>0?r1(v):'✓')+'</span>'+gapSub(o,op)+'</td>';
@@ -1122,10 +1125,10 @@ function summaryMatrixHtml(id,r){
           return '<td class="'+(done?'cdone':(rd>x.need+0.001?'over':''))+(row.part&&row.part[c]?' part':'')+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+x.ids.join(',')+'\')"><span class="flf'+(rd>0?'':' z')+'">'+(rd>0?r1(rd):'·')+'</span>'
             +(x.pend>0?'<span class="sub q">+'+r1(x.pend)+'</span>':'')+pb+gapSub({lifted:x.lifted,detail:row.name},c)+'</td>';
         }
-        if(SV==='lie'&&c==='Раскрой'&&!row.prod&&!row.sub){ var ci=cols.indexOf(c), nx=null; for(var j=ci+1;j<cols.length&&!nx;j++) if(row.cells[cols[j]]||(row.split&&row.split[cols[j]])) nx=row.cells[cols[j]]||null;
-          return cutCell(row.name, nx?nx.left:x.left, 'в заказе раскроено '+r1(x.ready)+' из '+r1(x.need)); }
-        if(SV==='left'&&c==='Раскрой'&&!row.prod&&!row.sub){ var ci2=cols.indexOf(c), nx2=null; for(var j2=ci2+1;j2<cols.length&&!nx2;j2++) if(row.cells[cols[j2]]||(row.split&&row.split[cols[j2]])) nx2=row.cells[cols[j2]]||null;
-          return cutLeftCell(row.name, nx2?nx2.left:x.left); }
+        if(SV==='lie'&&c==='Раскрой'&&!row.prod&&!row.sub){
+          return cutCell(row.name, x.fact, x.left, 'в заказе раскроено '+r1(x.ready)+' из '+r1(x.need)); }
+        if(SV==='left'&&c==='Раскрой'&&!row.prod&&!row.sub){
+          return cutLeftCell(row.name, x.left); }
         var v=SV==='left'?x.left:x.fact, cls=done?'cdone':(SV==='left'?(v>0?'todo':''):(v>0?'lie':''));
         // склад деталей — и в сводной (владелец 29.10.2026): у строки детали, по первой операции клетки, у которой есть остаток на складе
         var ws=''; if(SV==='lie'&&!row.sub){ for(var wi=0;wi<x.ids.length;wi++){ if(WIPS[x.ids[wi]]&&WIPS[x.ids[wi]].wip>0){ ws=wipSub({id:x.ids[wi]}); break; } } }
