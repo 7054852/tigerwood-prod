@@ -795,8 +795,9 @@ function ptabCount(id,t,txt){ var c=$('ptabc_'+t+'_'+id); if(c) c.textContent=tx
 
 function loadOps(id){
   var box=$('ops_'+id); if(!box) return;
-  Promise.all([api({vapi:'orderops',batch:id}), api({vapi:'cutstock'}).catch(function(){ return null; })]).then(function(res){ var r=res[0], cs=res[1];
+  Promise.all([api({vapi:'orderops',batch:id}), api({vapi:'cutstock'}).catch(function(){ return null; }), api({vapi:'orderwip',batch:id}).catch(function(){ return null; })]).then(function(res){ var r=res[0], cs=res[1], ow=res[2];
     CUTS={}; ((cs&&cs.items)||[]).forEach(function(x){ CUTS[String(x.detail).toLowerCase()]=Number(x.stock)||0; });
+    WIPS=(ow&&ow.ok&&ow.byOp)||{};   // склад деталей по операциям: излишек переучёта сверх потребности (29.10.2026)
     if(!r||!r.ok){ box.innerHTML='<div class="err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; } renderOps(id,r); });
 }
 function renderOps(id,r){
@@ -913,7 +914,8 @@ function mxDoneCell(id,o,flags,rowNeed){
 /* клетка «на участке»: лежат после операции (прошли её, на следующую не ушли) — те же числа, что в ведомости переучёта и в сводной */
 /* «Раскрой» на участке = склад раскроя (владелец 29.10.2026): сколько этой детали распилено и лежит на складе (общий для всех заказов);
    подпись — хватает ли на то, что этому заказу ещё предстоит пропустить через первую операцию после раскроя */
-var CUTS={};
+var CUTS={}, WIPS={};
+function wipSub(o){ var w=WIPS[o.id]; return (w&&w.wip>0)?'<span class="sub cutok" title="на складе деталей, стадия «'+esc(w.stage)+'»: сверх потребности заказа, можно взять выдачей">+'+r1(w.wip)+' склад</span>':''; }
 function cutCell(detail,leftNext,title){
   var st=CUTS[String(detail).toLowerCase()]||0, d=r1(st-leftNext);
   var sub=leftNext<=0.001?'':(d<0?'<span class="sub cutsh">не хв. '+r1(-d)+'</span>':'<span class="sub cutok">запас '+d+'</span>');
@@ -925,7 +927,7 @@ function mxLieCell(id,row,op){
   if(op==='Раскрой'&&!row.prod){ var i=row.seq.indexOf(op), nx=i>=0?row.cells[row.seq[i+1]]:null; return cutCell(row.name, nx?Number(nx.left)||0:Number(o.left)||0, 'в заказе раскроено '+r1(Number(o.readyEff!=null?o.readyEff:o.ready)||0)+' из '+r1(o.need)); }
   var v=Number(o.fact)||0, done=(Number(o.left)||0)<=0.001;
   var tip=o.detail+' · '+op+'\nлежат после операции: '+r1(v)+'\nсделано '+r1(Number(o.readyEff!=null?o.readyEff:o.ready)||0)+' из '+r1(o.need)+' · осталось '+r1(o.left)+'\nнажми — поправить «лежит сейчас»';
-  return '<td class="'+(v>0?'lie':(done?'cdone':''))+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+esc(o.id)+'\')"><span class="flf'+(v>0?'':' z')+'">'+(v>0?r1(v):(done?'✓':'·'))+'</span></td>';
+  return '<td class="'+(v>0?'lie':(done?'cdone':''))+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+esc(o.id)+'\')"><span class="flf'+(v>0?'':' z')+'">'+(v>0?r1(v):(done?'✓':'·'))+'</span>'+wipSub(o)+'</td>';
 }
 /* клетка «осталось»: нужно − сделано */
 function mxLeftCell(id,row,op){
