@@ -136,6 +136,11 @@
   table.floor.mx tbody tr:hover td.no, table.floor.mx td.no.colh{ background:repeating-linear-gradient(135deg,var(--accent-bg),var(--accent-bg) 4px,var(--line2) 4px,var(--line2) 8px); }
   table.floor.mx tbody tr:hover td.lie, table.floor.mx td.lie.colh, table.floor.mx tbody tr:hover td.cdone, table.floor.mx td.cdone.colh{ background-color:var(--green-bg); box-shadow:inset 0 0 0 1px var(--green); }
   table.floor.mx th.gs, table.floor.mx td.gs{ border-left:2px solid var(--line2); }
+  /* раскрой — отдельный этап (склад раскроя): колонка отделена линией и чуть темнее (владелец 29.10.2026) */
+  table.floor.mx th.cutcol, table.floor.mx td.cutc{ border-right:2px solid var(--line2); box-shadow:inset 0 0 0 100px rgba(127,127,127,.06); }
+  /* группы в сводной: деталь с отделками ↳ — линии сверху/снизу группы, полоска слева у подстрок */
+  table.floor.mx tr.gmain td{ border-top:2px solid var(--line2); } table.floor.mx tr.gend td{ border-bottom:2px solid var(--line2); }
+  table.floor.mx tr.sumsub td.dn{ box-shadow:inset 3px 0 0 var(--line2); }
   /* «ждёт ОТК» — узкая бледная колонка перед контрольной операцией; есть ждущие — янтарная цифра */
   table.floor.mx thead th.qcw span{ color:var(--muted); font-weight:400; font-size:11px; }
   table.floor.mx td.qcw{ color:var(--muted); } table.floor.mx td.qcw .flf{ font-weight:400; } table.floor.mx td.qcw.has .flf{ color:var(--amber); font-weight:600; }
@@ -890,7 +895,7 @@ function mxHead(cols,fin,grp,qc){
   var head=cols.map(function(c,i){ var gs=grp&&i>0&&(grp[c]||{}).group!==(grp[cols[i-1]]||{}).group, tw=!!(qc&&qc[c]);
       if(tw){ sub+='<th class="qs w'+(gs?' gs':'')+'" title="'+esc(c+': сделано и подано нарядом, контролёр ещё не принял')+'">ждёт ОТК</th><th class="qs a" title="'+esc(c+': принято ОТК')+'">принято ✓</th>';
         return '<th class="op qcg'+(gs?' gs':'')+'" colspan="2" title="'+esc(c+': сделано → приёмка ОТК')+'"><span>'+esc(c)+'</span></th>'; }
-      return '<th class="op'+(gs?' gs':'')+'"'+(anyQc?' rowspan="2"':'')+' title="'+esc(c)+'"><span>'+esc(c)+'</span></th>'; }).join('');
+      return '<th class="op'+(gs?' gs':'')+(c==='Раскрой'?' cutcol':'')+'"'+(anyQc?' rowspan="2"':'')+' title="'+esc(c)+'"><span>'+esc(c)+'</span></th>'; }).join('');
   return '<thead>'+band+'<tr><th class="dn"'+(anyQc?' rowspan="2"':'')+'>Деталь</th><th class="num"'+(anyQc?' rowspan="2"':'')+' title="сколько нужно по заказу">Нужно</th>'+head
     +(fin?'<th class="op fin"'+(anyQc?' rowspan="2"':'')+' title="прошли все операции детали и лежат (у изделия — упакованы)"><span>✓ прошли всё</span></th>':'')
     +(fin!==null?'<th class="op rw"'+(anyQc?' rowspan="2"':'')+' title="вернули с покраски на шлифовку и ещё не переделали: на операциях не лежат"><span>↺ шлифовка</span></th><th class="op rw"'+(anyQc?' rowspan="2"':'')+' title="вернули на малярку (перекрасить) и ещё не переделали: на операциях не лежат"><span>↺ малярка</span></th>':'')+(anyQc?'</tr><tr class="qsub">'+sub:'')+'</tr></thead>';
@@ -924,7 +929,7 @@ function gapSub(x,op){ var g=(op==='Раскрой')?0:(Number(x&&x.lifted)||0);
 function cutDoneCell(o,rowName,need){
   var st=CUTS[String(rowName).toLowerCase()]||0, rd=Number(o.readyEff!=null?o.readyEff:o.ready)||0, use=Math.min(st,Math.max(0,need-rd)), v=r1(Math.min(need,rd+st)), done=v>=need-0.001;
   var tip=rowName+' · Раскрой\nраскроено: '+v+' из '+r1(need)+'\nушло в заказ: '+r1(rd)+' · на складе раскроя: '+r1(st)+' (общий для всех заказов'+(st>use+0.001?', в счёт этого заказа '+r1(use):'')+')';
-  return '<td class="'+(done?'cdone':'')+'" title="'+esc(tip)+'"><span class="flf'+(v>0?'':' z')+'">'+(v>0?v:'·')+'</span>'+(use>0?'<span class="sub cutok" title="со склада раскроя">+'+r1(use)+' склад</span>':'')+'</td>';
+  return '<td class="cutc'+(done?' cdone':'')+'" title="'+esc(tip)+'"><span class="flf'+(v>0?'':' z')+'">'+(v>0?v:'·')+'</span>'+(use>0?'<span class="sub cutok" title="со склада раскроя">+'+r1(use)+' склад</span>':'')+'</td>';
 }
 /* клетка «сделано / нужно» */
 function mxDoneCell(id,o,flags,rowNeed){
@@ -955,7 +960,7 @@ function cutLeftCell(detail,left){
   // left — сколько этому заказу ещё предстоит раскроить (потребность − прошло раскрой, в т.ч. лежащие после раскроя в заказе); склад раскроя закрывает часть
   var st=CUTS[String(detail).toLowerCase()]||0, v=r1(Math.max(0,left-st)), done=v<=0.001;
   var tip=detail+' · раскроить ещё: '+v+'\nзаказу ещё не хватает раскроенных: '+r1(left)+' (уже прошедшие раскрой в заказе не считаются), на складе раскроя '+r1(st)+' (общий для всех заказов)';
-  return '<td class="'+(done?'cdone':'todo')+'" title="'+esc(tip)+'"><span class="flf'+(v>0?'':' z')+'">'+(v>0?v:'✓')+'</span></td>';
+  return '<td class="cutc '+(done?'cdone':'todo')+'" title="'+esc(tip)+'"><span class="flf'+(v>0?'':' z')+'">'+(v>0?v:'✓')+'</span></td>';
 }
 function cutCell(detail,fact,left,title){
   // «На участке» для раскроя (владелец 29.10.2026): лежит после раскроя в заказе (fact) + подпись «+N склад»; нехватка/запас — склад против того, что заказу ещё раскроить (left)
@@ -1109,10 +1114,12 @@ function summaryMatrixHtml(id,r){
     });
     rows=out;
     rows.forEach(function(row){ if(!row.need){ var n=0; cols.forEach(function(c){ var x=row.cells[c]; if(x&&x.need>n) n=x.need; }); row.need=n; } row.done=cols.every(function(c){ var x=row.cells[c]; return !x||x.left<=0.001; }); });
-    var body=rows.map(function(row){
+    var body=rows.map(function(row,ri){
+      // группа «деталь → её отделки ↳»: линия сверху у детали и снизу у последней отделки — соседние группы не сливаются (владелец 29.10.2026)
+      var trc=[row.sub?'sumsub':'', (row.split&&Object.keys(row.split).length)?'gmain':'', (row.sub&&!(rows[ri+1]&&rows[ri+1].sub))?'gend':''].filter(Boolean).join(' ');
       var nm=row.sub?'<td class="dn sumsub" title="'+esc(row.name+' · '+row.label+'\n'+row.full)+'"><span class="dnx">↳ '+esc(row.label)+'</span></td>':mxName(row,true);
       if(key===COMMON&&!row.sub&&row.models){ var ms=Object.keys(row.models).join(', '); nm=nm.replace('</span></td>','</span><span class="sub">'+esc(ms)+'</span></td>'); }
-      return '<tr'+(row.sub?' class="sumsub"':'')+'>'+nm+'<td class="num">'+r1(row.need)+'</td>'+cols.map(function(c){ return qcTd(qc,c,row.cells[c],row)+(function(){
+      return '<tr'+(trc?' class="'+trc+'"':'')+'>'+nm+'<td class="num">'+r1(row.need)+'</td>'+cols.map(function(c){ return qcTd(qc,c,row.cells[c],row)+(function(){
         if(row.split&&row.split[c]) return '<td class="spl" title="по отделке — смотрите строки «↳» ниже">↓</td>';
         if(row.up&&row.up[c]) return '<td class="spl" title="до развилки деталь общая — цифра в строке детали выше">↑</td>';
         var x=row.cells[c]; if(!x) return '<td class="no"></td>';
