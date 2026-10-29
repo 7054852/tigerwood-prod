@@ -1083,7 +1083,9 @@ function summaryMatrixHtml(id,r){
         if(SV==='lie'&&c==='Раскрой'&&!row.prod&&!row.sub){ var ci=cols.indexOf(c), nx=null; for(var j=ci+1;j<cols.length&&!nx;j++) if(row.cells[cols[j]]||(row.split&&row.split[cols[j]])) nx=row.cells[cols[j]]||null;
           return cutCell(row.name, nx?nx.left:x.left, 'в заказе раскроено '+r1(x.ready)+' из '+r1(x.need)); }
         var v=SV==='left'?x.left:x.fact, cls=done?'cdone':(SV==='left'?(v>0?'todo':''):(v>0?'lie':''));
-        return '<td class="'+cls+(row.part&&row.part[c]?' part':'')+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+x.ids.join(',')+'\')"><span class="flf'+(v>0?'':' z')+'">'+(v>0?r1(v):(done?'✓':'·'))+'</span></td>';
+        // склад деталей — и в сводной (владелец 29.10.2026): у строки детали, по первой операции клетки, у которой есть остаток на складе
+        var ws=''; if(SV==='lie'&&!row.sub){ for(var wi=0;wi<x.ids.length;wi++){ if(WIPS[x.ids[wi]]&&WIPS[x.ids[wi]].wip>0){ ws=wipSub({id:x.ids[wi]}); break; } } }
+        return '<td class="'+cls+(row.part&&row.part[c]?' part':'')+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+x.ids.join(',')+'\')"><span class="flf'+(v>0?'':' z')+'">'+(v>0?r1(v):(done?'✓':'·'))+'</span>'+ws+'</td>';
       }).join('')+(row.prod?'<td class="no"></td><td class="no"></td>':row.noRw?'<td class="spl">↓</td><td class="spl">↓</td>':rwCells(id,row.name,Object.keys(row.keys)))+'</tr>';
     }).join('');
     var cid='sc_'+id+'_'+bi, isOpen=open[cid]===undefined?true:open[cid];
