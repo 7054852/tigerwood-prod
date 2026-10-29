@@ -371,7 +371,7 @@ function editB(b){
   EDIT=b; setRoles(b); el('formTitle').textContent='Правка: '+name_(b); el('form').className='card'; setm('saveMsg','',''); setm('reqMsg','','');
   el('fields').innerHTML=''; GOT=null; MKT0=(b.market==='ru'||b.market==='eu')?b.market:(b.market==='other'?'eu':'by'); CMKT=MKT0; setType(typeOf(b)); setMkt(MKT0, b); window.scrollTo(0,0);
 }
-function closeForm(){ el('form').className='card hide'; EDIT=null; }
+function closeForm(){ el('form').className='card hide'; EDIT=null; if(FROMCARD){ var k=FROMCARD; FROMCARD=''; goClient(k); } }
 function parseReq(){
   var t=el('raw').value; if(t.trim().length<5){ setm('reqMsg','err','Вставьте текст'); return; }
   setm('reqMsg','','Распознаю…');
@@ -393,6 +393,7 @@ function save(){
   if(!o.roles.client && !o.roles.supplier){ setm('saveMsg','err','Отметьте, кто это для нас: клиент, поставщик или подрядчик'); return; }
   run({vapi:'counterpartysave', data:JSON.stringify(o)}, 'Сохраняю…', 'saveMsg').then(function(r){ if(!r) return;
     setm('saveMsg','ok','✅ Сохранено'); if(BACK){ goBackTo(r.key||r.unp||r.id||''); return; }
+    if(FROMCARD){ closeForm(); return; }
     var added=!EDIT, nm2=String(nm).trim(); FRESH=String(r.cid||'').trim();
     setTimeout(function(){ closeForm(); el('q').value=''; el('ft').value=''; el('fm').value=''; el('fr').value='';   // фильтры сбрасываем — новая запись точно видна
       var n=el('doneNote'); n.className='note ok'; n.innerHTML='<div>✅ <b>'+esc(nm2)+'</b> — '+(added?'добавлен, он первый в списке':'изменения сохранены')+'</div>';
@@ -420,7 +421,7 @@ function route(){
     var sp0=new URLSearchParams(location.search), nm=sp0.get('name')||'', ph='';   // телефон — из контакта лида amoCRM («Оформить в Прохабе», 06.10.2026), через sessionStorage
     try{ ph=sessionStorage.getItem('tw_newclient_phone')||''; sessionStorage.removeItem('tw_newclient_phone'); }catch(e){}
     if(nm||ph){ var cur=collectRaw(); if(nm) cur[CTYPE==='физлицо'?'Полное ФИО':'Наименование ЮЛ (полное)']=nm; if(ph) cur['тел']=ph.replace(/^\s*\+/,''); renderFields(cur); } }
-  if(CKEY){ el('vList').className='hide'; el('vCard').className=''; openClient(); }
+  if(CKEY){ FROMCARD=''; el('vList').className='hide'; el('vCard').className=''; openClient(); }
   else { el('vCard').className='hide'; el('vList').className=''; el('ttl').textContent='🤝 Контрагенты'; load(); }
 }
 function goClient(k){
@@ -452,7 +453,7 @@ function renderClient(){
   if(b.supplier) kv+=[['finName','Имя в финансах'],['Контактное лицо','Контактное лицо'],['Телефон','Телефон контакта'],['Наш ответственный','Наш ответственный'],['Коммент','Заметка']].map(function(f){ var v=String(b[f[0]]||'').trim(); return v?('<span class="k">'+esc(f[1])+'</span><span class="v">'+esc(v)+'</span>'):''; }).join('');
   var mopts=['by','ru','eu','other'].map(function(x){ return '<option value="'+x+'"'+(x===m?' selected':'')+'>'+esc(MARKET_RU[x])+' ('+CUR[x]+')</option>'; }).join('');
   var h='<div class="card">'
-    +'<div class="cname">'+esc(name_(b))+'</div>'
+    +'<div class="cname">'+esc(name_(b))+(CAN.edit?' <button class="sec sm" title="Править реквизиты" aria-label="Править реквизиты" onclick="editFromCard()">✏️</button>':'')+'</div>'
     +'<div class="row" style="margin-top:var(--s-1)">'+rolePills(b)+' '+(ul?'<span class="pill">'+esc(t)+'</span>':'<span class="pill">физлицо</span>')+' '+marketPill(m)+'</div>'
     +(kv?('<div class="kv">'+kv+'</div>'):'<div class="empty">Реквизитов нет.</div>')
     +((b.supplier||b.sub)&&ul?'<div class="row" style="margin-top:var(--s-3)"><a class="btn sm sec" href="salesdocs.html?tab=docs&tolling='+encodeURIComponent(cardKey(b)||CKEY)+'">📦 Давальческие передачи</a><span class="sm muted">материалы и детали на переработку по ТН / ТТН</span></div>':'')
@@ -631,7 +632,8 @@ function saveMarket(){
     if(r.market && r.market!==m){ setm('mkMsg','err','⚠️ Сервер сохранил рынок «'+esc(MARKET_RU[r.market]||r.market)+'» — рынок пока не меняется'); return; }
     openClient(); });
 }
-function editFromCard(){ var b=CC&&CC.buyer; if(!b) return; goClient(''); editB(b); }
+var FROMCARD='';   // правка открыта из карточки: после «Сохранить»/«Отмена» — обратно в карточку (29.10.2026)
+function editFromCard(){ var b=CC&&CC.buyer; if(!b) return; var k=CKEY; goClient(''); FROMCARD=k; editB(b); }
 
 route();
 
