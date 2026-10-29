@@ -228,7 +228,7 @@
     <div id="pdSum" class="pdsum"></div><div id="pdBox"></div><div id="pdMsg" class="msg"></div>
   </div>
   <div id="sal_month" class="hide">
-    <div class="toolbar"><input id="smM" type="month" onchange="renderSm()"><label class="mut"><input type="checkbox" id="smCash" onchange="renderSm()"> и наличные</label><div class="end"><button class="sec" onclick="smExport()">⬇ Скачать Excel</button></div></div>
+    <div class="toolbar"><input id="smM" type="month" onchange="renderSm()"><label class="mut"><input type="checkbox" id="smCash" onchange="renderSm()"> и наличные</label><span id="smLink" class="sm"></span><div class="end"><button class="sec" id="smGs" onclick="smSheet()">📄 Сформировать Google Таблицу</button><button class="sec" onclick="smExport()">⬇ Скачать Excel</button></div></div><div id="smMsg" class="msg"></div>
     <div class="note hint">Кому и сколько выплачено за месяц (по дате выплаты). Платёжка банка разложена по сотрудникам; «ЗП за» — месяц из назначения платежа. Неразнесённая часть платёжки — отдельной строкой: её разносят во вкладке «Выплаты из банка».</div>
     <div id="smSum" class="pdsum"></div><div id="smBox"></div>
   </div>
@@ -822,7 +822,7 @@ function unpost(id){
 
 /* ═══════════ ЗАРПЛАТА ═══════════ */
 var SAL=null, SP=null;
-function salLoad(){ get({vapi:'finsalary'}).then(function(r){ if(!r||!r.ok){ noAccess(r); return; } SAL=r; renderSal(); renderSm(); }); pdLoad(); }
+function salLoad(){ get({vapi:'finsalary'}).then(function(r){ if(!r||!r.ok){ noAccess(r); return; } SAL=r; renderSal(); renderSm(); }); get({vapi:'finsalsheets'}).then(function(r){ if(r&&r.ok){ SMS=r.sheets||{}; renderSm(); } }); pdLoad(); }
 function salTab(t){ var b=el('salTabs').querySelectorAll('button'); for(var i=0;i<b.length;i++) b[i].className=b[i].getAttribute('data-st')===t?'on':''; ['debt','bank','month'].forEach(function(k){ el('sal_'+k).className=t===k?'':'hide'; }); if(t==='month') renderSm(); }
 /* ── долг по сотрудникам: единый расчёт Прохаба (payroll/debt.ts), тот же экран в «Кадрах» ── */
 var PD=null, PDX=null, PDOPEN={};
@@ -898,7 +898,9 @@ function smData(){
   return { ym:ym, title:MONF[+ym.slice(5,7)]+' '+ym.slice(0,4), regs:regs, people:people, total:Math.round(total*100)/100, rem:Math.round(rem*100)/100 };
 }
 function renderSm(){
-  if(!SAL||!el('smBox')) return; var d=smData();
+  if(!SAL||!el('smBox')) return; var d=smData(), u=SMS[d.ym];
+  el('smLink').innerHTML=u?'📄 <a href="'+esc(u)+'" target="_blank" rel="noopener">Google Таблица за '+esc(d.title)+'</a>':'';
+  el('smGs').textContent=u?'🔄 Обновить Google Таблицу':'📄 Сформировать Google Таблицу';
   el('smSum').innerHTML='<b>Выплачено за '+esc(d.title)+': '+money(d.total)+'</b> <span class="mut">· платёжек '+d.regs.length+' · сотрудников '+d.people.length+'</span>'+(d.rem>0.004?' · <b class="neg">не разнесено '+money(d.rem)+'</b>':'');
   if(!d.regs.length){ el('smBox').innerHTML='<div class="empty">За этот месяц выплат нет.</div>'; return; }
   el('smBox').innerHTML='<div class="tbl-wrap fill"><table class="tbl sm"><thead><tr><th>Дата</th><th class="num">Платёжка</th><th>ЗП за</th><th>Сотрудник</th><th>Отдел</th><th class="num">Сумма</th></tr></thead><tbody>'
@@ -910,10 +912,9 @@ function renderSm(){
     +'<tr><td><b>Итого</b></td><td></td><td class="num"><b>'+money(d.total)+'</b></td><td></td></tr></tbody></table></div>';
   if(window.twFitTables) twFitTables();
 }
-function smExport(){
-  if(typeof XLSX==='undefined'){ alert('Не загрузилась библиотека Excel — проверьте интернет и откройте страницу заново.'); return; }
-  var d=smData(), r2=function(n){ return Math.round(n*100)/100; };
-  if(!d.regs.length){ alert('За этот месяц выплат нет.'); return; }
+var SMS={};   // таблицы месяцев в Google: ym → ссылка (одна на месяц, «Обновить» пишет в неё же)
+function smRows(d){
+  var r2=function(n){ return Math.round(n*100)/100; };
   var a=[['Выплаты заработной платы — '+d.title],[],['Дата выплаты','Платёжка (сумма)','ЗП за','№','Сотрудник','Отдел','Сумма, BYN','Примечание']];
   d.regs.forEach(function(g){
     g.rows.forEach(function(r,i){ a.push([i?'':dmy(g.x.dateIso), i?'':g.x.total, i?'':r.per, i+1, r.un?'— не разнесено —':r.name, r.dept, r2(r.sum), r.un?'платёжка не разнесена по сотрудникам':(g.x.cash?'наличными · '+g.x.wallet:'')]); });
@@ -923,6 +924,18 @@ function smExport(){
   var b=[['Сотрудник','Отдел','Выплачено, BYN','Выплаты (дата — сумма)']].concat(d.people.map(function(q){ return [q.name,q.dept,r2(q.sum),q.pays.join('; ')]; }));
   if(d.rem>0.004) b.push(['— не разнесено —','',d.rem,'']);
   b.push(['ВСЕГО','',d.total,'']);
+  return { a:a, b:b };
+}
+function smSheet(){
+  var d=smData(); if(!d.regs.length){ setm('smMsg','warn','За этот месяц выплат нет.'); return; }
+  var t=smRows(d), had=!!SMS[d.ym];
+  run({vapi:'finsalsheet', ym:d.ym, a:JSON.stringify(t.a), b:JSON.stringify(t.b)}, had?'Обновляю Google Таблицу…':'Создаю Google Таблицу…', 'smMsg').then(function(r){ if(!r) return;
+    SMS[d.ym]=r.url; renderSm(); setm('smMsg','ok','✅ '+(had?'Таблица обновлена':'Таблица создана')+' — <a href="'+esc(r.url)+'" target="_blank" rel="noopener">открыть</a>'); });
+}
+function smExport(){
+  if(typeof XLSX==='undefined'){ alert('Не загрузилась библиотека Excel — проверьте интернет и откройте страницу заново.'); return; }
+  var d=smData(); if(!d.regs.length){ alert('За этот месяц выплат нет.'); return; }
+  var t=smRows(d), a=t.a, b=t.b;
   var wb=XLSX.utils.book_new(), s1=XLSX.utils.aoa_to_sheet(a), s2=XLSX.utils.aoa_to_sheet(b);
   s1['!cols']=[{wch:13},{wch:14},{wch:11},{wch:4},{wch:34},{wch:18},{wch:12},{wch:40}]; s2['!cols']=[{wch:34},{wch:18},{wch:14},{wch:60}];
   XLSX.utils.book_append_sheet(wb,s1,'Выплаты по платёжкам'); XLSX.utils.book_append_sheet(wb,s2,'Итого по сотрудникам');
