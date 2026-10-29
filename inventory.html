@@ -35,6 +35,10 @@
   th.det{ text-align:left; width:24%; }
   /* шапка операций остаётся на экране при прокрутке (как в сводной заказа); таблица лежит на странице без своей прокрутки */
   thead{ position:sticky; top:0; z-index:5; } thead th{ background:var(--card); }
+  /* вертикальные подписи операций (как в сводной заказа): столбцы узкие, шапка невысокая */
+  thead th{ vertical-align:bottom; padding:4px 2px 3px; }
+  thead th span.v{ writing-mode:vertical-rl; transform:rotate(180deg); display:inline-block; white-space:nowrap; max-height:110px; overflow:hidden; text-overflow:ellipsis; line-height:14px; font-weight:500; }
+  thead th.qc span.v{ writing-mode:horizontal-tb; transform:none; display:block; font-size:9px; white-space:normal; line-height:1.1; max-height:none; }   /* подколонки ОТК и переделки — горизонтально, в две строки: шапка ниже */
   /* раскрой — отдельный этап (склад раскроя): колонка отделена линией и чуть темнее */
   th.cutcol, td.cutc{ border-right:2px solid var(--line2) !important; } td.cutc{ box-shadow:inset 0 0 0 100px rgba(127,127,127,.06); }
   td.det{ height:26px; font-weight:600; }
@@ -264,21 +268,22 @@ function stageHeads(ST,hints,hshort){
   ST.forEach(function(s){
     var h=hints[s]||'', sh=hshort[s]||h;
     if(isRw(s)){
-      if(!rwSeen++) top+='<th colspan="'+nRw+'" class="rw rw1" title="вернули с покраски на переделку и ещё не переделали">Переделка</th>';
-      bot+='<th class="qc rw'+(rwSeen===1?' rw1':'')+'" title="'+esc(h)+'">'+esc(s.slice(RWP.length))+(sh?('<span class="hint">'+esc(sh)+'</span>'):'')+'</th>';
+      if(!rwSeen++) top+='<th colspan="'+nRw+'" class="rw rw1" title="вернули с покраски на переделку и ещё не переделали"><span class="v">Переделка</span></th>';
+      bot+='<th class="qc rw'+(rwSeen===1?' rw1':'')+'" title="'+esc(s.slice(RWP.length)+(h?' — '+h:'')+(sh?' ('+sh+')':''))+'"><span class="v">'+esc(s.slice(RWP.length))+'</span></th>';
       return;
     }
     if(s.indexOf(QCW)>0){
       var base=s.slice(0,s.indexOf(QCW));
-      top+='<th colspan="2" title="'+esc(base+': сделано → приёмка ОТК')+'">'+esc(base)+'</th>';
-      bot+='<th class="qc w" title="'+esc(h)+'">ждёт ОТК'+(sh?('<span class="hint">'+esc(sh)+'</span>'):'')+'</th>';
+      top+='<th colspan="2" title="'+esc(base+': сделано → приёмка ОТК')+'"><span class="v">'+esc(base)+'</span></th>';
+      bot+='<th class="qc w" title="'+esc('ждёт ОТК'+(h?' — '+h:'')+(sh?' ('+sh+')':''))+'"><span class="v">ждёт ОТК</span></th>';
       return;
     }
     if(ST.indexOf(s+QCW)>=0){
-      bot+='<th class="qc a" title="'+esc(h)+'">принято ✓'+(sh?('<span class="hint">'+esc(sh)+'</span>'):'')+'</th>';
+      bot+='<th class="qc a" title="'+esc('принято ОТК'+(h?' — '+h:'')+(sh?' ('+sh+')':''))+'"><span class="v">принято ✓</span></th>';
       return;
     }
-    top+='<th rowspan="2"'+(s==='Раскрой'?' class="cutcol"':'')+' title="'+esc(s+' — '+h)+'">'+esc(s)+(sh?('<span class="hint">'+esc(sh)+'</span>'):'')+'</th>';
+    // вертикальные подписи, как в сводной заказа (владелец 29.10.2026): столбцы уже, шапка ниже; короткая подсказка — во всплывающем тексте
+    top+='<th rowspan="2"'+(s==='Раскрой'?' class="cutcol"':'')+' title="'+esc(s+(h?' — '+h:'')+(sh?' ('+sh+')':''))+'"><span class="v">'+esc(s)+'</span></th>';
   });
   return {top:top, bot:bot};
 }
