@@ -711,13 +711,14 @@ function applyGo(){
     if(!r||!r.ok){ if(m) m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; return; }
     var b=r.before||{}, a=r.after||{};
     if(m) m.innerHTML='<span class="ok">✓ применено строк '+r.applied+'</span>';
-    var done=r.invId||INV;
+    var done=r.invId||INV; LASTAPPLIED=done;   // только что проведённый — последний: в отчёте сразу кнопка «↩ Откатить этот переучёт»
     INV=''; UPQ=[]; DRAFT=null;
     tab('hist'); showReport(done);
   }).catch(function(){ if(m) m.innerHTML='<span class="err">сеть</span>'; });
 }
 
 /* ═══ ИСТОРИЯ ═══ */
+var LASTAPPLIED='';   // id последнего проведённого переучёта заказа (из истории) — только его можно откатить
 function loadHist(){
   var box=document.getElementById('pane_hist');
   box.innerHTML='<div class="card"><div class="center muted">Загрузка…</div></div>';
@@ -725,6 +726,8 @@ function loadHist(){
     if(!r||!r.ok){ box.innerHTML='<div class="card err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
     var l=r.list||[];
     if(!l.length){ box.innerHTML='<div class="card muted">По этому заказу переучётов ещё не было.</div>'; return; }
+    var lastApplied=(l.filter(function(x){ return x.status==='применён'; })[0]||{}).id||'';   // откатить можно только последний проведённый (сервер), цепочкой назад
+    LASTAPPLIED=lastApplied;
     box.innerHTML='<div class="card"><div style="font:var(--t-heading);margin-bottom:var(--s-2)">🕘 Переучёты заказа</div>'
       +l.map(function(x){
         var old=(x.status==='черновик'&&x.ageDays>3);
@@ -736,7 +739,7 @@ function loadHist(){
           +((x.status==='применён'&&x.pctWas)?('<span class="pill">% труда '+x.pctWas+' → '+x.pctNew+' · осталось '+x.leftWas+' → '+x.leftNew+' р.</span>'):'')
           +(x.applier?('<span class="mini">применил '+esc(x.applier)+'</span>'):'')
           +(x.status!=='черновик'?('<button class="tb sec sm" onclick="showReport(\''+esc(x.id)+'\')">📊 что изменилось</button>'):'')
-          +(x.status==='применён'?('<button class="tb sec sm" onclick="undoInv(\''+esc(x.id)+'\')">↩ откатить</button>'):'')
+          +(x.status==='применён'?(x.id===lastApplied?('<button class="tb sm" onclick="undoInv(\''+esc(x.id)+'\')" title="вернуть заказ к состоянию до этого переучёта">↩ откатить</button>'):'<span class="mini" title="откатывать можно с последнего: после отката последнего этот станет доступен">откат — после более поздних</span>'):'')
           +(old?('<span class="pill bad">черновик висит '+x.ageDays+' дн.</span>'):'')
           +(x.status==='черновик'?('<button class="tb sec sm" onclick="discardInv(\''+esc(x.id)+'\')">🗑 удалить черновик</button>'):'')
           +'</div>';
@@ -783,7 +786,8 @@ function showReport(id){
     var rows=manual+auto;
     box.innerHTML='<div class="card"><div class="row" style="margin-bottom:var(--s-2)">'
       +'<b>📊 Что изменил переучёт №'+(r.head.num||'')+'</b>'
-      +'<button class="tb sec sm" onclick="loadHist()">← к списку</button></div>'
+      +'<button class="tb sec sm" onclick="loadHist()">← к списку</button>'
+      +((r.head.status==='применён'||r.head.status==='applied')&&(!LASTAPPLIED||LASTAPPLIED===id)?'<button class="tb sm" onclick="undoInv(\''+esc(id)+'\')" title="провели не то — вернуть заказ к состоянию до этого переучёта">↩ Откатить этот переучёт</button>':'')+'</div>'
       +'<div class="stat">'
       +'<span class="pill '+(dPct>=0?'ok':'bad')+'">'+(dPct>=0?'✓ ':'✕ ')+'% труда: '+(k.pctWas||0)+' → '+(k.pctNew||0)+' ('+(dPct>0?'+':'')+dPct+')</span>'
       +'<span class="pill '+(dLeft<=0?'ok':'bad')+'">'+(dLeft<=0?'✓ ':'✕ ')+'осталось: '+(k.leftWas||0)+' → '+(k.leftNew||0)+' р. ('+(dLeft>0?'+':'')+dLeft+')</span>'
@@ -800,10 +804,10 @@ function showReport(id){
   }).catch(function(){ box.innerHTML='<div class="card err">сеть недоступна</div>'; });
 }
 function undoInv(id){
-  if(!confirm('Откатить этот переучёт?\n\nНачальные остатки вернутся к тому, что было до него.')) return;
+  if(!confirm('Откатить этот переучёт?\n\nВернётся всё, как было до него: остатки на операциях заказа, «ждёт ОТК», переделка, склад раскроя.\nНаряды и ЗП не меняются.\n\nПотом можно откатить и предыдущий — по одному, от последнего.')) return;
   api({vapi:'invundo',inv:id}).then(function(r){
     if(!r||!r.ok){ alert((r&&r.error)||'ошибка'); return; }
-    alert('Откачено. Возвращено операций: '+r.restored); loadHist();
+    alert('Откачено. Заказ вернулся к состоянию до переучёта.'); loadHist();
   });
 }
 function apiPost(p){ var _t=twTok(); if(_t) p.tok=_t;
