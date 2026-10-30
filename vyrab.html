@@ -1753,7 +1753,8 @@ function renderOtk(){
       return '<div style="border-top:1px solid var(--line);padding-top:var(--s-1)">'
         +'<div class="row"><span>'+(g.sub?'':kindBadge(l))+esc(l.worker)+' · <b>'+l.qty+' шт</b></span>'
         +'<span><button class="sm" onclick="otkOne(\''+esc(l.id)+'\')">✅</button>'
-        +'<button class="sm sec" onclick="otkBadOpen(\''+esc(l.id)+'\')">⚠ брак</button></span></div>'
+        +'<button class="sm sec" onclick="otkBadOpen(\''+esc(l.id)+'\')">⚠ брак</button>'
+        +(otkCanDel()?'<button class="sm sec" title="удалить этот наряд (ошибочный / задвоенный) — не приёмка и не брак" onclick="otkDel(\''+esc(l.id)+'\',\''+esc(l.worker)+'\','+(Number(l.qty)||0)+')">🗑</button>':'')+'</span></div>'
         +'<div class="muted" style="font:var(--t-small)">📅 сдано <b>'+esc(l.date)+'</b> · '+esc(l.shift||'день')
         +' · <span class="'+(late?'err':'muted')+'">лежит '+otkAge(l.ageH)+'</span>'
         +'</div></div>'+form;
@@ -1776,6 +1777,16 @@ function renderOtk(){
   }).join('');
 }
 function otkBadOpen(id){ OTKOPEN[id]=1; renderOtk(); }
+// удалить наряд из очереди ОТК (владелец 30.10.2026): директор, диспетчер, админ — ошибочный или задвоенный наряд; ни приёмки, ни брака, ЗП по нему не будет
+function otkCanDel(){ return !!DATA.canCheck && ['админ','директор','диспетчер'].indexOf(String(DATA.role||'').toLowerCase())>=0; }
+function otkDel(id,worker,qty){
+  if(!confirm('Удалить наряд из очереди ОТК?\n\n'+(worker||'')+' · '+qty+' шт\nЭто не приёмка и не брак: строки выработки не будет, ЗП по ней не начислится, заказ не изменится.')) return;
+  if(!otkGuard()) return;
+  api({vapi:'deloutput',id:id,reason:'удалено из очереди ОТК'}).then(function(r){ OTKBUSY=false;
+    if(!r||!r.ok){ alert((r&&r.error)||'не удалось удалить'); return; }
+    if(typeof loadOtk==='function') loadOtk(); else renderOtk();
+  }).catch(function(){ OTKBUSY=false; alert('сеть недоступна'); });
+}
 // куда вернуть брак после покраски. Маляру: покраска засчитана, перекрашивает бесплатно (пишется ему в переделки).
 // На шлифовку: покраска этих штук не засчитана, шлифовщику платим долю шлифовки, потом красят заново.
 var OTKCOAT={};
