@@ -1095,6 +1095,20 @@ function summaryMatrixHtml(id,r){
       var sig={}, gl=[];
       ms.forEach(function(m){ var q=(row.mseq[m]||[]).filter(function(op){ return common.indexOf(op)<0; }), k=q.some(function(op){ return /в цвет|под цвет/i.test(op); })?'§'+m:q.join('→');
         if(!sig[k]){ sig[k]={ ops:q, models:[] }; gl.push(k); } sig[k].models.push(m); });
+      // изделие в нескольких вариантах (упаковка) — строкой на каждый товар (владелец 31.10.2026: «не видим, как пакуем — лакированный или белый»)
+      if(row.prod&&ms.length>1){
+        var pm={ name:row.name, prod:true, need:0, cells:row.cells, keys:row.keys, split:{}, noRw:true, models:row.models };   // cells — сумма: по ней «✓ всё сделано», в клетках ↓
+        cols.forEach(function(c){ if(row.cells[c]) pm.split[c]=1; });
+        ms.forEach(function(m){ pm.need+=row.mneed[m]||0; });
+        out.push(pm);
+        ms.slice().sort(function(a,b){ return String(a).localeCompare(String(b),'ru'); }).forEach(function(m){
+          var sub={ name:row.name, sub:true, prod:true, label:shortModels([m],ms), full:m, need:row.mneed[m]||0, cells:{}, keys:{}, up:{} };
+          sub.keys[row.mkey[m]]=1;
+          Object.keys(row.mc[m]||{}).forEach(function(op){ var c=sub.cells[op]=sumCell(); sumMerge(c,row.mc[m][op]); });
+          out.push(sub);
+        });
+        return;
+      }
       if(row.prod||ms.length<2||!common.length||gl.length<2){ out.push(row); return; }
       var main={ name:row.name, need:0, cells:{}, keys:row.keys, split:{}, noRw:true, models:row.models };
       cols.forEach(function(c){ if(!row.cells[c]) return; if(common.indexOf(c)>=0) main.cells[c]=row.cells[c]; else main.split[c]=1; });
