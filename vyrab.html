@@ -352,6 +352,7 @@ function payNote(l){
   // ⚠ у подряда SUM=0 ВСЕГДА (зарплату не платим) — без своей ветки он читался как ошибка ввода листа
   if(l&&l.kind==='подряд') return 'подряд — платим подрядчику по акту, не зарплатой';
   if(l&&l.kind==='лист') return 'оплачено деталями';
+  if(l&&l.redo==='свой брак') return 'свой брак — без оплаты';
   // деталь оплачивается листом, а листа в наряде нет — это ошибка ввода, а не «так и задумано»
   if(l&&!l.sheet) return 'оплата за лист — листа в наряде нет';
   return 'оплачено листом';
@@ -527,7 +528,7 @@ function subDel(id){
   });
 }
 function payFixBtn(master,l,rid){
-  if(!master || !l || l.paid!==false || l.kind==='лист' || !l.detail) return '';
+  if(!master || !l || l.paid!==false || l.kind==='лист' || !l.detail || l.redo) return '';
   return ' <button class="sm sec" onclick="payByDetail(\''+attr(l.detail)+'\',\''+attr(l.op)+'\',\''+esc(rid)+'\')"'
     +' title="эту деталь распускают вручную, а не на ЧПУ — платить по расценке детали">💸 платить за деталь</button>';
 }
@@ -2462,6 +2463,7 @@ function kindBadge(it){
   if(it.kind==='лист') return (it.cutTool==='saw'?'<span class="pill mute" title="пила: сколько листов распустили — учёт расхода, не оплата">🔪 листы (учёт)</span> '
     :'<span class="pill info" title="раскрой листа на ЧПУ — оплата за лист">📐 лист</span> ')+cut;
   if(it.cutTool==='saw') return '<span class="pill info" title="пила: оплата за годные детали">🔪 пила</span> '+cut;
+  if(it.redo==='свой брак') return '<span class="pill mute" title="переделка своего брака — без оплаты">🔁 свой брак</span> '+cut;   // не «с листа» (31.10.2026)
   if(it.paid===false) return '<span class="pill info" title="деталь вышла с листа: ЗП уже начислена за лист">🪚 с листа</span> '+cut;
   return cut;
 }
