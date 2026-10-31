@@ -717,12 +717,24 @@ function fillSites(){
   var box=document.getElementById('sitebox'), sel=document.getElementById('site'); if(!box||!sel) return;
   var ss=DATA.sites||[]; if(!ss.length){ box.style.display='none'; return; }   // старый сервер — без фильтра
   var keep=sel.value; if(!keep){ try{ keep=localStorage.getItem(siteKey())||''; }catch(e){} if(!keep) keep=DATA.mySite||''; }
+  var fw=forOther(); if(fw!==null) keep=fw;   // наряд за другого — его участок, а не свой (31.10.2026: у диспетчера всё шло «раскроем»)
   sel.innerHTML=opt('','все участки')+ss.map(function(x){ return opt(x); }).join('');
   sel.value=(keep&&ss.indexOf(keep)>=0)?keep:''; box.style.display='';
   fillOps();
 }
+// наряд вносят за другого сотрудника → его родной участок ('' — все участки); за себя → null (своя логика)
+function forOther(){
+  var w=curWorker(); if(!w||w===DATA.worker) return null;
+  var r=(DATA.workers||[]).filter(function(x){ return x.name===w; })[0];
+  return (r&&r.site)||'';
+}
+function siteForWorker(){
+  var sel=document.getElementById('site'), box=document.getElementById('sitebox'); if(!sel||!box||box.style.display==='none') return;
+  var fw=forOther(), v=fw!==null?fw:(function(){ var k=''; try{ k=localStorage.getItem(siteKey())||''; }catch(e){} return k||DATA.mySite||''; })();
+  var ss=DATA.sites||[]; sel.value=(v&&ss.indexOf(v)>=0)?v:''; fillOps();
+}
 function curSite(){ var b=document.getElementById('sitebox'), s=document.getElementById('site'); return (b&&s&&b.style.display!=='none')?s.value:''; }
-function onSiteChange(){ try{ localStorage.setItem(siteKey(), curSite()); }catch(e){} fillOps(); }
+function onSiteChange(){ if(forOther()===null){ try{ localStorage.setItem(siteKey(), curSite()); }catch(e){} } fillOps(); }   // выбор за другого не запоминаем как свой
 function opsAll(){
   if(isProdMode()){ var mm=curPModel(); return (mm&&mm.ops)||[]; }
   var p=curProd(), name=document.getElementById('detail').value; return ((p.details||{})[name]||[]).concat(curRework());
@@ -951,7 +963,7 @@ function renderWhoBar(){
     +(self?'':'<button class="sm sec" onclick="backToSelf()">за себя</button>')+'</div>';
 }
 function backToSelf(){ var ws=document.getElementById('worker'); if(ws){ ws.value=DATA.worker||''; onWorkerChange(); } }
-function onWorkerChange(){ renderWhoBar(); renderTotals(); saveDraft(); renderDayTime(); if(hasProxy()){ try{ loadPending(); }catch(e){} } }
+function onWorkerChange(){ siteForWorker(); renderWhoBar(); renderTotals(); saveDraft(); renderDayTime(); if(hasProxy()){ try{ loadPending(); }catch(e){} } }
 
 // ── ДОПОЛНЕНИЕ НАРЯДА: рабочий вспомнил операции, пока мастер не проверил ──
 var ADDTO='', ADDINFO='';
