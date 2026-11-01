@@ -117,6 +117,23 @@
   /* «Куда идут силы»: палитра заказов (день / ночь) */
   :root{ --fl1:#2458C9; --fl2:#C8660F; --fl3:#0F8A7E; --fl4:#6E56CF; --fl5:#D0457A; --fl6:#4F8A2E; --fl7:#9A5B06; --fl8:#3E8FB0; --fl-free:#8A94A6; }
   :root[data-theme="night"]{ --fl1:#7FA6F2; --fl2:#F0A15C; --fl3:#4CC4B5; --fl4:#A994F0; --fl5:#F07FA8; --fl6:#8CC46A; --fl7:#D9A04A; --fl8:#7CC3E0; --fl-free:#7C8699; }
+  .fday{ width:100%; max-width:none; box-sizing:border-box; padding:var(--s-4); margin-bottom:var(--s-3); display:grid; gap:var(--s-3); }
+  .fdh{ display:flex; align-items:center; gap:var(--s-3); } .fdt{ flex:1; min-width:0; }
+  .fdl{ font:var(--t-label); text-transform:uppercase; letter-spacing:.05em; color:var(--muted); }
+  .fdv{ font:var(--t-display); } .fdv small{ font:var(--t-small); color:var(--muted); }
+  .fds{ font:var(--t-small); color:var(--fg2); }
+  .fbars{ display:grid; gap:6px; }
+  .fbar{ display:grid; grid-template-columns:minmax(120px,240px) 1fr 150px; gap:10px; align-items:center; padding:6px 8px; border-radius:8px; cursor:pointer; }
+  .fbar:hover{ background:var(--card2); } .fbar.on{ background:var(--accent-bg); }
+  .fbl{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .fbt{ height:14px; background:var(--bg2); border-radius:7px; overflow:hidden; } .fbt i{ display:block; height:100%; border-radius:7px; }
+  .fbt i.ffreeb{ background-image:repeating-linear-gradient(45deg,transparent 0 3px,rgba(255,255,255,.45) 3px 5px)!important; }
+  .fbv{ text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .fbdet{ background:var(--bg2); border-radius:8px; padding:var(--s-3); margin:0 0 6px; }
+  .fch{ display:flex; gap:var(--s-2); align-items:baseline; flex-wrap:wrap; }
+  .fchart .ftot{ fill:var(--fg2); font:600 11px var(--font); } .fchart .ftot.on{ fill:var(--accent-text); }
+  .fchart .favg{ stroke:var(--amber); stroke-width:1.2; stroke-dasharray:5 4; } .fchart .favgt{ fill:var(--amber); }
+  @media (max-width:700px){ .fbar{ grid-template-columns:1fr auto; } .fbar .fbt{ grid-column:1/-1; grid-row:2; } .fdv{ font:var(--t-title); } }
   .fstrip{ display:flex; gap:var(--s-4); align-items:center; flex-wrap:wrap; background:var(--card); border:1px solid var(--line); border-radius:var(--r-card,10px); padding:var(--s-3) var(--s-4); margin-bottom:var(--s-3); box-shadow:var(--shadow-card); }
   .fstrip .fst{ font:var(--t-label); text-transform:uppercase; letter-spacing:.05em; color:var(--fg2); margin-bottom:4px; }
   .fsr{ flex:1 1 300px; min-width:0; display:grid; gap:4px; }
@@ -607,17 +624,19 @@ function fSum(s,from,to){ var t=0; for(var i=Math.max(0,from);i<=to&&i<s.byDay.l
 /* столбики по дням: сегменты по заказам, проверенное сплошным, ждущее — бледнее */
 function fChart(f,opt){
   var ser=fSeries(f), n=f.days.length, H=opt.h, padL=opt.axis?44:4, padB=opt.axis?34:4, padT=8, colW=opt.colW, W=padL+n*colW+6;
-  var max=0; f.days.forEach(function(_,i){ var t=0; ser.forEach(function(s){ t+=fTot(s.byDay[i]); }); if(t>max) max=t; });
+  var max=0; f.days.forEach(function(_,i){ var t=0; ser.forEach(function(s){ t+=fTot(s.byDay[i]); }); if(t>max) max=t; }); max=max*1.12;   // место под итог над столбиком
   var step=max>0?Math.pow(10,Math.floor(Math.log10(max/3))):1; var nice=[1,2,2.5,5,10].map(function(k){ return k*step; }).filter(function(v){ return v*3>=max; })[0]||max; var top=Math.max(nice*3,1);
   var y=function(v){ return padT+(H-padT-padB)*(1-v/top); }, g='';
   if(opt.axis) for(var k=0;k<=3;k++){ var v=nice*k; g+='<line x1="'+padL+'" x2="'+(W-4)+'" y1="'+y(v)+'" y2="'+y(v)+'" class="fgrid"/><text x="'+(padL-6)+'" y="'+(y(v)+4)+'" class="fax" text-anchor="end">'+money0(v)+'</text>'; }
+  if(opt.axis&&opt.avg>0) g+='<line x1="'+padL+'" x2="'+(W-4)+'" y1="'+y(opt.avg)+'" y2="'+y(opt.avg)+'" class="favg"/><text x="'+(W-6)+'" y="'+(y(opt.avg)-4)+'" class="fax favgt" text-anchor="end">в среднем '+money0(opt.avg)+' ₽/день</text>';
   f.days.forEach(function(d,i){
-    var x=padL+i*colW+colW*0.18, w=colW*0.64, acc=0, sel=(i===FLOWDAY), today=(i===n-1);
+    var x=padL+i*colW+colW*0.18, w=colW*0.64, acc=0, sel=(i===(opt.sel!=null?opt.sel:FLOWDAY)), today=(i===n-1);
     if(sel&&opt.axis) g+='<rect x="'+(padL+i*colW+1)+'" y="'+padT+'" width="'+(colW-2)+'" height="'+(H-padT-padB)+'" class="fsel"/>';
-    ser.forEach(function(s,si){ var c=s.byDay[i], col=fColor(f.series.indexOf(s),s);
-      [['ok',1],['wait',0.38]].forEach(function(p){ var v=c[p[0]]||0; if(!(v>0)) return; var y1=y(acc+v), y0=y(acc); acc+=v;
-        var pc=fNeed(s.id)?' (+'+(Math.round(v/fNeed(s.id)*1000)/10)+'% заказа)':'';
-        g+='<rect x="'+x+'" y="'+y1+'" width="'+w+'" height="'+Math.max(0.5,y0-y1)+'" fill="'+col+'" fill-opacity="'+p[1]+'"'+(s.id==='free'?' class="ffree"':'')+'><title>'+esc(s.num)+' · '+fDay(d,true)+': +'+money(v)+' ₽'+pc+(p[0]==='wait'?' — ждёт проверки':' — проверено')+'</title></rect>'; }); });
+    ser.forEach(function(s,si){ var c=s.byDay[i], col=fColor(f.series.indexOf(s),s), v=fTot(c); if(!(v>0)) return;
+      var y1=y(acc+v), y0=y(acc); acc+=v;
+      var pc=fNeed(s.id)?' (+'+(Math.round(v/fNeed(s.id)*1000)/10)+'% заказа)':'';
+      g+='<rect x="'+x+'" y="'+y1+'" width="'+w+'" height="'+Math.max(0.5,y0-y1)+'" fill="'+col+'"'+(s.id==='free'?' class="ffree"':'')+'><title>'+esc(s.num)+' · '+fDay(d,true)+': +'+money(v)+' ₽'+pc+(c.wait>0?'\nиз них ждёт проверки '+money(c.wait)+' ₽':'')+'</title></rect>'; });
+    if(opt.axis&&acc>0) g+='<text x="'+(padL+i*colW+colW/2)+'" y="'+(y(acc)-5)+'" class="ftot'+(sel?' on':'')+'" text-anchor="middle">'+money0(acc)+'</text>';
     if(opt.axis){ g+='<text x="'+(padL+i*colW+colW/2)+'" y="'+(H-padB+14)+'" class="fax'+(today?' ftd':'')+'" text-anchor="middle">'+fDay(d,false)+'</text>'
         +'<text x="'+(padL+i*colW+colW/2)+'" y="'+(H-padB+26)+'" class="fax fdw" text-anchor="middle">'+(today?'сегодня':FDOW[new Date(d+'T00:00:00Z').getUTCDay()])+'</text>'
         +'<rect x="'+(padL+i*colW)+'" y="0" width="'+colW+'" height="'+H+'" fill="transparent" style="cursor:pointer" onclick="flowPick('+i+')"><title>'+fDay(d,true)+': всего +'+money(acc)+' ₽ — нажмите, чтобы выбрать день</title></rect>'; }
@@ -639,7 +658,7 @@ function flowStrip(){
   var last7={days:f.days.slice(-7),series:f.series.map(function(s){ return {id:s.id,num:s.num,name:s.name,byDay:s.byDay.slice(-7)}; })};
   return '<div class="fstrip click" onclick="openFlow()"><div class="fsl"><div class="fst">Куда идут силы <span class="muted">· 7 дней</span></div>'
     +fChart(last7,{h:72,colW:30,axis:false,fit:false})+'</div>'
-    +'<div class="fsr"><div class="small muted">'+(yi===n-2?'вчера, ':'последний день с нарядами, ')+fDay(f.days[yi],true)+':</div><div class="fchips">'+(chips||'<span class="muted small">нарядов не было</span>')+'</div>'+warn
+    +'<div class="fsr"><div class="small muted">'+(yi===n-2?'вчера, ':'последний день с нарядами, ')+fDay(f.days[yi],true)+': итог <b class="fg">'+money(fDayTot(f,ser,yi))+' ₽</b>'+((f.totals||[])[yi]&&f.totals[yi].people?' · '+f.totals[yi].people+' чел.':'')+'</div><div class="fchips">'+(chips||'<span class="muted small">нарядов не было</span>')+'</div>'+warn
     +'<div class="small"><a href="javascript:void(0)">подробно по дням и операциям →</a></div></div></div>';
 }
 function openFlow(){ VIEW='flow'; FLOWDAY=-1; FLOWOPEN=''; window.scrollTo(0,0); app.innerHTML='<div class="center muted">Загрузка…</div>'; loadFlow(FLOWN,renderFlow); }
@@ -647,35 +666,40 @@ function flowDays(n){ FLOWN=n; try{ localStorage.setItem('tw_flow_days',String(n
 function flowPick(i){ FLOWDAY=(FLOWDAY===i?-1:i); FLOWDET={}; renderFlow(); }
 function flowOpen(id){ FLOWOPEN=(FLOWOPEN===id?'':id); renderFlow(); }
 function flowSpan(sp){ FLOWSPAN=sp; FLOWDET={}; renderFlow(); }
+function fDayTot(f,ser,i){ return ser.reduce(function(t,s){ return t+fTot(s.byDay[i]||{}); },0); }
+function fAvg(f,ser){ var t=0,k=0; for(var i=0;i<f.days.length-1;i++){ var v=fDayTot(f,ser,i); if(v>0){ t+=v; k++; } } return k?t/k:0; }   // среднее по рабочим дням (с нарядами), без сегодняшнего
+function flowStep(d){ var f=FLOW, n=f.days.length, ser=fSeries(f), i=FLOWDAY<0?fLastDay(f,ser):FLOWDAY;
+  for(var k=i+d;k>=0&&k<n;k+=d){ if(fDayTot(f,ser,k)>0||k===n-1){ FLOWDAY=k; FLOWOPEN=''; FLOWDET={}; renderFlow(); return; } } }
+function fLastDay(f,ser){ var n=f.days.length; if(fDayTot(f,ser,n-1)>0) return n-1; for(var k=n-2;k>=0;k--) if(fDayTot(f,ser,k)>0) return k; return n-1; }
 function renderFlow(){
   if(VIEW!=='flow') return; var f=FLOW; if(!f){ app.innerHTML='<div class="err">не загрузилось</div>'; return; }
-  var n=f.days.length, ser=fSeries(f), ti=n-1, yi=n-2, di=FLOWDAY>=0?FLOWDAY:ti, top=fTop();
-  var all=function(i){ return ser.reduce(function(t,s){ return t+fTot(s.byDay[i]||{}); },0); };
-  var avg7=0; for(var i=Math.max(0,n-8);i<n-1;i++) avg7+=all(i); avg7=avg7/Math.max(1,Math.min(7,n-1));
-  var ts=ser.filter(function(s){ return s.id===top; })[0], share=ts&&all(yi)>0?Math.round(fTot(ts.byDay[yi])/all(yi)*100):null;
-  var tiles='<div class="tiles"><div class="tile"><div class="t">Сегодня</div><div class="v">'+money(all(ti))+' <small>₽</small></div></div>'
-    +'<div class="tile"><div class="t">Вчера</div><div class="v">'+money(all(yi))+' <small>₽</small></div></div>'
-    +'<div class="tile"><div class="t">Средне за 7 дней</div><div class="v">'+money(avg7)+' <small>₽/день</small></div></div>'
-    +'<div class="tile"><div class="t">'+(ts?'Доля '+esc(ts.num)+' вчера':'Заказ «делать сейчас»')+'</div><div class="v">'+(share==null?'—':share+' <small>%</small>')+'</div></div></div>';
+  var n=f.days.length, ser=fSeries(f), top=fTop(), di=FLOWDAY>=0?FLOWDAY:fLastDay(f,ser), tot=fDayTot(f,ser,di), avg=fAvg(f,ser);
+  var T=(f.totals||[])[di]||{}, cmp=avg>0&&tot>0?Math.round((tot/avg-1)*100):null;
   var seg='<div class="mxsw">'+[7,14,30].map(function(k){ return '<span class="'+(FLOWN===k?'on':'')+'" onclick="flowDays('+k+')">'+k+' дней</span>'; }).join('')+'</div>';
-  var legend='<div class="flegend">'+ser.map(function(s){ return '<span class="fchip"><i style="background:'+fColor(f.series.indexOf(s),s)+'"></i>'+esc(s.num)+'</span>'; }).join('')
-    +'<span class="fchip muted"><i class="fwait"></i>бледнее — подано, ждёт проверки</span></div>';
-  var avail=Math.max(320,(app.clientWidth||900)-70), chart='<div class="fwrap">'+fChart(f,{h:250,colW:Math.max(34,Math.floor((avail-50)/n)),axis:true,fit:false})+'</div>';   // на всю ширину; на телефоне — прокрутка
-  var dlab=fDay(f.days[di],true)+(di===ti?' (сегодня)':di===yi?' (вчера)':'');
-  var rows=ser.map(function(s){
-    var need=fNeed(s.id), d7=fSum(s,n-7,ti), pct=need?Math.round(d7/need*1000)/10:null, vd=fTot(s.byDay[di]||{});
-    var spark=s.byDay.slice(-7), smax=Math.max.apply(null,spark.map(fTot).concat([1])), col=fColor(f.series.indexOf(s),s);
-    var sp='<span class="fspark">'+spark.map(function(c){ var h=Math.round(fTot(c)/smax*22); return '<i style="height:'+Math.max(h,fTot(c)>0?2:1)+'px;background:'+(fTot(c)>0?col:'var(--line)')+'"></i>'; }).join('')+'</span>';
-    var open=FLOWOPEN===s.id;
-    return '<tr class="frow'+(open?' on':'')+(s.id===top?' ftop':'')+'" onclick="flowOpen(\''+s.id+'\')"><td><span class="fdot" style="background:'+col+'"></span><b>'+esc(s.num)+'</b>'+(s.id===top?' <span class="pill warn">🎯</span>':'')+(s.name?'<div class="small muted">'+esc(s.name)+'</div>':'')+'</td>'
-      +'<td class="num">'+fRub(fTot(s.byDay[ti]||{}))+'</td><td class="num">'+fRub(fTot(s.byDay[yi]||{}))+'</td>'+(di!==ti&&di!==yi?'<td class="num">'+fRub(vd)+'</td>':'')
-      +'<td class="num">'+fRub(d7)+(pct!=null?'<div class="small muted">+'+pct+'% заказа</div>':'')+'</td><td>'+sp+'</td><td class="fchev">'+(open?'▾':'▸')+'</td></tr>'
-      +(open?'<tr class="fdet"><td colspan="'+(di!==ti&&di!==yi?7:6)+'">'+flowDetailHtml(s,di)+'</td></tr>':'');
-  }).join('');
-  var tbl='<div class="tw"><table class="ftbl"><thead><tr><th>Заказ</th><th class="num">Сегодня</th><th class="num">Вчера</th>'+(di!==ti&&di!==yi?'<th class="num">'+esc(fDay(f.days[di],true))+'</th>':'')+'<th class="num">7 дней</th><th>по дням</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>';
-  app.innerHTML='<div class="toolbar"><button class="sec" onclick="backToList()">← заказы</button><span class="meta">Куда идут силы — сколько ₽ труда (расценка × шт) прибавили наряды каждого дня</span><div class="end">'+seg+'</div></div>'
-    +tiles+'<div class="card fcard">'+legend+chart+'<div class="small muted">нажмите на столбик — выбрать день; ниже — что делали по каждому заказу</div></div>'
-    +'<div class="sect">По заказам · выбран день: '+esc(dlab)+'</div>'+tbl;
+  // итог дня: сумма, сравнение со средним, люди; полосы по заказам
+  var byOrd=ser.map(function(s){ return {s:s,v:fTot(s.byDay[di]||{})}; }).filter(function(x){ return x.v>0; }).sort(function(a,b){ return b.v-a.v; });
+  var bars=byOrd.map(function(x){ var col=fColor(f.series.indexOf(x.s),x.s), sh=tot>0?Math.round(x.v/tot*100):0, open=FLOWOPEN===x.s.id;
+      return '<div class="fbar'+(open?' on':'')+'" onclick="flowOpen(\''+x.s.id+'\')"><div class="fbl"><span class="fdot" style="background:'+col+'"></span><b>'+esc(x.s.num)+'</b>'+(x.s.id===top?' 🎯 ':'')+(x.s.name?' <span class="muted small">'+esc(x.s.name)+'</span>':'')+'</div>'
+        +'<div class="fbt"><i style="width:'+Math.max(2,sh)+'%;background:'+col+'"'+(x.s.id==='free'?' class="ffreeb"':'')+'></i></div><div class="fbv"><b>'+money(x.v)+' ₽</b> <span class="muted">· '+sh+'%</span></div></div>'
+        +(open?'<div class="fbdet">'+flowDetailHtml(x.s,di)+'</div>':''); }).join('');
+  var dayCard='<div class="card fday"><div class="fdh"><button class="sec sm" onclick="flowStep(-1)" title="предыдущий рабочий день">‹</button>'
+      +'<div class="fdt"><div class="fdl">'+(di===n-1?'Сегодня':di===n-2?'Вчера':'День')+', '+fDay(f.days[di],true)+'</div><div class="fdv">'+money(tot)+' <small>₽ труда</small></div>'
+      +'<div class="fds">'+(cmp==null?'':(cmp>=0?'<span class="ok">▲ на '+cmp+'% выше</span>':'<span class="err">▼ на '+(-cmp)+'% ниже</span>')+' среднего дня ('+money(avg)+' ₽)')
+      +(T.people?' · работали '+T.people+' чел. · '+money(tot/T.people)+' ₽ на человека':'')+'</div></div>'
+      +'<button class="sec sm" onclick="flowStep(1)" title="следующий день">›</button></div>'
+      +(bars?'<div class="fbars"><div class="small muted">куда пошли силы за день — нажмите, чтобы увидеть операции</div>'+bars+'</div>':'<div class="muted" style="padding:var(--s-3) 0">в этот день нарядов не было</div>')+'</div>';
+  var avail=Math.max(320,(app.clientWidth||900)-70);
+  var chart='<div class="card fcard"><div class="fch"><b>По дням</b><span class="muted small">столбик — итог дня, цвет — заказы; нажмите на день</span></div><div class="fwrap">'
+      +fChart(f,{h:240,colW:Math.max(34,Math.floor((avail-50)/n)),axis:true,fit:false,avg:avg,sel:di})+'</div>'
+      +'<div class="flegend">'+ser.map(function(s){ return '<span class="fchip"><i style="background:'+fColor(f.series.indexOf(s),s)+'"></i>'+esc(s.num)+'</span>'; }).join('')+'</div></div>';
+  var rows=ser.map(function(s){ var need=fNeed(s.id), d7=fSum(s,n-7,n-1), pct=need?Math.round(d7/need*1000)/10:null, col=fColor(f.series.indexOf(s),s);
+      var spark=s.byDay.slice(-7), smax=Math.max.apply(null,spark.map(fTot).concat([1]));
+      return '<tr class="frow'+(s.id===top?' ftop':'')+'" onclick="'+(s.id==='free'?'flowOpen(\'free\');window.scrollTo(0,0)':'openOrder(\''+s.id+'\')')+'"><td><span class="fdot" style="background:'+col+'"></span><b>'+esc(s.num)+'</b>'+(s.id===top?' 🎯':'')+(s.name?'<div class="small muted">'+esc(s.name)+'</div>':'')+'</td>'
+        +'<td class="num"><b>'+(d7>0?money(d7)+' ₽':'—')+'</b>'+(pct!=null?'<div class="small muted">+'+pct+'% заказа</div>':'')+'</td>'
+        +'<td><span class="fspark">'+spark.map(function(c){ var h=Math.round(fTot(c)/smax*22); return '<i style="height:'+Math.max(h,fTot(c)>0?2:1)+'px;background:'+(fTot(c)>0?col:'var(--line)')+'"></i>'; }).join('')+'</span></td></tr>'; }).join('');
+  var tbl='<div class="card fcard"><div class="fch"><b>За 7 дней</b><span class="muted small">сколько прибавил каждый заказ; нажмите — открыть заказ</span></div><div class="tw"><table class="ftbl"><tbody>'+rows+'</tbody></table></div></div>';
+  app.innerHTML='<div class="toolbar"><button class="sec" onclick="backToList()">← заказы</button><span class="meta">Куда идут силы — ₽ труда (расценка × шт) по нарядам</span><div class="end">'+seg+'</div></div>'
+    +dayCard+chart+tbl;
 }
 function fRub(v){ return v>0?'+'+money(v):'<span class="muted">—</span>'; }
 function flowDetailHtml(s,di){
