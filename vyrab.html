@@ -168,6 +168,7 @@ function CARD(e){ return '<div style="padding:var(--s-4);line-height:1.5">'
   <div id="sitebox" style="display:none"><label>Участок</label><select id="site" onchange="onSiteChange()"></select></div>
   <label>Операции — отметьте всё, что сделали с этими деталями</label><div id="ops" class="oplist"></div>
   <label>Количество деталей</label><input id="qty" type="number" min="0" inputmode="numeric" oninput="calc()" placeholder="сколько деталей прошли эти операции">
+  <div id="rwbox" style="display:none"><label>На переделку, шт <span class="muted" style="font:var(--t-small)">— не взял в работу или увидел брак; не оплачивается</span></label><input id="rwq" type="number" min="0" inputmode="numeric" oninput="calc()" placeholder="0"></div>
   <div class="sum" id="sum">—</div>
   <button class="sec" onclick="addToCart()">＋ Добавить в наряд</button>
   <div id="devbox" class="card" style="display:none;margin-top:var(--s-4)">
@@ -752,12 +753,14 @@ function fillOps(){
   OPS=all.filter(function(o){ return !st || isProdMode() || o.area || !o.site || o.site===st; });
   var hidden=all.length-OPS.length;
   box.innerHTML=OPS.length
-    ? OPS.map(function(o,i){ return '<label class="oprow"><input type="checkbox" data-i="'+i+'" onchange="opTgl(this)"><span>'+(o.area?'🔁 ':'')+esc(o.op)+'</span><span class="r">'+esc(opLbl(o))+'</span></label>'; }).join('')
+    ? OPS.map(function(o,i){ return '<label class="oprow"><input type="checkbox" data-i="'+i+'" onchange="opTgl(this)"><span>'+(o.area?'🔁 ':'')+esc(o.label||o.op)+'</span><span class="r">'+esc(opLbl(o))+'</span></label>'; }).join('')
       +(hidden?'<div class="muted" style="font:var(--t-small)">ещё '+hidden+' оп. на других участках — выберите «все участки»</div>':'')
     : '<div class="muted">'+(all.length?('У этой детали нет операций участка «'+esc(st)+'» — выберите «все участки».'):(isProdMode()?'Нет операций упаковки.':'Нет операций.'))+'</div>';
   calc();
 }
 function opTgl(cb){ cb.parentNode.className='oprow'+(cb.checked?' on':''); calc(); }
+// сдача «готово + на переделку» с приёмкой по количеству (владелец 01.11.2026) — перетирка лака и масла
+function isQA(o){ return !!o && !o.area && /^перетирка (лака|масла)$/i.test(String(o.op||'').trim()); }
 function selOps(){
   var r=[], cs=document.querySelectorAll('#ops input[type=checkbox]');
   for(var i=0;i<cs.length;i++) if(cs[i].checked) r.push(OPS[Number(cs[i].getAttribute('data-i'))]);
@@ -769,6 +772,9 @@ function selOps(){
 function opPaid(o){ var p=String((o&&o.pay)||'').toLowerCase(); return !o || (p!=='только чпу' && p!=='за лист'); }
 function calc(){
   var q=Number(document.getElementById('qty').value)||0, sel=selOps(), el=document.getElementById('sum');
+  var qa=sel.some(isQA), rb=document.getElementById('rwbox'); if(rb) rb.style.display=qa?'':'none';
+  var rw=qa?(Number(document.getElementById('rwq').value)||0):0;
+  if(qa&&!(q>0)&&rw>0){ el.textContent='На переделку '+rw+' шт — не оплачивается'; return; }
   if(!sel.length){ el.textContent=q>0?'Отметьте операции':'—'; return; }
   if(!(q>0)){ el.textContent='Отмечено операций: '+sel.length+' — укажите количество'; return; }
   var tot=0, notes=[];
@@ -833,7 +839,8 @@ function addToCart(){
   if(!worker){ wmsg('<span class="err">Не выбран рабочий</span>'); return; }
   var equip=document.getElementById('equip').value, detail=document.getElementById('detail').value, qty=Number(document.getElementById('qty').value)||0, sel=selOps();
   if(!sel.length){ wmsg('<span class="err">Отметьте операции</span>'); return; }
-  if(!(qty>0)){ wmsg('<span class="err">Укажите количество</span>'); return; }
+  var rwq=sel.some(isQA)?(Number(document.getElementById('rwq').value)||0):0;
+  if(!(qty>0)&&!(rwq>0)){ wmsg('<span class="err">Укажите количество</span>'); return; }
   var bs=document.getElementById('batch'), bv=bs.value, bn=bs.options[bs.selectedIndex]?bs.options[bs.selectedIndex].text:'';
   // пустой селектор (заказы ещё грузятся) молча давал batch='' — операция уходила «вне заказа»
   if(!bs.options.length){ wmsg('<span class="err">Список заказов ещё грузится — секунду</span>'); return; }
@@ -847,9 +854,12 @@ function addToCart(){
     });
   } else sel.forEach(function(o){
     var pd=opPaid(o);
-    CART.push({equip:equip,detail:detail,op:o.op,qty:qty,rate:o.rate,paid:pd,sum:pd?(Math.round(qty*o.rate*100)/100):0,batch:batch,batchName:batchName});
+    var it={equip:equip,detail:detail,op:o.op,qty:qty,rate:o.rate,paid:pd,sum:pd?(Math.round(qty*o.rate*100)/100):0,batch:batch,batchName:batchName};
+    if(o.fin){ it.fin=o.fin; it.label=detail+' ('+(o.finName||o.fin)+')'; }
+    if(isQA(o)&&rwq>0) it.rw=rwq;
+    CART.push(it);
   });
-  document.getElementById('qty').value=''; fillOps(); wmsg(''); renderCart(); saveDraft();
+  document.getElementById('qty').value=''; var rq=document.getElementById('rwq'); if(rq) rq.value=''; fillOps(); wmsg(''); renderCart(); saveDraft();
 }
 // ── РАЗРАБОТКА НОВОГО ПРОДУКТА (владелец 09.10.2026): МИНУТЫ × ставка часа / 60 («Компания и настройки»), на проверку мастеру,
 // без премии и ночной. Строка вне заказа и без детали — готовность заказов не двигает.
@@ -872,7 +882,7 @@ function renderCart(){
   if(!CART.length){ c.innerHTML=''; renderTotals(); return; }
   c.innerHTML='<div class="card"><div class="row"><b>Операции: '+CART.length+'</b><span class="muted">'+esc(shLbl(SHIFT))+'</span></div>'
     +CART.map(function(x,i){ if(x.dev) return '<div class="row" style="border-top:1px solid var(--line);padding-top:var(--s-1)"><span>'+esc(x.label)+' · '+devMin(x.minutes)+' → '+x.sum+' р. <span class="muted" style="font:var(--t-tiny)">без надбавок</span></span><button class="sm sec" onclick="rmCart('+i+')">✕</button></div>';
-      return '<div class="row" style="border-top:1px solid var(--line);padding-top:var(--s-1)"><span>'+esc(x.label||x.detail)+' · '+esc(x.op)+' · '+x.qty+' шт → '+(x.paid===false?'<span class="muted">0 р. · оплата за лист — подайте во вкладке «🪚 Раскрой» вместе с листом</span>':(x.sum+' р.'))
+      return '<div class="row" style="border-top:1px solid var(--line);padding-top:var(--s-1)"><span>'+esc(x.label||x.detail)+' · '+esc(x.op)+' · '+x.qty+' шт'+(x.rw?(' + на переделку '+x.rw):'')+' → '+(x.paid===false?'<span class="muted">0 р. · оплата за лист — подайте во вкладке «🪚 Раскрой» вместе с листом</span>':(x.sum+' р.'))
       +' <span class="muted" style="font:var(--t-tiny)">'+esc(x.batchName||'')+'</span></span><button class="sm sec" onclick="rmCart('+i+')">✕</button></div>'; }).join('')
     +'</div>';
   renderTotals();
@@ -1003,7 +1013,7 @@ function sendWork(){
   var worker=curWorker();
   if(!worker){ wmsg('<span class="err">Не выбран рабочий</span>'); return; }
   var items=CART.map(function(x){ return x.dev?{dev:1,minutes:x.minutes,note:x.note||''}
-    :{equip:x.equip,detail:x.detail,op:x.op,qty:x.qty,batch:x.batch||'',level:x.level||'',model:x.model||''}; });
+    :{equip:x.equip,detail:x.detail,op:x.op,qty:x.qty,batch:x.batch||'',level:x.level||'',model:x.model||'',fin:x.fin||'',rw:x.rw||0}; });
   var work=items.filter(function(x){ return !x.dev; });   // часы разработки всегда вне заказа — вопрос «точно без заказа?» не про них
   // ⚠ Наряд, целиком ушедший «вне заказа», не двигает выполнение заказа — и это заметили
   // только на проверке, через полдня. Спрашиваем прямо перед отправкой.
@@ -1748,6 +1758,7 @@ function renderOtk(){
     // после покраски брак можно вернуть на шлифовку (дефект материала) или маляру (его ошибка) — см. otkDestHtml
     var rw=(OTK&&OTK.rework)||{}, canSand=(rw.sand||[]).indexOf(g.op)>=0, canPaint=(rw.paint||[]).indexOf(g.op)>=0, isCoat=(rw.coat||[]).indexOf(g.op)>=0;
     var lines=g.lines.map(function(l){
+      if(l.qa) return otkQaLine(l);   // сдача на финише: по количеству → по качеству (01.11.2026)
       var open=!!OTKOPEN[l.id];
       var form=open
         ? '<div class="card" style="margin:var(--s-2) 0 0;background:var(--bg2)">'
@@ -1790,6 +1801,50 @@ function renderOtk(){
   }).join('');
 }
 function otkBadOpen(id){ OTKOPEN[id]=1; renderOtk(); }
+// ── сдача на финише (перетирка лака/масла, владелец 01.11.2026): 1) приёмка по количеству — ОТК, мастер, диспетчер; переделку — по участкам;
+// 2) ОТК по качеству: принято + не принято (шлифовка / малярка) = принятому по количеству. Платим только принятое; меньше 90 % — коэффициент
+function otkQaLine(l){
+  var id=esc(l.id), qa=l.qa, late=(l.ageH>48), open=!!OTKOPEN[l.id];
+  var head='<div class="row"><span>'+esc(l.worker)+' · <b>'+l.qty+' шт</b>'+(qa.rw>0?' <span class="muted">+ на переделку '+qa.rw+'</span>':'')+'</span>';
+  var when='<div class="muted" style="font:var(--t-small)">📅 сдано <b>'+esc(l.date)+'</b> · '+esc(l.shift||'день')+' · <span class="'+(late?'err':'muted')+'">лежит '+otkAge(l.ageH)+'</span></div>';
+  if(qa.waitQty){
+    return '<div style="border-top:1px solid var(--line);padding-top:var(--s-1)">'+head+'<span class="pill warn">ждёт приёмки по количеству</span></div>'+when
+      +'<div class="card" style="margin:var(--s-2) 0 0;background:var(--bg2)"><b>1. Принять по количеству</b>'
+      +'<div class="row"><label style="flex:1">Готово, шт<input id="qn-'+id+'" type="number" min="0" inputmode="numeric" value="'+l.qty+'"></label></div>'
+      +'<div class="row"><label style="flex:1">На переделку: шлифовка<input id="qs-'+id+'" type="number" min="0" inputmode="numeric" value="'+(qa.rw>0?'':'0')+'" placeholder="0"></label>'
+      +'<label style="flex:1">малярка<input id="qp-'+id+'" type="number" min="0" inputmode="numeric" value="'+(qa.rw>0?'':'0')+'" placeholder="0"></label></div>'
+      +(qa.rw>0?'<div class="muted" style="font:var(--t-small)">рабочий сдал на переделку '+qa.rw+' шт — разложите по участкам</div>':'')
+      +'<div class="row"><button class="sm" onclick="otkQtyGo(\''+id+'\','+(Number(qa.rw)||0)+')">Принять по количеству</button><span class="msg" id="qm-'+id+'"></span></div></div></div>';
+  }
+  var by=qa.by?('по количеству принял(а) <b>'+esc(qa.by)+'</b>'+((qa.rwSand||qa.rwPaint)?(' · на переделку: шлифовка '+(qa.rwSand||0)+', малярка '+(qa.rwPaint||0)):'')):'';
+  var form=open?('<div class="card" style="margin:var(--s-2) 0 0;background:var(--bg2)"><b>2. Приёмка по качеству</b>'
+      +'<div class="row"><label style="flex:1">Принято<input id="ok-'+id+'" type="number" min="0" value="'+l.qty+'" oninput="otkQaSum(\''+id+'\','+l.qty+')"></label></div>'
+      +'<div class="row"><label style="flex:1">Не принято → шлифовка<input id="bs-'+id+'" type="number" min="0" value="0" oninput="otkQaSum(\''+id+'\','+l.qty+')"></label>'
+      +'<label style="flex:1">→ малярка<input id="bp-'+id+'" type="number" min="0" value="0" oninput="otkQaSum(\''+id+'\','+l.qty+')"></label></div>'
+      +'<div class="muted" id="qsum-'+id+'" style="font:var(--t-small)">принято + не принято должно быть '+l.qty+'</div>'
+      +'<div class="row"><button class="sm" onclick="otkQaGo(\''+id+'\')">Провести приёмку</button><button class="sm sec" onclick="otkBadClose(\''+id+'\')">отмена</button><span class="msg" id="om-'+id+'"></span></div></div>'):'';
+  return '<div style="border-top:1px solid var(--line);padding-top:var(--s-1)">'+head
+      +'<span><button class="sm" title="принять всё по качеству" onclick="otkOne(\''+id+'\')">✅</button><button class="sm sec" onclick="otkBadOpen(\''+id+'\')">⚠ не всё</button></span></div>'
+      +when+(by?'<div class="muted" style="font:var(--t-small)">'+by+'</div>':'')+form+'</div>';
+}
+function otkQaSum(id,n){ var a=Number((document.getElementById('ok-'+id)||{}).value)||0, b=(Number((document.getElementById('bs-'+id)||{}).value)||0)+(Number((document.getElementById('bp-'+id)||{}).value)||0), e=document.getElementById('qsum-'+id);
+  if(!e) return; var t=Math.round((a+b)*100)/100, k=n>0&&a/n<0.9?Math.floor(a/n*100)/100:1;
+  e.innerHTML=(Math.abs(t-n)>0.001?'<span class="err">принято '+a+' + не принято '+b+' = '+t+', а нужно '+n+'</span>':'сходится: '+a+' + '+b+' = '+n)+(k<1?' · <b>коэффициент '+k+'</b> (принято меньше 90 %)':''); }
+function otkQtyGo(id,rw){
+  var n=(document.getElementById('qn-'+id)||{}).value, rs=Number((document.getElementById('qs-'+id)||{}).value)||0, rp=Number((document.getElementById('qp-'+id)||{}).value)||0;
+  if(rw>0&&Math.abs(rs+rp-rw)>0.001&&!confirm('Рабочий сдал на переделку '+rw+' шт, а разложено '+(rs+rp)+'. Принять так?')) return;
+  if(!otkGuard()) return; otkMsg('qm-'+id,'принимаю…');
+  api({vapi:'otkqty',id:id,qty:n,rws:rs,rwp:rp}).then(function(r){ OTKBUSY=false;
+    if(!r||!r.ok){ otkMsg('qm-'+id,'<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'); return; } loadOtk();
+  }).catch(function(){ OTKBUSY=false; otkMsg('qm-'+id,'<span class="err">ошибка сети</span>'); });
+}
+function otkQaGo(id){
+  var ok=(document.getElementById('ok-'+id)||{}).value, bs=(document.getElementById('bs-'+id)||{}).value||0, bp=(document.getElementById('bp-'+id)||{}).value||0;
+  if(!otkGuard()) return; otkMsg('om-'+id,'принимаю…');
+  api({vapi:'otkaccept',id:id,ok:ok,bs:bs,bp:bp}).then(function(r){ OTKBUSY=false;
+    if(!r||!r.ok){ otkMsg('om-'+id,'<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'); return; } delete OTKOPEN[id]; loadOtk();
+  }).catch(function(){ OTKBUSY=false; otkMsg('om-'+id,'<span class="err">ошибка сети</span>'); });
+}
 // удалить наряд из очереди ОТК (владелец 30.10.2026): директор, диспетчер, админ — ошибочный или задвоенный наряд; ни приёмки, ни брака, ЗП по нему не будет
 function otkCanDel(){ return !!DATA.canCheck && ['админ','директор','диспетчер'].indexOf(String(DATA.role||'').toLowerCase())>=0; }
 function otkDel(id,worker,qty){
