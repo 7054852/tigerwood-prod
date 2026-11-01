@@ -174,6 +174,7 @@
   .fop .fwho{ grid-column:1/-1; color:var(--muted); font-size:12px; }
   .fop .fon{ min-width:0; overflow-wrap:anywhere; }
   @media (max-width:700px){ .fop{ grid-template-columns:minmax(0,1fr) auto; } .fop .num:last-of-type{ grid-column:2; } .ftbl th:nth-child(5),.ftbl td:nth-child(5){ display:none; } }
+  .pill.pu{ font-variant-numeric:tabular-nums; }
   .pscope{ margin:var(--s-2) 0; padding:6px 10px; border-radius:var(--r-ctl); background:var(--card2); border:1px solid var(--accent,#3b82f6); }
   .plog{ margin-top:var(--s-3); }
   @media (max-width:700px){ .prow{ grid-template-columns:18px 1fr; } .prow .pq{ display:none; } .prow .pst,.prow .pac{ grid-column:2; } .pedit{ margin-left:0; } }
@@ -1223,12 +1224,17 @@ function mxRows(ops){
     var dk=(o.level==='изделие'?'§':'')+o.detail;
     if(idx[dk]===undefined){ idx[dk]=rows.length; rows.push({ name:o.detail, prod:o.level==='изделие', need:0, cells:{}, seq:[], shared:false }); }
     var row=rows[idx[dk]]; row.cells[o.op]=o; row.seq.push(o.op); if(o.need>row.need) row.need=o.need; if(o.shared) row.shared=true;
+    if(o.level!=='изделие'&&Number(o.perunit)>0){ (row.per=row.per||{})[Number(o.perunit)]=1; }
   });
   rows.forEach(function(row){ row.prev={}; row.seq.forEach(function(op,i){ row.prev[op]=i?row.seq[i-1]:''; }); row.last=row.seq[row.seq.length-1]; });
   rows.sort(function(a,b){ return (a.prod?1:0)-(b.prod?1:0) || a.name.localeCompare(b.name,'ru'); });
   return rows;
 }
-function mxName(row,noShared){ return '<td class="dn'+(row.done?' done':'')+'" title="'+esc(row.name)+(row.done?' — все операции закрыты':'')+'"><span class="dnx">'+(row.done?'✓ ':'')+esc(row.name)+(row.prod?' <span class="pill mute sh">изделие</span>':'')+(row.shared&&!noShared?' <span class="pill mute sh" title="до покраски деталь одинакова во всех цветах">общая</span>':'')+'</span></td>'; }
+/* сколько этой детали идёт на одно изделие (владелец 02.11.2026): ×4; в разных товарах по-разному — ×2–4 */
+function perOf(mper,models){ var o={}; (models||[]).forEach(function(m){ var v=(mper||{})[m]; if(v>0) o[v]=1; }); return o; }
+function perBadge(row){ var v=Object.keys(row.per||{}).map(Number).sort(function(a,b){ return a-b; }); if(!v.length) return '';
+  var t=v.length>1?v[0]+'–'+v[v.length-1]:String(v[0]); return ' <span class="pill mute sh pu" title="'+esc('на одно изделие: '+t+' шт'+(v.length>1?' (в разных товарах по-разному)':''))+'">×'+esc(t)+'</span>'; }
+function mxName(row,noShared){ return '<td class="dn'+(row.done?' done':'')+'" title="'+esc(row.name)+(row.done?' — все операции закрыты':'')+'"><span class="dnx">'+(row.done?'✓ ':'')+esc(row.name)+perBadge(row)+(row.prod?' <span class="pill mute sh">изделие</span>':'')+(row.shared&&!noShared?' <span class="pill mute sh" title="до покраски деталь одинакова во всех цветах">общая</span>':'')+'</span></td>'; }
 /* контрольные операции блока (принимает ОТК) → перед ними колонка «ждёт ОТК» */
 function opQc(ops){ var q={}; (ops||[]).forEach(function(o){ if(o.qcReq) q[o.op]=1; }); return q; }
 /* клетка «ждёт ОТК»: подано нарядом, контролёр ещё не принял — одна и та же цифра во всех видах (сделано / на участке / осталось) */
@@ -1397,6 +1403,7 @@ function summaryMatrixHtml(id,r){
       sumAdd(row.cells[o.op]=row.cells[o.op]||sumCell(), o);
       var mc=row.mc[o.model]=row.mc[o.model]||{}; sumAdd(mc[o.op]=mc[o.op]||sumCell(), o);
       if((Number(o.need)||0)>(row.mneed[o.model]||0)) row.mneed[o.model]=Number(o.need)||0;
+      if(o.level!=='изделие'&&Number(o.perunit)>0) (row.mper=row.mper||{})[o.model]=Number(o.perunit);
       row.mkey[o.model]=o.eq+'|'+o.model+'|'+o.detail;
       if(o.shared) row.shared[o.op]=1; (row.mseq[o.model]=row.mseq[o.model]||[]).push(o.op);
     });
@@ -1405,7 +1412,7 @@ function summaryMatrixHtml(id,r){
     // «крючки лакированные и просто шлифованные — в таблице не вижу»): до развилки — одна строка на все цвета, после — своя строка у каждой отделки
     var out=[];
     rows.forEach(function(row){
-      var ms=Object.keys(row.models);
+      var ms=Object.keys(row.models); row.per=perOf(row.mper,ms);
       // общая часть — операции, которые есть у всех цветов детали и делаются одинаково; остальное (лак не у всех, покраска в цвет) — по отделке
       var common=cols.filter(function(c){ return row.shared[c]&&ms.every(function(m){ return (row.mseq[m]||[]).indexOf(c)>=0; }); });
       var sig={}, gl=[];
@@ -1426,7 +1433,7 @@ function summaryMatrixHtml(id,r){
         return;
       }
       if(row.prod||ms.length<2||!common.length||gl.length<2){ out.push(row); return; }
-      var main={ name:row.name, need:0, cells:{}, keys:row.keys, split:{}, noRw:true, models:row.models };
+      var main={ name:row.name, need:0, cells:{}, keys:row.keys, split:{}, noRw:true, models:row.models, per:row.per };
       cols.forEach(function(c){ if(!row.cells[c]) return; if(common.indexOf(c)>=0) main.cells[c]=row.cells[c]; else main.split[c]=1; });
       ms.forEach(function(m){ main.need+=row.mneed[m]||0; });
       out.push(main);
@@ -1437,7 +1444,7 @@ function summaryMatrixHtml(id,r){
         var allOps=[]; g.models.forEach(function(m){ (row.mseq[m]||[]).forEach(function(op){ if(allOps.indexOf(op)<0) allOps.push(op); }); });
         var has=function(re){ return allOps.some(function(op){ return re.test(op); }); };
         var how=has(/в цвет|под цвет/i)?'покраска':has(/лак/i)&&has(/масл/i)?'лак и масло':has(/лак/i)?'лак':has(/масл/i)?'масло':(fin?'отделка':'без покрытия');
-        var sub={ name:row.name, sub:true, label:how+' · '+shortModels(g.models,ms), full:g.models.join(', '), need:0, cells:{}, keys:{}, up:{} };
+        var sub={ name:row.name, sub:true, label:how+' · '+shortModels(g.models,ms), full:g.models.join(', '), need:0, cells:{}, keys:{}, up:{}, per:Object.keys(row.per||{}).length>1?perOf(row.mper,g.models):{} };   // у подстроки — только если в товарах по-разному
         g.models.forEach(function(m){ sub.need+=row.mneed[m]||0; sub.keys[row.mkey[m]]=1;
           g.ops.forEach(function(op){ var x=(row.mc[m]||{})[op]; if(x){ var c=sub.cells[op]=sub.cells[op]||sumCell(); sumMerge(c,x); } }); });
         // до развилки деталь общая (владелец 29.10.2026): её цифры — только в строке детали; в подстроке эти колонки серые, без чисел
@@ -1450,7 +1457,7 @@ function summaryMatrixHtml(id,r){
     var body=rows.map(function(row,ri){
       // группа «деталь → её отделки ↳»: линия сверху у детали и снизу у последней отделки — соседние группы не сливаются (владелец 29.10.2026)
       var trc=[row.sub?'sumsub':'', (row.split&&Object.keys(row.split).length)?'gmain':'', (row.sub&&!(rows[ri+1]&&rows[ri+1].sub))?'gend':''].filter(Boolean).join(' ');
-      var nm=row.sub?'<td class="dn sumsub" title="'+esc(row.name+' · '+row.label+'\n'+row.full)+'"><span class="dnx">↳ '+esc(row.label)+'</span></td>':mxName(row,true);
+      var nm=row.sub?'<td class="dn sumsub" title="'+esc(row.name+' · '+row.label+'\n'+row.full)+'"><span class="dnx">↳ '+esc(row.label)+perBadge(row)+'</span></td>':mxName(row,true);
       if(key===COMMON&&!row.sub&&row.models){ var ms=Object.keys(row.models).join(', '); nm=nm.replace('</span></td>','</span><span class="sub">'+esc(ms)+'</span></td>'); }
       return '<tr'+(trc?' class="'+trc+'"':'')+'>'+nm+'<td class="num">'+r1(row.need)+'</td>'+cols.map(function(c){ return qcTd(qc,c,row.cells[c],row)+(function(){
         if(row.split&&row.split[c]) return '<td class="spl" title="по отделке — смотрите строки «↳» ниже">↓</td>';

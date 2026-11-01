@@ -144,6 +144,7 @@
     body.port td.cell{ width:4.6%; }
     body.port .foot{ font-size:10px; }
   }
+  .pu{ display:inline-block; font-size:11px; font-weight:600; padding:0 5px; border:1px solid currentColor; border-radius:6px; opacity:.7; font-variant-numeric:tabular-nums; margin-left:2px; }
 </style>
 
 <style id="pagecss">@page{ size:A4 landscape; margin:10mm; }</style>
@@ -178,6 +179,9 @@ var APP='tw7prod', R=null, TGID='';
 function qp(n){ var m=new RegExp('[?&]'+n+'=([^&]*)').exec(location.search); return m?decodeURIComponent(m[1].replace(/\+/g,' ')):''; }
 TGID=qp('tgid')||'';
 try{ if(window.Telegram&&Telegram.WebApp){ var u=Telegram.WebApp.initDataUnsafe&&Telegram.WebApp.initDataUnsafe.user; if(u) TGID=String(u.id); } }catch(e){}
+/* сколько этой детали на одно изделие (владелец 02.11.2026): ×4; в разных товарах по-разному — ×2–4 */
+function perTag(p){ p=(p||[]).filter(function(x){ return x>0; }); if(!p.length) return ''; var t=p.length>1?p[0]+'–'+p[p.length-1]:String(p[0]);
+  return ' <span class="pu" title="на одно изделие: '+t+' шт">×'+t+'</span>'; }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function msg(t,err){ var m=document.getElementById('msg'); m.className='msg'+(err?' err':''); m.textContent=t||''; }
 // ⚠ ЛИЧНОСТЬ — ТОКЕНОМ, А НЕ АДРЕСОМ: ?tgid= в ссылке ничего не доказывает (Telegram ID виден
@@ -323,7 +327,7 @@ function draw(){
         if(st.split) return '<td class="cell down">↓</td>';
         return '<td class="cell'+(acc?' acc':'')+rw1+'">'+(acc?progLies(st):'')+'</td>';
       }).join('');
-      var head='<tr'+(vars.length?' class="hasv"':'')+'><td class="det">'+esc(d.detail)
+      var head='<tr'+(vars.length?' class="hasv"':'')+'><td class="det">'+esc(d.detail)+perTag(d.per)
         +(d.isProduct?' <span class="pb">изделие</span>':'')
         +(d.shared?' <span class="sh">общая</span>':'')+'</td>'
         +'<td class="n">'+d.need+'</td>'+cells+'<td class="cell"></td></tr>';
@@ -337,7 +341,7 @@ function draw(){
           if(!st||!st.has) return (si>=0&&si<SPLIT) ? '<td class="cell up">↑</td>' : '<td class="cell no'+rw1+'"></td>';
           return '<td class="cell'+(acc?' acc':'')+rw1+'">'+(acc?progLies(st):'')+'</td>';
         }).join('');
-        return '<tr class="vrow"><td class="det vd">└ '+esc(v.model)+'</td>'
+        return '<tr class="vrow"><td class="det vd">└ '+esc(v.model)+((d.per||[]).length>1?perTag(v.per):'')+'</td>'
           +'<td class="n">'+v.need+'</td>'+vc+'<td class="cell"></td></tr>';
       }).join('');
     }).join('');
@@ -529,7 +533,7 @@ function drawLoad(){
     var rows=(p.details||[]).map(function(x){
       var vars=x.variants||[], SPLIT=(x.splitAt!=null?x.splitAt:Infinity);
       var cells=ST.map(function(sname){ return cellHtml(x.detail,'',sname,x.stages[sname],false); }).join('');
-      var out='<tr'+(vars.length?' class="hasv"':'')+'><td class="det">'+esc(x.detail)
+      var out='<tr'+(vars.length?' class="hasv"':'')+'><td class="det">'+esc(x.detail)+perTag(x.per)
         +(x.isProduct?' <span class="pb">изделие</span>':'')+(x.shared?' <span class="sh">общая</span>':'')+'</td>'
         +'<td class="n">'+x.need+'</td>'+cells+'</tr>';
       vars.forEach(function(v){
@@ -538,7 +542,7 @@ function drawLoad(){
           if((!stg||!stg.has)&&si>=0&&si<SPLIT) return '<td class="cell up">↑</td>';
           return cellHtml(x.detail,v.model,sname,stg,true);
         }).join('');
-        out+='<tr class="vrow"><td class="det vd">└ '+esc(v.model)+'</td><td class="n">'+v.need+'</td>'+vc+'</tr>';
+        out+='<tr class="vrow"><td class="det vd">└ '+esc(v.model)+((x.per||[]).length>1?perTag(v.per):'')+'</td><td class="n">'+v.need+'</td>'+vc+'</tr>';
       });
       return out;
     }).join('');
