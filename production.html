@@ -83,6 +83,22 @@
   @media (max-width:640px){ .ptabv{ margin-left:0; width:100%; } .ptabv .mxsw{ width:100%; } .ptabv .mxsw span{ flex:1; text-align:center; } }
   .ptabs{ display:inline-flex; gap:2px; padding:3px; background:var(--card2); border:1px solid var(--line); border-radius:var(--r-ctl); max-width:100%; overflow-x:auto; scrollbar-width:none; }
   .ptabs::-webkit-scrollbar{ display:none; }
+  /* партии */
+  .ptop{ display:flex; align-items:center; gap:var(--s-2); flex-wrap:wrap; margin:var(--s-3) 0 var(--s-2); }
+  .prow{ display:grid; grid-template-columns:18px 22px 1fr 220px auto; gap:var(--s-2); align-items:center; padding:var(--s-2); border:1px solid var(--line); border-radius:var(--r-ctl); margin-bottom:6px; background:var(--card); }
+  .prow.on{ border-color:var(--accent,#3b82f6); box-shadow:0 0 0 1px var(--accent,#3b82f6) inset; }
+  .prow.out{ background:var(--card2); }
+  .prow .hnd{ cursor:grab; color:var(--muted); user-select:none; }
+  .prow .pq{ color:var(--muted); font-variant-numeric:tabular-nums; }
+  .prow .pac{ display:flex; gap:4px; }
+  .pbarx{ display:inline-block; width:120px; height:8px; border-radius:4px; background:var(--card2); border:1px solid var(--line); vertical-align:middle; overflow:hidden; }
+  .pbarx i{ display:block; height:100%; background:var(--ok,#22c55e); }
+  .pbn{ margin-left:6px; font-variant-numeric:tabular-nums; }
+  .pedit{ border:1px dashed var(--line2); border-radius:var(--r-ctl); padding:var(--s-2); margin:0 0 var(--s-2) 40px; }
+  .pedit .row{ margin:6px 0; display:flex; gap:var(--s-2); flex-wrap:wrap; }
+  .pscope{ margin:var(--s-2) 0; padding:6px 10px; border-radius:var(--r-ctl); background:var(--card2); border:1px solid var(--accent,#3b82f6); }
+  .plog{ margin-top:var(--s-3); }
+  @media (max-width:700px){ .prow{ grid-template-columns:18px 1fr; } .prow .pq{ display:none; } .prow .pst,.prow .pac{ grid-column:2; } .pedit{ margin-left:0; } }
   .ptab{ padding:var(--s-1) var(--s-3); cursor:pointer; color:var(--muted); border-radius:calc(var(--r-ctl) - 3px); white-space:nowrap; font:var(--t-strong); border:1px solid transparent; display:inline-flex; align-items:center; gap:var(--s-1); }
   .ptab:hover{ color:var(--fg); }
   .ptab.on{ color:var(--fg); background:var(--card); border-color:var(--line); box-shadow:var(--shadow-card); font-weight:600; }
@@ -721,6 +737,7 @@ function renderDetail(){
       +shipBadgeHtml(b)
       +ptabsHtml(b.id)
       +'<div class="ppan" id="pan_det_'+b.id+'"><div class="muted">Загрузка операций… <span class="muted small">сверяю с каталогом изделий и расценками</span></div></div>'
+      +'<div class="ppan" id="pan_part_'+b.id+'"></div>'
       +'<div class="ppan" id="pan_sum_'+b.id+'"></div>'
       +'<div class="ppan" id="pan_site_'+b.id+'"></div>'
       +'<div class="ppan" id="pan_ship_'+b.id+'">'
@@ -739,11 +756,81 @@ function renderDetail(){
     +'</div></div>'   /* конец вкладки «Состав заказа» и карточки */
     +'<div id="ops_'+b.id+'"></div>';
   showPTab(id, PTAB[id]||ptabSaved()||'det');
-  loadOps(id);
+  loadOps(id); loadParts(id);
 }
+/* ── партии внутри заказа (01.11.2026): только план — очередь; факт раздаётся по очереди, общие детали — первой партии ── */
+var PART={}, PARTS={}, PARTED={};
+function partScopeHtml(id,r){ var p=r&&r.order&&r.order.part; if(!p) return '';
+  return '<div class="pscope"><b>'+esc(p.name==='вне партий'?'Вне партий':'Партия '+p.name)+'</b> — карточка в объёме партии: общие детали раздаются по очереди партий. Правки «лежит» и переучёт — в заказе целиком. <a href="javascript:void(0)" onclick="partScope(\''+id+'\',\'\')">← весь заказ</a></div>'; }
+function partScope(id,pid){ PART[id]=pid||''; renderParts(id); if(pid) showPTab(id,'det'); loadOps(id); }
+function loadParts(id){
+  var box=$('pan_part_'+id); if(!box) return;
+  api({vapi:'pbatches',batch:id}).then(function(r){ PARTS[id]=r; renderParts(id); }).catch(function(e){ box.innerHTML='<div class="err">'+esc(String(e))+'</div>'; });
+}
+function partBar(p){ var v=Math.max(0,Math.min(100,Number(p)||0)); return '<span class="pbarx" title="готовность по труду: '+v+'%"><i style="width:'+v+'%"></i></span><b class="pbn">'+v+'%</b>'; }
+function partItemsShort(items){ return (items||[]).map(function(x){ return esc(x.model)+' <b>'+r1(x.qty)+'</b>'+(x.packed>0?' <span class="muted">(уп. '+r1(x.packed)+')</span>':''); }).join(' · ')||'<span class="muted">пусто</span>'; }
+function renderParts(id){
+  var box=$('pan_part_'+id), r=PARTS[id]; if(!box) return;
+  if(!r||!r.ok){ box.innerHTML='<div class="muted" style="margin-top:var(--s-3)">'+esc((r&&r.error)||'')+'</div>'; ptabCount(id,'part',''); return; }
+  var cur=PART[id]||'', SC={'в очереди':'mute','в работе':'info','готова':'ok','отгружена':'ok'};
+  var row=function(b,i){ var on=cur===b.id;
+    return '<div class="prow'+(on?' on':'')+'" draggable="true" data-id="'+b.id+'" ondragstart="partDrag(event)" ondragover="partOver(event)" ondrop="partDrop(event,\''+id+'\')">'
+      +'<span class="hnd" title="перетащить — поменять очередь">⠿</span><span class="pq">'+(i+1)+'</span>'
+      +'<span class="pnm"><b>'+esc(b.name)+'</b> <span class="pill '+(SC[b.status]||'mute')+'">'+esc(b.status)+'</span>'+(b.note?' <span class="muted small">'+esc(b.note)+'</span>':'')+'<br><span class="small">'+partItemsShort(b.items)+'</span></span>'
+      +'<span class="pst">'+partBar(b.pct)+'<br><span class="small muted">сделано '+money(b.doneRub)+' · осталось '+money(b.leftRub)+' ₽</span></span>'
+      +'<span class="pac"><button class="sec sm" onclick="partScope(\''+id+'\',\''+b.id+'\')" title="карточка заказа в объёме этой партии">'+(on?'✓ показана':'Показать')+'</button>'
+      +'<button class="sec sm" onclick="partEdit(\''+id+'\',\''+b.id+'\')" title="товары и количества, имя, заметка">✎</button>'
+      +'<button class="sec sm" onclick="partDel(\''+id+'\',\''+b.id+'\')" title="удалить партию: товары вернутся во «вне партий»">🗑</button></span></div>'
+      +(PARTED[id]===b.id?partEditor(id,b):''); };
+  var out=r.outside||{items:[]};
+  var outRow='<div class="prow out'+(cur==='out'?' on':'')+'"><span class="hnd"></span><span class="pq"></span><span class="pnm"><b>Вне партий</b><br><span class="small">'+partItemsShort(out.items)+'</span></span>'
+    +'<span class="pst">'+(out.items.length?partBar(out.pct)+'<br><span class="small muted">сделано '+money(out.doneRub)+' · осталось '+money(out.leftRub)+' ₽</span>':'<span class="muted small">всё распределено по партиям</span>')+'</span>'
+    +'<span class="pac">'+(out.items.length?'<button class="sec sm" onclick="partScope(\''+id+'\',\'out\')">'+(cur==='out'?'✓ показана':'Показать')+'</button>':'')+'</span></div>';
+  var log=(r.log||[]).map(function(l){ var d=l.data||{}, t=l.action;
+    var txt=t==='количество'?(itemName(r,d.item)+': '+r1(d.was)+' → '+r1(d.now)):t==='перенос'?(itemName(r,d.item)+' '+r1(d.qty)+': '+esc(d.from)+' → '+esc(d.to)):t==='порядок'?((d.now||[]).map(esc).join(' → ')):esc(d.name||'');
+    return '<tr><td class="small">'+esc(fmtDT(l.at))+'</td><td class="small">'+esc(l.who)+'</td><td class="small"><b>'+esc(t)+'</b> '+txt+'</td></tr>'; }).join('');
+  box.innerHTML='<div class="ptop"><b>Очередь партий</b> <span class="muted small">факт заказа раздаётся по очереди: общие детали — сначала первой партии. Перестановка ничего не меняет на участках.</span><span class="grow"></span>'
+    +'<button class="green sm" onclick="partNew(\''+id+'\')">＋ Партия</button></div>'
+    +((r.batches||[]).length?(r.batches||[]).map(row).join(''):'<div class="muted" style="margin:var(--s-2) 0">партий пока нет — весь заказ «вне партий»</div>')
+    +(PARTED[id]==='new'?partEditor(id,null):'')+outRow
+    +(log?'<details class="plog"><summary>История изменений</summary><table class="tbl">'+log+'</table></details>':'');
+  ptabCount(id,'part',(r.batches||[]).length?String(r.batches.length):'');
+}
+function itemName(r,item){ var x=(r.items||[]).filter(function(i){ return i.item===item; })[0]; return x?esc(x.model):'товар'; }
+function fmtDT(s){ var d=new Date(s); if(isNaN(d)) return ''; var p=function(n){ return (n<10?'0':'')+n; }; return p(d.getDate())+'.'+p(d.getMonth()+1)+' '+p(d.getHours())+':'+p(d.getMinutes()); }
+function partEditor(id,b){
+  var r=PARTS[id], other={};   // в других партиях — по позиции
+  (r.batches||[]).forEach(function(x){ if(b&&x.id===b.id) return; (x.items||[]).forEach(function(i){ other[i.item]=(other[i.item]||0)+i.qty; }); });
+  var mine={}; ((b&&b.items)||[]).forEach(function(i){ mine[i.item]=i.qty; });
+  var rows=(r.items||[]).map(function(it){ var free=Math.max(0,r1(it.qty-(other[it.item]||0)));
+    return '<tr><td>'+esc(it.model)+' <span class="muted small">'+esc(it.sku)+'</span></td><td class="num">'+r1(it.qty)+'</td><td class="num">'+r1(other[it.item]||0)+'</td>'
+      +'<td class="num"><input class="q pin" data-item="'+it.item+'" data-max="'+free+'" value="'+(mine[it.item]?r1(mine[it.item]):'')+'" placeholder="0" inputmode="numeric"></td>'
+      +'<td class="num"><a href="javascript:void(0)" onclick="partAll(this,'+free+')" title="взять всё свободное">все '+free+'</a></td></tr>'; }).join('');
+  return '<div class="pedit" id="pedit_'+id+'"><div class="row"><input id="pename_'+id+'" placeholder="имя (пусто — по номеру)" value="'+esc(b?b.name:'')+'"><input id="penote_'+id+'" placeholder="заметка" value="'+esc(b?b.note:'')+'" style="min-width:220px"></div>'
+    +'<table class="tbl"><thead><tr><th>Товар</th><th class="num">Заказ</th><th class="num">В других партиях</th><th class="num">В этой партии</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>'
+    +'<div class="row"><button class="green sm" onclick="partSave(\''+id+'\',\''+(b?b.id:'')+'\')">Сохранить</button><button class="sec sm" onclick="PARTED[\''+id+'\']=\'\';renderParts(\''+id+'\')">Отмена</button><span class="msg" id="pemsg_'+id+'"></span></div></div>';
+}
+function partAll(a,free){ var inp=a.closest('tr').querySelector('input'); inp.value=free; }
+function partNew(id){ PARTED[id]='new'; renderParts(id); }
+function partEdit(id,pid){ PARTED[id]=PARTED[id]===pid?'':pid; renderParts(id); }
+function partSave(id,pid){
+  var items=[]; Array.prototype.forEach.call(document.querySelectorAll('#pedit_'+id+' input.pin'), function(x){ var v=Number(String(x.value).replace(',','.'))||0; items.push({item:x.getAttribute('data-item'), qty:v}); });
+  if(!pid) items=items.filter(function(x){ return x.qty>0; });
+  var m=$('pemsg_'+id); if(m) m.textContent='сохраняю…';
+  api({vapi:'pbatchsave',batch:id,id:pid,name:$('pename_'+id).value,note:$('penote_'+id).value,items:JSON.stringify(items)}).then(function(r){
+    if(!r||!r.ok){ if(m) m.textContent=(r&&r.error)||'ошибка'; return; } PARTED[id]=''; loadParts(id); if(PART[id]) loadOps(id); });
+}
+function partDel(id,pid){ var b=((PARTS[id]||{}).batches||[]).filter(function(x){ return x.id===pid; })[0]; if(!confirm('Удалить партию '+(b?b.name:'')+'? Товары вернутся во «вне партий». На участках ничего не меняется.')) return;
+  api({vapi:'pbatchdel',batch:id,id:pid}).then(function(r){ if(!r||!r.ok){ alert((r&&r.error)||'ошибка'); return; } if(PART[id]===pid) PART[id]=''; loadParts(id); loadOps(id); }); }
+var PDRAG=null;
+function partDrag(e){ PDRAG=e.currentTarget.getAttribute('data-id'); try{ e.dataTransfer.setData('text/plain',PDRAG); }catch(x){} }
+function partOver(e){ e.preventDefault(); }
+function partDrop(e,id){ e.preventDefault(); var to=e.currentTarget.getAttribute('data-id'); if(!PDRAG||PDRAG===to) return;
+  var ids=((PARTS[id]||{}).batches||[]).map(function(b){ return b.id; }), from=ids.indexOf(PDRAG); ids.splice(from,1); ids.splice(ids.indexOf(to)+(from<=ids.indexOf(to)?1:0),0,PDRAG); PDRAG=null;
+  api({vapi:'pbatchorder',batch:id,ids:JSON.stringify(ids)}).then(function(r){ if(!r||!r.ok) alert((r&&r.error)||'ошибка'); loadParts(id); if(PART[id]) loadOps(id); }); }
 /* ── вкладки карточки заказа ── */
 var PTAB={};
-var PTABS=[['det','Детали и операции','Детали'],['sum','Сводно по заказу','Сводно'],['site','Участки и операции','Участки'],['items','Состав заказа','Состав'],['ship','Отгрузка','Отгрузка']];
+var PTABS=[['part','Партии','Партии'],['det','Детали и операции','Детали'],['sum','Сводно по заказу','Сводно'],['site','Участки и операции','Участки'],['items','Состав заказа','Состав'],['ship','Отгрузка','Отгрузка']];
 function ptabSaved(){ try{ return localStorage.getItem('tw_prod_tab')||''; }catch(e){ return ''; } }
 function ptabsHtml(id){ return '<div class="ptabw" id="ptabw_'+id+'"><div class="ptabs">'+PTABS.map(function(t){ return '<span class="ptab" id="ptab_'+t[0]+'_'+id+'" onclick="showPTab(\''+id+'\',\''+t[0]+'\')"><span class="l">'+t[1]+'</span><span class="s">'+t[2]+'</span><span class="cnt" id="ptabc_'+t[0]+'_'+id+'"></span></span>'; }).join('')+'</div><div class="ptabv" id="ptabv_'+id+'">'+viewBarHtml()+'</div></div>'; }
 /* вид таблиц: один на обе вкладки, хранится в tw_prod_mx */
@@ -810,7 +897,7 @@ function ptabCount(id,t,txt){ var c=$('ptabc_'+t+'_'+id); if(c) c.textContent=tx
 
 function loadOps(id){
   var box=$('ops_'+id); if(!box) return;
-  Promise.all([api({vapi:'orderops',batch:id}), api({vapi:'cutstock'}).catch(function(){ return null; }), api({vapi:'orderwip',batch:id}).catch(function(){ return null; })]).then(function(res){ var r=res[0], cs=res[1], ow=res[2];
+  Promise.all([api({vapi:'orderops',batch:id,part:PART[id]||''}), api({vapi:'cutstock'}).catch(function(){ return null; }), api({vapi:'orderwip',batch:id}).catch(function(){ return null; })]).then(function(res){ var r=res[0], cs=res[1], ow=res[2];
     CUTS={}; ((cs&&cs.items)||[]).forEach(function(x){ CUTS[String(x.detail).toLowerCase()]=Number(x.stock)||0; });
     WIPS=(ow&&ow.ok&&ow.byOp)||{};   // склад деталей по операциям: излишек переучёта сверх потребности (29.10.2026)
     if(!r||!r.ok){ box.innerHTML='<div class="err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; } renderOps(id,r); });
@@ -833,10 +920,11 @@ function renderOps(id,r){
   var prods=(r.products||[]).map(function(p,pi){ return prodMatrixCard(id,p,pi,flags); }).join('');
   var nP=(r.products||[]).length, issues=((r.checks||{}).issues||[]).length;
   var chk=issues?'<details class="chkd"'+(open['chk_'+id]?' open':'')+' id="chk_'+id+'"><summary>⚠ проверки логики: '+plural(issues,'замечание','замечания','замечаний')+' — показать</summary>'+opsChecksHtml(id,r.checks||{})+'</details>':'';
-  var det=$('pan_det_'+id); if(det) det.innerHTML=reb+warn+chk+(prods||'<div class="muted" style="margin-top:var(--s-4)">нет операций — у изделий заказа не задан состав в каталоге</div>');
-  OPSR[id]=r; var sum=$('pan_sum_'+id); if(sum) sum.innerHTML=summaryMatrixHtml(id,r);
+  var sc=partScopeHtml(id,r);
+  var det=$('pan_det_'+id); if(det) det.innerHTML=sc+reb+warn+chk+(prods||'<div class="muted" style="margin-top:var(--s-4)">нет операций — у изделий заказа не задан состав в каталоге</div>');
+  OPSR[id]=r; var sum=$('pan_sum_'+id); if(sum) sum.innerHTML=sc+summaryMatrixHtml(id,r);
   var dash=r.dash||{}, nG=(dash.groups||[]).length, nO=(dash.ops||[]).length;
-  var site=$('pan_site_'+id); if(site) site.innerHTML='<div id="opskpi_'+id+'">'+opsKpiHtml(k)+'</div>'
+  var site=$('pan_site_'+id); if(site) site.innerHTML=sc+'<div id="opskpi_'+id+'">'+opsKpiHtml(k)+'</div>'
     +trayHtml('Участки работ', nG?plural(nG,'участок','участка','участков'):'', 'сколько труда в участке и сколько осталось; раскрой — операции участка',
               '<div id="opsdash_'+id+'">'+opsDashHtml(id,dash)+'</div>')
     +trayHtml('Заказ по операциям', nO?plural(nO,'операция','операции','операций'):'', 'одна деталь идёт в нескольких изделиях — здесь сведено по заказу',
