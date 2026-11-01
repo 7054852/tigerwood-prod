@@ -1133,7 +1133,7 @@ function loadOps(id){
 function renderOps(id,r){
   var box=$('ops_'+id); if(!box) return;
   var k=r.kpi||{};
-  FLOORLOG[id]=r.logged||{}; indexOps(id,r);
+  FLOORLOG[id]=r.logged||{}; indexOps(id,r); OPSR[id]=r;   // раньше матриц: им нужно знать, партия ли это
   // каталог правили после того, как заказ был создан → операции пересобрались сами, человеку надо это сказать
   var reb = r.rebuilt ? '<div class="pill info" style="margin-bottom:var(--s-2);white-space:normal;height:auto">↻ операции пересобраны по актуальному каталогу — начальные остатки и выработка сохранены</div>' : '';
   var warn = (r.notAssembled&&r.notAssembled.length) ? '<div class="pill warn" style="margin-bottom:var(--s-2);white-space:normal;height:auto">⚠ не подтверждены директором как «собрано»: '+r.notAssembled.map(esc).join(', ')+'</div>' : '';
@@ -1253,7 +1253,7 @@ function mxDoneCell(id,o,flags,rowNeed){
   if(o.op==='Раскрой'&&o.level!=='изделие') return cutDoneCell(o,o.detail,Number(o.need)||0);
   var ready=Number(o.readyEff!=null?o.readyEff:o.ready)||0, need=Number(o.need)||0, left=Number(o.left)||0, pend=(Number(o.pend)||0)+(Number(o.qc)||0);
   var fk=flags?String(o.id).split(',').map(function(x){ return flags[x]; }).filter(Boolean)[0]:'';
-  var cls=left<=0.001?'cdone':(ready>need+0.001?'over':''), fl=fk?' <span class="chk '+fk+'" title="есть замечание">⚠</span>':'';
+  var cls=left<=0.001?'cdone':(ready>need+0.001&&!isPart(id)?'over':''), fl=fk?' <span class="chk '+fk+'" title="есть замечание">⚠</span>':'';
   var tip=o.detail+' · '+o.op+'\nсделано '+r1(ready)+' из '+r1(need)+(o.stock?(' (нач. остатки '+r1(o.stock)+')'):'')+'\nосталось '+r1(left)
     +(pend?('\nподано, не принято: '+r1(pend)):'')+(Number(o.over)>0?('\nперевыполнено на '+r1(o.over)):'')+'\nнажми — поправить «лежит сейчас» на этой операции';
   // полоска: сплошная — принято, пунктир — подано (ждёт проверки/ОТК); у незакрытой операции хвост дорожки виден всегда,
@@ -1462,7 +1462,7 @@ function summaryMatrixHtml(id,r){
           var rd=x.ready, pb='';
           if(!done&&x.need>0&&(rd>0||x.pend>0)){ var CAP=90, a=Math.min(CAP,rd/x.need*100), q=Math.min(CAP-a,x.pend/x.need*100);
             pb='<span class="pb"><i class="a" style="width:'+a.toFixed(1)+'%"></i>'+(q>0?'<i class="q" style="width:'+q.toFixed(1)+'%"></i>':'')+'</span>'; }
-          return '<td class="'+(done?'cdone':(rd>x.need+0.001?'over':''))+(row.part&&row.part[c]?' part':'')+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+x.ids.join(',')+'\')"><span class="flf'+(rd>0?'':' z')+'">'+(rd>0?r1(rd):'·')+'</span>'
+          return '<td class="'+(done?'cdone':(rd>x.need+0.001&&!isPart(id)?'over':''))+(row.part&&row.part[c]?' part':'')+'" title="'+esc(tip)+'" onclick="openFact(\''+id+'\',\''+x.ids.join(',')+'\')"><span class="flf'+(rd>0?'':' z')+'">'+(rd>0?r1(rd):'·')+'</span>'
             +(x.pend>0?'<span class="sub q">+'+r1(x.pend)+'</span>':'')+pb+gapSub({lifted:x.lifted,detail:row.name},c)+'</td>';
         }
         if(SV==='lie'&&c==='Раскрой'&&!row.prod&&!row.sub){
@@ -1876,6 +1876,7 @@ function openFact(id,idsCsv){
   });
 }
 /* ── журнал клетки (новое ядро, 01.11.2026): каждая запись места — наряд, приёмка, переучёт, отгрузка, правка, отмена — с остатком после неё ── */
+function isPart(id){ var r=OPSR[id]; return !!(r&&r.order&&r.order.part); }   // карточка партии: «сверх плана» — про заказ, не про партию
 function isLedger(id){ var r=OPSR[id]; return !!(r&&r.order&&r.order.ledger); }
 function jDT(s){ var d=new Date(s); if(isNaN(d)) return ''; var p=function(n){ return (n<10?'0':'')+n; }; return p(d.getDate())+'.'+p(d.getMonth()+1)+' '+p(d.getHours())+':'+p(d.getMinutes()); }
 function loadJournal(id,ids,boxId){
