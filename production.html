@@ -96,6 +96,16 @@
   .pbn{ margin-left:6px; font-variant-numeric:tabular-nums; }
   .pedit{ border:1px dashed var(--line2); border-radius:var(--r-ctl); padding:var(--s-2); margin:0 0 var(--s-2) 40px; }
   .pedit .row{ margin:6px 0; display:flex; gap:var(--s-2); flex-wrap:wrap; }
+  .ped-h{ display:flex; gap:var(--s-2); align-items:center; flex-wrap:wrap; margin-bottom:6px; }
+  .ped-h input{ min-width:0; flex:1 1 140px; }
+  .pits{ display:grid; grid-template-columns:repeat(auto-fill,minmax(min(330px,100%),1fr)); gap:2px 12px; }
+  .pit{ display:grid; grid-template-columns:1fr auto 64px 30px; gap:6px; align-items:center; padding:2px 4px; border-bottom:1px solid var(--line); font-size:13px; }
+  .pit .pin-nm{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .pit .pin-fr{ color:var(--muted); font-size:12px; white-space:nowrap; }
+  .pit input.pin{ width:64px; height:26px; padding:2px 6px; text-align:right; }
+  .pits.hidefull .pit.full{ display:none; }
+  @media (max-width:700px){ .pit{ grid-template-columns:1fr 64px 34px; } .pit .pin-nm{ grid-column:1/-1; white-space:normal; font-weight:600; } }
+  .pflash{ position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:var(--ok,#16a34a); color:#fff; padding:8px 14px; border-radius:8px; z-index:9999; font-weight:600; }
   .pscope{ margin:var(--s-2) 0; padding:6px 10px; border-radius:var(--r-ctl); background:var(--card2); border:1px solid var(--accent,#3b82f6); }
   .plog{ margin-top:var(--s-3); }
   @media (max-width:700px){ .prow{ grid-template-columns:18px 1fr; } .prow .pq{ display:none; } .prow .pst,.prow .pac{ grid-column:2; } .pedit{ margin-left:0; } }
@@ -787,7 +797,7 @@ function renderParts(id){
     +'<span class="pst">'+(out.items.length?partBar(out.pct)+'<br><span class="small muted">сделано '+money(out.doneRub)+' · осталось '+money(out.leftRub)+' ₽</span>':'<span class="muted small">всё распределено по партиям</span>')+'</span>'
     +'<span class="pac">'+(out.items.length?'<button class="sec sm" onclick="partScope(\''+id+'\',\'out\')">'+(cur==='out'?'✓ показана':'Показать')+'</button>':'')+'</span></div>';
   var log=(r.log||[]).map(function(l){ var d=l.data||{}, t=l.action;
-    var txt=t==='количество'?(itemName(r,d.item)+': '+r1(d.was)+' → '+r1(d.now)):t==='перенос'?(itemName(r,d.item)+' '+r1(d.qty)+': '+esc(d.from)+' → '+esc(d.to)):t==='порядок'?((d.now||[]).map(esc).join(' → ')):esc(d.name||'');
+    var txt=t==='количество'?(partItemName(r,d.item)+': '+r1(d.was)+' → '+r1(d.now)):t==='перенос'?(partItemName(r,d.item)+' '+r1(d.qty)+': '+esc(d.from)+' → '+esc(d.to)):t==='порядок'?((d.now||[]).map(esc).join(' → ')):esc(d.name||'');
     return '<tr><td class="small">'+esc(fmtDT(l.at))+'</td><td class="small">'+esc(l.who)+'</td><td class="small"><b>'+esc(t)+'</b> '+txt+'</td></tr>'; }).join('');
   box.innerHTML='<div class="ptop"><b>Очередь партий</b> <span class="muted small">факт заказа раздаётся по очереди: общие детали — сначала первой партии. Перестановка ничего не меняет на участках.</span><span class="grow"></span>'
     +'<button class="green sm" onclick="partNew(\''+id+'\')">＋ Партия</button></div>'
@@ -796,30 +806,43 @@ function renderParts(id){
     +(log?'<details class="plog"><summary>История изменений</summary><table class="tbl">'+log+'</table></details>':'');
   ptabCount(id,'part',(r.batches||[]).length?String(r.batches.length):'');
 }
-function itemName(r,item){ var x=(r.items||[]).filter(function(i){ return i.item===item; })[0]; return x?esc(x.model):'товар'; }
+function partItemName(r,item){ var x=(r.items||[]).filter(function(i){ return i.item===item; })[0]; return x?esc(x.model):'товар'; }
 function fmtDT(s){ var d=new Date(s); if(isNaN(d)) return ''; var p=function(n){ return (n<10?'0':'')+n; }; return p(d.getDate())+'.'+p(d.getMonth()+1)+' '+p(d.getHours())+':'+p(d.getMinutes()); }
 function partEditor(id,b){
   var r=PARTS[id], other={};   // в других партиях — по позиции
   (r.batches||[]).forEach(function(x){ if(b&&x.id===b.id) return; (x.items||[]).forEach(function(i){ other[i.item]=(other[i.item]||0)+i.qty; }); });
   var mine={}; ((b&&b.items)||[]).forEach(function(i){ mine[i.item]=i.qty; });
-  var rows=(r.items||[]).map(function(it){ var free=Math.max(0,r1(it.qty-(other[it.item]||0)));
-    return '<tr><td>'+esc(it.model)+' <span class="muted small">'+esc(it.sku)+'</span></td><td class="num">'+r1(it.qty)+'</td><td class="num">'+r1(other[it.item]||0)+'</td>'
-      +'<td class="num"><input class="q pin" data-item="'+it.item+'" data-max="'+free+'" value="'+(mine[it.item]?r1(mine[it.item]):'')+'" placeholder="0" inputmode="numeric"></td>'
-      +'<td class="num"><a href="javascript:void(0)" onclick="partAll(this,'+free+')" title="взять всё свободное">все '+free+'</a></td></tr>'; }).join('');
-  return '<div class="pedit" id="pedit_'+id+'"><div class="row"><input id="pename_'+id+'" placeholder="имя (пусто — по номеру)" value="'+esc(b?b.name:'')+'"><input id="penote_'+id+'" placeholder="заметка" value="'+esc(b?b.note:'')+'" style="min-width:220px"></div>'
-    +'<table class="tbl"><thead><tr><th>Товар</th><th class="num">Заказ</th><th class="num">В других партиях</th><th class="num">В этой партии</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>'
-    +'<div class="row"><button class="green sm" onclick="partSave(\''+id+'\',\''+(b?b.id:'')+'\')">Сохранить</button><button class="sec sm" onclick="PARTED[\''+id+'\']=\'\';renderParts(\''+id+'\')">Отмена</button><span class="msg" id="pemsg_'+id+'"></span></div></div>';
+  var hid=0, rows=(r.items||[]).map(function(it){ var free=Math.max(0,r1(it.qty-(other[it.item]||0))), has=!!mine[it.item];
+    if(!free&&!has) hid++;   // всё уже в других партиях — прячем под «показать все»
+    return '<div class="pit'+(!free&&!has?' full':'')+'"><span class="pin-nm" title="'+esc(it.sku)+'">'+esc(it.model)+'</span>'
+      +'<span class="pin-fr">свободно <b>'+free+'</b> из '+r1(it.qty)+'</span>'
+      +'<input class="q pin" data-item="'+it.item+'" data-max="'+free+'" value="'+(has?r1(mine[it.item]):'')+'" placeholder="0" inputmode="decimal">'
+      +(free>0?'<a href="javascript:void(0)" onclick="partAll(this,'+free+')" title="взять всё свободное">все</a>':'<span></span>')+'</div>'; }).join('');
+  return '<div class="pedit" id="pedit_'+id+'"><div class="ped-h"><b>'+(b?'Партия '+esc(b.name):'Новая партия')+'</b>'
+    +'<input id="pename_'+id+'" placeholder="имя (пусто — '+esc((r.order&&r.order.num||'').replace('ПАРТ-',''))+'/N)" value="'+esc(b?b.name:'')+'">'
+    +'<input id="penote_'+id+'" placeholder="заметка" value="'+esc(b?b.note:'')+'">'
+    +'<a href="javascript:void(0)" onclick="partAllFree(\''+id+'\')">взять всё свободное</a></div>'
+    +'<div class="pits'+(hid?' hidefull':'')+'" id="pits_'+id+'">'+rows+'</div>'
+    +(hid?'<a href="javascript:void(0)" class="small" onclick="this.previousElementSibling.classList.remove(\'hidefull\');this.remove()">показать все товары ('+hid+' уже распределены)</a>':'')
+    +'<div class="row"><button class="green sm" id="pesave_'+id+'" onclick="partSave(\''+id+'\',\''+(b?b.id:'')+'\')">'+(b?'Сохранить':'Создать партию')+'</button><button class="sec sm" onclick="PARTED[\''+id+'\']=\'\';renderParts(\''+id+'\')">Отмена</button><span class="msg" id="pemsg_'+id+'"></span></div></div>';
 }
-function partAll(a,free){ var inp=a.closest('tr').querySelector('input'); inp.value=free; }
+function partAll(a,free){ var inp=a.parentNode.querySelector('input'); inp.value=free; }
+function partAllFree(id){ Array.prototype.forEach.call(document.querySelectorAll('#pedit_'+id+' input.pin'), function(x){ var f=Number(x.getAttribute('data-max'))||0; if(f>0) x.value=f; }); }
 function partNew(id){ PARTED[id]='new'; renderParts(id); }
 function partEdit(id,pid){ PARTED[id]=PARTED[id]===pid?'':pid; renderParts(id); }
 function partSave(id,pid){
   var items=[]; Array.prototype.forEach.call(document.querySelectorAll('#pedit_'+id+' input.pin'), function(x){ var v=Number(String(x.value).replace(',','.'))||0; items.push({item:x.getAttribute('data-item'), qty:v}); });
   if(!pid) items=items.filter(function(x){ return x.qty>0; });
-  var m=$('pemsg_'+id); if(m) m.textContent='сохраняю…';
+  var m=$('pemsg_'+id), btn=$('pesave_'+id);
+  var fail=function(t){ if(btn) btn.disabled=false; if(m){ m.className='msg err'; m.textContent='✕ '+t; } alert('Партия не сохранена: '+t); };
+  if(!pid&&!items.length){ fail('впишите количество хотя бы одного товара'); return; }
+  if(btn) btn.disabled=true; if(m){ m.className='msg'; m.textContent='сохраняю…'; }
   api({vapi:'pbatchsave',batch:id,id:pid,name:$('pename_'+id).value,note:$('penote_'+id).value,items:JSON.stringify(items)}).then(function(r){
-    if(!r||!r.ok){ if(m) m.textContent=(r&&r.error)||'ошибка'; return; } PARTED[id]=''; loadParts(id); if(PART[id]) loadOps(id); });
+    if(!r||!r.ok){ fail((r&&r.error)||'сервер не ответил'); return; }
+    PARTED[id]=''; loadParts(id); if(PART[id]) loadOps(id); flashMsg('✓ партия '+(r.name||'')+' сохранена');
+  }).catch(function(e){ fail('нет связи с сервером ('+String(e&&e.message||e)+')'); });
 }
+function flashMsg(t){ var d=document.createElement('div'); d.className='pflash'; d.textContent=t; document.body.appendChild(d); setTimeout(function(){ d.remove(); },3000); }
 function partDel(id,pid){ var b=((PARTS[id]||{}).batches||[]).filter(function(x){ return x.id===pid; })[0]; if(!confirm('Удалить партию '+(b?b.name:'')+'? Товары вернутся во «вне партий». На участках ничего не меняется.')) return;
   api({vapi:'pbatchdel',batch:id,id:pid}).then(function(r){ if(!r||!r.ok){ alert((r&&r.error)||'ошибка'); return; } if(PART[id]===pid) PART[id]=''; loadParts(id); loadOps(id); }); }
 var PDRAG=null;
