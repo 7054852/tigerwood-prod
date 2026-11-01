@@ -108,6 +108,11 @@
   .pits.hidefull .pit.full{ display:none; }
   @media (max-width:700px){ .pit{ grid-template-columns:1fr 64px 34px; } .pit .pin-nm{ grid-column:1/-1; } }
   .pflash{ position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:var(--ok,#16a34a); color:#fff; padding:8px 14px; border-radius:8px; z-index:9999; font-weight:600; }
+  .jpl{ margin-top:var(--s-2); } .jhd{ display:flex; justify-content:space-between; gap:var(--s-2); align-items:baseline; }
+  .jtb{ border-collapse:collapse; width:100%; font-size:12.5px; font-variant-numeric:tabular-nums; } .jtb th,.jtb td{ padding:3px 6px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+  .jtb td.num,.jtb th.num{ text-align:right; white-space:nowrap; } .jtb tr.jx td{ text-decoration:line-through; color:var(--muted); } .jtb tr.js td{ color:var(--muted); font-style:italic; }
+  .jtb tr.dlate td{ background:var(--red-bg,#fde8e8); } .dh{ margin:var(--s-4) 0 var(--s-2); font-size:15px; } .dcnt{ margin:4px 0; } .dcnt summary{ cursor:pointer; }
+  .tw{ overflow-x:auto; }
   .pscope{ margin:var(--s-2) 0; padding:6px 10px; border-radius:var(--r-ctl); background:var(--card2); border:1px solid var(--accent,#3b82f6); }
   .plog{ margin-top:var(--s-3); }
   @media (max-width:700px){ .prow{ grid-template-columns:18px 1fr; } .prow .pq{ display:none; } .prow .pst,.prow .pac{ grid-column:2; } .pedit{ margin-left:0; } }
@@ -750,6 +755,7 @@ function renderDetail(){
       +ptabsHtml(b.id)
       +'<div class="ppan" id="pan_det_'+b.id+'"><div class="muted">Загрузка операций… <span class="muted small">сверяю с каталогом изделий и расценками</span></div></div>'
       +'<div class="ppan" id="pan_part_'+b.id+'"></div>'
+      +'<div class="ppan" id="pan_disc_'+b.id+'"></div>'
       +'<div class="ppan" id="pan_sum_'+b.id+'"></div>'
       +'<div class="ppan" id="pan_site_'+b.id+'"></div>'
       +'<div class="ppan" id="pan_ship_'+b.id+'">'
@@ -855,7 +861,7 @@ function partDrop(e,id){ e.preventDefault(); var to=e.currentTarget.getAttribute
   api({vapi:'pbatchorder',batch:id,ids:JSON.stringify(ids)}).then(function(r){ if(!r||!r.ok) alert((r&&r.error)||'ошибка'); loadParts(id); if(PART[id]) loadOps(id); }); }
 /* ── вкладки карточки заказа ── */
 var PTAB={};
-var PTABS=[['part','Партии','Партии'],['det','Детали и операции','Детали'],['sum','Сводно по заказу','Сводно'],['site','Участки и операции','Участки'],['items','Состав заказа','Состав'],['ship','Отгрузка','Отгрузка']];
+var PTABS=[['part','Партии','Партии'],['det','Детали и операции','Детали'],['disc','Расхождения','Расхожд.'],['sum','Сводно по заказу','Сводно'],['site','Участки и операции','Участки'],['items','Состав заказа','Состав'],['ship','Отгрузка','Отгрузка']];
 function ptabSaved(){ try{ return localStorage.getItem('tw_prod_tab')||''; }catch(e){ return ''; } }
 function ptabsHtml(id){ return '<div class="ptabw" id="ptabw_'+id+'"><div class="ptabs">'+PTABS.map(function(t){ return '<span class="ptab" id="ptab_'+t[0]+'_'+id+'" onclick="showPTab(\''+id+'\',\''+t[0]+'\')"><span class="l">'+t[1]+'</span><span class="s">'+t[2]+'</span><span class="cnt" id="ptabc_'+t[0]+'_'+id+'"></span></span>'; }).join('')+'</div><div class="ptabv" id="ptabv_'+id+'">'+viewBarHtml()+'</div></div>'; }
 /* вид таблиц: один на обе вкладки, хранится в tw_prod_mx */
@@ -925,7 +931,7 @@ function loadOps(id){
   Promise.all([api({vapi:'orderops',batch:id,part:PART[id]||''}), api({vapi:'cutstock'}).catch(function(){ return null; }), api({vapi:'orderwip',batch:id}).catch(function(){ return null; })]).then(function(res){ var r=res[0], cs=res[1], ow=res[2];
     CUTS={}; ((cs&&cs.items)||[]).forEach(function(x){ CUTS[String(x.detail).toLowerCase()]=Number(x.stock)||0; });
     WIPS=(ow&&ow.ok&&ow.byOp)||{};   // склад деталей по операциям: излишек переучёта сверх потребности (29.10.2026)
-    if(!r||!r.ok){ box.innerHTML='<div class="err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; } renderOps(id,r); });
+    if(!r||!r.ok){ box.innerHTML='<div class="err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; } renderOps(id,r); loadDisc(id); });
 }
 function renderOps(id,r){
   var box=$('ops_'+id); if(!box) return;
@@ -1649,12 +1655,13 @@ function openFact(id,idsCsv){
     +'<div class="muted small">деталь «'+esc(c.detail)+'» · операция «'+esc(c.op)+'»</div>'
     +rows
     +'<div style="margin-top:var(--s-3)"><input id="fcnote" placeholder="почему правим — пересчитали, нашли на складе…" style="width:100%"></div>'
-    +'<div class="muted small" style="margin-top:var(--s-2)">наряды и зарплата не меняются: правятся только начальные остатки. Предыдущие операции подтянутся вверх, если понадобится.</div>'
+    +'<div class="muted small" style="margin-top:var(--s-2)">'+(isLedger(id)?'наряды и зарплата не меняются: правка «лежит» записывается в журнал места, разница — в «Расхождения».':'наряды и зарплата не меняются: правятся только начальные остатки. Предыдущие операции подтянутся вверх, если понадобится.')+'</div>'
     +'<div class="row" style="margin-top:var(--s-3);gap:var(--s-2)">'
       +'<button onclick="saveFact(\''+id+'\')">Сохранить</button>'
       +'<button class="sec" onclick="closeFact()">Отмена</button></div>'
     +'<div id="fclog" style="margin-top:var(--s-3)"></div></div>';
   document.body.appendChild(ov);
+  if(isLedger(id)){ loadJournal(id,ids,'fclog'); return; }
   api({vapi:'opfactlog',batch:id}).then(function(r){
     var b=$('fclog'); if(!b) return;
     var log=((r&&r.log)||[]).filter(function(x){ return x.op===c.op && x.detail===c.detail; });
@@ -1667,6 +1674,48 @@ function openFact(id,idsCsv){
           +(x.cascade?('<br><span class="muted small">подтянуто выше: '+esc(x.cascade)+'</span>'):'')+'</span></div>';
       }).join('');
   });
+}
+/* ── журнал клетки (новое ядро, 01.11.2026): каждая запись места — наряд, приёмка, переучёт, отгрузка, правка, отмена — с остатком после неё ── */
+function isLedger(id){ var r=OPSR[id]; return !!(r&&r.order&&r.order.ledger); }
+function jDT(s){ var d=new Date(s); if(isNaN(d)) return ''; var p=function(n){ return (n<10?'0':'')+n; }; return p(d.getDate())+'.'+p(d.getMonth()+1)+' '+p(d.getHours())+':'+p(d.getMinutes()); }
+function loadJournal(id,ids,boxId){
+  var b=$(boxId); if(!b) return; b.innerHTML='<div class="muted small">журнал загружается…</div>';
+  api({vapi:'celljournal',batch:id,ids:ids.join(',')}).then(function(r){ var b=$(boxId); if(!b) return;
+    if(!r||!r.ok){ b.innerHTML='<div class="err small">'+esc((r&&r.error)||'журнал не загрузился')+'</div>'; return; }
+    if(!(r.places||[]).length){ b.innerHTML='<div class="muted small">записей нет: с '+esc(jDT(r.from))+' здесь ничего не двигалось</div>'; return; }
+    b.innerHTML=r.places.map(function(p){
+      return '<div class="jpl"><div class="jhd"><b>'+esc(p.title)+'</b><span>сейчас <b>'+r1(p.balance)+'</b></span></div>'
+        +(p.shared?'<div class="muted small">общее место для нескольких товаров заказа — раздаётся по порядку позиций</div>':'')
+        +'<div class="tw"><table class="jtb"><thead><tr><th>Когда</th><th class="num">±</th><th class="num">стало</th><th>Что</th><th>Кто</th></tr></thead><tbody>'
+        +p.entries.map(function(e){ return '<tr class="'+(e.cancelled?'jx':'')+(e.storno?' js':'')+'"><td>'+esc(jDT(e.at))+'</td><td class="num '+(e.delta>0?'ok':'err')+'">'+(e.delta>0?'+':'')+r1(e.delta)+'</td><td class="num">'+r1(e.run)+'</td><td>'+esc(e.text)+'</td><td>'+esc(e.who)+'</td></tr>'; }).join('')
+        +'</tbody></table></div></div>'; }).join('');
+  }).catch(function(){ var b=$(boxId); if(b) b.innerHTML='<div class="err small">нет связи с сервером</div>'; });
+}
+/* ── «Расхождения» (новое ядро): «ждём» — прошли дальше без наряда; разница переучётов с системой ── */
+var DISC={};
+function loadDisc(id){
+  var box=$('pan_disc_'+id); if(!box) return;
+  if(!isLedger(id)){ box.innerHTML='<div class="muted" style="margin-top:var(--s-3)">Расхождения — для заказов в новой системе учёта.</div>'; ptabCount(id,'disc',''); return; }
+  api({vapi:'discrep',batch:id}).then(function(r){ DISC[id]=r; renderDisc(id); }).catch(function(){ box.innerHTML='<div class="err">нет связи с сервером</div>'; });
+}
+function renderDisc(id){
+  var box=$('pan_disc_'+id), r=DISC[id]; if(!box) return;
+  if(!r||!r.ok){ box.innerHTML='<div class="err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
+  ptabCount(id,'disc',r.waits.length?String(r.waits.length):'');
+  var w=r.waits.map(function(x){ return '<tr class="'+(x.late?'dlate':'')+'"><td>'+esc(x.detail)+(x.finish?' <span class="muted small">'+esc(x.finish)+'</span>':'')+'</td><td>'+esc(x.op)+'</td>'
+      +'<td class="num"><b>'+r1(x.qty)+'</b></td><td class="num">'+money(x.rub)+'</td><td class="num">'+(x.since?esc(jDT(x.since).slice(0,5))+' · '+x.days+' дн.':'—')+'</td>'
+      +'<td class="small">'+esc(x.by)+'</td><td><button class="sec sm" onclick="openFact(\''+id+'\',\''+x.ids.join(',')+'\')">журнал</button></td></tr>'; }).join('');
+  var c=(r.counts||[]).map(function(k){ return '<details class="dcnt"><summary><b>Переучёт № '+esc(k.count)+'</b> от '+esc(String(k.date).slice(0,10).split('-').reverse().join('.'))
+      +' · <span class="ok">+'+r1(k.plus)+'</span> / <span class="err">−'+r1(k.minus)+'</span> шт · '+(k.rub>=0?'+':'')+money(k.rub)+' ₽</summary>'
+      +'<div class="tw"><table class="jtb"><thead><tr><th>Деталь</th><th>Операция</th><th class="num">Переучёт против системы</th><th class="num">₽</th></tr></thead><tbody>'
+      +k.rows.map(function(x){ return '<tr><td>'+esc(x.detail)+(x.finish?' <span class="muted small">'+esc(x.finish)+'</span>':'')+'</td><td>'+esc(x.op)+'</td><td class="num '+(x.qty>0?'ok':'err')+'">'+(x.qty>0?'+':'')+r1(x.qty)+'</td><td class="num">'+money(x.rub)+'</td></tr>'; }).join('')
+      +'</tbody></table></div></details>'; }).join('');
+  box.innerHTML='<div class="muted small" style="margin:var(--s-3) 0 var(--s-2)">в новой системе с '+esc(jDT(r.from))+' ('+esc(r.opened)+')</div>'
+    +'<h3 class="dh">Ждём — детали прошли дальше, а наряд за операцию не подан</h3>'
+    +(r.waits.length?'<div class="small" style="margin-bottom:var(--s-2)">'+r.waits.length+' мест · <b>'+r1(r.waitQty)+' шт</b> · '+money(r.waitRub)+' ₽'+(r.late?' · <span class="err">дольше '+r.waitDays+' дн.: '+r.late+'</span>':'')+'</div>'
+      +'<div class="tw"><table class="jtb"><thead><tr><th>Деталь</th><th>Операция</th><th class="num">Ждём, шт</th><th class="num">₽</th><th class="num">С какого дня</th><th>Кто взял дальше</th><th></th></tr></thead><tbody>'+w+'</tbody></table></div>'
+      :'<div class="muted">нет — все детали, что прошли дальше, закрыты нарядами</div>')
+    +'<h3 class="dh">Переучёты — разница с системой</h3>'+(c||'<div class="muted">переучётов в новой системе ещё не было</div>');
 }
 function saveFact(id){
   var ov=$('fcov'); if(!ov) return;
