@@ -488,6 +488,19 @@
     font-size:10px; line-height:11px; font-weight:500; color:var(--fg2,var(--fg)); overflow:hidden; overflow-wrap:break-word; hyphens:auto; border-right:1px solid var(--line); }
   #mxfh b[data-pin]{ background:var(--card); z-index:1; justify-content:flex-start; text-align:left; font-weight:600; padding-left:var(--s-2); }
   #mxfh b.fin{ color:var(--green); background:var(--green-bg); } #mxfh b.rw{ color:var(--amber); }
+  /* «План на завтра» для бригадира (02.11.2026) */
+  .dphead{ display:flex; gap:var(--s-4); flex-wrap:wrap; align-items:flex-end; }
+  .dphead .big{ font-size:28px; font-weight:700; line-height:1.1; }
+  .dpgrid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:var(--s-3); }
+  .dpsite h3{ margin:0; font-size:16px; display:flex; gap:var(--s-2); align-items:baseline; flex-wrap:wrap; }
+  .dpload{ height:6px; background:var(--line); border-radius:3px; overflow:hidden; margin:6px 0 4px; } .dpload i{ display:block; height:100%; background:var(--acc,#2f7d5b); }
+  .dpt{ display:grid; grid-template-columns:22px 1fr auto; gap:2px 8px; padding:5px 0; border-top:1px solid var(--line); align-items:baseline; }
+  .dpt .n{ color:var(--muted); font-size:12px; text-align:right; } .dpt .q{ text-align:right; white-space:nowrap; }
+  .dpwhen{ font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin-top:8px; }
+  .dpsrc{ font-size:11px; padding:0 5px; border-radius:6px; border:1px solid var(--line); color:var(--muted); white-space:nowrap; }
+  .dpjam{ display:grid; grid-template-columns:1fr auto; gap:2px 10px; padding:4px 0; border-top:1px solid var(--line); }
+  .dptbl td,.dptbl th{ padding:4px 8px; text-align:left; vertical-align:top; } .dptbl td.num{ text-align:right; white-space:nowrap; }
+  @media print{ .noprint,.toolbar{ display:none!important } .dpsite,.dpcard{ break-inside:avoid } .card{ box-shadow:none!important } .dpgrid{ grid-template-columns:1fr 1fr } }
 </style>
 </head>
 <body>
@@ -549,7 +562,7 @@ function statusColor(st){ var m={'новая':'var(--line2)','в работе':'
 function itemName(it){ return [it.equip,it.model].filter(Boolean).join(' · ')||it.sku||'—'; }
 function catUrl(x){ var f='find='+encodeURIComponent(x||'')+'&tok='+encodeURIComponent(twTok()||''); return (window.TW_CFG&&TW_CFG.srv!=='gas') ? 'catalog.html?'+f : BASE+'?page=catalog&'+f; }   // каталог с фокусом на изделие: через Прохаб — новый экран, иначе панель хаба
 
-function render(){ if(VIEW==='flow'){ renderFlow(); return; } if(VIEW==='detail'&&CUR){ if(DETAIL&&DETAIL.id===CUR) renderDetail(); else loadDetail(CUR); } else { renderList(); } }
+function render(){ if(VIEW==='flow'){ renderFlow(); return; } if(VIEW==='dayplan'){ renderDayPlan(); return; } if(VIEW==='detail'&&CUR){ if(DETAIL&&DETAIL.id===CUR) renderDetail(); else loadDetail(CUR); } else { renderList(); } }
 /* ── у одной работы два имени (владелец 14.10.2026): ПАРТ-N в цехе, №N у продаж. Заказ показывает свои сделки; отгрузка и документы — в сделке ── */
 function pageUrl(page, k, v){ var sp=new URLSearchParams(location.search); ['batch','deal'].forEach(function(x){ sp.delete(x); }); sp.set(k, v); return page+'?'+sp.toString(); }
 function dealsChips(b){ return (b.deals||[]).map(function(d){ return '<span class="pill info" title="сделка продаж">'+esc(d.num)+(d.client?' · '+esc(d.client):'')+'</span>'; }).join(''); }
@@ -667,6 +680,61 @@ function flowStrip(){
     +fChart(last7,{h:72,colW:30,axis:false,fit:false})+'</div>'
     +'<div class="fsr"><div class="small muted">'+(yi===n-2?'вчера, ':'последний день с нарядами, ')+fDay(f.days[yi],true)+': итог <b class="fg">'+money(fDayTot(f,ser,yi))+' ₽</b>'+((f.totals||[])[yi]&&f.totals[yi].people?' · '+f.totals[yi].people+' чел.':'')+'</div><div class="fchips">'+(chips||'<span class="muted small">нарядов не было</span>')+'</div>'+warn
     +'<div class="small"><a href="javascript:void(0)">подробно по дням и операциям →</a></div></div></div>';
+}
+/* ---------- «План на завтра» для бригадира (02.11.2026): что делать на каждом участке по порядку, чтобы партия шла к упаковке без затора ---------- */
+var DPLAN=null, DPLANQ=null;
+function openDayPlan(id,part){ VIEW='dayplan'; DPLANQ={id:id,part:part||''}; DPLAN=null; window.scrollTo(0,0);
+  app.innerHTML='<div class="center muted">Считаю план: остатки на участках, мощность, смена по часам…</div>';
+  api({vapi:'dayplan',batch:id,part:part||'',days:8}).then(function(r){ DPLAN=r||{ok:false}; renderDayPlan(); }).catch(function(e){ DPLAN={ok:false,error:String(e&&e.message||e)}; renderDayPlan(); }); }
+function dpBack(){ if(DPLANQ&&DPLANQ.id) openOrder(DPLANQ.id); else backToList(); }
+function dpDays(n){ var out=[], d=new Date(); d.setHours(12,0,0,0); while(out.length<n){ d.setDate(d.getDate()+1); var w=d.getDay(); if(w===0||w===6) continue; out.push(FDOW[w]+' '+('0'+d.getDate()).slice(-2)+'.'+('0'+(d.getMonth()+1)).slice(-2)); } return out; }
+function dpPacked(p){ var k=Object.keys(p||{}); return k.length?k.map(function(m){ return esc(m)+' <b>'+p[m]+'</b>'; }).join(' · '):'<span class="muted">—</span>'; }
+function renderDayPlan(){
+  if(VIEW!=='dayplan') return; var r=DPLAN;
+  var bar='<div class="toolbar noprint"><button class="sec" onclick="dpBack()">← заказ</button><span class="meta">План на день для бригадира</span><div class="end"><button class="sec" onclick="window.print()">🖨 Печать</button></div></div>';
+  if(!r||!r.ok){ app.innerHTML=bar+'<div class="err">'+esc((r&&r.error)||'не загрузилось')+'</div>'; return; }
+  var days=dpDays(Math.max(1,(r.forecast||[]).length)), who=r.part||r.order, f1=(r.forecast||[])[0]||{pct:0,rub:0,packed:{}}, st=r.start||{pct:0,rub:0};
+  var head='<div class="card dpcard"><div class="dphead"><div><div class="small muted">План на '+esc(days[0])+' · '+esc(who)+(r.part?' <span class="muted">('+esc(r.order)+')</span>':'')+'</div>'
+    +'<div class="big">'+st.pct+'% → '+f1.pct+'%</div><div class="small">готовность по труду: +'+money(f1.rub-st.rub)+' ₽ за день</div></div>'
+    +'<div><div class="small muted">упакуем за день</div><div>'+dpPacked(f1.packed)+'</div></div></div>'
+    +'<div class="small muted" style="margin-top:6px">Мощность участка = средняя выработка за '+r.avgDays+' рабочих дней × '+String(r.boost).replace('.',',')+' (покрытие и упаковка — не меньше 200 ₽, упаковка — отдельно от сборки). Тянем от конца цепочки: сначала то, что ближе к упаковке; деталь за день проходит несколько операций подряд. Первыми — товары '+esc(who)+', потом остальное.</div></div>';
+  // где нужны люди: сколько дней работы по партии на каждом участке и что даст +N человек
+  var P=r.people||{leftDays:[],scenarios:[]}, wd=dpDays(25), base=(P.scenarios||[])[0]||{};
+  var dayTxt=function(d){ return d?('через '+d+' раб. дн. ('+esc(wd[d-1]||'')+')'):'больше 20 раб. дней'; };
+  var addTxt=function(a){ var k=Object.keys(a||{}); return k.length?k.map(function(x){ return '+'+a[x]+' чел. на '+esc(x); }).join(', '):'как сейчас'; };
+  var best=(P.scenarios||[]).slice(1).filter(function(x){ return x.day&&base.day&&x.day<base.day; }).sort(function(a,b){ return a.day-b.day||Object.keys(a.add).length-Object.keys(b.add).length; })[0];
+  var peopleCard=(P.leftDays||[]).length?'<div class="card dpcard"><b>Где нужны люди</b> <span class="small muted">— сколько дней работы по '+esc(who)+' осталось на участке при нынешней мощности</span>'
+    +'<div class="small" style="margin:6px 0">'+P.leftDays.map(function(x,i){ return (i<2?'<b>':'')+esc(x.site)+' '+(x.days==null?'—':String(x.days).replace('.',','))+' дн.'+(i<2?'</b>':''); }).join(' · ')+'</div>'
+    +'<table class="dptbl"><tbody>'+P.scenarios.map(function(x){ return '<tr'+(x===best?' style="font-weight:700"':'')+'><td>'+addTxt(x.add)+'</td><td>готова '+dayTxt(x.day)+'</td><td class="num">'+(x.pct5!=null?'на 5-й день '+x.pct5+'%':'')+'</td></tr>'; }).join('')+'</tbody></table>'
+    +(!best&&base.pct5!=null?(function(){ var b2=(P.scenarios||[]).slice(1).sort(function(a,b){ return (b.pct5||0)-(a.pct5||0); })[0]; if(b2&&b2.pct5>base.pct5+1){ best=b2; return '<div class="small" style="margin-top:4px">👉 <b>'+addTxt(b2.add)+'</b> — к 5-му дню партия '+b2.pct5+'% вместо '+base.pct5+'%. Людей берите с участков, где работы по партии мало.</div>'; } return ''; })():'')
+    +(best&&best.day&&base.day?'<div class="small" style="margin-top:4px">👉 <b>'+addTxt(best.add)+'</b> — партия готова на '+(base.day-best.day)+' раб. дн. раньше. Людей берите с участков, где работы по партии мало.</div>':best?'':'<div class="small muted" style="margin-top:4px">Добавление людей на самые загруженные участки срок партии не сокращает — держит что-то другое (цепочка, покрытие, раскрой).</div>')
+    +'<div class="small muted">1 человек ≈ '+money0(P.personRub)+' ₽ в день в темпе плана.</div></div>':'';
+  // заторы: сколько дней работы лежит перед участком до и после плана
+  var jams=(r.sites||[]).filter(function(x){ return x.queueDays!=null; }).slice().sort(function(a,b){ return b.queueDays-a.queueDays; }).map(function(x){
+    var tag=x.queueDaysAfter>2?'<span class="pill bad">затор</span>':x.queueDaysAfter<0.5?'<span class="pill warn">мало работы</span>':'<span class="pill ok">норма</span>';
+    return '<div class="dpjam"><span><b>'+esc(x.site)+'</b> '+tag+'</span><span class="small">перед участком работы на <b>'+String(x.queueDays).replace('.',',')+'</b> → <b>'+String(x.queueDaysAfter).replace('.',',')+'</b> дн.</span></div>'; }).join('');
+  var jamCard='<div class="card dpcard"><b>Заторы</b> <span class="small muted">— дни работы, лежащей перед участком, сейчас → после плана</span>'+jams
+    +'<div class="small muted" style="margin-top:4px">Затор (больше 2 дней) — туда ставить людей, а участки перед ним не разгонять. «Мало работы» — участку грозит простой.</div></div>';
+  // ОТК: принять первым делом
+  var qcBy={}; (r.qc||[]).forEach(function(q){ (qcBy[q.src]=qcBy[q.src]||[]).push(q); });
+  var qcTot=(r.qc||[]).reduce(function(t,q){ return t+q.qty; },0);
+  var qcCard=qcTot?'<div class="card dpcard"><b>1. Утром первым делом — ОТК: принять '+qcTot+' шт</b> <span class="small muted">— без приёмки детали дальше не идут</span>'
+    +Object.keys(qcBy).map(function(src){ return '<div class="dpwhen">'+esc(src)+'</div>'+qcBy[src].map(function(q){ return '<div class="dpt"><span class="n"></span><span>'+esc(q.detail)+(q.model&&q.model!==q.detail?' <span class="muted small">'+esc(q.model)+'</span>':'')+' · '+esc(q.op)+'</span><span class="q"><b>'+q.qty+'</b> шт</span></div>'; }).join(''); }).join('')+'</div>':'';
+  // участки: задания по порядку (с утра → к вечеру), мелочь одной строкой
+  var WHEN=function(t){ return t<=3?'с утра':t<=6?'днём':'к вечеру'; };
+  var sites=(r.sites||[]).filter(function(x){ return x.cap>0; }).map(function(x){
+    var big=x.tasks.filter(function(t){ return t.rub>=3; }), small=x.tasks.filter(function(t){ return t.rub<3; }), last='', k=0;
+    var rows=big.map(function(t){ var w=WHEN(t.tick), h=w!==last?'<div class="dpwhen">'+w+'</div>':''; last=w; k++;
+      return h+'<div class="dpt"><span class="n">'+k+'</span><span><b>'+esc(t.detail)+'</b>'+(t.model&&t.model!==t.detail?' <span class="muted small">'+esc(t.model)+'</span>':'')+' · '+esc(t.op)+(t.src!==who?' <span class="dpsrc">'+esc(t.src)+'</span>':'')+'</span><span class="q"><b>'+t.qty+'</b> шт <span class="muted small">'+money0(t.rub)+' ₽</span></span></div>'; }).join('');
+    if(small.length) rows+='<div class="dpt"><span class="n"></span><span class="muted small">ещё '+small.length+' мелких строк — добор, когда освободятся руки</span><span class="q muted small">'+money0(small.reduce(function(a,t){ return a+t.rub; },0))+' ₽</span></div>';
+    var ld=x.cap>0?Math.min(100,Math.round(x.used/x.cap*100)):0;
+    return '<div class="card dpsite"><h3>'+esc(x.site)+' <span class="small muted">мощность '+money0(x.cap)+' ₽/день'+(x.avg?' (средняя '+money0(x.avg)+')':'')+'</span></h3>'
+      +'<div class="dpload" title="занято планом"><i style="width:'+ld+'%"></i></div><div class="small muted">в плане '+money0(x.used)+' ₽ · '+ld+'%</div>'
+      +(rows||'<div class="muted small" style="padding:6px 0">работы для участка нет — помочь соседям</div>')+'</div>'; }).join('');
+  // прогноз: если так работать каждый день
+  var fc='<div class="card dpcard"><b>Что даст выполнение</b> <span class="small muted">— если каждый день работать в таком темпе</span><div class="tw"><table class="dptbl"><thead><tr><th>День</th><th>Готовность '+esc(who)+'</th><th>Упакуем (накопительно)</th></tr></thead><tbody>'
+    +(r.forecast||[]).map(function(d,i){ return '<tr><td>'+esc(days[i]||('день '+d.day))+'</td><td class="num"><b>'+d.pct+'%</b></td><td>'+dpPacked(d.packed)+'</td></tr>'; }).join('')+'</tbody></table></div></div>';
+  app.innerHTML=bar+head+peopleCard+qcCard+'<div class="dpwhen" style="margin:12px 0 6px">'+(qcTot?'2. ':'')+'По участкам — по порядку</div><div class="dpgrid">'+sites+'</div>'+jamCard+fc;
 }
 function openFlow(){ VIEW='flow'; FLOWDAY=-1; FLOWOPEN=''; window.scrollTo(0,0); app.innerHTML='<div class="center muted">Загрузка…</div>'; loadFlow(FLOWN,renderFlow); }
 function flowDays(n){ FLOWN=n; try{ localStorage.setItem('tw_flow_days',String(n)); }catch(e){} FLOWDAY=-1; loadFlow(n,renderFlow); }
@@ -924,6 +992,7 @@ function renderDetail(){
     +'<div class="ohrow acts">'
       +'<button class="sec" onclick="ship(\''+b.id+'\')">📦 '+((b.shipped||0)>0?'Довезти остаток':'Отгрузить')+'</button>'
       +((b.shipped||0)>0?('<button class="sec" title="что и когда увозили" onclick="shipLog(\''+b.id+'\')">🚚 История</button>'):'')
+      +'<button class="sec" title="что делать завтра на каждом участке, чтобы заказ шёл к упаковке без затора" onclick="openDayPlan(\''+b.id+'\',\'\')">📋 План на завтра</button>'
       +'<button class="sec" title="печатный лист: пойти в цех и пересчитать детали по операциям" onclick="inventSheet(\''+b.id+'\')">📋 Переучёт</button>'
       +'<button class="sec" title="что делаем сами, что отдаём подрядчикам — по операции, с печатью" onclick="trfSheet(\''+b.id+'\')">🤝📋 Передача</button>'
       +'<button class="sec" title="часть работы сделал подрядчик: заказ продвинется по нашей расценке, а долг перед ним появится в разделе «Подрядчики»" onclick="openSub(\''+b.id+'\')">🤝 Подряд</button>'
@@ -983,6 +1052,7 @@ function renderParts(id){
       +'<span class="pnm"><b>'+esc(b.name)+'</b> <span class="pill '+(SC[b.status]||'mute')+'">'+esc(b.status)+'</span>'+(b.note?' <span class="muted small">'+esc(b.note)+'</span>':'')+'<br><span class="small">'+partItemsShort(b.items,b.id)+'</span></span>'
       +'<span class="pst">'+partBar(b.pct)+'<br><span class="small muted">сделано '+money(b.doneRub)+' · осталось '+money(b.leftRub)+' ₽</span>'+(b.status!=='отгружена'?'<br>'+partFc(b.forecast):'')+'</span>'
       +'<span class="pac">'+(b.canShip>0&&b.status!=='отгружена'?'<button class="green sm" onclick="partShip(\''+id+'\',\''+b.id+'\')" title="увезти упакованное этой партии: '+r1(b.canShip)+' шт">🚚 '+r1(b.canShip)+'</button>':'')
+      +(b.status!=='отгружена'?'<button class="sec sm" onclick="openDayPlan(\''+id+'\',\''+b.id+'\')" title="план на завтра по участкам: эта партия первой">📋 План</button>':'')
       +'<button class="sec sm" onclick="partScope(\''+id+'\',\''+b.id+'\')" title="карточка заказа в объёме этой партии">'+(on?'✓ показана':'Показать')+'</button>'
       +'<button class="sec sm" onclick="partEdit(\''+id+'\',\''+b.id+'\')" title="товары и количества, имя, заметка">✎</button>'
       +'<button class="sec sm" onclick="partDel(\''+id+'\',\''+b.id+'\')" title="удалить партию: товары вернутся во «вне партий»">🗑</button></span></div>'
