@@ -683,9 +683,18 @@ function flowStrip(){
 }
 /* ---------- «План на завтра» для бригадира (02.11.2026): что делать на каждом участке по порядку, чтобы партия шла к упаковке без затора ---------- */
 var DPLAN=null, DPLANQ=null;
-function openDayPlan(id,part){ VIEW='dayplan'; DPLANQ={id:id,part:part||''}; DPLAN=null; window.scrollTo(0,0);
+function openDayPlan(id,part){ VIEW='dayplan'; DPRIOED=false; DPLANQ={id:id,part:part||''}; DPLAN=null; window.scrollTo(0,0);
   app.innerHTML='<div class="center muted">Считаю план: остатки на участках, мощность, смена по часам…</div>';
   api({vapi:'dayplan',batch:id,part:part||'',days:8}).then(function(r){ DPLAN=r||{ok:false}; renderDayPlan(); }).catch(function(e){ DPLAN={ok:false,error:String(e&&e.message||e)}; renderDayPlan(); }); }
+var DPRIOED=false, DPRIO=[];
+function dpPrioOpen(){ DPRIOED=true; DPRIO=((DPLAN&&DPLAN.priority)||[]).slice(); renderDayPlan(); }
+function dpPrioMove(i,d){ var j=i+d; if(j<0||j>=DPRIO.length) return; var t=DPRIO[i]; DPRIO[i]=DPRIO[j]; DPRIO[j]=t; renderDayPlan(); }
+function dpPrioDel(i){ DPRIO.splice(i,1); renderDayPlan(); }
+function dpPrioAdd(m){ var d=document.createElement('textarea'); d.innerHTML=m; m=d.value; if(DPRIO.indexOf(m)<0) DPRIO.push(m); renderDayPlan(); }
+function dpPrioSave(){ var e=$('dpprioerr'); if(e) e.textContent='сохраняю…';
+  api({vapi:'dayplanprio', part:DPLAN.partId, list:JSON.stringify(DPRIO)}).then(function(x){
+    if(!x||!x.ok){ if($('dpprioerr')) $('dpprioerr').textContent=(x&&x.error)||'не сохранилось'; return; }
+    DPRIOED=false; openDayPlan(DPLANQ.id, DPLAN.partId); }).catch(function(err){ if($('dpprioerr')) $('dpprioerr').textContent='нет связи: '+(err&&err.message||err); }); }
 function dpBack(){ if(DPLANQ&&DPLANQ.id) openOrder(DPLANQ.id); else backToList(); }
 function dpDays(n){ var out=[], d=new Date(), night=d.getHours()<6; d.setHours(12,0,0,0); if(night) d.setDate(d.getDate()-1); while(out.length<n){ d.setDate(d.getDate()+1);   // ночью (до 6:00) — план на наступивший день
     var w=d.getDay(); if(w===0||w===6) continue; out.push(FDOW[w]+' '+('0'+d.getDate()).slice(-2)+'.'+('0'+(d.getMonth()+1)).slice(-2)); } return out; }
@@ -698,7 +707,7 @@ function renderDayPlan(){
   var head='<div class="card dpcard"><div class="dphead"><div><div class="small muted">План на '+esc(days[0])+' · '+esc(who)+(r.part?' <span class="muted">('+esc(r.order)+')</span>':'')+'</div>'
     +'<div class="big">'+st.pct+'% → '+f1.pct+'%</div><div class="small">готовность по труду: +'+money(f1.rub-st.rub)+' ₽ за день</div></div>'
     +'<div><div class="small muted">упакуем за день</div><div>'+dpPacked(f1.packed)+'</div></div></div>'
-    +((r.priority||[]).length?'<div class="small" style="margin-top:6px"><b>Очерёдность '+esc(who)+':</b> '+r.priority.map(function(m,i){ return (i+1)+'. '+esc(m); }).join(' → ')+' → остальное (ближе к готовности — раньше)</div>':'')
+    +(r.partId&&r.partId!=='all'?'<div class="small" style="margin-top:6px"><b>Очерёдность '+esc(who)+':</b> '+((r.priority||[]).length?r.priority.map(function(m,i){ return (i+1)+'. '+esc(m); }).join(' → ')+' → остальное (ближе к готовности — раньше)':'не задана — первыми идут товары, которым меньше осталось до готовности')+' <a href="javascript:void(0)" class="noprint" onclick="dpPrioOpen()">✎ изменить</a></div>':'')
     +'<div class="small muted" style="margin-top:6px">Мощность участка = средняя выработка за '+r.avgDays+' рабочих дней × '+String(r.boost).replace('.',',')+' (покрытие и упаковка — не меньше 200 ₽, упаковка — отдельно от сборки). Тянем от конца цепочки: сначала то, что ближе к упаковке; деталь за день проходит несколько операций подряд. Первыми — товары '+esc(who)+', потом остальное.</div></div>';
   // где нужны люди: сколько дней работы по партии на каждом участке и что даст +N человек
   var P=r.people||{leftDays:[],scenarios:[]}, wd=dpDays(31), base=(P.scenarios||[])[0]||{};
@@ -754,7 +763,13 @@ function renderDayPlan(){
     +(r.forecast||[]).map(function(d,i){ return '<tr><td>'+esc(days[i]||('день '+d.day))+'</td><td class="num"><b>'+d.pct+'%</b></td><td>'+dpPacked(d.packed)+'</td></tr>'; }).join('')+'</tbody></table></div></div>';
   var sel=(r.batches||[]).length?'<div class="mxsw noprint" style="margin-bottom:8px">'+r.batches.map(function(b){ return '<span class="'+(r.partId===b.id?'on':'')+'" onclick="openDayPlan(\''+DPLANQ.id+'\',\''+b.id+'\')">'+esc(b.name)+'</span>'; }).join('')
     +'<span class="'+(r.partId==='all'?'on':'')+'" onclick="openDayPlan(\''+DPLANQ.id+'\',\'all\')">весь заказ</span></div>':'';
-  app.innerHTML=bar+sel+head+histCard+peopleCard+paceCard+qcCard+'<div class="dpwhen" style="margin:12px 0 6px">'+(qcTot?'2. ':'')+'По участкам — по порядку</div><div class="dpgrid">'+sites+'</div>'+jamCard+fc;
+  var prioCard='';
+  if(DPRIOED){ var rest=(r.models||[]).filter(function(m){ return DPRIO.indexOf(m)<0; });
+    prioCard='<div class="card dpcard noprint"><b>Очерёдность товаров '+esc(who)+'</b> <span class="small muted">— план берёт товары очереди первыми, по порядку; остальные — после, ближе к готовности раньше</span>'
+      +'<div class="dpwhen">очередь</div>'+(DPRIO.length?DPRIO.map(function(m,i){ return '<div class="dpt"><span class="n">'+(i+1)+'</span><span>'+esc(m)+'</span><span class="q"><button class="sec sm" onclick="dpPrioMove('+i+',-1)"'+(i?'':' disabled')+'>↑</button> <button class="sec sm" onclick="dpPrioMove('+i+',1)"'+(i<DPRIO.length-1?'':' disabled')+'>↓</button> <button class="sec sm" title="убрать из очереди" onclick="dpPrioDel('+i+')">✕</button></span></div>'; }).join(''):'<div class="muted small" style="padding:4px 0">пусто — добавьте товары снизу</div>')
+      +'<div class="dpwhen">остальные товары партии</div>'+(rest.length?rest.map(function(m){ return '<div class="dpt"><span class="n"></span><span class="muted">'+esc(m)+'</span><span class="q"><button class="sec sm" onclick="dpPrioAdd(\''+esc(m).replace(/'/g,'&#39;')+'\')">＋ в очередь</button></span></div>'; }).join(''):'<div class="muted small" style="padding:4px 0">все товары в очереди</div>')
+      +'<div style="margin-top:8px;display:flex;gap:8px"><button onclick="dpPrioSave()">Сохранить и пересчитать</button><button class="sec" onclick="DPRIOED=false;renderDayPlan()">Отмена</button><span class="small err" id="dpprioerr"></span></div></div>'; }
+  app.innerHTML=bar+sel+head+prioCard+histCard+peopleCard+paceCard+qcCard+'<div class="dpwhen" style="margin:12px 0 6px">'+(qcTot?'2. ':'')+'По участкам — по порядку</div><div class="dpgrid">'+sites+'</div>'+jamCard+fc;
 }
 function openFlow(){ VIEW='flow'; FLOWDAY=-1; FLOWOPEN=''; window.scrollTo(0,0); app.innerHTML='<div class="center muted">Загрузка…</div>'; loadFlow(FLOWN,renderFlow); }
 function flowDays(n){ FLOWN=n; try{ localStorage.setItem('tw_flow_days',String(n)); }catch(e){} FLOWDAY=-1; loadFlow(n,renderFlow); }
