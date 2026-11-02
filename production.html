@@ -699,7 +699,7 @@ function renderDayPlan(){
     +'<div><div class="small muted">упакуем за день</div><div>'+dpPacked(f1.packed)+'</div></div></div>'
     +'<div class="small muted" style="margin-top:6px">Мощность участка = средняя выработка за '+r.avgDays+' рабочих дней × '+String(r.boost).replace('.',',')+' (покрытие и упаковка — не меньше 200 ₽, упаковка — отдельно от сборки). Тянем от конца цепочки: сначала то, что ближе к упаковке; деталь за день проходит несколько операций подряд. Первыми — товары '+esc(who)+', потом остальное.</div></div>';
   // где нужны люди: сколько дней работы по партии на каждом участке и что даст +N человек
-  var P=r.people||{leftDays:[],scenarios:[]}, wd=dpDays(25), base=(P.scenarios||[])[0]||{};
+  var P=r.people||{leftDays:[],scenarios:[]}, wd=dpDays(31), base=(P.scenarios||[])[0]||{};
   var dayTxt=function(d){ return d?('через '+d+' раб. дн. ('+esc(wd[d-1]||'')+')'):'больше 20 раб. дней'; };
   var addTxt=function(a){ var k=Object.keys(a||{}); return k.length?k.map(function(x){ return '+'+a[x]+' чел. на '+esc(x); }).join(', '):'как сейчас'; };
   var best=(P.scenarios||[]).slice(1).filter(function(x){ return x.day&&base.day&&x.day<base.day; }).sort(function(a,b){ return a.day-b.day||Object.keys(a.add).length-Object.keys(b.add).length; })[0];
@@ -709,6 +709,17 @@ function renderDayPlan(){
     +(!best&&base.pct5!=null?(function(){ var b2=(P.scenarios||[]).slice(1).sort(function(a,b){ return (b.pct5||0)-(a.pct5||0); })[0]; if(b2&&b2.pct5>base.pct5+1){ best=b2; return '<div class="small" style="margin-top:4px">👉 <b>'+addTxt(b2.add)+'</b> — к 5-му дню партия '+b2.pct5+'% вместо '+base.pct5+'%. Людей берите с участков, где работы по партии мало.</div>'; } return ''; })():'')
     +(best&&best.day&&base.day?'<div class="small" style="margin-top:4px">👉 <b>'+addTxt(best.add)+'</b> — партия готова на '+(base.day-best.day)+' раб. дн. раньше. Людей берите с участков, где работы по партии мало.</div>':best?'':'<div class="small muted" style="margin-top:4px">Добавление людей на самые загруженные участки срок партии не сокращает — держит что-то другое (цепочка, покрытие, раскрой).</div>')
     +'<div class="small muted">1 человек ≈ '+money0(P.personRub)+' ₽ в день в темпе плана.</div></div>':'';
+  // когда отдадим при разном темпе (×1 — как в среднем за последние рабочие дни)
+  var paceCard=(P.paces||[]).length?'<div class="card dpcard"><b>Когда отдадим '+esc(who)+'</b> <span class="small muted">— если каждый день работать в таком темпе (нижние границы участков те же)</span><table class="dptbl"><tbody>'
+    +P.paces.map(function(x){ var k=String(x.k).replace('.',','); return '<tr'+(x.k===r.boost?' style="font-weight:700"':'')+'><td>×'+k+(x.k===1?' <span class="muted small">как в среднем сейчас</span>':x.k===r.boost?' <span class="muted small">темп плана</span>':'')+'</td><td>'+(x.day?'готова '+esc(wd[x.day-1]||'')+' <span class="muted small">('+x.day+' раб. дн.)</span>':'<span class="err">больше 30 раб. дней</span>')+'</td><td class="num">на 5-й день '+x.pct5+'%</td></tr>'; }).join('')+'</tbody></table></div>':'';
+  // как шли по плану: снимок плана на день против факта
+  var dDay=function(iso){ var d=new Date(iso+'T12:00:00Z'); return FDOW[d.getUTCDay()]+' '+iso.slice(8,10)+'.'+iso.slice(5,7); };
+  var hist=(r.history||[]).map(function(h){ var gap=h.fact!=null?Math.round((h.fact-h.plan)*10)/10:null;
+    var st=h.sites.filter(function(x){ return x.plan>0.5||x.fact>0.5; }).map(function(x){ var pc=x.plan>0?Math.round(x.fact/x.plan*100):null, bad=pc!=null&&pc<80;
+      return '<span class="dpsrc" style="'+(bad?'color:var(--err,#c0392b);border-color:currentColor':'')+'" title="задание участку '+money0(x.plan)+' ₽, сделано '+money0(x.fact)+' ₽">'+esc(x.site)+' '+money0(x.fact)+'/'+money0(x.plan)+(pc!=null?' · '+pc+'%':'')+'</span>'; }).join(' ');
+    return '<tr><td>'+dDay(h.date)+(h.today?' <span class="muted small">идёт</span>':'')+'</td><td class="num">'+h.start+' → '+h.plan+'%</td><td class="num"><b>'+(h.fact!=null?h.fact+'%':'—')+'</b></td><td class="num">'+(gap==null?'':gap>=0?'<span class="ok">+'+gap+'</span>':'<span class="err">'+gap+'</span>')+'</td><td>'+st+'</td></tr>'; }).join('');
+  var histCard='<div class="card dpcard"><b>Как шли по плану</b> <span class="small muted">— план фиксируется каждый вечер; участок: сделано / задание ₽ (весь цех), красным — меньше 80 %</span>'
+    +(hist?'<div class="tw"><table class="dptbl"><thead><tr><th>День</th><th>План</th><th>Факт</th><th>±</th><th>Участки</th></tr></thead><tbody>'+hist+'</tbody></table></div>':'<div class="muted small" style="margin-top:6px">Пока пусто: первый план сохранён на '+esc(r.planDate?dDay(r.planDate):'завтра')+' — завтра здесь появится сравнение с фактом.</div>')+'</div>';
   // заторы: сколько дней работы лежит перед участком до и после плана
   var jams=(r.sites||[]).filter(function(x){ return x.queueDays!=null; }).slice().sort(function(a,b){ return b.queueDays-a.queueDays; }).map(function(x){
     var tag=x.queueDaysAfter>2?'<span class="pill bad">затор</span>':x.queueDaysAfter<0.5?'<span class="pill warn">мало работы</span>':'<span class="pill ok">норма</span>';
@@ -734,7 +745,7 @@ function renderDayPlan(){
   // прогноз: если так работать каждый день
   var fc='<div class="card dpcard"><b>Что даст выполнение</b> <span class="small muted">— если каждый день работать в таком темпе</span><div class="tw"><table class="dptbl"><thead><tr><th>День</th><th>Готовность '+esc(who)+'</th><th>Упакуем (накопительно)</th></tr></thead><tbody>'
     +(r.forecast||[]).map(function(d,i){ return '<tr><td>'+esc(days[i]||('день '+d.day))+'</td><td class="num"><b>'+d.pct+'%</b></td><td>'+dpPacked(d.packed)+'</td></tr>'; }).join('')+'</tbody></table></div></div>';
-  app.innerHTML=bar+head+peopleCard+qcCard+'<div class="dpwhen" style="margin:12px 0 6px">'+(qcTot?'2. ':'')+'По участкам — по порядку</div><div class="dpgrid">'+sites+'</div>'+jamCard+fc;
+  app.innerHTML=bar+head+histCard+peopleCard+paceCard+qcCard+'<div class="dpwhen" style="margin:12px 0 6px">'+(qcTot?'2. ':'')+'По участкам — по порядку</div><div class="dpgrid">'+sites+'</div>'+jamCard+fc;
 }
 function openFlow(){ VIEW='flow'; FLOWDAY=-1; FLOWOPEN=''; window.scrollTo(0,0); app.innerHTML='<div class="center muted">Загрузка…</div>'; loadFlow(FLOWN,renderFlow); }
 function flowDays(n){ FLOWN=n; try{ localStorage.setItem('tw_flow_days',String(n)); }catch(e){} FLOWDAY=-1; loadFlow(n,renderFlow); }
