@@ -683,9 +683,27 @@ function flowStrip(){
 }
 /* ---------- «План на завтра» для бригадира (02.11.2026): что делать на каждом участке по порядку, чтобы партия шла к упаковке без затора ---------- */
 var DPLAN=null, DPLANQ=null;
-function openDayPlan(id,part){ VIEW='dayplan'; DPRIOED=false; DPLANQ={id:id,part:part||''}; DPLAN=null; window.scrollTo(0,0);
-  app.innerHTML='<div class="center muted">Считаю план: остатки на участках, мощность, смена по часам…</div>';
-  api({vapi:'dayplan',batch:id,part:part||'',days:8}).then(function(r){ DPLAN=r||{ok:false}; renderDayPlan(); }).catch(function(e){ DPLAN={ok:false,error:String(e&&e.message||e)}; renderDayPlan(); }); }
+function openDayPlan(id,part,cap){ VIEW='dayplan'; DPRIOED=false; DPEV=null; DPGOALED=false; DPLANQ={id:id,part:part||'',cap:cap||null}; DPLAN=null; DPAI=null; window.scrollTo(0,0);
+  app.innerHTML='<div class="center muted">Считаю план: остатки на участках, подряд, сушка, мощность, смена по часам…</div>';
+  var q={vapi:'dayplan',batch:id,part:part||'',days:8}; if(cap) q.cap=JSON.stringify(cap);
+  api(q).then(function(r){ DPLAN=r||{ok:false}; renderDayPlan(); if(DPLAN.ok) dpAiLoad(false); }).catch(function(e){ DPLAN={ok:false,error:String(e&&e.message||e)}; renderDayPlan(); }); }
+/* объяснение ИИ «Почему так» — вторым запросом, план его не ждёт; вечером — итог дня */
+var DPAI=null, DPEV=null, DPGOALED=false;
+function dpAiLoad(force){ if(!DPLAN||!DPLAN.ok) return; DPAI={loading:1}; renderDayPlan();
+  var kind=new Date().getHours()>=18?'evening':'morning';
+  api({vapi:'dayplanai',batch:DPLANQ.id,part:DPLAN.partId,kind:kind,force:force?'1':''}).then(function(r){ DPAI=r||{ok:false}; renderDayPlan(); }).catch(function(e){ DPAI={ok:false,error:String(e&&e.message||e)}; renderDayPlan(); }); }
+function dpIf(){ var cap={}; Array.prototype.forEach.call(document.querySelectorAll('input.dpif'),function(x){ var v=String(x.value).trim(); if(v!=='') cap[x.getAttribute('data-site')]=Number(v.replace(',','.'))||0; });
+  openDayPlan(DPLANQ.id,DPLAN.partId,Object.keys(cap).length?cap:null); }
+function dpGoalSave(){ var m=$('dpgoalmsg'); if(m) m.textContent='сохраняю…';
+  api({vapi:'dayplangoal',part:DPLAN.partId,shipBy:$('dpship').value,mode:$('dpmode').value,note:$('dpnote').value}).then(function(r){ if(!r||!r.ok){ if($('dpgoalmsg')) $('dpgoalmsg').textContent=(r&&r.error)||'не сохранилось'; return; } openDayPlan(DPLANQ.id,DPLAN.partId); }); }
+function dpEvNew(){ DPEV={id:'',who:'',give:DPLAN.planDate,ret:'',note:'',lines:[]}; renderDayPlan(); }
+function dpEvAddLine(){ var sel=$('dpevline'), q=Number(String($('dpevqty').value).replace(',','.'))||0; if(!sel||!sel.value||!(q>0)) return;
+  var p=sel.value.split('|'); DPEV.who=$('dpevwho').value; DPEV.give=$('dpevgive').value; DPEV.ret=$('dpevret').value; DPEV.note=$('dpevnote').value;
+  DPEV.lines.push({detail:p[0],op:p[1],qty:q}); renderDayPlan(); }
+function dpEvSave(){ var m=$('dpevmsg'); if(m) m.textContent='сохраняю…';
+  api({vapi:'subeventsave',order:DPLANQ.id,id:DPEV.id,who:$('dpevwho').value,give:$('dpevgive').value,ret:$('dpevret').value,note:$('dpevnote').value,lines:JSON.stringify(DPEV.lines)}).then(function(r){
+    if(!r||!r.ok){ if($('dpevmsg')) $('dpevmsg').textContent=(r&&r.error)||'не сохранилось'; return; } openDayPlan(DPLANQ.id,DPLAN.partId); }); }
+function dpEvStatus(id,st){ api({vapi:st==='del'?'subeventdel':'subeventstatus',id:id,status:st}).then(function(r){ if(!r||!r.ok){ alert((r&&r.error)||'не сохранилось'); return; } openDayPlan(DPLANQ.id,DPLAN.partId); }); }
 var DPRIOED=false, DPRIO=[];
 function dpPrioOpen(){ DPRIOED=true; DPRIO=((DPLAN&&DPLAN.priority)||[]).slice(); renderDayPlan(); }
 function dpPrioMove(i,d){ var j=i+d; if(j<0||j>=DPRIO.length) return; var t=DPRIO[i]; DPRIO[i]=DPRIO[j]; DPRIO[j]=t; renderDayPlan(); }
@@ -769,7 +787,53 @@ function renderDayPlan(){
       +'<div class="dpwhen">очередь</div>'+(DPRIO.length?DPRIO.map(function(m,i){ return '<div class="dpt"><span class="n">'+(i+1)+'</span><span>'+esc(m)+'</span><span class="q"><button class="sec sm" onclick="dpPrioMove('+i+',-1)"'+(i?'':' disabled')+'>↑</button> <button class="sec sm" onclick="dpPrioMove('+i+',1)"'+(i<DPRIO.length-1?'':' disabled')+'>↓</button> <button class="sec sm" title="убрать из очереди" onclick="dpPrioDel('+i+')">✕</button></span></div>'; }).join(''):'<div class="muted small" style="padding:4px 0">пусто — добавьте товары снизу</div>')
       +'<div class="dpwhen">остальные товары партии</div>'+(rest.length?rest.map(function(m){ return '<div class="dpt"><span class="n"></span><span class="muted">'+esc(m)+'</span><span class="q"><button class="sec sm" onclick="dpPrioAdd(\''+esc(m).replace(/'/g,'&#39;')+'\')">＋ в очередь</button></span></div>'; }).join(''):'<div class="muted small" style="padding:4px 0">все товары в очереди</div>')
       +'<div style="margin-top:8px;display:flex;gap:8px"><button onclick="dpPrioSave()">Сохранить и пересчитать</button><button class="sec" onclick="DPRIOED=false;renderDayPlan()">Отмена</button><span class="small err" id="dpprioerr"></span></div></div>'; }
-  app.innerHTML=bar+sel+head+prioCard+histCard+peopleCard+paceCard+qcCard+'<div class="dpwhen" style="margin:12px 0 6px">'+(qcTot?'2. ':'')+'По участкам — по порядку</div><div class="dpgrid">'+sites+'</div>'+jamCard+fc;
+  var dD=function(iso){ return iso?iso.slice(8,10)+'.'+iso.slice(5,7):'—'; };
+  // цель партии и намерения недели
+  var g=r.goal, goalCard='';
+  if(r.partId&&r.partId!=='all'){
+    var gl=g?('<div class="dpload" style="height:10px;position:relative"><i style="width:'+Math.min(100,r.forecast[0].pct)+'%;background:'+(g.lag<0?'var(--err,#c0392b)':'var(--acc,#2f7d5b)')+'"></i></div>'
+      +'<div class="small">Срок <b>'+dD(g.shipBy)+'</b> ('+(g.mode==='pack'?'упаковать к вечеру':'отгрузить утром')+') · осталось <b>'+g.workDays+'</b> раб. дн. · нужно к вечеру <b>'+g.needToday+'%</b> (+'+g.needPerDay+'% в день) · план даёт <b>'+r.forecast[0].pct+'%</b>'
+      +(g.lag<0?' <span class="err">— отстаём на '+(-g.lag)+'%</span>':' <span class="ok">— успеваем</span>')+(g.late?' <span class="err">· в нынешнем темпе к сроку не успеть</span>':'')+'</div>'):'<div class="small muted">Срок не задан — план не знает, к какому дню успеть.</div>';
+    goalCard='<div class="card dpcard"><b>Цель '+esc(who)+'</b> <a href="javascript:void(0)" class="noprint small" onclick="DPGOALED=!DPGOALED;renderDayPlan()">✎ изменить</a>'+gl
+      +(r.planNote?'<div class="small" style="margin-top:4px"><b>Намерения:</b> '+esc(r.planNote)+'</div>':'')
+      +(DPGOALED?'<div class="noprint" style="margin-top:8px;display:grid;gap:6px;max-width:640px"><label class="small">Срок <input type="date" id="dpship" value="'+esc(r.shipBy||'')+'"> <select id="dpmode"><option value="ship"'+(r.goalMode==='ship'?' selected':'')+'>отгрузить утром (упаковано накануне)</option><option value="pack"'+(r.goalMode==='pack'?' selected':'')+'>упаковать к вечеру этого дня</option></select></label>'
+        +'<label class="small">Намерения недели — зачем и в каком порядке (их читает объяснение)<textarea id="dpnote" rows="3" style="width:100%" placeholder="белое первым — быстрый результат; Дом 2 и шведские стенки — Легандабаю во вторник, вернут в четверг; кольца не отдаём">'+esc(r.planNote||'')+'</textarea></label>'
+        +'<div><button onclick="dpGoalSave()">Сохранить</button> <span class="small err" id="dpgoalmsg"></span></div></div>':'')+'</div>';
+  }
+  // подряд: события (план) и то, что уже у подрядчика
+  var evRows=(r.events||[]).map(function(e){ var fact=String(e.id).indexOf('fact:')===0;
+    return '<div class="dpjam"><span><b>'+esc(e.who)+'</b> · '+esc(e.when)+(fact?'':' · отдать '+dD(new Date(Date.parse(r.planDate+'T00:00:00Z')+e.giveDay*864e5).toISOString().slice(0,10))+', вернут '+dD(new Date(Date.parse(r.planDate+'T00:00:00Z')+e.retDay*864e5).toISOString().slice(0,10)))
+      +'<br><span class="small muted">'+e.lines.slice(0,8).map(function(l){ return esc(l.detail)+' · '+esc(l.op)+' · '+l.qty; }).join('; ')+(e.lines.length>8?' …':'')+'</span></span>'
+      +(fact?'<span class="small muted">по журналу передач</span>':'<span class="noprint">'+(e.status==='planned'?'<button class="sec sm" onclick="dpEvStatus(\''+e.id+'\',\'given\')">Отдано</button> ':'')+'<button class="sec sm" onclick="dpEvStatus(\''+e.id+'\',\'returned\')">Вернулось</button> <button class="sec sm" title="удалить событие" onclick="dpEvStatus(\''+e.id+'\',\'del\')">✕</button></span>')+'</div>'; }).join('');
+  var evForm='';
+  if(DPEV){ evForm='<div class="noprint" style="margin-top:8px;display:grid;gap:6px">'
+    +'<div class="small">Кому <select id="dpevwho"><option value="">— подрядчик —</option>'+(r.contractors||[]).map(function(c){ return '<option value="'+c.id+'"'+(DPEV.who===c.id?' selected':'')+'>'+esc(c.name)+'</option>'; }).join('')+'</select>'
+    +' · отдаём <input type="date" id="dpevgive" value="'+esc(DPEV.give||'')+'"> · вернут <input type="date" id="dpevret" value="'+esc(DPEV.ret||'')+'"></div>'
+    +'<div class="small">'+DPEV.lines.map(function(l,i){ return esc(l.detail)+' · '+esc(l.op)+' · <b>'+l.qty+'</b> <a href="javascript:void(0)" onclick="DPEV.lines.splice('+i+',1);renderDayPlan()">✕</a>'; }).join('<br>')+'</div>'
+    +'<div class="small"><select id="dpevline" style="max-width:420px"><option value="">— деталь · операция (осталось) —</option>'+(r.lines||[]).filter(function(l){ return !/раскрой|упаковка|сборка короб/i.test(l.op); }).map(function(l){ return '<option value="'+esc(l.detail+'|'+l.op)+'">'+esc(l.detail+' · '+l.op+' ('+l.left+')')+'</option>'; }).join('')+'</select>'
+    +' <input id="dpevqty" style="width:70px" placeholder="шт" inputmode="decimal"> <button class="sec sm" onclick="dpEvAddLine()">＋ строка</button></div>'
+    +'<input id="dpevnote" placeholder="заметка" value="'+esc(DPEV.note||'')+'">'
+    +'<div><button onclick="dpEvSave()">Сохранить событие</button> <button class="sec" onclick="DPEV=null;renderDayPlan()">Отмена</button> <span class="small err" id="dpevmsg"></span></div></div>'; }
+  var evCard='<div class="card dpcard"><b>Подряд</b> <span class="small muted">— до передачи план готовит заготовки первыми; пока детали у подрядчика, наших на эти операции не ставит; в день возврата они «возвращаются»</span>'
+    +(evRows||'<div class="small muted" style="margin-top:4px">событий нет</div>')+(DPEV?evForm:'<div class="noprint" style="margin-top:6px"><button class="sec sm" onclick="dpEvNew()">＋ отдать подрядчику</button></div>')+'</div>';
+  // люди: откуда мощность и «а если»
+  var ppl='<div class="card dpcard noprint"><b>Люди и мощность</b> <span class="small muted">— '+(r.capSrc==='табель'?'по табелю на '+dD(r.planDate)+' (кто выходит × выработка человека)':'по средней выработке участков × '+String(r.boost).replace('.',',')+' (табеля на день нет)')+(r.pool?' · люди переходят между участками, котёл '+money0(r.pool)+' ₽':'')+'</span>'
+    +'<div class="small" style="margin-top:6px;display:flex;flex-wrap:wrap;gap:8px 14px">'+r.sites.filter(function(x){ return x.cap>0; }).map(function(x){ return '<label>'+esc(x.site)+' '+money0(x.cap)+' ₽'+(x.people&&x.people.length?' ('+x.people.length+' чел.)':'')+(x.calib&&x.calib!==1?' <span class="muted">×'+String(x.calib).replace('.',',')+' по факту</span>':'')
+      +' · а если <input class="dpif" data-site="'+esc(x.site)+'" style="width:44px" inputmode="decimal" placeholder="чел." value="'+(DPLANQ.cap&&DPLANQ.cap[x.site]!=null?DPLANQ.cap[x.site]:'')+'"></label>'; }).join('')+'</div>'
+    +'<div style="margin-top:6px"><button class="sec sm" onclick="dpIf()">Пересчитать «а если»</button>'+(DPLANQ.cap?' <span class="small warn">план посчитан с вашими людьми — не сохраняется</span>':'')+'</div></div>';
+  // объяснение ИИ
+  var aiCard='';
+  if(DPAI){ if(DPAI.loading) aiCard='<div class="card dpcard"><b>Почему так</b> <span class="small muted">— готовлю объяснение…</span></div>';
+    else if(!DPAI.ok) aiCard='<div class="card dpcard"><b>Почему так</b> <span class="small muted">— объяснение недоступно: '+esc(DPAI.error||'')+'</span> <a href="javascript:void(0)" class="noprint small" onclick="dpAiLoad(true)">попробовать</a></div>';
+    else { var x=DPAI.result||{}, li=function(a,f){ return (a||[]).map(f).join(''); };
+      aiCard='<div class="card dpcard"><b>Почему так</b> <span class="small muted">— объяснение плана (ИИ), числа — из расчёта выше</span>'+(x.headline?'<div style="margin:6px 0;font-weight:600">'+esc(x.headline)+'</div>':'')
+        +(x.evening?'<div class="dpwhen">как прошёл день</div><div class="small">'+esc(x.evening.summary||'')+'</div>'+li(x.evening.missed,function(m){ return '<div class="small">• '+esc(m)+'</div>'; })+(x.evening.tomorrow&&x.evening.tomorrow.length?'<div class="dpwhen">завтра</div>'+li(x.evening.tomorrow,function(m){ return '<div class="small">• '+esc(m)+'</div>'; }):''):'')
+        +((x.today||[]).length?'<div class="dpwhen">сегодня по порядку</div>'+(x.today||[]).map(function(t,i){ return '<div class="dpt"><span class="n">'+(i+1)+'</span><span>'+esc(t.step)+'<div class="small muted">'+esc(t.why)+'</div></span><span></span></div>'; }).join(''):'')
+        +((x.risks||[]).length?'<div class="dpwhen">риски</div>'+li(x.risks,function(t){ return '<div class="small">⚠ <b>'+esc(t.what)+'</b> — '+esc(t.why)+'</div>'; }):'')
+        +((x.proposals||[]).length?'<div class="dpwhen">предлагаю</div>'+li(x.proposals,function(t){ return '<div class="small">💡 '+esc(t.what)+(t.gain?' → '+esc(t.gain):'')+'</div>'; }):'')
+        +((x.questions||[]).length?'<div class="dpwhen">вопросы — без ответа план ненадёжен</div>'+li(x.questions,function(t){ return '<div class="small">❓ '+esc(t.q)+(t.who?' <span class="muted">('+esc(t.who)+')</span>':'')+(t.why?'<div class="muted">'+esc(t.why)+'</div>':'')+'</div>'; }):'')
+        +'<div class="small muted noprint" style="margin-top:6px">'+(DPAI.cached?'из утреннего расчёта':'только что')+(DPAI.at?' · '+esc(String(DPAI.at).slice(11,16)):'')+' · <a href="javascript:void(0)" onclick="dpAiLoad(true)">пересчитать объяснение</a></div></div>'; } }
+  app.innerHTML=bar+sel+head+goalCard+aiCard+evCard+ppl+prioCard+histCard+peopleCard+paceCard+qcCard+'<div class="dpwhen" style="margin:12px 0 6px">'+(qcTot?'2. ':'')+'По участкам — по порядку</div><div class="dpgrid">'+sites+'</div>'+jamCard+fc;
 }
 function openFlow(){ VIEW='flow'; FLOWDAY=-1; FLOWOPEN=''; window.scrollTo(0,0); app.innerHTML='<div class="center muted">Загрузка…</div>'; loadFlow(FLOWN,renderFlow); }
 function flowDays(n){ FLOWN=n; try{ localStorage.setItem('tw_flow_days',String(n)); }catch(e){} FLOWDAY=-1; loadFlow(n,renderFlow); }
