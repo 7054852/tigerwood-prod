@@ -687,7 +687,8 @@ function openDayPlan(id,part){ VIEW='dayplan'; DPLANQ={id:id,part:part||''}; DPL
   app.innerHTML='<div class="center muted">Считаю план: остатки на участках, мощность, смена по часам…</div>';
   api({vapi:'dayplan',batch:id,part:part||'',days:8}).then(function(r){ DPLAN=r||{ok:false}; renderDayPlan(); }).catch(function(e){ DPLAN={ok:false,error:String(e&&e.message||e)}; renderDayPlan(); }); }
 function dpBack(){ if(DPLANQ&&DPLANQ.id) openOrder(DPLANQ.id); else backToList(); }
-function dpDays(n){ var out=[], d=new Date(); d.setHours(12,0,0,0); while(out.length<n){ d.setDate(d.getDate()+1); var w=d.getDay(); if(w===0||w===6) continue; out.push(FDOW[w]+' '+('0'+d.getDate()).slice(-2)+'.'+('0'+(d.getMonth()+1)).slice(-2)); } return out; }
+function dpDays(n){ var out=[], d=new Date(), night=d.getHours()<6; d.setHours(12,0,0,0); if(night) d.setDate(d.getDate()-1); while(out.length<n){ d.setDate(d.getDate()+1);   // ночью (до 6:00) — план на наступивший день
+    var w=d.getDay(); if(w===0||w===6) continue; out.push(FDOW[w]+' '+('0'+d.getDate()).slice(-2)+'.'+('0'+(d.getMonth()+1)).slice(-2)); } return out; }
 function dpPacked(p){ var k=Object.keys(p||{}); return k.length?k.map(function(m){ return esc(m)+' <b>'+p[m]+'</b>'; }).join(' · '):'<span class="muted">—</span>'; }
 function renderDayPlan(){
   if(VIEW!=='dayplan') return; var r=DPLAN;
@@ -1003,7 +1004,7 @@ function renderDetail(){
     +'<div class="ohrow acts">'
       +'<button class="sec" onclick="ship(\''+b.id+'\')">📦 '+((b.shipped||0)>0?'Довезти остаток':'Отгрузить')+'</button>'
       +((b.shipped||0)>0?('<button class="sec" title="что и когда увозили" onclick="shipLog(\''+b.id+'\')">🚚 История</button>'):'')
-      +'<button class="sec" title="что делать завтра на каждом участке, чтобы заказ шёл к упаковке без затора" onclick="openDayPlan(\''+b.id+'\',\'\')">📋 План на завтра</button>'
+      +'<button class="sec" title="что делать завтра (ночью — сегодня) на каждом участке, чтобы заказ шёл к упаковке без затора" onclick="openDayPlan(\''+b.id+'\',\'\')">📋 План на день</button>'
       +'<button class="sec" title="печатный лист: пойти в цех и пересчитать детали по операциям" onclick="inventSheet(\''+b.id+'\')">📋 Переучёт</button>'
       +'<button class="sec" title="что делаем сами, что отдаём подрядчикам — по операции, с печатью" onclick="trfSheet(\''+b.id+'\')">🤝📋 Передача</button>'
       +'<button class="sec" title="часть работы сделал подрядчик: заказ продвинется по нашей расценке, а долг перед ним появится в разделе «Подрядчики»" onclick="openSub(\''+b.id+'\')">🤝 Подряд</button>'
