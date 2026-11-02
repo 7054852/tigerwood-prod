@@ -735,10 +735,15 @@ function renderDayPlan(){
   // участки: задания по порядку (с утра → к вечеру), мелочь одной строкой
   var WHEN=function(t){ return t<=3?'с утра':t<=6?'днём':'к вечеру'; };
   var sites=(r.sites||[]).filter(function(x){ return x.cap>0; }).map(function(x){
-    var big=x.tasks.filter(function(t){ return t.rub>=3; }), small=x.tasks.filter(function(t){ return t.rub<3; }), last='', k=0;
+    var mine=x.tasks.filter(function(t){ return t.src===who; }), rest=x.tasks.filter(function(t){ return t.src!==who; });   // сначала — партия, остальное — «добор»
+    var big=mine.filter(function(t){ return t.rub>=3; }), small=mine.filter(function(t){ return t.rub<3; }), last='', k=0;
     var rows=big.map(function(t){ var w=WHEN(t.tick), h=w!==last?'<div class="dpwhen">'+w+'</div>':''; last=w; k++;
       return h+'<div class="dpt"><span class="n">'+k+'</span><span><b>'+esc(t.detail)+'</b>'+(t.model&&t.model!==t.detail?' <span class="muted small">'+esc(t.model)+'</span>':'')+' · '+esc(t.op)+(t.src!==who?' <span class="dpsrc">'+esc(t.src)+'</span>':'')+'</span><span class="q"><b>'+t.qty+'</b> шт <span class="muted small">'+money0(t.rub)+' ₽</span></span></div>'; }).join('');
     if(small.length) rows+='<div class="dpt"><span class="n"></span><span class="muted small">ещё '+small.length+' мелких строк — добор, когда освободятся руки</span><span class="q muted small">'+money0(small.reduce(function(a,t){ return a+t.rub; },0))+' ₽</span></div>';
+    if(rest.length){ var rb=rest.filter(function(t){ return t.rub>=3; }).sort(function(a,b){ return b.rub-a.rub; });
+      rows+='<div class="dpwhen">добор, если руки свободны — '+money0(rest.reduce(function(a,t){ return a+t.rub; },0))+' ₽</div>'
+        +rb.slice(0,6).map(function(t){ return '<div class="dpt"><span class="n"></span><span class="small">'+esc(t.detail)+' · '+esc(t.op)+' <span class="dpsrc">'+esc(t.src)+'</span></span><span class="q small">'+t.qty+' шт</span></div>'; }).join('')
+        +(rb.length>6||rest.length>rb.length?'<div class="dpt"><span class="n"></span><span class="muted small">и ещё '+(rest.length-Math.min(6,rb.length))+' строк</span><span></span></div>':''); }
     var ld=x.cap>0?Math.min(100,Math.round(x.used/x.cap*100)):0;
     return '<div class="card dpsite"><h3>'+esc(x.site)+' <span class="small muted">мощность '+money0(x.cap)+' ₽/день'+(x.avg?' (средняя '+money0(x.avg)+')':'')+'</span></h3>'
       +'<div class="dpload" title="занято планом"><i style="width:'+ld+'%"></i></div><div class="small muted">в плане '+money0(x.used)+' ₽ · '+ld+'%</div>'
@@ -746,7 +751,9 @@ function renderDayPlan(){
   // прогноз: если так работать каждый день
   var fc='<div class="card dpcard"><b>Что даст выполнение</b> <span class="small muted">— если каждый день работать в таком темпе</span><div class="tw"><table class="dptbl"><thead><tr><th>День</th><th>Готовность '+esc(who)+'</th><th>Упакуем (накопительно)</th></tr></thead><tbody>'
     +(r.forecast||[]).map(function(d,i){ return '<tr><td>'+esc(days[i]||('день '+d.day))+'</td><td class="num"><b>'+d.pct+'%</b></td><td>'+dpPacked(d.packed)+'</td></tr>'; }).join('')+'</tbody></table></div></div>';
-  app.innerHTML=bar+head+histCard+peopleCard+paceCard+qcCard+'<div class="dpwhen" style="margin:12px 0 6px">'+(qcTot?'2. ':'')+'По участкам — по порядку</div><div class="dpgrid">'+sites+'</div>'+jamCard+fc;
+  var sel=(r.batches||[]).length?'<div class="mxsw noprint" style="margin-bottom:8px">'+r.batches.map(function(b){ return '<span class="'+(r.partId===b.id?'on':'')+'" onclick="openDayPlan(\''+DPLANQ.id+'\',\''+b.id+'\')">'+esc(b.name)+'</span>'; }).join('')
+    +'<span class="'+(r.partId==='all'?'on':'')+'" onclick="openDayPlan(\''+DPLANQ.id+'\',\'all\')">весь заказ</span></div>':'';
+  app.innerHTML=bar+sel+head+histCard+peopleCard+paceCard+qcCard+'<div class="dpwhen" style="margin:12px 0 6px">'+(qcTot?'2. ':'')+'По участкам — по порядку</div><div class="dpgrid">'+sites+'</div>'+jamCard+fc;
 }
 function openFlow(){ VIEW='flow'; FLOWDAY=-1; FLOWOPEN=''; window.scrollTo(0,0); app.innerHTML='<div class="center muted">Загрузка…</div>'; loadFlow(FLOWN,renderFlow); }
 function flowDays(n){ FLOWN=n; try{ localStorage.setItem('tw_flow_days',String(n)); }catch(e){} FLOWDAY=-1; loadFlow(n,renderFlow); }

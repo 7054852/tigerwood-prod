@@ -593,6 +593,12 @@ function wbHtml(n, card){
       +(b.pending>0?'\nна проверке '+money(b.pending)+' ₽':'');
   } else if(b.earned>0){ st='<span class="muted">'+Math.round(b.earned)+'</span>'; tip='в зачёт премии '+money(b.earned)+' ₽, порога нет'; }
   if(!early&&!B.editable&&B.canEdit&&WK<B.current) tip+=(tip?'\n':'')+'прошлая неделя — порог не меняется';
+  var T=(b.tiers||[]).length>1?b.tiers:null;   // ступени (02.11.2026) — правятся владельцем, в клетке только показываем
+  if(T){ var gt=T.filter(function(t){ return b.earned>=t.threshold; }).pop();
+    st='<span class="wbar"><i style="width:'+Math.min(100,Math.round(b.earned/T[T.length-1].threshold*100))+'%;background:'+(gt?'var(--green)':'var(--amber)')+'"></i></span> '
+      +(gt?'<b style="color:var(--green)">✓ '+Math.round(b.granted||gt.amount)+'</b> ':'')+Math.round(b.earned)+(b.pending>0?' <span style="color:var(--blue)">⏳'+Math.round(b.pending)+'</span>':'');
+    tip='ступени: '+T.map(function(t){ return Math.round(t.threshold)+' → '+Math.round(t.amount); }).join(', ')+' ₽\nсделано '+money(b.earned)+' ₽'+(gt?' — премия '+money(gt.amount)+' ₽':'');
+    return '<div class="wb-box" title="'+esc(tip)+'"><span>'+T.map(function(t){ return Math.round(t.threshold); }).join('/')+' → '+T.map(function(t){ return Math.round(t.amount); }).join('/')+'</span><span class="st">'+st+'</span></div>'; }
   var inp=B.editable
     ? '<input type="number" min="0" inputmode="decimal" class="wb-t" value="'+(b.threshold||'')+'" placeholder="порог" title="порог за неделю, ₽" onchange="wbSave(this,\''+b.personId+'\')">→'
       +'<input type="number" min="0" inputmode="decimal" class="wb-a" value="'+(b.amount||'')+'" placeholder="₽" title="премия, ₽" onchange="wbSave(this,\''+b.personId+'\')">'

@@ -2708,7 +2708,15 @@ function loadMyWeek(){
   api({vapi:'myweek'}).then(function(r){
     var el=document.getElementById('myweek'); if(!el||!r||!r.ok) return;
     var ru=function(iso){ return iso.slice(8,10)+'.'+iso.slice(5,7); }, h='';
-    if(r.threshold>0&&r.amount>0){
+    var T=(r.tiers||[]).length>1?r.tiers:null;   // ступени (02.11.2026): премия — высшая достигнутая
+    if(T){
+      var got=T.filter(function(t){ return r.earned>=t.threshold; }).pop(), nx=T.filter(function(t){ return r.earned<t.threshold; })[0], top=T[T.length-1];
+      h+='<div style="font-weight:600">Неделя '+ru(r.week)+'–'+ru(r.to)+': сделано '+rub2(r.earned)+' р.</div>'
+        +'<div style="height:8px;border-radius:4px;background:var(--bg2);overflow:hidden;margin:6px 0"><i style="display:block;height:100%;width:'+Math.min(100,Math.round(r.earned/top.threshold*100))+'%;background:'+(got?'var(--green)':'var(--amber)')+'"></i></div>'
+        +'<div class="muted" style="font:var(--t-small)">Премия за неделю: '+T.map(function(t){ var on=got&&t.threshold===got.threshold; return (on?'<b style="color:var(--green)">':'')+'от '+rub2(t.threshold)+' → '+rub2(t.amount)+' р.'+(on?' ✓</b>':''); }).join(' · ')
+        +'<br>'+(got?'✅ Сейчас премия '+rub2(got.amount)+' р.':'')+(nx?(got?' · ':'')+'ещё '+rub2(Math.round((nx.threshold-r.earned)*100)/100)+' р. до '+rub2(nx.amount)+' р.':'')
+        +(r.pending>0?' · ⏳ на проверке '+rub2(r.pending)+' р.':'')+'<br>Считается принятая работа с пн по вс.</div>';
+    } else if(r.threshold>0&&r.amount>0){
       var pct=Math.min(100,Math.round(r.earned/r.threshold*100)), done=r.earned>=r.threshold, left=Math.round((r.threshold-r.earned)*100)/100;
       h+='<div style="font-weight:600">Неделя '+ru(r.week)+'–'+ru(r.to)+': '+rub2(r.earned)+' из '+rub2(r.threshold)+' р.</div>'
         +'<div style="height:8px;border-radius:4px;background:var(--bg2);overflow:hidden;margin:6px 0"><i style="display:block;height:100%;width:'+pct+'%;background:'+(done?'var(--green)':'var(--amber)')+'"></i></div>'
