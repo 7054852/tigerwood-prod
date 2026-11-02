@@ -694,6 +694,7 @@ function dpAiLoad(force){ if(!DPLAN||!DPLAN.ok) return; DPAI={loading:1}; render
   api({vapi:'dayplanai',batch:DPLANQ.id,part:DPLAN.partId,kind:kind,force:force?'1':''}).then(function(r){ DPAI=r||{ok:false}; renderDayPlan(); }).catch(function(e){ DPAI={ok:false,error:String(e&&e.message||e)}; renderDayPlan(); }); }
 function dpIf(){ var cap={}; Array.prototype.forEach.call(document.querySelectorAll('input.dpif'),function(x){ var v=String(x.value).trim(); if(v!=='') cap[x.getAttribute('data-site')]=Number(v.replace(',','.'))||0; });
   openDayPlan(DPLANQ.id,DPLAN.partId,Object.keys(cap).length?cap:null); }
+function dpWorkday(date,share){ api({vapi:'dayplanworkday',date:date,share:share}).then(function(r){ if(!r||!r.ok){ alert((r&&r.error)||'не сохранилось'); return; } openDayPlan(DPLANQ.id,DPLAN.partId,DPLANQ.cap); }); }
 function dpGoalSave(){ var m=$('dpgoalmsg'); if(m) m.textContent='сохраняю…';
   api({vapi:'dayplangoal',part:DPLAN.partId,shipBy:$('dpship').value,mode:$('dpmode').value,note:$('dpnote').value}).then(function(r){ if(!r||!r.ok){ if($('dpgoalmsg')) $('dpgoalmsg').textContent=(r&&r.error)||'не сохранилось'; return; } openDayPlan(DPLANQ.id,DPLAN.partId); }); }
 function dpEvNew(){ DPEV={id:'',who:'',give:DPLAN.planDate,ret:'',note:'',lines:[]}; renderDayPlan(); }
@@ -721,7 +722,8 @@ function renderDayPlan(){
   if(VIEW!=='dayplan') return; var r=DPLAN;
   var bar='<div class="toolbar noprint"><button class="sec" onclick="dpBack()">← заказ</button><span class="meta">План на день для бригадира</span><div class="end"><button class="sec" onclick="window.print()">🖨 Печать</button></div></div>';
   if(!r||!r.ok){ app.innerHTML=bar+'<div class="err">'+esc((r&&r.error)||'не загрузилось')+'</div>'; return; }
-  var days=dpDays(Math.max(1,(r.forecast||[]).length)), who=r.part||r.order, f1=(r.forecast||[])[0]||{pct:0,rub:0,packed:{}}, st=r.start||{pct:0,rub:0};
+  var dLab=function(iso){ if(!iso) return ''; var d=new Date(iso+'T12:00:00Z'); return FDOW[d.getUTCDay()]+' '+iso.slice(8,10)+'.'+iso.slice(5,7); };
+  var days=(r.forecast&&r.forecast[0]&&r.forecast[0].date)?r.forecast.map(function(f){ return dLab(f.date); }):dpDays(Math.max(1,(r.forecast||[]).length)), who=r.part||r.order, f1=(r.forecast||[])[0]||{pct:0,rub:0,packed:{}}, st=r.start||{pct:0,rub:0};
   var head='<div class="card dpcard"><div class="dphead"><div><div class="small muted">План на '+esc(days[0])+' · '+esc(who)+(r.part?' <span class="muted">('+esc(r.order)+')</span>':'')+'</div>'
     +'<div class="big">'+st.pct+'% → '+f1.pct+'%</div><div class="small">готовность по труду: +'+money(f1.rub-st.rub)+' ₽ за день</div></div>'
     +'<div><div class="small muted">упакуем за день</div><div>'+dpPacked(f1.packed)+'</div></div></div>'
@@ -729,18 +731,18 @@ function renderDayPlan(){
     +'<div class="small muted" style="margin-top:6px">Мощность участка = средняя выработка за '+r.avgDays+' рабочих дней × '+String(r.boost).replace('.',',')+' (покрытие и упаковка — не меньше 200 ₽, упаковка — отдельно от сборки). Тянем от конца цепочки: сначала то, что ближе к упаковке; деталь за день проходит несколько операций подряд. Первыми — товары '+esc(who)+', потом остальное.</div></div>';
   // где нужны люди: сколько дней работы по партии на каждом участке и что даст +N человек
   var P=r.people||{leftDays:[],scenarios:[]}, wd=dpDays(31), base=(P.scenarios||[])[0]||{};
-  var dayTxt=function(d){ return d?('через '+d+' раб. дн. ('+esc(wd[d-1]||'')+')'):'больше 20 раб. дней'; };
+  var dayTxt=function(d,iso){ return d?('через '+d+' раб. дн. ('+esc(iso?dLab(iso):(wd[d-1]||''))+')'):'больше 20 раб. дней'; };
   var addTxt=function(a){ var k=Object.keys(a||{}); return k.length?k.map(function(x){ return '+'+a[x]+' чел. на '+esc(x); }).join(', '):'как сейчас'; };
   var best=(P.scenarios||[]).slice(1).filter(function(x){ return x.day&&base.day&&x.day<base.day; }).sort(function(a,b){ return a.day-b.day||Object.keys(a.add).length-Object.keys(b.add).length; })[0];
   var peopleCard=(P.leftDays||[]).length?'<div class="card dpcard"><b>Где нужны люди</b> <span class="small muted">— сколько дней работы по '+esc(who)+' осталось на участке при нынешней мощности</span>'
     +'<div class="small" style="margin:6px 0">'+P.leftDays.map(function(x,i){ return (i<2?'<b>':'')+esc(x.site)+' '+(x.days==null?'—':String(x.days).replace('.',','))+' дн.'+(i<2?'</b>':''); }).join(' · ')+'</div>'
-    +'<table class="dptbl"><tbody>'+P.scenarios.map(function(x){ return '<tr'+(x===best?' style="font-weight:700"':'')+'><td>'+addTxt(x.add)+'</td><td>готова '+dayTxt(x.day)+'</td><td class="num">'+(x.pct5!=null?'на 5-й день '+x.pct5+'%':'')+'</td></tr>'; }).join('')+'</tbody></table>'
+    +'<table class="dptbl"><tbody>'+P.scenarios.map(function(x){ return '<tr'+(x===best?' style="font-weight:700"':'')+'><td>'+addTxt(x.add)+'</td><td>готова '+dayTxt(x.day,x.date)+'</td><td class="num">'+(x.pct5!=null?'на 5-й день '+x.pct5+'%':'')+'</td></tr>'; }).join('')+'</tbody></table>'
     +(!best&&base.pct5!=null?(function(){ var b2=(P.scenarios||[]).slice(1).sort(function(a,b){ return (b.pct5||0)-(a.pct5||0); })[0]; if(b2&&b2.pct5>base.pct5+1){ best=b2; return '<div class="small" style="margin-top:4px">👉 <b>'+addTxt(b2.add)+'</b> — к 5-му дню партия '+b2.pct5+'% вместо '+base.pct5+'%. Людей берите с участков, где работы по партии мало.</div>'; } return ''; })():'')
     +(best&&best.day&&base.day?'<div class="small" style="margin-top:4px">👉 <b>'+addTxt(best.add)+'</b> — партия готова на '+(base.day-best.day)+' раб. дн. раньше. Людей берите с участков, где работы по партии мало.</div>':best?'':'<div class="small muted" style="margin-top:4px">Добавление людей на самые загруженные участки срок партии не сокращает — держит что-то другое (цепочка, покрытие, раскрой).</div>')
     +'<div class="small muted">1 человек ≈ '+money0(P.personRub)+' ₽ в день в темпе плана.</div></div>':'';
   // когда отдадим при разном темпе (×1 — как в среднем за последние рабочие дни)
   var paceCard=(P.paces||[]).length?'<div class="card dpcard"><b>Когда отдадим '+esc(who)+'</b> <span class="small muted">— если каждый день работать в таком темпе (нижние границы участков те же)</span><table class="dptbl"><tbody>'
-    +P.paces.map(function(x){ var k=String(x.k).replace('.',','); return '<tr'+(x.k===r.boost?' style="font-weight:700"':'')+'><td>×'+k+(x.k===1?' <span class="muted small">как в среднем сейчас</span>':x.k===r.boost?' <span class="muted small">темп плана</span>':'')+'</td><td>'+(x.day?'готова '+esc(wd[x.day-1]||'')+' <span class="muted small">('+x.day+' раб. дн.)</span>':'<span class="err">больше 30 раб. дней</span>')+'</td><td class="num">на 5-й день '+x.pct5+'%</td></tr>'; }).join('')+'</tbody></table></div>':'';
+    +P.paces.map(function(x){ var k=String(x.k).replace('.',','); return '<tr'+(x.k===r.boost?' style="font-weight:700"':'')+'><td>×'+k+(x.k===1?' <span class="muted small">как в среднем сейчас</span>':x.k===r.boost?' <span class="muted small">темп плана</span>':'')+'</td><td>'+(x.day?'готова '+esc(x.date?dLab(x.date):(wd[x.day-1]||''))+' <span class="muted small">('+x.day+' раб. дн.)</span>':'<span class="err">больше 30 раб. дней</span>')+'</td><td class="num">на 5-й день '+x.pct5+'%</td></tr>'; }).join('')+'</tbody></table></div>':'';
   // как шли по плану: снимок плана на день против факта
   var dDay=function(iso){ var d=new Date(iso+'T12:00:00Z'); return FDOW[d.getUTCDay()]+' '+iso.slice(8,10)+'.'+iso.slice(5,7); };
   var hist=(r.history||[]).map(function(h){ var gap=h.fact!=null?Math.round((h.fact-h.plan)*10)/10:null;
@@ -794,7 +796,11 @@ function renderDayPlan(){
     var gl=g?('<div class="dpload" style="height:10px;position:relative"><i style="width:'+Math.min(100,r.forecast[0].pct)+'%;background:'+(g.lag<0?'var(--err,#c0392b)':'var(--acc,#2f7d5b)')+'"></i></div>'
       +'<div class="small">Срок <b>'+dD(g.shipBy)+'</b> ('+(g.mode==='pack'?'упаковать к вечеру':'отгрузить утром')+') · осталось <b>'+g.workDays+'</b> раб. дн. · чтобы успеть, нужно к вечеру <b>'+pc(g.needToday)+'</b> (+'+pc(g.needPerDay)+' в день) · план на сегодня даёт <b>'+pc(r.forecast[0].pct)+'</b>'
       +(g.lag<0?' <span class="err">— сегодня отстаём на '+pc(-g.lag)+'</span>':' <span class="ok">— сегодня в норме</span>')
-      +(g.late?'<br><span class="err">⚠ Но в таком темпе вся партия будет готова '+(g.finishDay?'через '+g.finishDay+' раб. дн.':'нескоро')+' — позже срока. Нужны люди или подряд (см. «Почему так» и «Где нужны люди»).</span>':'')+'</div>'):'<div class="small muted">Срок не задан — план не знает, к какому дню успеть.</div>';
+      +(g.late?'<br><span class="err">⚠ Но в таком темпе вся партия будет готова '+(g.finishDate?dLab(g.finishDate)+' ('+g.finishDay+' раб. дн.)':'нескоро')+' — позже срока. Нужны люди или подряд (см. «Почему так» и «Где нужны люди»).</span>':'')+'</div>'):'<div class="small muted">Срок не задан — план не знает, к какому дню успеть.</div>';
+    var wk=(r.weekends||[]).map(function(w){ var lab=dLab(w.date);
+      return '<label class="small" style="white-space:nowrap">'+esc(lab)+' <select onchange="dpWorkday(\''+w.date+'\',this.value)"><option value="0"'+(!w.share?' selected':'')+'>не работаем</option><option value="0.5"'+(w.share===0.5?' selected':'')+'>половина людей</option><option value="1"'+(w.share===1?' selected':'')+'>все</option></select></label>'; }).join(' ');
+    gl+=(wk?'<div class="small noprint" style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center"><b>Рабочие выходные:</b> '+wk+'</div>':'')
+      +(g&&g.weekends&&g.weekends.length?'<div class="small muted">в сроке учтены выходные: '+g.weekends.map(function(w){ return dLab(w.date)+(w.share<1?' (½)':''); }).join(', ')+'</div>':'');
     goalCard='<div class="card dpcard"><b>Цель '+esc(who)+'</b> <a href="javascript:void(0)" class="noprint small" onclick="DPGOALED=!DPGOALED;renderDayPlan()">✎ изменить</a>'+gl
       +(r.planNote?'<div class="small" style="margin-top:4px"><b>Намерения:</b> '+esc(r.planNote)+'</div>':'')
       +(DPGOALED?'<div class="noprint" style="margin-top:8px;display:grid;gap:6px;max-width:640px"><label class="small">Срок <input type="date" id="dpship" value="'+esc(r.shipBy||'')+'"> <select id="dpmode"><option value="ship"'+(r.goalMode==='ship'?' selected':'')+'>отгрузить утром (упаковано накануне)</option><option value="pack"'+(r.goalMode==='pack'?' selected':'')+'>упаковать к вечеру этого дня</option></select></label>'
