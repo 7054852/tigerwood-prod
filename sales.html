@@ -10,6 +10,7 @@
 <script src="tw-shipping.js?v=20261019c"></script>
 <script src="tw-pay.js"></script>
 <script src="tw-deliv.js"></script>
+<script src="tw-intake.js?v=20261104"></script>
 <title>Тигервуд — Сделки</title>
 <!-- Замена GAS-панелей хаба DealsPanel (?page=deals) и Card (?page=card): список сделок + карточка сделки на одной странице.
      ?deal=<ID сделки> или ?lead=<ID лида amoCRM> — сразу карточка. Все вызовы — vapi (маршруты М4, prohub/docs/M4-plan.md).
@@ -181,6 +182,7 @@
   <div class="blk" id="dealPay" style="display:none"></div>
 
   <!-- отгрузка: накладные ТН/ТТН и товарный чек — выписываются здесь (tw-waybill.js) -->
+  <div class="blk" id="procBox" style="display:none"></div>   <!-- давальческая переработка: акт выполненных работ + сырьё клиента и возврат (04.11.2026) -->
   <div class="blk" id="s_ship">
     <div class="h">🚚 Отгрузка — накладные</div>
     <div id="wbBlock"><div class="sm">—</div></div>
@@ -477,6 +479,7 @@ function render(){
     el('wbBlock').innerHTML='<div class="sm">Услуги: вместо накладной — двуязычный акт по счёту. Выписывается на странице счёта: '+svcInv.map(function(v){ return '<a href="'+esc(pageUrl('invoice.html',{invoice:v.number}))+'">№ '+esc(v.number)+'</a>'; }).join(', ')+'</div>'; }
   else { el('s_ship').querySelector('.h').textContent=exportDeal?'🚚 Отгрузка — экспорт ('+(d.market==='ru'?'Россия':'Европа')+')':'🚚 Отгрузка — накладные';
   if(exportDeal) twShippingBlock(KEY, 'wbBlock'); else twWaybillBlock(KEY, 'wbBlock', null); }
+  if(window.twActBlock && d.clientType!=='физлицо') twActBlock('procBox', KEY);   // по договору на переработку: акт вместо накладной, возврат сырья клиента
 }
 function billUrl(){ return (DEAL&&DEAL.invoiceDraft)?euInvoiceUrl():pageUrl('bill.html','deal',KEY); }   // черновик счёта Европы живёт на invoice.html
 function euInvoiceUrl(){ var sp=new URLSearchParams(location.search); ['deal','lead','client','contract','framework'].forEach(function(x){ sp.delete(x); }); sp.set('invoice', (DEAL&&DEAL.invoiceDraft&&DEAL.invoiceDraft.key)||KEY); return 'invoice.html?'+sp.toString(); }

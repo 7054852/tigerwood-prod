@@ -10,6 +10,7 @@
 <script src="tw-waybill.js?v=20261019c"></script>
 <script src="tw-pay.js"></script>
 <script src="tw-deliv.js"></script>
+<script src="tw-intake.js?v=20261104"></script>
 <title>Тигервуд — Договор</title>
 <!-- Карточка договора (план «Договоры Прохаба», 30.09.2026). ?contract=new|<id|номер> (+ &client=<ключ> &deal=<ключ сделки> &framework=1).
      Черновик хранится без номера (contractsave); номер выдаётся при «Сформировать документ» (contractrender) или берётся с бумаги
@@ -233,6 +234,7 @@
     <div class="h">Документы</div>
     <div id="docsBox"><div class="sm">Черновик: документа ещё нет — сохраните и нажмите «Сформировать документ» или загрузите подписанный.</div></div>
     <div id="invBox"></div>
+    <div id="intakeBox" style="margin-top:var(--s-4)"></div>   <!-- давальческое сырьё клиента (договор на переработку, 04.11.2026) -->
     <div id="wbBox"></div>
   </div>
 
@@ -328,7 +330,8 @@ function localKinds(b){
   if(m==='eu'||m==='other') return [{kind:'supply_eu',label:'Договор поставки (Европа)',framework:false,market:'eu'},{kind:'supply_eu',label:'Рамочный контракт (Европа)',framework:true,market:'eu'},
     {kind:'services_eu',label:'Контракт на услуги (Европа)',framework:true,market:'eu'}];   // услуги (19.10.2026): на клиента, счета P…-U, акт
   if(m==='ru') return [{kind:'supply_rf',label:'Договор поставки РФ',framework:false,market:'ru'},{kind:'supply_rf',label:'Рамочный договор РФ',framework:true,market:'ru'}];
-  return [{kind:'supply',label:'Договор поставки',framework:false,market:'by'},{kind:'supply',label:'Рамочный договор',framework:true,market:'by'}];   // услуги/сотрудничество убраны 01.10.2026
+  return [{kind:'supply',label:'Договор поставки',framework:false,market:'by'},{kind:'supply',label:'Рамочный договор',framework:true,market:'by'},
+    {kind:'processing',label:'Договор на переработку давальческого сырья',framework:true,market:'by'}];   // услуги/сотрудничество убраны 01.10.2026; переработка давальческого сырья — 04.11.2026
 }
 
 /* ══════════ состояние ══════════ */
@@ -579,7 +582,7 @@ function applyMode(){
   vis('dateK', !!m); vis('dateV', !!m);
   vis('validK', legal); vis('validV', legal);
   vis('s_body', !!m);
-  vis('s_items', !!m && !fw); vis('s_terms', legal && !/сотрудничеств/i.test(lbl));   // рамочный РБ тоже: сумма скрыта (w_amount), условия оплаты — «по счёту» или проценты (13.10.2026)
+  vis('s_items', !!m && !fw); vis('s_terms', legal && !/сотрудничеств/i.test(lbl) && kindVal()!=='processing');   // переработка (04.11.2026): оплата — по счёту или после акта, текст в договоре   // рамочный РБ тоже: сумма скрыта (w_amount), условия оплаты — «по счёту» или проценты (13.10.2026)
   vis('s_deliv', !!m && !fw); vis('s_sched', (retail && !isFin()) || schedOn());   // 19.10.2026: эти два вызова с 13.10 были проглочены комментарием — блоки у рамочного не скрывались
   // ЮЛ: условия оплаты
   // рамочный РФ/Европа (02.10.2026): условия оплаты контракта правятся здесь — по умолчанию для его счетов (в счёте можно изменить); рамочный РБ — как был, без них
@@ -887,6 +890,7 @@ function renderDocs(){
   twPay('s_pay', c&&c.pay, { contract: c?c.id:'', canCreate: !!c && c.status!=='cancelled', onDone: loadContract });
   if(!c){ box.innerHTML='<div class="sm">Черновик: документа ещё нет — сохраните и нажмите «Сформировать документ» или загрузите подписанный.</div>'; ib.innerHTML=''; el('wbBox').innerHTML=''; return; }
   var docs=c.documents||[];
+  if(c.kind==='processing' && c.id && c.status!=='draft' && window.twIntakeBlock) twIntakeBlock('intakeBox', { contract:c.id }); else el('intakeBox').innerHTML='';
   if(c.fin){   // кредит / лизинг / карта: документа нет; основание накладной — наш договор с банком/партнёром, накладные — по виду
     var fd=c.fin.docs||[], dk=c.deal&&c.status!=='cancelled';
     box.innerHTML='<div class="sm">'+esc(c.fin.hint||'')+'</div><div class="sm" style="margin-top:var(--s-2)">Основание накладной: '
