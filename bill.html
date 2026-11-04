@@ -136,9 +136,9 @@
       </div>
       <div class="row" style="margin-top:var(--s-2)">
         <div id="f_prepayDate"><span class="sm">Дата платежа предоплаты</span><input id="prepayDate" type="date" onchange="refreshPreview()" autocomplete="off"></div>
-        <div id="f_afterDays"><span class="sm">Дней после отгрузки</span><input id="afterDays" type="number" value="14" oninput="refreshPreview()" autocomplete="off"></div>
+        <div id="f_afterDays"><span class="sm" id="afterLbl">Дней после отгрузки</span><input id="afterDays" type="number" value="14" oninput="refreshPreview()" autocomplete="off"></div>
       </div>
-      <label class="fl"><span class="sm">Планируемая дата отгрузки — печатается в счёте (пусто — строки нет)</span><input id="shipDate" type="date" onchange="refreshPreview()" autocomplete="off"></label>
+      <label class="fl"><span class="sm" id="shipLbl">Планируемая дата отгрузки — печатается в счёте (пусто — строки нет)</span><input id="shipDate" type="date" onchange="refreshPreview()" autocomplete="off"></label>
       <div id="preview" class="pvbox"></div>
       <label class="sm" style="display:block;margin-top:var(--s-3)"><input type="checkbox" id="gendoc" checked> сформировать документ счёта из позиций</label>
       <button class="green block" style="margin-top:var(--s-3)" id="invGo" onclick="issueInvoice()">Выставить счёт на оплату</button>
@@ -383,7 +383,7 @@ function refreshPreview(){
     if(r&&r.ok){
       h+='<div style="margin-top:var(--s-2)"><b>Оплата:</b> '+esc(r.paymentText||'')+(r.validUntil?(' · счёт действителен до '+esc(r.validUntil)):'')+'</div>';
       if(r.legs&&r.legs.length) h+='<ul class="pvlegs">'+r.legs.map(function(l){
-        var when=l.date?l.date:(l.basis==='after_ship'?('после отгрузки +'+(l.days||0)+' дн'):(l.basis==='ready'?'по готовности':''));
+        var when=l.date?l.date:(l.basis==='after_ship'?((WORKS?'после акта +':'после отгрузки +')+(l.days||0)+' дн'):(l.basis==='ready'?'по готовности':''));
         return '<li>'+esc(l.label)+': <b>'+money(l.amount)+'</b> '+esc(invCur())+(when?(' — '+esc(when)):'')+'</li>'; }).join('')+'</ul>';
     } else h+='<div class="sm err" style="margin-top:var(--s-2)">График оплаты не посчитан: '+esc(errText(r))+'</div>';
     box.innerHTML=h;
@@ -462,8 +462,17 @@ function issueCommercial(){
 }
 // сценарий оплаты — по полю «Оплата» из amoCRM (вместо 100% предоплаты по умолчанию)
 /* сценарий счёта — от выбранного договора Прохаба (предоплата %), а не от «Оплаты» amoCRM (06.10.2026): 100 % → вся сумма; меньше — предоплата + остаток */
+/* договор на переработку давальческого сырья (04.11.2026): «отгрузка» работ — подписание акта выполненных работ; так же печатает счёт */
+var WORKS=false;
+function worksLabels(){
+  var o=el('scen').options, t={ prepay_balance:['Предоплата + остаток после отгрузки','Предоплата + остаток после акта выполненных работ'], prepay_interim_ship:['Предоплата + по готовности + после отгрузки','Предоплата + по готовности + после акта'], on_ship:['Оплата по факту отгрузки','Оплата после акта выполненных работ'] };
+  for(var i=0;i<o.length;i++) if(t[o[i].value]) o[i].text=t[o[i].value][WORKS?1:0];
+  el('afterLbl').textContent=WORKS?'Дней после подписания акта':'Дней после отгрузки';
+  el('shipLbl').textContent=(WORKS?'Планируемая дата выполнения работ':'Планируемая дата отгрузки')+' — печатается в счёте (пусто — строки нет)';
+}
 function presetScenario(){
   var no=val('invContract'), c=null; ((DEAL&&DEAL.contracts)||[]).concat((INVCTX&&INVCTX.frameworks)||[]).forEach(function(x){ if(!c && x.number===no) c=x; });
+  WORKS=!!(c && /переработк/i.test(c.type||'')); worksLabels();
   var pct=c&&c.prepayPercent!=null&&c.prepayPercent!==''?Number(c.prepayPercent):null, chosen=pct===null||pct>=100?'prepay100':'prepay_balance';
   el('scen').value=chosen;
   if(chosen==='prepay_balance'){ var sum=Number(c.sum)||posTotalValue()||Number(DEAL&&DEAL.sum)||0; if(sum>0) el('prepay').value=Math.round(sum*pct)/100; }
