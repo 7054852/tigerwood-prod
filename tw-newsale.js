@@ -45,13 +45,15 @@
   function ways(b, kinds, deals){
     var k=key(b), fws=kinds.activeFrameworks||[], retail=person(b)||/физ/i.test(kinds.clientType||''), h='';
     var open=deals.filter(function(d){ return d.buyerKey===k && (d.stage==='inquiry'||d.stage==='order'); });
-    var eu=function(f){ return f.kind==='supply_eu'||f.kind==='services_eu'; }, hasSupplyFw=fws.some(function(f){ return /^supply/.test(f.kind||''); });   // переработка/услуги не заменяют рамочный поставки
+    var eu=function(f){ return f.kind==='supply_eu'||f.kind==='services_eu'; };
+    // подписи типов — из справочника клиента (рынок): «Договор поставки (Европа)», «Рамочный контракт (Европа)»…; рамочный предлагаем всегда (владелец 05.11.2026: у BusyKids их несколько)
+    var reg=(kinds.regular||[])[0], fwk=(kinds.frameworks||[]).filter(function(k){ return /^supply/.test(k.kind||''); })[0];
     if(fws.length){ h+='<div class="note ok"><div>У клиента уже действует договор на клиента — поставка или работы по нему оформляются <b>счётом</b>, новый договор для этого не нужен.</div></div>'
       +fws.map(function(f){ return '<a class="btn" style="margin:var(--s-1) var(--s-1) 0 0" href="'+esc(eu(f)?url('invoice.html',{invoice:'new',contract:f.id}):url('bill.html',{contract:f.id}))+'">🧾 Счёт по договору № '+esc(f.number)+'</a>'
         +'<div class="sm muted" style="margin:2px 0 var(--s-2)">'+esc(f.type||'рамочный')+(f.validUntil?' · до '+esc(f.validUntil):'')+'</div>'; }).join(''); }
     h+='<div style="margin-top:var(--s-3)"><div class="sm muted" style="margin-bottom:var(--s-1)">'+(fws.length?'Другой путь — отдельный договор:':'Договор:')+'</div>'
-      +'<a class="btn'+(fws.length?' sec':'')+'" style="margin:0 var(--s-1) var(--s-1) 0" href="'+esc(url('contract.html',{contract:'new',client:k}))+'">📄 '+(retail?'Договор с покупателем':'Разовый договор поставки')+'</a>'
-      +(retail||hasSupplyFw?'':'<a class="btn sec" style="margin:0 var(--s-1) var(--s-1) 0" href="'+esc(url('contract.html',{contract:'new',client:k,framework:'1'}))+'" title="на год, без суммы; каждая поставка — отдельным счётом">📑 Рамочный договор</a>')+'</div>';
+      +'<a class="btn'+(fws.length?' sec':'')+'" style="margin:0 var(--s-1) var(--s-1) 0" href="'+esc(url('contract.html',{contract:'new',client:k}))+'">📄 '+esc(retail?'Договор с покупателем':(reg&&reg.label)||'Разовый договор поставки')+'</a>'
+      +(retail?'':'<a class="btn sec" style="margin:0 var(--s-1) var(--s-1) 0" href="'+esc(url('contract.html',{contract:'new',client:k,framework:'1'}))+'" title="на клиента, без сделки; каждая поставка — отдельным счётом">📑 '+esc((fwk&&fwk.label)||'Рамочный договор')+'</a>')+'</div>';
     if(open.length && !retail) h+='<div style="margin-top:var(--s-3)"><div class="sm muted" style="margin-bottom:var(--s-1)">Или счёт к открытой сделке клиента:</div>'
       +open.slice(0,8).map(function(d){ return '<a class="btn sec sm" style="margin:0 var(--s-1) var(--s-1) 0" href="'+esc(url('bill.html',{deal:d.id}))+'">'+esc(d.num||d.inquiryNum||'')+' · '+esc(d.stageRu||d.stage)+(d.sum?' · '+esc(d.sum)+' '+esc(d.currency||''):'')+'</a>'; }).join('')+'</div>';
     var w=document.getElementById('twnsWays'); if(w) w.innerHTML=h;
