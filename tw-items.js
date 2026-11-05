@@ -41,7 +41,9 @@ function posFromItems(items){
   l.forEach(function(p){ p.par=p.pl?l[p.pl-1]||null:null; delete p.pl; });
   return l;
 }
-function pickProd(i,v){ var p=PRODBYNAME[v]; if(p){ POS[i].name=p.name; POS[i].sku=p.sku; POS[i].opt=p.opt||null; POS[i].crossbar=prodCb(p); POS[i].options={}; if(!(Number(POS[i].price)>0)) POS[i].price=prodPrice(p)||''; renderPos(); posTot(); } }
+/** товар по введённому имени: точное совпадение из datalist, иначе без учёта регистра и пробелов (владелец 04.11.2026: выбрал товар — цена не подтянулась) */
+function findProd(v){ if(PRODBYNAME[v]) return PRODBYNAME[v]; var k=String(v||'').trim().toLowerCase(); if(!k) return null; for(var n in PRODBYNAME) if(n.trim().toLowerCase()===k) return PRODBYNAME[n]; return null; }
+function pickProd(i,v){ var p=findProd(v); if(p){ POS[i].name=p.name; POS[i].sku=p.sku; POS[i].opt=p.opt||null; POS[i].crossbar=prodCb(p); POS[i].options={}; if(!(Number(POS[i].price)>0)) POS[i].price=prodPrice(p)||''; renderPos(); posTot(); } }
 function optOf(p){ return p.opt || ((PRODBYSKU[p.sku]||{}).opt) || null; }
 /** надбавка за комплект перемычек у товара каталога — в валюте сделки: ₽ — crossbarRub (штука по курсу сайта, 02.10.2026) */
 function prodCb(p){ return p?(curCode()==='RUB'?(Number(p.crossbarRub)||0):(Number(p.crossbar)||0)):0; }
@@ -88,6 +90,7 @@ function renderPos(){
       +'<input type="number" inputmode="decimal" value="'+esc(p.price||'')+'" oninput="POS['+i+'].price=this.value;posTot()" autocomplete="off">'
       +'<div class="lt" id="lt'+i+'">'+money(s)+'</div>'
       +'<button class="ic rm" onclick="rmPos('+i+')" title="удалить позицию">✕</button></div>'
+      +(noPriceHint(p))
       +(kid?'<div class="bnote"><span class="kidmark">↳ в комплекте с «'+esc(p.par.name||'')+'»</span></div>':'')
       +(kids?'<div class="bnote">в документах: одной строкой с навесным (сумма '+money(bundleSum(p))+')</div>':'')+optHtml(p,i);
   });
@@ -105,6 +108,8 @@ function posViewHtml(items, cur){
       +'<td class="n" data-l="Кол-во">'+esc(p.qty)+'</td><td class="n" data-l="Цена">'+money((Number(p.price)||0)+extraOf(p))+'</td><td class="n" data-l="Сумма">'+money(s)+'</td></tr>'; });
   return h+'<tr><td colspan="4" class="n"><b>Итого:</b></td><td class="n"><b>'+money(tot)+'</b> '+esc(cur||TWI_CUR)+'</td></tr></tbody></table></div>';
 }
+/** товар каталога без цены в валюте документа и без цены в строке — скажем прямо, а не оставим пустое поле */
+function noPriceHint(p){ var cp=p.sku?PRODBYSKU[p.sku]:null; if(!cp||Number(p.price)>0||prodPrice(cp)>0) return ''; return '<div class="bnote">⚠️ в каталоге нет цены '+esc(curSign())+' для этого товара — впишите цену в строке'+(DL_CUR!=='BYN'?' или укажите сумму счёта':'')+'</div>'; }
 function posTotalValue(){ var tot=0; POS.forEach(function(p){ tot+=lineSum(p); }); return Math.round(tot*100)/100; }
 function posTot(){ POS.forEach(function(p,i){ var e=el('lt'+i); if(e) e.textContent=money(lineSum(p)); }); var t=el('posTotal'); if(t) t.textContent=money(posTotalValue()); if(typeof onPosTotal==='function') onPosTotal(); }
 function addPos(){ POS.push({name:'',qty:1,price:''}); renderPos(); }
