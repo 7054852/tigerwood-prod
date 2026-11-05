@@ -622,7 +622,7 @@ function listToolbar(){
     meta=plural(p.activeCount||0,'заказ','заказа','заказов')+' в работе · очередь '+money(p.totalLeft)+' ₽ · разгребём за '+cap;
   }
   return '<div class="toolbar"><span class="meta">'+meta+'</span>'
-    +'<div class="end"><button class="sec" onclick="newBatchFromInvoice()" title="позиции сделки по счёту на оплату">＋ По счёту</button> <button onclick="newBatch()">＋ Новый заказ</button></div></div>';
+    +'<div class="end"><button class="sec" onclick="newBatchFromInvoice()" title="позиции сделки или счёта → новый заказ или привязка к открытому">＋ Из продажи</button> <button onclick="newBatch()">＋ Новый заказ</button></div></div>';
 }
 /* ── «Куда идут силы» (владелец 01.11.2026): сколько ₽ труда (расценка × шт) каждый день прибавили наряды каждому заказу и работе вне заказа.
    Сплошной цвет — проверено мастером/ОТК, бледный — подано и ещё не проверено. Нажал на заказ — что именно делали. ── */
@@ -2491,11 +2491,40 @@ function saveDone(id,sku,mod,v){
     if(m) m.innerHTML=(r&&r.ok)?'<span class="ok">✓ на склад</span>':'<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; setTimeout(reloadDetail,700);
   });
 }
-// заказ по счёту на оплату (11.10.2026): позиции сделки счёта → новый заказ, сделка «в производстве»
-function newBatchFromInvoice(){ var no=prompt('Номер счёта на оплату (например 20261001, R20261001, P20261001):',''); if(no===null||!no.trim()) return; api({vapi:'orderfrominvoice', invoice:no.trim()}).then(function(r){ if(r&&r.ok){ if(r.skipped&&r.skipped.length) alert('Без товара каталога, в заказ не вошли: '+r.skipped.join(', ')); openOrder(r.batchId); } else alert('Ошибка: '+((r&&r.error)||'')); }); }
-function newBatch(){ var nm=prompt('Название заказа (или пусто — авто):',''); if(nm===null) return; api({vapi:'createbatch', name:nm}).then(function(r){ if(r&&r.ok){ openOrder(r.batchId); } else alert('Ошибка'); }); }
-function renameBatch(id,cur){ var nm=prompt('Название партии:',cur||''); if(nm===null||!nm.trim()) return; api({vapi:'renamebatch', batch:id, name:nm.trim()}).then(function(){ if(VIEW==='detail') reloadDetail(); else load(); }); }
-function delBatch(id){ if(!confirm('Удалить заказ со всеми позициями?')) return; api({vapi:'delbatch', batch:id}).then(function(){ backToList(); }); }
+/* окно вместо prompt/confirm (05.11.2026: в Telegram на части телефонов они не показываются): .dlg-bg/.dlg темы, Enter = OK */
+function askDlg(title, body, onOk, okText){
+  var old=document.getElementById('pdask'); if(old) old.parentNode.removeChild(old);
+  var ov=document.createElement('div'); ov.className='mvov dlg-bg'; ov.id='pdask'; ov.setAttribute('role','dialog'); ov.setAttribute('aria-modal','true');
+  ov.innerHTML='<div class="dlg sm"><h3>'+esc(title)+'</h3><div id="pdaskB">'+body+'</div><div class="msg" id="pdaskM"></div>'
+    +'<div class="dlg-btns"><button class="sec" id="pdaskNo">Отмена</button><button id="pdaskOk">'+esc(okText||'OK')+'</button></div></div>';
+  var close=function(){ if(ov.parentNode) ov.parentNode.removeChild(ov); };
+  ov.addEventListener('click', function(e){ if(e.target===ov) close(); });
+  ov.querySelector('#pdaskNo').onclick=close;
+  ov.querySelector('#pdaskOk').onclick=function(){ if(onOk(ov, close)!==false) close(); };
+  ov.addEventListener('keydown', function(e){ if(e.key==='Enter' && e.target.tagName!=='TEXTAREA'){ e.preventDefault(); ov.querySelector('#pdaskOk').click(); } if(e.key==='Escape') close(); });
+  document.body.appendChild(ov); var f=ov.querySelector('input,select'); if(f) f.focus();
+}
+function pdaskErr(ov, t){ var m=ov.querySelector('#pdaskM'); if(m){ m.className='msg err'; m.textContent=t; } }
+/* заказ из сделки или счёта (11.10.2026 по счёту; 05.11.2026 — и по сделке, счёт не обязателен): позиции сделки → новый ПАРТ или привязка к открытому заказу */
+function newBatchFromInvoice(){
+  var opts=BATCHES.filter(function(b){ return b.status!=='отгружено'; }).map(function(b){ return '<option value="'+esc(b.num)+'">привязать к '+esc(b.num)+' · '+esc(b.name)+'</option>'; }).join('');
+  askDlg('＋ Заказ из продажи', '<div class="sm muted">Сделка или счёт</div><input id="pdKey" style="width:100%" placeholder="№2544, З-2026-33 или номер счёта 20261001" autocomplete="off">'
+    +'<div class="sm muted" style="margin-top:var(--s-2)">Куда</div><select id="pdOrd" style="width:100%"><option value="">＋ новый заказ с позициями сделки</option>'+opts+'</select>'
+    +'<div class="sm muted" style="margin-top:var(--s-2)">Позиции без товара каталога в заказ не попадают. Сделка перейдёт «в производство», заявка станет заказом №N.</div>',
+    function(ov){ var key=ov.querySelector('#pdKey').value.trim(), ord=ov.querySelector('#pdOrd').value; if(!key){ pdaskErr(ov,'Укажите сделку или счёт'); return false; }
+      var inv=/^(P|CF|RF|R)?\d{8,}(-U)?$/i.test(key);   // номер счёта: ГГГГММNN; всё остальное — сделка (№N, З-…, id)
+      api(inv?{vapi:'orderfrominvoice', invoice:key, order:ord}:{vapi:'orderfromdeal', deal:key, order:ord}).then(function(r){
+        if(!r||!r.ok){ pdaskErr(ov,'Не получилось: '+((r&&r.error)||'нет ответа')); return; }
+        ov.parentNode.removeChild(ov);
+        if(r.skipped&&r.skipped.length) askDlg('Заказ '+r.num, '<div>Без товара каталога, в заказ не вошли: <b>'+esc(r.skipped.join(', '))+'</b></div>', function(){ openOrder(r.batchId); }, 'Открыть заказ');
+        else openOrder(r.batchId); });
+      return false; }, 'В производство');
+}
+function newBatch(){ askDlg('＋ Новый заказ', '<div class="sm muted">Название (пусто — авто)</div><input id="pdName" style="width:100%" autocomplete="off">',
+  function(ov){ api({vapi:'createbatch', name:ov.querySelector('#pdName').value.trim()}).then(function(r){ if(r&&r.ok) openOrder(r.batchId); else pdaskErr(ov,'Ошибка: '+((r&&r.error)||'')); }); return false; }, 'Создать'); }
+function renameBatch(id,cur){ askDlg('Название заказа', '<input id="pdName" style="width:100%" value="'+esc(cur||'')+'" autocomplete="off">',
+  function(ov){ var nm=ov.querySelector('#pdName').value.trim(); if(!nm){ pdaskErr(ov,'Введите название'); return false; } api({vapi:'renamebatch', batch:id, name:nm}).then(function(){ if(VIEW==='detail') reloadDetail(); else load(); }); }, 'Сохранить'); }
+function delBatch(id){ askDlg('Удалить заказ?', '<div>Заказ удалится со всеми позициями; его сделки вернутся в очередь на производство.</div>', function(){ api({vapi:'delbatch', batch:id}).then(function(){ backToList(); }); }, 'Удалить'); }
 // строка позиции (общий шаблон для рендера и оптимистичного добавления)
 function itemRowHtml(it,batchId){
   // ⚠ в компактной строке у собранного изделия оставляем только значок: подпись «собрано»
