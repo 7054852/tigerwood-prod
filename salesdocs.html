@@ -7,6 +7,7 @@
 <script src="tw-config.js"></script>
 <script src="tw-waybill.js?v=20261019c"></script>
 <script src="tw-tolling.js?v=20261028b"></script>
+<script src="tw-newsale.js?v=20261105"></script>
 <title>Тигервуд — Договоры, счета, накладные</title>
 <!-- Замена GAS-панелей хаба ContractsPanel (?page=contracts), InvoicesPanel (?page=invoices), DocsPanel (?page=docs).
      ?tab=contracts|invoices|docs — открыть вкладку (так ведут пункты меню). Вкладки видны по разделам роли (people/model.ts ROLE_SECTIONS).
@@ -86,15 +87,7 @@
     <select id="im" onchange="renderInvoices()" title="Рынок"><option value="">все рынки</option><option value="by">Беларусь</option><option value="ru">Россия</option><option value="eu">Европа</option><option value="other">другое</option></select>
     <select id="ivat" onchange="renderInvoices()" title="Ввозной НДС (Россия)"><option value="">НДС: все</option><option value="no">НДС не подтверждён</option><option value="over">НДС просрочен</option><option value="ok">НДС подтверждён</option></select>
     <span class="meta" id="icnt"></span>
-    <div class="end"><button class="sec ib" onclick="loadInvoices()" title="Обновить">↻</button><button onclick="toggleNewInvoice()">＋ Счёт</button></div>
-  </div>
-  <div id="iNew" class="card hide">
-    <div class="note"><div>Счёт выставляется <b>к договору сделки</b> или к действующему <b>рамочному</b> договору клиента. Выберите сделку — подскажу, что делать (у физлица счёт формируется внутри договора).</div></div>
-    <div class="row"><div style="flex:0 0 190px;min-width:0"><select id="i_stage" onchange="fillInvoiceDeals()" title="Стадия сделки">
-        <option value="open">заявки и заказы</option><option value="inquiry">заявки</option><option value="order">заказы</option><option value="in_production">в производстве</option><option value="shipped">отгружено</option><option value="">все</option></select></div>
-      <div style="flex:3;min-width:200px"><select id="i_deal"><option value="">— загрузка сделок… —</option></select></div>
-      <div style="flex:0 0 auto;min-width:0"><button onclick="checkDeal()">Проверить</button></div></div>
-    <div id="i_res" class="sm" style="margin-top:var(--s-3)"></div>
+    <div class="end"><button class="sec ib" onclick="loadInvoices()" title="Обновить">↻</button><button onclick="twNewSale()" title="Новая продажа: выберите клиента — система предложит счёт по рамочному договору, новый договор или счёт к открытой сделке">＋ Счёт</button></div>
   </div>
   <div class="card"><div class="tbl-wrap fill">
     <table class="tbl mob adapt">
@@ -432,25 +425,7 @@ function vatDlg(x){
 /** Вид счёта для реестра: коммерческий инвойс / проформа (рынок eu, other) / счёт. */
 function invKind(x){ if(x.kind==='commercial') return 'коммерческий инвойс'; if(x.market==='eu'||x.market==='other') return 'проформа'; return 'счёт';
 }
-function toggleNewInvoice(){ var b=el('iNew'), show=b.className.indexOf('hide')>=0; b.className=show?'card':'card hide';
-  if(show) withDeals(fillInvoiceDeals, 'i_res'); }
-function fillInvoiceDeals(){ var f=val('i_stage'), ds=(DEALS||[]).filter(function(d){ return stageOk(d, f); });
-  el('i_deal').innerHTML='<option value="">— '+(ds.length?'выберите сделку':'нет сделок в этой стадии')+' —</option>'+ds.map(dealOpt).join(''); el('i_res').innerHTML=''; }
-function checkDeal(){
-  var key=val('i_deal'), box=el('i_res');
-  if(!key){ box.innerHTML='<span class="err">Выберите сделку</span>'; return; }
-  box.innerHTML='Проверяю…';
-  get({vapi:'invoicectx', deal:key}).then(function(r){
-    if(!r||!r.ok){ box.innerHTML='<span class="err">⚠️ '+esc(errText(r))+'</span>'; return; }
-    var icon=r.action==='go_issue'?'✅':(r.action==='blocked'?'🔒':'⚠️'), cls=r.action==='go_issue'?'ok':(r.action==='blocked'?'muted':'warn');
-    var fw=r.frameworks||[];
-    box.innerHTML='<div class="'+cls+'" style="margin-bottom:var(--s-2)">'+icon+' '+esc(r.message)+'</div>'
-      +(r.market?('<div class="sm" style="margin-bottom:var(--s-2)">Рынок клиента: <b>'+esc(r.marketRu||MARKET_RU[r.market]||r.market)+'</b>'+(r.invoiceKinds&&r.invoiceKinds.length?(' · выставляется: '+esc(r.invoiceKinds.join(', '))):'')+'</div>'):'')
-      +'<div class="row">'+(r.action==='blocked'?'':dealLink(r.dealId))
-      +(r.contracts&&r.contracts.length?(' <span class="sm">Договоры сделки: '+esc(r.contracts.map(function(c){ return c.type+' №'+c.number+(c.status?(' ('+c.status+')'):''); }).join('; '))+'</span>'):' <span class="sm">Договоров у сделки нет</span>')
-      +(fw.length?(' <span class="sm">· рамочные клиента: '+esc(fw.map(function(c){ return '№'+c.number+(c.validUntil?(' до '+c.validUntil):''); }).join('; '))+'</span>'):'')+'</div>';
-  }).catch(function(e){ box.innerHTML='<span class="err">'+esc(netText(e))+'</span>'; });
-}
+/* «＋ Счёт» — единое окно «Новая продажа» (tw-newsale.js, 05.11.2026): раньше тут был выбор сделки с «Проверить», выставить счёт он не умел */
 
 /* ══════════ НАКЛАДНЫЕ И ДОКУМЕНТЫ ══════════ */
 

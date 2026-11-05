@@ -111,7 +111,7 @@
     <div class="kv">
       <span class="k">Клиент</span>
       <span class="v"><input id="f_client" list="buyerList" placeholder="начните вводить название или ФИО" autocomplete="off" oninput="onClientInput()" onchange="onClientInput()"><datalist id="buyerList"></datalist>
-        <div class="row"><span class="sm" id="clientInfo">выберите клиента из справочника — от него зависят тип договора, валюта и серия номера</span><button class="gho sm" id="newClientBtn" onclick="newClient()">+ Создать клиента</button></div><div class="sm" id="leadHint"></div></span>
+        <div class="row"><span class="sm" id="clientInfo">выберите клиента из справочника — от него зависят тип договора, валюта и серия номера</span><button class="gho sm" id="newClientBtn" onclick="newClient()">+ Создать клиента</button></div><div id="fwHint"></div><div class="sm" id="leadHint"></div></span>
       <span class="k">Тип договора</span>
       <span class="v"><select id="f_kind" onchange="onKind()"></select><div class="sm" id="kindHint"></div></span>
       <span class="k" id="fwK">Рамочный</span>
@@ -335,7 +335,7 @@ function localKinds(b){
 }
 
 /* ══════════ состояние ══════════ */
-var ID=qp('contract')||'new', C=null, BUYERS=[], BUYER=null, KINDS=[], KINDS_KEY=null, DEALS=null, LEGS=[], EDIT=true, WANT_KIND='', WAY0='';   // позиции — POS (tw-items.js)
+var ID=qp('contract')||'new', C=null, BUYERS=[], BUYER=null, KINDS=[], KINDS_KEY=null, FWS=[], DEALS=null, LEGS=[], EDIT=true, WANT_KIND='', WAY0='';   // позиции — POS (tw-items.js)
 function isNew(){ return ID==='new'; }
 function buyerName(b){ return String(b['Наименование ЮЛ (полное)']||b['Полное ФИО']||'').trim(); }
 function buyerKey(b){ return String(b['УНП']||b['ИНН']||b['ID']||'').trim(); }
@@ -547,7 +547,9 @@ function renderHead(){
   if(isFw()) pills+=' <span class="pill info">рамочный</span>';
   var m=(c&&c.market)||marketOf(BUYER); if(m) pills+=' <span class="pill">'+esc(MARKET_RU[m]||m)+' · '+esc(curOf())+'</span>';
   el('stpills').innerHTML=pills; el('hTitle').innerHTML=h;
-  el('hMeta').textContent=c?((c.kindRu||'')+(c.client&&c.client.name?(' · '+c.client.name):'')+(c.deal?(' · сделка '+(c.deal.num||c.deal.inquiryNum||'')):'')):'номер появится при формировании документа или при загрузке подписанного';
+  // рамочный действует — главная кнопка «Счёт по рамочному» в шапке (05.11.2026: внизу карточки её не находили)
+  var fwLive=c&&c.isFramework&&(c.status==='active'||c.status==='signed')&&!c.expired, fwHref=fwLive?(c.euInvoices?pageUrl('invoice.html',{invoice:'new',contract:c.id}):pageUrl('bill.html',{contract:c.id})):'';
+  el('hMeta').innerHTML=esc(c?((c.kindRu||'')+(c.client&&c.client.name?(' · '+c.client.name):'')+(c.deal?(' · сделка '+(c.deal.num||c.deal.inquiryNum||'')):'')):'номер появится при формировании документа или при загрузке подписанного')+(fwLive?'<div class="row" style="margin-top:var(--s-2)"><a class="btn sm" href="'+esc(fwHref)+'" title="новая поставка: позиции и условия оплаты — в карточке счёта, сделка-заявка заведётся сама">＋ Новый счёт на оплату по рамочному</a></div>':'');
   el('ttl').textContent='📄 '+(c&&c.number?('Договор № '+c.number):'Договор');
   el('curLbl').textContent=curOf();
   var nc=curOf(); if(EDIT && (nc==='RUB'||nc==='EUR'?nc:'BYN')!==curCode()){ TWI_CUR=nc==='BYN'?'руб':nc; renderPos(); itemsTot(); }   // клиент РФ/Европы — цены каталога в ₽/EUR (tw-items.js prodPrice)
@@ -633,7 +635,13 @@ function paintSeg(id, v){ var bs=el(id).querySelectorAll('button'); for(var i=0;
 /* ── клиент ── */
 function setBuyer(b){ BUYER=b; if(b) el('f_client').value=buyerName(b); KINDS_KEY=null; afterBuyer(); }
 function onClientInput(){ var b=findBuyerByName(val('f_client')); if(b===BUYER){ paintClient(); return; } BUYER=b; KINDS_KEY=null; afterBuyer(); }
-function afterBuyer(){ paintClient(); renderHead(); loadKinds(); fillDeals(); }
+function afterBuyer(){ FWS=[]; renderFwHint(); paintClient(); renderHead(); loadKinds(); fillDeals(); }
+/** у клиента уже действует рамочный (05.11.2026): новый договор не нужен — счёт по нему; плашка под клиентом только у нового договора */
+function renderFwHint(){ var e=el('fwHint'); if(!e) return;
+  if(!isNew()||!FWS.length){ e.innerHTML=''; return; }
+  e.innerHTML='<div class="note warn" style="margin-top:var(--s-2)"><div>У клиента уже действует: '+FWS.map(function(f){ return esc(f.type||'рамочный')+' <b>№ '+esc(f.number)+'</b>'+(f.validUntil?' (до '+esc(f.validUntil)+')':''); }).join('; ')
+    +'. Поставка или работы по нему оформляются счётом — новый договор нужен, только если условия другие.</div></div>'
+    +'<div class="row" style="margin-top:var(--s-1)">'+FWS.map(function(f){ var eu=(f.kind==='supply_eu'||f.kind==='services_eu'); return '<a class="btn sm" href="'+esc(eu?pageUrl('invoice.html',{invoice:'new',contract:f.id}):pageUrl('bill.html',{contract:f.id}))+'">🧾 Счёт по договору № '+esc(f.number)+'</a>'; }).join('')+'</div>'; }
 function paintClient(){
   var b=BUYER, e=el('clientInfo');
   if(!b){ e.innerHTML=val('f_client').trim()?'<span class="err">Такого клиента нет в справочнике — выберите из списка или создайте.</span>':'выберите клиента из справочника — от него зависят тип договора, валюта и серия номера'; }
@@ -650,7 +658,7 @@ function loadKinds(){
   get({vapi:'contractkinds', key:key}).then(function(r){
     if(KINDS_KEY!==key) return;
     if(!r||!r.ok||!r.kinds||!r.kinds.length){ el('kindHint').innerHTML='<span class="warn">Список типов с сервера не пришёл'+(r&&r.error?(': '+esc(r.error)):'')+' — показан стандартный набор.</span>'; return; }
-    el('kindHint').textContent=''; KINDS=r.kinds; FIN_PAYS=r.fin||[]; fillKinds();
+    el('kindHint').textContent=''; KINDS=r.kinds; FIN_PAYS=r.fin||[]; FWS=r.activeFrameworks||[]; renderFwHint(); fillKinds();
   }).catch(function(){ el('kindHint').innerHTML='<span class="warn">Нет связи — показан стандартный набор типов.</span>'; });
 }
 /** в списке — обычные типы и рамочные отдельными пунктами (значение «<kind>#fw»); галочка f_fw скрыта и следует за выбором */

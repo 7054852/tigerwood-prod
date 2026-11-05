@@ -6,6 +6,7 @@
 <script src="tw-theme.js"></script>
 <script src="tw-config.js"></script>
 <script src="tw-money.js"></script>
+<script src="tw-newsale.js?v=20261105"></script>
 <title>Тигервуд — Контрагенты</title>
 <!-- С 13.10.2026 — единый раздел «Контрагенты» (бывший clients.html): одна карточка на компанию, роли галочками (клиент / поставщик / подрядчик),
      вкладки «Продажи» и «Закупки и финансы», объединение записей одной компании. Сервер: core/counterpartyRoutes.ts (counterparties, counterparty,
@@ -130,9 +131,10 @@
   <div class="toolbar">
     <button class="sec sm" onclick="goClient('')">← Все контрагенты</button>
     <div class="end">
+      <button class="sm" id="ccSale" onclick="twNewSale(buyerKey(CC.buyer))" title="счёт по рамочному, новый договор или счёт к открытой сделке — система подскажет">＋ Продажа</button>
       <button class="sec sm" id="ccEdit" onclick="editFromCard()">Править реквизиты</button>
       <button class="sm sec" id="ccNewC" onclick="location.href=contractUrl('new','')">Новый договор</button>
-      <button class="sm" id="ccFw" onclick="location.href=contractUrl('new','1')">Рамочный договор</button>
+      <button class="sm sec" id="ccFw" onclick="location.href=contractUrl('new','1')">Рамочный договор</button>
     </div>
   </div>
   <div id="ccErr" class="note bad hide"></div>
@@ -446,7 +448,7 @@ function tile(t, v, s){ return '<div class="tile"><div class="t">'+esc(t)+'</div
 function renderClient(){
   var r=CC, b=r.buyer||{}, t=typeOf(b), ul=(t!=='физлицо'), m=b.market||'', tot=r.totals||{};
   el('ttl').textContent='🤝 '+name_(b);
-  el('ccFw').style.display=(ul&&b.client)?'':'none'; el('ccNewC').style.display=b.client?'':'none'; el('ccEdit').style.display=CAN.edit?'':'none';
+  el('ccSale').style.display=b.client?'':'none'; el('ccFw').style.display=(ul&&b.client)?'':'none'; el('ccNewC').style.display=b.client?'':'none'; el('ccEdit').style.display=CAN.edit?'':'none';   // «＋ Продажа» — главная (05.11.2026)
   var show=(ul?[['Наименование ЮЛ (полное)'],['УНП'],['ИНН'],['КПП'],['ОГРН'],['Юридический адрес'],['Почтовый адрес'],['р/с'],['р/с в'],['Код банка (БИК)'],['В лице'],['Полное ФИО'],['Действует на основании'],['тел'],['e-mail'],['Страна'],['Валюта']]:FL_FIELDS);
   var kv=show.map(function(f){ var v=String(b[f[0]]==null?'':b[f[0]]).trim(); return v?('<span class="k">'+esc(LABELS[f[0]]||f[0])+'</span><span class="v">'+esc(v)+'</span>'):''; }).join('');
   if(ul) kv+=accsOf(b['Доп. счета']).map(function(a,i){ return '<span class="k">'+(i?'':'Другие счета')+'</span><span class="v">'+esc(a.acc)+(a.bank?(' в '+esc(a.bank)):'')+(a.bic?(', код '+esc(a.bic)):'')+(a.note?(' <span class="muted">— '+esc(a.note)+'</span>'):'')+'</span>'; }).join('');
@@ -496,7 +498,8 @@ function renderClient(){
         +'<td data-l="Сумма" class="num">'+money(v.sum)+'</td>'
         +'<td data-l="Статус"><span class="pill '+(v.status==='аннулирован'?'muted':'')+'">'+esc(v.status||'—')+'</span></td>'
         +'<td data-l="Договор" class="sm">'+esc(v.contract||'—')+'</td><td data-l="Сделка">'+(v.dealId?dealLink(v.dealId):'—')+'</td>'
-        +'<td>'+(v.url?'<a class="btn sm" href="'+esc(v.url)+'" target="_blank" rel="noopener">открыть</a>':'')+'</td></tr>'; }).join(''))
+        +'<td><div class="row">'+(v.number&&(v.market==='by'||v.market==='ru')&&!/инвойс/i.test(invKind(v))?'<a class="btn sm" href="'+esc(pageUrl('bill.html','invoice',v.number))+'" title="условия, позиции, переформировать">карточка</a>':'')
+        +(v.url?'<a class="btn sm sec" href="'+esc(v.url)+'" target="_blank" rel="noopener">файл ↗</a>':'')+'</div></td></tr>'; }).join(''))
       :'<tr><td colspan="10" class="sm muted">Счетов нет.</td></tr>')
     +'</tbody></table></div></div>';
   el('ccBody').innerHTML=h;
