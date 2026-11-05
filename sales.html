@@ -134,6 +134,8 @@
   <div id="hdr" class="hdr"><div class="t">Сделка…</div><div class="m">загрузка…</div></div>
   <div id="loaderr" class="note bad hide"></div>
   <div id="main" class="hide">
+  <!-- где мы и что дальше (05.11.2026): пройденные этапы зелёные, текущий выделен; следующая кнопка — в шапке -->
+  <div id="steps" class="steps"></div>
 
   <!-- редактирование шапки -->
   <div id="editPanel" class="blk hide">
@@ -181,6 +183,8 @@
   <!-- оплата онлайн: ссылки ЕРИП / карта и оплачено / остаток (tw-pay.js); создаются в карточке договора -->
   <div class="blk" id="dealPay" style="display:none"></div>
 
+  <!-- производство (05.11.2026): ПАРТ-N, готовность, упаковано — по dealprod; без заказа — «ждёт запуска» -->
+  <div class="blk" id="s_prod" style="display:none"></div>
   <!-- отгрузка: накладные ТН/ТТН и товарный чек — выписываются здесь (tw-waybill.js) -->
   <div class="blk" id="procBox" style="display:none"></div>   <!-- давальческая переработка: акт выполненных работ + сырьё клиента и возврат (04.11.2026) -->
   <div class="blk" id="s_ship">
@@ -440,10 +444,13 @@ function render(){
   var lost=(closed&&(d.lostAt||d.lostReason))?('<span><b>'+(d.stage==='lost'?'Не состоялась':'Аннулирована')+':</b> '+esc(d.lostAt||'')+(d.lostReason?(' — '+esc(d.lostReason)):'')+'</span>'):'';
   var pay=d.pay&&d.pay.total>0?(' <span class="pill '+(d.pay.rest<=0?'ok':'')+'">оплачено '+money(d.pay.paid)+'</span>'):'';
   var acts='<button class="gray sm" onclick="toggleEdit()">✏️ изменить сделку</button>';
-  if(d.stage==='inquiry') acts+='<button class="sm" onclick="confirmDeal(\'manual\')" title="клиент принял решение — выдать №N и отправить в план производства">Подтвердить заказ</button>'
+  if(d.stage==='inquiry') acts+='<button class="sm" onclick="confirmDeal(\'manual\')" title="клиент принял решение — выдаётся №N; дальше — кнопка «В производство»">Подтвердить заказ</button>'
     +'<button class="sm sec" onclick="confirmDeal(\'payment_manual\')" title="деньги пришли, а банк ещё не подтянулся">Оплата подтверждена</button>'
     +'<button class="sm sec" onclick="lostDeal()">Не состоялась</button>';
-  var po=d.prodOrder?(' <a class="pill info" href="'+esc(pageUrl('production.html','batch',d.prodOrder.id))+'" title="заказ на производство — так эта работа называется в цехе">🏭 '+esc(d.prodOrder.num)+(d.prodOrder.name?' '+esc(d.prodOrder.name):'')+'</a>'):'';
+  // заказ подтверждён, ПАРТ ещё нет — одна следующая кнопка (владелец 05.11.2026); счёт не обязателен — orderfromdeal
+  if(d.stage==='order' && !d.prodOrder && !closed) acts+='<button class="sm" onclick="toProduction()" title="новый заказ на производство с позициями сделки или привязка к уже открытому ПАРТ-N">🏭 В производство</button>';
+  var poT='заказ на производство — так эта работа называется в цехе';
+  var po=d.prodOrder?(hasSec('plan')?(' <a class="pill info" href="'+esc(pageUrl('production.html','batch',d.prodOrder.id))+'" title="'+poT+'">🏭 '+esc(d.prodOrder.num)+'</a>'):(' <span class="pill info" title="'+poT+'">🏭 '+esc(d.prodOrder.num)+'</span>')):'';
   el('hdr').innerHTML='<div class="t">'+esc(title)+' '+stagePill(d)+po+(d.clientType?(' <span class="pill">'+esc(d.clientType)+'</span>'):'')+'</div>'
     +'<div class="sum">'+money(d.sum||0)+' '+esc(d.currency||'руб')+pay+'</div>'
     +'<div class="meta"><span><b>Канал:</b> '+esc(d.type||'—')+'</span><span><b>Менеджер:</b> '+esc(d.manager||'—')+'</span>'
@@ -453,6 +460,7 @@ function render(){
     +'<div class="row" style="margin-top:var(--s-3)">'+acts+'</div>';
   el('ttl').textContent='🧾 '+title;
   el('cancelBar').className=closed?'toolbar hide':'toolbar';
+  renderSteps(d); renderProd();
   fillEdit(d);
   renderCli();
   renderDelivView();
@@ -483,32 +491,65 @@ function render(){
 }
 function billUrl(){ return (DEAL&&DEAL.invoiceDraft)?euInvoiceUrl():pageUrl('bill.html','deal',KEY); }   // черновик счёта Европы живёт на invoice.html
 function euInvoiceUrl(){ var sp=new URLSearchParams(location.search); ['deal','lead','client','contract','framework'].forEach(function(x){ sp.delete(x); }); sp.set('invoice', (DEAL&&DEAL.invoiceDraft&&DEAL.invoiceDraft.key)||KEY); return 'invoice.html?'+sp.toString(); }
-/** заказ на производство по счёту на оплату (11.10.2026): позиции сделки → новый ПАРТ-N, сделка «в производстве».
+/** «В производство» (05.11.2026, владелец: одна кнопка в шапке): позиции сделки → новый ПАРТ-N, сделка «в производстве»; счёт не обязателен (orderfromdeal).
     12.10.2026: заказ уже заведён в производстве — выбрать его: сделка привязывается, состав заказа не меняется, расхождения показываем. Заявка при этом становится заказом №N. */
-function orderFromInvoice(no){
-  ask('⚙️ Заказ на производство', '<div>Счёт <b>№ '+esc(no)+'</b> → заказ на производство. Сделка перейдёт «в производство»'+(isOrder(DEAL)?'':' и станет заказом №N')+'.</div>'
-    +'<div class="fl" style="margin-top:var(--s-3)"><label>Заказ</label><select id="ofiOrder"><option value="">＋ новый заказ с позициями счёта</option></select></div><div class="msg" id="ofim"></div>', function(){
+function toProduction(){
+  ask('🏭 В производство', '<div>Позиции сделки уйдут в заказ на производство (ПАРТ-N), сделка перейдёт «в производство»'+(isOrder(DEAL)?'':' и станет заказом №N')+'.</div>'
+    +'<div class="fl" style="margin-top:var(--s-3)"><label>Заказ</label><select id="ofiOrder"><option value="">＋ новый заказ с позициями сделки</option></select></div>'
+    +'<div class="sm muted" style="margin-top:var(--s-2)">Позиции без товара каталога (услуги, текст) в заказ не попадают — их видно в ответе.</div><div class="msg" id="ofim"></div>', function(){
     var ord=val('ofiOrder');
-    run({vapi:'orderfrominvoice', invoice:no, order:ord}, ord?'Привязываю к заказу…':'Завожу заказ…', 'ofim').then(function(r){ if(!r) return; hide('askmodal');
+    run({vapi:'orderfromdeal', deal:KEY, order:ord}, ord?'Привязываю к заказу…':'Завожу заказ…', 'ofim').then(function(r){ if(!r) return; hide('askmodal');
       var row=function(x){ return '<tr><td>'+esc(x.sku)+'</td><td>'+esc(x.name)+'</td><td class="num">'+esc(x.invoice)+'</td><td class="num">'+esc(x.order)+'</td></tr>'; };
       var df=r.diff||{}, rows=(df.missing||[]).concat(df.extra||[]);
-      info(r.linked?'Сделка привязана к заказу':'Заказ заведён', '<div>'+esc(r.num)+' — '+esc(r.name)+' · позиций счёта: '+esc(r.positions)+(r.dealNum?' · сделка '+esc(r.dealNum):'')+'</div>'
+      info(r.linked?'Сделка привязана к заказу':'Заказ на производство заведён', '<div>'+esc(r.num)+' — '+esc(r.name)+' · позиций: '+esc(r.positions)+(r.dealNum?' · сделка '+esc(r.dealNum):'')+'</div>'
         +(r.skipped&&r.skipped.length?'<div class="warn">Без товара каталога, в заказ не входят: '+esc(r.skipped.join(', '))+'</div>':'')
-        +(r.linked?(rows.length?'<div class="warn" style="margin-top:var(--s-2)">Состав заказа не менялся. Расхождения счёта и заказа:</div><div class="tbl-wrap"><table class="tbl sm"><thead><tr><th>Артикул</th><th>Товар</th><th class="num">В счёте</th><th class="num">В заказе</th></tr></thead><tbody>'+rows.map(row).join('')+'</tbody></table></div>':'<div class="ok">Позиции счёта и заказа совпадают.</div>'):''));
+        +(r.linked?(rows.length?'<div class="warn" style="margin-top:var(--s-2)">Состав заказа не менялся. Расхождения сделки и заказа:</div><div class="tbl-wrap"><table class="tbl sm"><thead><tr><th>Артикул</th><th>Товар</th><th class="num">В сделке</th><th class="num">В заказе</th></tr></thead><tbody>'+rows.map(row).join('')+'</tbody></table></div>':'<div class="sm">Состав заказа совпадает с позициями сделки.</div>'):''));
       reload(); });
     return false;
-  }, 'Готово');
+  }, 'В производство');
   get({vapi:'batches'}).then(function(r){ var sel=el('ofiOrder'); if(!sel||!r||!r.batches) return;
     r.batches.filter(function(b){ return b.status!=='отгружено'; }).forEach(function(b){ var o=document.createElement('option'); o.value=b.num; o.textContent='привязать к '+b.num+' · '+b.name; sel.appendChild(o); }); }).catch(function(){});
+}
+/** полоса этапов: где мы и что дальше. Физлицу счёт не нужен — этап «Договор»; закрытая сделка — этапы погашены. */
+function renderSteps(d){
+  var closed=isClosed(d), retail=d.clientType==='физлицо', lc=liveContract();
+  var inv=(d.invoices||[]).some(function(v){ return v.status!=='аннулирован'; }) || !!d.invoiceDraft;
+  var order=isOrder(d), prod=!!d.prodOrder||d.stage==='in_production'||d.stage==='shipped', ship=d.stage==='shipped';
+  var st=[['Заявка'+(d.inquiryNum?' '+d.inquiryNum:''), true], retail?['Договор', !!lc]:['Счёт', inv], ['Заказ'+(d.num?' '+(/^\d/.test(d.num)?'№':'')+d.num:''), order], ['Производство', prod], ['Отгрузка', ship]];
+  var curSet=false, h='';
+  st.forEach(function(x, i){ var cls=closed?'off':(x[1]?'done':(!curSet?'cur':'')); if(cls==='cur') curSet=true;
+    h+=(i?'<span class="arr">→</span>':'')+'<span class="st '+cls+'">'+(cls==='done'?'✓ ':'')+esc(x[0])+'</span>'; });
+  if(closed) h+='<span class="pill '+(d.stage==='lost'?'warn':'muted')+'">'+esc(d.stage==='lost'?'не состоялась':'аннулирована')+'</span>';
+  el('steps').innerHTML=h;
+}
+/** блок «Производство» (05.11.2026): цифры всего заказа ПАРТ-N (в нём бывает несколько продаж); ссылка в раздел — только у кого он открыт */
+function renderProd(){
+  var box=el('s_prod'), d=DEAL; box.style.display='none';
+  if(!d || d.stage==='inquiry' || isClosed(d)) return;
+  get({vapi:'dealprod', deal:KEY}).then(function(r){ if(!r||!r.ok) return;
+    var h='<div class="h">🏭 Производство</div>';
+    if(r.order){ var o=r.order, nm=esc(o.num)+(o.name?' · '+esc(o.name):'');
+      h+='<div class="kpis"><span class="k">'+(hasSec('plan')?'<a href="'+esc(pageUrl('production.html','batch',o.id))+'">'+nm+' →</a>':nm)+'</span>'
+        +'<span class="k">Статус<b>'+esc(o.status||'—')+'</b></span><span class="k">Готовность по труду<b>'+esc(o.pct)+' %</b></span>'
+        +'<span class="k">Упаковано<b>'+esc(o.packed)+' из '+esc(o.ordered)+'</b></span>'+(o.shipped?'<span class="k">Отгружено<b>'+esc(o.shipped)+'</b></span>':'')+(o.plan?'<span class="k">Срок<b>'+esc(o.plan)+'</b></span>':'')+'</div>'
+        +(o.dealsCount>1?'<div class="sm muted">В этом заказе ещё '+(o.dealsCount-1)+' продаж(и) — цифры по всему заказу, не только по этой сделке.</div>':''); }
+    else if(r.fromStock) h+='<div class="sm">Заказ выполняется со склада готовой продукции — в производство не запускался.</div>';
+    else if(r.waiting) h+='<div class="note warn"><div>Заказ ещё не запущен в производство. Нажмите <b>«🏭 В производство»</b> в шапке — или начальник производства соберёт его вместе с другими в «Собрать из продаж».</div></div>';
+    else return;
+    box.innerHTML=h; box.style.display='';
+  }).catch(function(){});
 }
 
 /* ── стадия: заявка → заказ / не состоялась ── */
 function confirmDeal(via){
   var pay=(via==='payment_manual');
   ask(pay?'Оплата подтверждена?':'Подтвердить заказ?',
-    '<div>'+(pay?'Отметьте, если деньги от клиента пришли, а банк ещё не подтянулся. ':'')+'Заявка станет <b>заказом</b>: выдаётся сквозной номер №N'+(isAmo()?' (сделка в amoCRM переименуется)':'')+', заказ попадёт в план производства.</div>',
+    '<div>'+(pay?'Отметьте, если деньги от клиента пришли, а банк ещё не подтянулся. ':'')+'Заявка станет <b>заказом</b>: выдаётся сквозной номер №N'+(isAmo()?' (сделка в amoCRM переименуется)':'')+'. В производство заказ уходит следующей кнопкой «🏭 В производство».</div>',
     function(){ run({vapi:'dealconfirm', deal:KEY, via:via}, 'Подтверждаю заказ…').then(function(r){ if(!r) return;
-      info('Готово', '<div>✅ '+(r.already?'Уже заказ':'Заявка стала заказом')+(r.num?(' <b>'+esc(r.num)+'</b>'):'')+'.</div>'); reload(); }); },
+      // следующий шаг — сразу в руки (05.11.2026): «В производство» или «Позже»
+      ask('Готово', '<div>✅ '+(r.already?'Уже заказ':'Заявка стала заказом')+(r.num?(' <b>'+esc(r.num)+'</b>'):'')+'.</div><div class="sm" style="margin-top:var(--s-2)">Следующий шаг — отправить заказ в производство. Можно и позже: кнопка останется в шапке сделки.</div>',
+        function(){ hide('askmodal'); loadDeal(); setTimeout(toProduction, 50); return false; }, '🏭 В производство');
+      el('askNo').textContent='Позже'; el('askNo').onclick=function(){ el('askNo').textContent='Отмена'; el('askNo').onclick=function(){ hide('askmodal'); }; hide('askmodal'); reload(); }; }); },
     pay?'Оплата подтверждена':'Подтвердить заказ');
 }
 function lostDeal(){
@@ -579,7 +620,7 @@ function renderDealDocs(){
     h+=twFileCard({ href:v.url, tab:1, tag:twDocTag(vt), title:vt+' № '+v.number, off:!live,
       meta:[v.sum?money(v.sum)+' '+(v.currency||''):'', ci&&v.proforma?'к проформе '+v.proforma:(v.paymentText||''), v.validUntil?'до '+v.validUntil:''].filter(Boolean).join(' · '),
       pills:v.status?'<span class="pill '+(live?'':'muted')+'">'+esc(v.status)+'</span>':'',
-      acts:(!ci&&v.market!=='eu'&&v.market!=='other'?'<a href="'+esc(pageUrl('bill.html','invoice',v.number))+'" title="условия, позиции, переформировать">страница счёта</a>':'')+((live&&!ci)?'<a href="#" onclick="editInvoice('+n+');return false;">изменить</a>'+((d.stage!=='in_production'&&d.stage!=='shipped')?'<a href="#" onclick="orderFromInvoice('+n+');return false;" title="новый заказ на производство с позициями сделки по этому счёту">→ заказ на производство</a>':''):''),
+      acts:(!ci&&v.market!=='eu'&&v.market!=='other'?'<a href="'+esc(pageUrl('bill.html','invoice',v.number))+'" title="условия, позиции, переформировать">страница счёта</a>':'')+((live&&!ci)?'<a href="#" onclick="editInvoice('+n+');return false;">изменить</a>':''),
       del:live?'delDoc(\'invoice\','+JSON.stringify(String(v.number||''))+')':'', delTitle:'Отменить счёт' });
   });
   el('deldocs').innerHTML=h||'<div class="sm">Пока нет договоров и счетов по сделке.</div>';
