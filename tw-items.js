@@ -109,7 +109,7 @@ function posViewHtml(items, cur){
   return h+'<tr><td colspan="4" class="n"><b>Итого:</b></td><td class="n"><b>'+money(tot)+'</b> '+esc(cur||TWI_CUR)+'</td></tr></tbody></table></div>';
 }
 /** товар каталога без цены в валюте документа и без цены в строке — скажем прямо, а не оставим пустое поле */
-function noPriceHint(p){ var cp=p.sku?PRODBYSKU[p.sku]:null; if(!cp||Number(p.price)>0||prodPrice(cp)>0) return ''; return '<div class="bnote">⚠️ в каталоге нет цены '+esc(curSign())+' для этого товара — впишите цену в строке'+(DL_CUR!=='BYN'?' или укажите сумму счёта':'')+'</div>'; }
+function noPriceHint(p){ var cp=p.sku?PRODBYSKU[p.sku]:null; if(!cp||Number(p.price)>0||prodPrice(cp)>0) return ''; return '<div class="bnote">⚠️ в каталоге нет цены '+esc(curSign())+' для этого товара — впишите цену в строке</div>'; }
 function posTotalValue(){ var tot=0; POS.forEach(function(p){ tot+=lineSum(p); }); return Math.round(tot*100)/100; }
 function posTot(){ POS.forEach(function(p,i){ var e=el('lt'+i); if(e) e.textContent=money(lineSum(p)); }); var t=el('posTotal'); if(t) t.textContent=money(posTotalValue()); if(typeof onPosTotal==='function') onPosTotal(); }
 function addPos(){ POS.push({name:'',qty:1,price:''}); renderPos(); }

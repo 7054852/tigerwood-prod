@@ -314,14 +314,18 @@ function loadFw(){
   }).catch(function(e){ loadErr(netText(e)); });
 }
 /** сумма счёта: по позициям с ценами; у позиций без цены (нет в каталоге) — то, что вписано в «Сумма счёта» (04.11.2026: ручную сумму молча теряли) */
-function invoiceTotal(){ if(isEu()) return Number(val('total'))||0; var pt=posTotalValue(); return pt>0?pt:(Number(val('total'))||0); }
+function invoiceTotal(){ if(isEu()) return Number(val('total'))||0; var pt=posTotalValue(); return pt>0?pt:(cleanPos().length?0:(Number(val('total'))||0)); }
+/** позиции без цены: документ РБ строится по строкам — сумма «сверху» дала бы счёт с нулями в строках и суммой в условиях (поймано на staging 05.11.2026) */
+function priceless(){ return isEu()?[]:cleanPos().filter(function(p){ return !(Number(p.price)>0); }).map(function(p){ return p.name||'позиция без названия'; }); }
+function priceMsg(pl){ return 'Нет цены у: <b>'+esc(pl.join(', '))+'</b> — впишите цену в строке (в каталоге её нет). Счёт печатается по строкам, сумма «сверху» их не заменит.'; }
 /** «Выставить счёт» без сделки: заявка клиента с позициями → карточка счёта этой сделки → счёт к рамочному.
     Проверки — ДО заведения заявки, иначе оставалась заявка-сирота без счёта (04.11.2026). */
 function issueFw(){
   var cl=FW.client||{}, items=cleanPos();
   if(!items.length){ setm('imsg','err','Добавьте позиции'); return; }
   if(!checkPos('imsg')) return;
-  if(invoiceTotal()<=0){ setm('imsg','err','Укажите цены позиций или сумму счёта'); return; }
+  var pl=priceless(); if(pl.length){ setm('imsg','err',priceMsg(pl)); return; }
+  if(invoiceTotal()<=0){ setm('imsg','err','Укажите цены позиций'); return; }
   run({vapi:'dealcreate', data:JSON.stringify({ buyer:cl.key, client:cl.name, clientType:cl.type||'юрлицо', type:'опт', items:items, note:'счёт по рамочному № '+(FW.number||'') })}, 'Завожу сделку…', 'imsg').then(function(r){ if(!r) return;
     KEY=r.id; FWID=''; try{ history.replaceState(null,'',pageUrl('bill.html','deal',KEY)); }catch(e){}
     get({vapi:'deal', deal:KEY}).then(function(d){ if(!d||!d.ok){ setm('imsg','err','Сделка '+esc(r.inquiryNum||r.id)+' заведена, но не загрузилась — откройте её и выставьте счёт.'); return; }
@@ -388,7 +392,7 @@ function refreshPreview(){
     if(r&&r.ok){
       h+='<div style="margin-top:var(--s-2)"><b>Оплата:</b> '+esc(r.paymentText||'')+(r.validUntil?(' · счёт действителен до '+esc(r.validUntil)):'')+'</div>';
       if(r.legs&&r.legs.length) h+='<ul class="pvlegs">'+r.legs.map(function(l){
-        var when=l.date?l.date:(l.basis==='after_ship'?((WORKS?'после акта +':'после отгрузки +')+(l.days||0)+' дн'):(l.basis==='ready'?'по готовности':''));
+        var when=l.date?l.date:(l.basis==='after_ship'?(WORKS?'в день отгрузки продукции':('после отгрузки +'+(l.days||0)+' дн')):(l.basis==='ready'?'по готовности':''));
         return '<li>'+esc(l.label)+': <b>'+money(l.amount)+'</b> '+esc(invCur())+(when?(' — '+esc(when)):'')+'</li>'; }).join('')+'</ul>';
     } else h+='<div class="sm err" style="margin-top:var(--s-2)">График оплаты не посчитан: '+esc(errText(r))+'</div>';
     box.innerHTML=h;
@@ -470,9 +474,9 @@ function issueCommercial(){
 /* договор на переработку давальческого сырья (04.11.2026): «отгрузка» работ — подписание акта выполненных работ; так же печатает счёт */
 var WORKS=false;
 function worksLabels(){
-  var o=el('scen').options, t={ prepay_balance:['Предоплата + остаток после отгрузки','Предоплата + остаток после акта выполненных работ'], prepay_interim_ship:['Предоплата + по готовности + после отгрузки','Предоплата + по готовности + после акта'], on_ship:['Оплата по факту отгрузки','Оплата после акта выполненных работ'] };
+  var o=el('scen').options, t={ prepay_balance:['Предоплата + остаток после отгрузки','Предоплата + остаток в день отгрузки продукции по накладной'], prepay_interim_ship:['Предоплата + по готовности + после отгрузки','Предоплата + по готовности + в день отгрузки продукции'], on_ship:['Оплата по факту отгрузки','Оплата в день отгрузки продукции по накладной'] };
   for(var i=0;i<o.length;i++) if(t[o[i].value]) o[i].text=t[o[i].value][WORKS?1:0];
-  el('afterLbl').textContent=WORKS?'Дней после подписания акта':'Дней после отгрузки';
+  el('afterLbl').textContent=WORKS?'Дней после отгрузки продукции':'Дней после отгрузки';
   el('shipLbl').textContent=(WORKS?'Планируемая дата выполнения работ':'Планируемая дата отгрузки')+' — печатается в счёте (пусто — строки нет)';
 }
 function presetScenario(){
@@ -490,8 +494,9 @@ function issueInvoice(){
   if(FW) return issueFw();
   if(!DEAL||!DEAL.buyerKey){ setm('imsg','err','Сначала привяжите клиента к сделке'); return; }
   if(!val('invContract')){ setm('imsg','err','Счёт выставляется только к договору. Сначала оформите и сформируйте договор: <a href="'+esc(pageUrl('contract.html','contract','new')+'&deal='+encodeURIComponent(KEY))+'">＋ Договор</a>'); return; }
+  var pl=priceless(); if(pl.length){ setm('imsg','err',priceMsg(pl)); return; }
   var total=invoiceTotal();
-  if(total<=0 && !isEu()){ setm('imsg','err','Укажите цены позиций или сумму счёта'); return; }
+  if(total<=0 && !isEu()){ setm('imsg','err','Добавьте позиции с ценами или укажите сумму счёта'); return; }
   var opts={ total:total||'', contractNo:val('invContract'), account:val('invAcc'), scenario:val('scen'), prepay:Number(val('prepay'))||0, interim:Number(val('interim'))||0,
     prepayDate:ruDate(val('prepayDate')), afterDays:Number(val('afterDays'))||0, shipDate:ruDate(val('shipDate')), genInvoiceDoc:el('gendoc').checked };
   el('iout').innerHTML='';
