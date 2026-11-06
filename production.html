@@ -953,24 +953,31 @@ function riskBadge(b){
   if(r==='done') return '<span class="pill ok">✓ готово</span>';
   return '';
 }
+/* срок отгрузки — календарём (владелец 06.11.2026: «приходится вводить вручную»); сервер принимает дд.мм.гггг, пусто = снять срок */
 function setDeadline(id,cur){
-  var d=prompt('Срок отгрузки заказа, дд.мм.гггг:\n(пусто — снять срок)', cur||''); if(d===null) return; d=d.trim();
-  var why='';
-  if(cur && d!==cur){ why=prompt('Почему сдвигаем срок?\n(попадёт в историю; можно оставить пустым)',''); if(why===null) return; }
-  api({vapi:'setdeadline', batch:id, plan:d, reason:why||''}).then(function(r){
-    if(r&&r.ok){ if(VIEW==='detail') reloadDetail(); else load(); }
-    else alert((r&&r.error)||'не сохранилось');
-  }).catch(function(e){ alert('Связь оборвалась: '+(e.message||e)); });
+  var m=/^(\d{2})\.(\d{2})\.(\d{4})$/.exec(String(cur||'').trim()), iso=m?(m[3]+'-'+m[2]+'-'+m[1]):'';
+  askDlg('Срок отгрузки заказа', '<input type="date" id="pdDate" value="'+iso+'" style="width:100%">'
+    +'<label class="ck" style="margin-top:var(--s-2)"><input type="checkbox" id="pdClear"> снять срок</label>'
+    +(cur?'<div class="sm muted" style="margin-top:var(--s-3)">Почему сдвигаем срок? (попадёт в историю, можно пусто)</div><input id="pdWhy" style="width:100%" autocomplete="off">':''),
+    function(ov){
+      var clear=ov.querySelector('#pdClear').checked, v=ov.querySelector('#pdDate').value, mm=/^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
+      if(!clear && !mm){ pdaskErr(ov,'Выберите дату или отметьте «снять срок»'); return false; }
+      var d=clear?'':(mm[3]+'.'+mm[2]+'.'+mm[1]), w=ov.querySelector('#pdWhy');
+      if(d===String(cur||'')){ return true; }
+      api({vapi:'setdeadline', batch:id, plan:d, reason:w?w.value.trim():''}).then(function(r){
+        if(r&&r.ok){ if(ov.parentNode) ov.parentNode.removeChild(ov); if(VIEW==='detail') reloadDetail(); else load(); }
+        else pdaskErr(ov,(r&&r.error)||'не сохранилось');
+      }).catch(function(e){ pdaskErr(ov,'Связь оборвалась: '+(e.message||e)); });
+      return false;
+    }, 'Сохранить');
 }
 // история сроков: видно, сколько раз двигали и по какой причине
 function deadlineLog(id){
   api({vapi:'deadlinelog', batch:id}).then(function(r){
     var lg=(r&&r.log)||[];
-    if(!lg.length){ alert('Срок ещё не меняли.'); return; }
-    var txt=lg.map(function(x){
-      return x.when+' — '+(x.was||'—')+' → '+(x.now||'—')+(x.who?('  ('+x.who+')'):'')+(x.reason?('\n    причина: '+x.reason):'');
-    }).join('\n');
-    alert('История сроков заказа (сверху — свежее):\n\n'+txt);
+    var body=lg.length?('<div class="sm muted" style="margin-bottom:var(--s-2)">сверху — свежее</div>'+lg.map(function(x){
+      return '<div style="margin-bottom:var(--s-2)"><b>'+esc(x.was||'—')+' → '+esc(x.now||'—')+'</b> <span class="sm muted">'+esc(x.when)+(x.who?(' · '+esc(x.who)):'')+'</span>'+(x.reason?('<div class="sm">'+esc(x.reason)+'</div>'):'')+'</div>'; }).join('')):'<div>Срок ещё не меняли.</div>';
+    askDlg('История сроков заказа', body, function(){ return true; }, 'Понятно');
   });
 }
 // ── СПИСОК: компактные карточки-обзор ──
