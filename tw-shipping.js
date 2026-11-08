@@ -141,7 +141,7 @@ function twPacking(orderKey){
 /** что везём: заказ на производство (по умолчанию — заказ сделки) или позиции сделки; разложено/осталось — по всем паллетам */
 /* наше имя товара (оборудование · модель с цветом) — по документному «Набор для домашнего гимнастического комплекса» башни не различить (владелец 16.10.2026) */
 /* английское имя по товару — запасной путь для листов на паллеты, если строка пришла без него */
-function twPkEn(pid){ if(!TWPK||!TWPK.r) return ''; var all=((TWPK.r.order?TWPK.r.order.items:TWPK.r.dealItems)||[]).concat(TWPK.products||[]); for(var i=0;i<all.length;i++) if(all[i].productId===pid&&all[i].nameEn) return all[i].nameEn; return ''; }
+function twPkEn(pid){ if(!TWPK||!TWPK.r) return ''; var all=((TWPK.r.order?TWPK.r.order.items:TWPK.r.dealItems)||[]).concat(TWPK.products||[]); for(var i=0;i<all.length;i++) if(all[i].productId===pid&&(all[i].enDoc||all[i].nameEn)) return all[i].enDoc||all[i].nameEn; return ''; }
 function twPkInternal(pid){ var all=((TWPK.r.order?TWPK.r.order.items:TWPK.r.dealItems)||[]).concat(TWPK.products||[]); for(var i=0;i<all.length;i++) if(all[i].productId===pid) return all[i].internal||''; return ''; }
 /* покрытие и цвет крупной меткой (владелец 16.10.2026: «белый или лакированный?»): поле «цвет» у BusyKids пустое — берём из имени модели */
 var TWPK_FIN=[[/\bLAK\b/i,'лак','ok'],[/\bWP\b/i,'шлифованный, без лака','warn'],[/\bWHITE\b/i,'белый','info'],[/\bGRAY\b|\bGREY\b/i,'серый','info'],[/\bBLUE\b/i,'синий','info'],
@@ -278,7 +278,8 @@ function twPalletSheets(pallets){
 function twPalletSheetsHtml(list, order){
   var n=list.length, today=new Date(), dd=function(x){ return (x<10?'0':'')+x; }, date=dd(today.getDate())+'.'+dd(today.getMonth()+1)+'.'+today.getFullYear();
   var pages=list.map(function(p,i){
-    var total=0, lines=p.lines.map(function(l){ var nm=String(l.nameEn||twPkEn(l.productId)||l.name||'').trim(), q=Number(l.qty)||0;   // лист на паллету — только по-английски (владелец 16.10.2026) total+=q;
+    // лист на паллету — только по-английски (владелец 16.10.2026), имя как в инвойсе / пэкинг-листе / ТН (enDoc с сервера: без модели в скобках, цвет — 08.11.2026)
+    var total=0, lines=p.lines.map(function(l){ var nm=String(l.enDoc||twPkEn(l.productId)||l.nameEn||l.name||'').trim(), q=Number(l.qty)||0; total+=q;
       return '<div class="ln"><div class="l"><div class="sku">'+esc(l.sku||'')+'</div><div class="nm">'+esc(nm)+' <span class="parts">Parts -</span></div></div>'
         +'<div class="r"><span class="q">'+esc(l.qty)+'</span><span class="u">pcs</span></div></div>'; }).join('');
     return '<div class="pg" style="--k:1"><div class="hd"><div><div class="lbl">Order</div><div class="val">'+esc(order)+'</div></div><div class="pill">'+(i+1)+' / '+n+'</div></div>'
@@ -324,17 +325,9 @@ function twBoxStickers(){
     w.document.open(); w.document.write(twBoxStickersHtml(list, part)); w.document.close();
   });
 }
-/** Имя на стикере: таможенное имя без модели в скобках (как в образцах) + исполнение из скобок, если в имени его нет:
- *  «… Activity Stand (BK Tower Foldable LAK)» → «… Activity Stand LAK» — как уже пишется WHITE (владелец 14.10.2026). */
-var TW_FINISH=/\b(LAK|WP|WHITE|BLUE|PINK|BROWN|GRAY|GREY|BLACK|DARK|NATURAL)\b/gi;
-function twStickerName(en){
-  var s=String(en||''), m=/\s*\(([^)]*)\)\s*$/.exec(s), main=s.replace(/\s*\([^)]*\)\s*$/,'').trim();
-  if(!m || new RegExp(TW_FINISH.source,'i').test(main)) return main;   // исполнение уже в имени (WHITE, BLUE) — как есть; «WHITE+LAK» не превращаем в «WHITE LAK»
-  var t=m[1].match(new RegExp(TW_FINISH.source,'i'));
-  return t?main+' '+t[0].toUpperCase():main;
-}
+/** Имя на стикере = английское имя инвойса / пэкинг-листа / ТН (enDoc считает сервер, noTail в generate.ts — одно правило на все документы, 08.11.2026) */
 function twBoxStickersHtml(list, part){
-  var st=list.map(function(it, i){ var nm=twStickerName(it.nameEn||it.name);
+  var st=list.map(function(it, i){ var nm=it.enDoc||it.nameEn||it.name;
     return '<div class="cell"><div class="st" id="st'+i+'" data-sku="'+esc(it.sku)+'" style="--k:1"><div class="sku">'+esc(it.sku)+'</div><div class="nm"><span class="in">'+esc(nm)+' <b>PARTS</b></span></div>'
       +'<div class="ft"><span>MADE IN BELARUS</span>'+(part?'<span class="pt">'+esc(part)+'</span>':'')+'</div></div>'
       +'<div class="cap"><span>'+esc(it.internal||it.name||'')+'</span><button onclick="pdfOne('+i+')" title="скачать этот стикер файлом PDF 40×30 мм">⬇ PDF</button></div></div>'; }).join('');
