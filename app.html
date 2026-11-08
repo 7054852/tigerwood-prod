@@ -491,8 +491,11 @@ function renderUsers(box,r){
   var pageTitle=isMaster?'Моя бригада':'Сотрудники и доступы';
   // список мастеров для выпадающего «Мастер/участок»
   var masters=(r.users||[]).filter(function(u){ return u.role==='мастер'; }).map(function(u){ return u.name; });
-  function masterOpts(cur){ cur=String(cur||''); var list=masters.slice(); if(cur&&list.indexOf(cur)<0) list.unshift(cur);
-    return '<option value=""'+(cur===''?' selected':'')+'>—</option>'+list.map(function(nm){ return '<option'+(nm===cur?' selected':'')+'>'+esc(nm)+'</option>'; }).join(''); }
+  var sites=r.sites||[];   // участки: «Мастер/участок» — одно поле (08.11.2026)
+  function optsOf(list,cur){ return list.map(function(nm){ return '<option'+(nm===cur?' selected':'')+'>'+esc(nm)+'</option>'; }).join(''); }
+  function masterOpts(cur,onlySites){ cur=String(cur||''); var list=onlySites?[]:masters.slice(), known=list.concat(sites);
+    if(cur&&known.indexOf(cur)<0) list.unshift(cur);
+    return '<option value=""'+(cur===''?' selected':'')+'>—</option>'+optsOf(list,cur)+(sites.length?'<optgroup label="Участки">'+optsOf(sites,cur)+'</optgroup>':''); }
   var myTg=String(me.tgId||'');
   // кто может вносить отчёты за сотрудника без телефона — действующие сотрудники с Telegram
   var proxyPeople=(r.users||[]).filter(function(x){ return x.tgId && isActiveJs(x.active) && !isPendingJs(x.active); });
@@ -510,7 +513,10 @@ function renderUsers(box,r){
     var nm=String(u.name).replace(/[\\']/g,''), tg=String(u.tgId||'');
     var chg=(canEdit&&!self)?' onchange="saveUser('+i+',\''+esc(tg)+'\')"':'';   // авто-сохранение при выборе — не нужно отдельно жать 💾
     var roleCell=canEdit?'<select id="ro'+i+'"'+chg+' style="min-width:170px">'+roles.map(function(x){return '<option value="'+x+'"'+(x===u.role?' selected':'')+'>'+esc(r.roleTitles[x]||x)+'</option>';}).join('')+'</select>':'<span class="pill">'+esc(r.roleTitles[u.role]||u.role)+'</span>';
-    var masterCell=canEdit?'<select id="ma'+i+'" style="min-width:140px"'+chg+'>'+masterOpts(u.master)+'</select>':esc(u.master||'—');
+    var masterCell=canEdit?'<select id="ma'+i+'" style="min-width:140px"'+chg+'>'+masterOpts(u.master)+'</select>'
+      :(isSupply&&u.role==='рабочий'&&sites.length&&masters.indexOf(u.master)<0)   // диспетчер ставит рабочему участок; бригаду мастера не трогает
+        ?'<select id="ma'+i+'" style="min-width:140px" title="участок рабочего" onchange="saveSite('+i+',\''+esc(tg)+'\',\''+nm+'\')">'+masterOpts(u.master,true)+'</select>'
+        :esc(u.master||'—');
     // персональный доступ к вкладке «🪚 Раскрой» (мастер/начальник/директор видят её всегда — по роли)
     var byRole=(u.role==='мастер'||u.role==='начальник'||u.role==='директор'||u.role==='админ');
     var cutCell=byRole ? '<span class="muted small">по роли</span>'
@@ -607,7 +613,7 @@ function renderUsers(box,r){
   }
   var intro=canEdit?'Все, кто зарегистрировался через бота. Приглашайте по ссылке (сразу под ролью) или правьте роль существующим — сохраняйте 💾.'
     :(isMaster?'Ваши рабочие. Пригласите нового по ссылке — он сразу попадёт к вам в бригаду.'
-    :(canInvite?'Сотрудники в системе. Пригласите нового рабочего по ссылке — роли назначает директор.':'Все, кто зарегистрировался через бота.'));
+    :(canInvite?'Сотрудники в системе. Пригласите нового рабочего по ссылке и выберите ему участок в колонке «Мастер/участок» — роли и мастеров назначает директор.':'Все, кто зарегистрировался через бота.'));
   box.innerHTML='<div class="pad"><div class="hi">'+pageTitle+'</div><p class="muted">'+intro+'</p>'+alert_+invite
     +'<div class="box tbwrap" style="padding:var(--s-2) 0"><table class="tbl">'+head+'<tbody>'+(rows||'<tr><td colspan=9 class="muted">пусто</td></tr>')+'</tbody></table></div>'
     +archBlock+'</div>';
@@ -658,6 +664,12 @@ function saveUser(i,tgid){
   var ob=document.getElementById('ot'+i); if(ob) p.otk=ob.checked?'1':'0';   // приёмка качества
   var ab=document.getElementById('ap'+i); if(ab) p.appr=ab.checked?'1':'0';   // подтверждение нарядов
   api(p).then(function(r){ m.innerHTML=(r&&r.ok)?'<span class="ok">✅</span>':'<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; }).catch(function(e){ m.innerHTML='<span class="err">ошибка</span>'; });
+}
+function saveSite(i,tgid,name){
+  var el=document.getElementById('ma'+i), m=document.getElementById('um'+i); if(m) m.textContent='…'; el.disabled=true;
+  api({vapi:'setuser',tgid:TGID,target:tgid,name:name,master:el.value}).then(function(r){ el.disabled=false;
+    if(m) m.innerHTML=(r&&r.ok)?'<span class="ok">✅</span>':'<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; })
+    .catch(function(){ el.disabled=false; if(m) m.innerHTML='<span class="err">ошибка сети</span>'; });
 }
 // доступ к Снабу правится отдельным роутом (списки — настройки финансов Прохаба finance.snab.*, не в «Работниках»),
 // поэтому не через saveUser. Ошибка — откатываем галочку, чтобы экран не врал.
