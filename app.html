@@ -548,7 +548,7 @@ function renderUsers(box,r){
     }
     var acts='';
     if(canManage) acts+='<button class="sm" title="переименовать (Фамилия Имя)" onclick="renameWorker(\''+tg+'\',\''+nm+'\')">✎</button> ';
-    if(canManage&&u.tgId) acts+='<button class="sm" title="сменить код входа" onclick="setCode(\''+tg+'\',\''+esc(u.code||'')+'\')">🔑</button> ';
+    if(canManage&&u.tgId) acts+='<button class="sm" title="сменить код входа" onclick="setCode('+i+',\''+esc(tg)+'\')">🔑</button> ';
     if(canEdit&&!self) acts+='<button class="sm" title="сохранить роль/участок" onclick="saveUser('+i+',\''+esc(tg)+'\')">💾</button> ';
     if(canManage&&!self){ acts+= pending
       ? '<button class="sm green" title="открыть доступ этому человеку" onclick="restoreWorker(\''+tg+'\',\''+nm+'\')">✅ Подтвердить</button> '
@@ -832,13 +832,23 @@ function renameWorker(tgId,curName){
     if(r&&r.ok) reloadUsers(); else alert((r&&r.error)||'ошибка');
   }).catch(function(){ alert('сеть недоступна'); });
 }
-function setCode(tgId,cur){
-  var v=prompt('Код входа сотрудника (свой — 6–24 знака).\nОставьте пусто — сгенерируется новый код:', cur||'');
-  if(v===null) return;
-  api({vapi:'setworkercode',tgid:TGID,target:tgId,code:v.trim()}).then(function(r){
-    // новый сервер хранит код только в виде отпечатка: показать его можно один раз — сейчас
-    if(r&&r.ok){ if(r.code) alert('Код входа для '+(r.name||'сотрудника')+': '+r.code+'\nПередайте его сотруднику — повторно код не показывается.'); reloadUsers(); } else alert((r&&r.error)||'ошибка');
-  }).catch(function(){ alert('сеть недоступна'); });
+// код входа — прямо в строке: prompt()/alert() в Telegram не работают (08.11.2026)
+function setCode(i,tgId){
+  var m=document.getElementById('um'+i); if(!m) return;
+  m.innerHTML='<span style="display:inline-flex;gap:var(--s-1);flex-wrap:wrap;align-items:center;min-width:18em">'
+    +'<input id="cd'+i+'" placeholder="пусто — новый код" autocomplete="off" style="width:150px" title="свой код: 6–24 знака без пробелов">'
+    +'<button class="sm" onclick="issueCode('+i+',\''+esc(tgId)+'\')">Выдать код</button>'
+    +'<button class="sm sec" onclick="document.getElementById(\'um'+i+'\').innerHTML=\'\'">×</button></span>';
+}
+function issueCode(i,tgId){
+  var m=document.getElementById('um'+i), inp=document.getElementById('cd'+i); if(!m||!inp) return;
+  var btns=m.querySelectorAll('button'); for(var k=0;k<btns.length;k++) btns[k].disabled=true;
+  api({vapi:'setworkercode',tgid:TGID,target:tgId,code:inp.value.trim()}).then(function(r){
+    if(!r||!r.ok){ for(var k=0;k<btns.length;k++) btns[k].disabled=false; m.insertAdjacentHTML('beforeend','<div class="err small">'+esc((r&&r.error)||'ошибка')+'</div>'); return; }
+    // сервер хранит только отпечаток кода — показываем один раз
+    m.innerHTML='<div class="note ok" style="margin:0;text-align:left;min-width:18em"><div>Код входа для '+esc(r.name||'сотрудника')+': <b class="num" style="font-size:1.3em;user-select:all">'+esc(r.code)+'</b></div>'
+      +'<div class="small">Передайте его сотруднику — повторно код не показывается. Старый код больше не действует.</div></div>';
+  }).catch(function(){ for(var k=0;k<btns.length;k++) btns[k].disabled=false; m.insertAdjacentHTML('beforeend','<div class="err small">сеть недоступна</div>'); });
 }
 function archiveWorker(tgId,name){
   if(!confirm('Убрать «'+name+'» в архив?\nДоступ пропадёт, но выработка и ЗП сохранятся.')) return;
