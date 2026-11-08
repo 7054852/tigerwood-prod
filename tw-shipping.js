@@ -141,6 +141,8 @@ function twPacking(orderKey){
 /** что везём: заказ на производство (по умолчанию — заказ сделки) или позиции сделки; разложено/осталось — по всем паллетам */
 /* наше имя товара (оборудование · модель с цветом) — по документному «Набор для домашнего гимнастического комплекса» башни не различить (владелец 16.10.2026) */
 /* английское имя по товару — запасной путь для листов на паллеты, если строка пришла без него */
+/* артикул на печати (стикер, лист паллеты, отчёт об отгрузке) — без хвоста UV: «UV» в документах не указываем (владелец 08.11.2026); на экране — полный */
+function twSkuDoc(s){ return String(s||'').replace(/\s*UV$/i,''); }
 function twPkEn(pid){ if(!TWPK||!TWPK.r) return ''; var all=((TWPK.r.order?TWPK.r.order.items:TWPK.r.dealItems)||[]).concat(TWPK.products||[]); for(var i=0;i<all.length;i++) if(all[i].productId===pid&&(all[i].enDoc||all[i].nameEn)) return all[i].enDoc||all[i].nameEn; return ''; }
 function twPkInternal(pid){ var all=((TWPK.r.order?TWPK.r.order.items:TWPK.r.dealItems)||[]).concat(TWPK.products||[]); for(var i=0;i<all.length;i++) if(all[i].productId===pid) return all[i].internal||''; return ''; }
 /* покрытие и цвет крупной меткой (владелец 16.10.2026: «белый или лакированный?»): поле «цвет» у BusyKids пустое — берём из имени модели */
@@ -235,7 +237,7 @@ function twShipReportHtml(r){
     ?{ttl:'Shipment report', client:'Buyer', order:'Order', inv:'Invoice', contract:'Contract', date:'Date', art:'Article', item:'Item', ord:'Ordered', shp:'Shipped', left:'Remaining', tot:'Total', docs:'Shipping documents', tn:'Waybill', cmr:'CMR', ci:'Commercial invoice', pcs:'pcs', print:'Print / Save as PDF'}
     :{ttl:'Отчёт по отгрузке', client:'Покупатель', order:'Заказ', inv:'Счёт', contract:'Договор', date:'Дата', art:'Артикул', item:'Товар', ord:'Заказано', shp:'Отгружено', left:'Осталось', tot:'Итого', docs:'Документы отгрузки', tn:'ТН', cmr:'CMR', ci:'Инвойс / счёт-фактура', pcs:'шт.', print:'Печать / Сохранить как PDF'};
   var so=0, ss=0, sl=0, rows=(r.rows||[]).map(function(x){ var left=Math.max(0,(Number(x.ordered)||0)-(Number(x.shipped)||0)); so+=Number(x.ordered)||0; ss+=Number(x.shipped)||0; sl+=left;
-    return '<tr><td class="sku">'+esc(x.sku)+'</td><td>'+esc(en?x.en:x.ru)+'</td><td class="n">'+esc(x.ordered)+'</td><td class="n b">'+esc(x.shipped)+'</td><td class="n'+(left?' w':'')+'">'+(left||'—')+'</td></tr>'; }).join('');
+    return '<tr><td class="sku">'+esc(twSkuDoc(x.sku))+'</td><td>'+esc(en?x.en:x.ru)+'</td><td class="n">'+esc(x.ordered)+'</td><td class="n b">'+esc(x.shipped)+'</td><td class="n'+(left?' w':'')+'">'+(left||'—')+'</td></tr>'; }).join('');
   var dn={waybill_tn:T.tn, cmr:T.cmr, commercial_invoice:T.ci, invoice_rf_vat:T.ci};
   var docs=(r.docs||[]).slice().reverse().map(function(d){ return '<li>'+esc(dn[d.type]||d.type)+' '+esc(d.number)+' — '+esc(d.date)+'</li>'; }).join('');
   var meta=[[T.client, r.client], [T.order, [r.buyerRef, r.deal].filter(Boolean).join(' · ')], [T.inv, r.invoice?(r.invoice.number+' — '+r.invoice.date):''], [T.contract, r.contract?(r.contract.number+' — '+r.contract.date):''], [T.date, r.today]]
@@ -280,7 +282,7 @@ function twPalletSheetsHtml(list, order){
   var pages=list.map(function(p,i){
     // лист на паллету — только по-английски (владелец 16.10.2026), имя как в инвойсе / пэкинг-листе / ТН (enDoc с сервера: без модели в скобках, цвет — 08.11.2026)
     var total=0, lines=p.lines.map(function(l){ var nm=String(l.enDoc||twPkEn(l.productId)||l.nameEn||l.name||'').trim(), q=Number(l.qty)||0; total+=q;
-      return '<div class="ln"><div class="l"><div class="sku">'+esc(l.sku||'')+'</div><div class="nm">'+esc(nm)+' <span class="parts">Parts -</span></div></div>'
+      return '<div class="ln"><div class="l"><div class="sku">'+esc(twSkuDoc(l.sku))+'</div><div class="nm">'+esc(nm)+' <span class="parts">Parts -</span></div></div>'
         +'<div class="r"><span class="q">'+esc(l.qty)+'</span><span class="u">pcs</span></div></div>'; }).join('');
     return '<div class="pg" style="--k:1"><div class="hd"><div><div class="lbl">Order</div><div class="val">'+esc(order)+'</div></div><div class="pill">'+(i+1)+' / '+n+'</div></div>'
       +'<div class="pal">Palet <span class="no">#'+(i+1)+'</span></div>'
@@ -328,7 +330,7 @@ function twBoxStickers(){
 /** Имя на стикере = английское имя инвойса / пэкинг-листа / ТН (enDoc считает сервер, noTail в generate.ts — одно правило на все документы, 08.11.2026) */
 function twBoxStickersHtml(list, part){
   var st=list.map(function(it, i){ var nm=it.enDoc||it.nameEn||it.name;
-    return '<div class="cell"><div class="st" id="st'+i+'" data-sku="'+esc(it.sku)+'" style="--k:1"><div class="sku">'+esc(it.sku)+'</div><div class="nm"><span class="in">'+esc(nm)+' <b>PARTS</b></span></div>'
+    return '<div class="cell"><div class="st" id="st'+i+'" data-sku="'+esc(it.sku)+'" style="--k:1"><div class="sku">'+esc(twSkuDoc(it.sku))+'</div><div class="nm"><span class="in">'+esc(nm)+' <b>PARTS</b></span></div>'
       +'<div class="ft"><span>MADE IN BELARUS</span>'+(part?'<span class="pt">'+esc(part)+'</span>':'')+'</div></div>'
       +'<div class="cap"><span>'+esc(it.internal||it.name||'')+'</span><button onclick="pdfOne('+i+')" title="скачать этот стикер файлом PDF 40×30 мм">⬇ PDF</button></div></div>'; }).join('');
   return '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Стикеры на коробки'+(part?' — '+esc(part):'')+'</title>'
