@@ -547,7 +547,7 @@ function renderUsers(box,r){
           +' onchange="setSnab(\''+esc(tg)+'\',this.checked,this)"> 🧾</label>';
     }
     var acts='';
-    if(canManage) acts+='<button class="sm" title="переименовать (Фамилия Имя)" onclick="renameWorker(\''+tg+'\',\''+nm+'\')">✎</button> ';
+    if(canManage) acts+='<button class="sm" title="переименовать (Фамилия Имя)" onclick="renameWorker('+i+',\''+esc(tg)+'\',\''+esc(nm)+'\')">✎</button> ';
     if(canManage&&u.tgId) acts+='<button class="sm" title="сменить код входа" onclick="setCode('+i+',\''+esc(tg)+'\')">🔑</button> ';
     if(canEdit&&!self) acts+='<button class="sm" title="сохранить роль/участок" onclick="saveUser('+i+',\''+esc(tg)+'\')">💾</button> ';
     if(canManage&&!self){ acts+= pending
@@ -824,13 +824,24 @@ function saveSettings(){
     if(m) m.innerHTML=(r&&r.ok)?'<span class="ok">✅ сохранено</span>':'<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>';
   }).catch(function(){ if(m) m.innerHTML='<span class="err">сеть недоступна</span>'; });
 }
-function renameWorker(tgId,curName){
-  var nn=prompt('Имя сотрудника — как записать (Фамилия Имя):', curName||'');
-  if(nn===null) return; nn=nn.trim(); if(nn.length<3){ alert('Введите Фамилию и Имя'); return; }
-  if(nn===curName) return;
+// переименование — в строке (prompt в Telegram не работает); старое ФИО сервер оставляет псевдонимом (08.11.2026)
+function renameWorker(i,tgId,curName){
+  var m=document.getElementById('um'+i); if(!m) return;
+  m.innerHTML='<span style="display:inline-flex;gap:var(--s-1);flex-wrap:wrap;align-items:center;min-width:18em">'
+    +'<input id="rn'+i+'" value="'+esc(curName)+'" placeholder="Фамилия Имя" autocomplete="off" style="width:190px">'
+    +'<button class="sm" onclick="renameSave('+i+',\''+esc(tgId)+'\',\''+esc(curName)+'\')">Сохранить имя</button>'
+    +'<button class="sm sec" onclick="document.getElementById(\'um'+i+'\').innerHTML=\'\'">×</button></span>';
+  var inp=document.getElementById('rn'+i); if(inp) inp.focus();
+}
+function renameSave(i,tgId,curName){
+  var m=document.getElementById('um'+i), inp=document.getElementById('rn'+i); if(!m||!inp) return;
+  var nn=inp.value.replace(/\s+/g,' ').trim(), err=function(t){ var e=m.querySelector('.err'); if(e) e.textContent=t; else m.insertAdjacentHTML('beforeend','<div class="err small">'+esc(t)+'</div>'); };
+  if(nn.split(' ').length<2){ err('Введите фамилию и имя'); return; }
+  if(nn===curName){ m.innerHTML=''; return; }
+  var btns=m.querySelectorAll('button'), lock=function(on){ for(var k=0;k<btns.length;k++) btns[k].disabled=on; }; lock(true);
   api({vapi:'renameworker',tgid:TGID,target:tgId,name:curName,newname:nn}).then(function(r){
-    if(r&&r.ok) reloadUsers(); else alert((r&&r.error)||'ошибка');
-  }).catch(function(){ alert('сеть недоступна'); });
+    if(r&&r.ok){ reloadUsers(); return; } lock(false); err((r&&r.error)||'ошибка');
+  }).catch(function(){ lock(false); err('сеть недоступна'); });
 }
 // код входа — прямо в строке: prompt()/alert() в Telegram не работают (08.11.2026)
 function setCode(i,tgId){
