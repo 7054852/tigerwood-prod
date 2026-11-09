@@ -513,10 +513,13 @@ function renderUsers(box,r){
     var nm=String(u.name).replace(/[\\']/g,''), tg=String(u.tgId||'');
     var chg=(canEdit&&!self)?' onchange="saveUser('+i+',\''+esc(tg)+'\')"':'';   // авто-сохранение при выборе — не нужно отдельно жать 💾
     var roleCell=canEdit?'<select id="ro'+i+'"'+chg+' style="min-width:170px">'+roles.map(function(x){return '<option value="'+x+'"'+(x===u.role?' selected':'')+'>'+esc(r.roleTitles[x]||x)+'</option>';}).join('')+'</select>':'<span class="pill">'+esc(r.roleTitles[u.role]||u.role)+'</span>';
-    var masterCell=canEdit?'<select id="ma'+i+'" style="min-width:140px"'+chg+'>'+masterOpts(u.master)+'</select>'
+    var siteNote=(u.site&&u.master!==u.site)?'<br><span class="muted small" title="участок рабочего (поставил мастер)">'+esc(u.site)+'</span>':'';
+    var masterCell=canEdit?'<select id="ma'+i+'" style="min-width:140px"'+chg+'>'+masterOpts(u.master)+'</select>'+siteNote
       :(isSupply&&u.role==='рабочий')   // диспетчер ставит рабочему мастера или участок (08.11.2026)
-        ?'<select id="ma'+i+'" style="min-width:140px" title="мастер или участок рабочего" onchange="saveSite('+i+',\''+esc(tg)+'\',\''+nm+'\')">'+masterOpts(u.master)+'</select>'
-        :esc(u.master||'—');
+        ?'<select id="ma'+i+'" style="min-width:140px" title="мастер или участок рабочего" onchange="saveSite('+i+',\''+esc(tg)+'\',\''+nm+'\')">'+masterOpts(u.master)+'</select>'+siteNote
+        :(isMaster&&canManage&&!self&&u.role==='рабочий'&&sites.length)   // мастер ставит своему участок, бригада остаётся за ним (10.11.2026)
+        ?'<select id="ma'+i+'" style="min-width:140px" title="участок рабочего" onchange="saveSite('+i+',\''+esc(tg)+'\',\''+nm+'\')"><option value="">— участок —</option>'+optsOf(sites,u.site||'')+'</select>'
+        :esc(u.master||'—')+siteNote;
     // персональный доступ к вкладке «🪚 Раскрой» (мастер/начальник/директор видят её всегда — по роли)
     var byRole=(u.role==='мастер'||u.role==='начальник'||u.role==='директор'||u.role==='админ');
     var cutCell=byRole ? '<span class="muted small">по роли</span>'
