@@ -551,12 +551,12 @@ function renderUsers(box,r){
     if(canManage&&u.tgId) acts+='<button class="sm" title="сменить код входа" onclick="setCode('+i+',\''+esc(tg)+'\')">🔑</button> ';
     if(canEdit&&!self) acts+='<button class="sm" title="сохранить роль/участок" onclick="saveUser('+i+',\''+esc(tg)+'\')">💾</button> ';
     if(canManage&&!self){ acts+= pending
-      ? '<button class="sm green" title="открыть доступ этому человеку" onclick="restoreWorker(\''+tg+'\',\''+nm+'\')">✅ Подтвердить</button> '
-        +'<button class="sm" title="отклонить — доступа не будет" onclick="archiveWorker(\''+tg+'\',\''+nm+'\')">🚫</button> '
+      ? '<button class="sm green" title="открыть доступ этому человеку" onclick="restoreWorker('+i+',\''+tg+'\',\''+nm+'\')">✅ Подтвердить</button> '
+        +'<button class="sm" title="отклонить — доступа не будет" onclick="archiveWorker('+i+',\''+tg+'\',\''+nm+'\',1)">🚫</button> '
       : archived
-      ? '<button class="sm" title="вернуть из архива" onclick="restoreWorker(\''+tg+'\',\''+nm+'\')">↩</button> '
-      : '<button class="sm" title="в архив — доступ пропадёт, история ЗП сохранится" onclick="archiveWorker(\''+tg+'\',\''+nm+'\')">🗄</button> '; }
-    if(canManage&&!self) acts+='<button class="sm danger sec" title="удалить (только без выработки)" onclick="deleteWorker(\''+tg+'\',\''+nm+'\')">🗑</button>';
+      ? '<button class="sm" title="вернуть из архива" onclick="restoreWorker('+i+',\''+tg+'\',\''+nm+'\')">↩</button> '
+      : '<button class="sm" title="в архив — доступ пропадёт, история ЗП сохранится" onclick="archiveWorker('+i+',\''+tg+'\',\''+nm+'\')">🗄</button> '; }
+    if(canManage&&!self) acts+='<button class="sm danger sec" title="удалить (только без выработки)" onclick="deleteWorker('+i+',\''+tg+'\',\''+nm+'\')">🗑</button>';
     var reg=pending?'<span class="pill warn">⏳ ждёт подтверждения</span>'
       :archived?'<span class="pill mute">в архиве</span>'
       :(u.tgId?'<span class="pill ok">✓ в системе</span>':'<span class="pill warn">без Telegram</span>');
@@ -861,20 +861,33 @@ function issueCode(i,tgId){
       +'<div class="small">Передайте его сотруднику — повторно код не показывается. Старый код больше не действует.</div></div>';
   }).catch(function(){ for(var k=0;k<btns.length;k++) btns[k].disabled=false; m.insertAdjacentHTML('beforeend','<div class="err small">сеть недоступна</div>'); });
 }
-function archiveWorker(tgId,name){
-  if(!confirm('Убрать «'+name+'» в архив?\nДоступ пропадёт, но выработка и ЗП сохранятся.')) return;
-  api({vapi:'archiveworker',tgid:TGID,target:tgId,name:name}).then(function(r){ if(r&&r.ok) reloadUsers(); else alert((r&&r.error)||'ошибка'); }).catch(function(){ alert('сеть недоступна'); });
+// подтверждение и ошибки — прямо в строке: confirm()/alert() в Telegram не работают (08.11.2026)
+function rowAsk(i,html){ var m=document.getElementById('um'+i); if(!m) return null;
+  m.innerHTML='<span style="display:inline-flex;gap:var(--s-1);flex-wrap:wrap;align-items:center;min-width:18em">'+html
+    +'<button class="sm sec" onclick="document.getElementById(\'um'+i+'\').innerHTML=\'\'">×</button></span>'; return m; }
+function rowErr(i,msg){ var m=document.getElementById('um'+i); if(m) m.innerHTML='<span class="err small">'+esc(msg||'ошибка')+'</span>'; }
+function rowBusy(i){ var m=document.getElementById('um'+i); if(m){ var b=m.querySelectorAll('button'); for(var k=0;k<b.length;k++) b[k].disabled=true; } }
+function archiveWorker(i,tgId,name,reject){
+  rowAsk(i,'<span class="small">'+(reject?'Отклонить — доступа не будет?':'В архив? Доступ пропадёт, выработка и ЗП сохранятся.')+'</span>'
+    +'<button class="sm" onclick="archiveDo('+i+',\''+esc(tgId)+'\',\''+esc(name)+'\')">'+(reject?'🚫 Отклонить':'🗄 В архив')+'</button>');
 }
-function restoreWorker(tgId,name){
-  api({vapi:'restoreworker',tgid:TGID,target:tgId,name:name}).then(function(r){ if(r&&r.ok) reloadUsers(); else alert((r&&r.error)||'ошибка'); }).catch(function(){ alert('сеть недоступна'); });
+function archiveDo(i,tgId,name){ rowBusy(i);
+  api({vapi:'archiveworker',tgid:TGID,target:tgId,name:name}).then(function(r){ if(r&&r.ok) reloadUsers(); else rowErr(i,r&&r.error); }).catch(function(){ rowErr(i,'сеть недоступна'); });
 }
-function deleteWorker(tgId,name){
-  if(!confirm('Удалить «'+name+'» полностью? Это необратимо.')) return;
+function restoreWorker(i,tgId,name){ rowBusy(i);
+  api({vapi:'restoreworker',tgid:TGID,target:tgId,name:name}).then(function(r){ if(r&&r.ok) reloadUsers(); else rowErr(i,r&&r.error); }).catch(function(){ rowErr(i,'сеть недоступна'); });
+}
+function deleteWorker(i,tgId,name){
+  rowAsk(i,'<span class="small">Удалить полностью? Это необратимо.</span>'
+    +'<button class="sm danger" onclick="deleteDo('+i+',\''+esc(tgId)+'\',\''+esc(name)+'\')">🗑 Удалить</button>');
+}
+function deleteDo(i,tgId,name){ rowBusy(i);
   api({vapi:'delworker',tgid:TGID,target:tgId,name:name}).then(function(r){
     if(r&&r.ok){ reloadUsers(); return; }
-    if(r&&r.hasOutput){ if(confirm((r.error||'у работника есть выработка')+'.\n\nУбрать в архив вместо удаления?')) archiveWorker(tgId,name); return; }
-    alert((r&&r.error)||'ошибка');
-  }).catch(function(){ alert('сеть недоступна'); });
+    if(r&&r.hasOutput){ rowAsk(i,'<span class="small">'+esc(r.error||'у работника есть выработка')+'</span>'
+      +'<button class="sm" onclick="archiveDo('+i+',\''+esc(tgId)+'\',\''+esc(name)+'\')">🗄 В архив</button>'); return; }
+    rowErr(i,r&&r.error);
+  }).catch(function(){ rowErr(i,'сеть недоступна'); });
 }
 // ─── «Доступ к разделам»: матрица роль → страницы (админ/директор) ───
 var ACCESS=null, ACCROLE='';
