@@ -540,6 +540,8 @@ function renderUsers(box,r){
     var apprCell=(canEdit&&!self)
       ? '<label class="small" style="white-space:nowrap" title="'+esc(apprSrc)+'"><input type="checkbox" id="ap'+i+'"'+(u.appr?' checked':'')+' onchange="saveUser('+i+',\''+esc(tg)+'\')"> ✅</label>'
         +(u.apprSet?'<div class="label">вручную</div>':'')
+      :(isSupply&&u.role==='рабочий'&&!self)   // диспетчер даёт рабочему подтверждать наряды (10.11.2026)
+        ? '<label class="small" style="white-space:nowrap" title="'+esc(apprSrc)+'"><input type="checkbox"'+(u.appr?' checked':'')+' onchange="saveFlag('+i+',\''+esc(tg)+'\',\''+nm+'\',this,\'appr\')"> ✅</label>'
       : (u.appr?'✅':'—');
     // доступ к Снабу: галочка даёт право ЗАГРУЖАТЬ счета. Одобрение счетов галочкой не трогаем —
     // это решение о деньгах, его директор ставит осознанно, а не мимоходом в списке людей.
@@ -672,7 +674,7 @@ function saveUser(i,tgid){
   var ab=document.getElementById('ap'+i); if(ab) p.appr=ab.checked?'1':'0';   // подтверждение нарядов
   api(p).then(function(r){ m.innerHTML=(r&&r.ok)?'<span class="ok">✅</span>':'<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; }).catch(function(e){ m.innerHTML='<span class="err">ошибка</span>'; });
 }
-function saveFlag(i,tgid,name,el,key){   // галочка ОТК / Раскрой у диспетчера
+function saveFlag(i,tgid,name,el,key){   // галочка ОТК / Раскрой / Наряды у диспетчера
   var on=el.checked, m=document.getElementById('um'+i), p={vapi:'setuser',tgid:TGID,target:tgid,name:name}; p[key]=on?'1':'0';
   if(m) m.textContent='…'; el.disabled=true;
   api(p).then(function(r){ el.disabled=false;
