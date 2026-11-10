@@ -524,13 +524,15 @@ function renderUsers(box,r){
     var byRole=(u.role==='мастер'||u.role==='начальник'||u.role==='директор'||u.role==='админ');
     var cutCell=byRole ? '<span class="muted small">по роли</span>'
       : (canEdit ? '<label class="small" style="white-space:nowrap"><input type="checkbox" id="cu'+i+'"'+(u.cut?' checked':'')+(self?' disabled':'')+' onchange="saveUser('+i+',\''+esc(tg)+'\')"> 🪚</label>'
+        :(isSupply&&u.role==='рабочий'&&!self)   // диспетчер даёт рабочему вкладку «Раскрой» (10.11.2026)
+          ? '<label class="small" style="white-space:nowrap"><input type="checkbox"'+(u.cut?' checked':'')+' onchange="saveFlag('+i+',\''+esc(tg)+'\',\''+nm+'\',this,\'cut\')"> 🪚</label>'
                  : (u.cut?'🪚':'—'));
     // персональная отметка «принимает качество» — можно дать мастеру, не меняя ему роль
     var otkByRole=byRole||(u.role==='контролёр');
     var otkCell=otkByRole ? '<span class="muted small">по роли</span>'
       : (canEdit ? '<label class="small" style="white-space:nowrap"><input type="checkbox" id="ot'+i+'"'+(u.otk?' checked':'')+(self?' disabled':'')+' onchange="saveUser('+i+',\''+esc(tg)+'\')"> 🔎</label>'
         :(isSupply&&u.role==='рабочий'&&!self)   // диспетчер ставит рабочему галочку ОТК (10.11.2026)
-          ? '<label class="small" style="white-space:nowrap"><input type="checkbox"'+(u.otk?' checked':'')+' onchange="saveOtk('+i+',\''+esc(tg)+'\',\''+nm+'\',this)"> 🔎</label>'
+          ? '<label class="small" style="white-space:nowrap"><input type="checkbox"'+(u.otk?' checked':'')+' onchange="saveFlag('+i+',\''+esc(tg)+'\',\''+nm+'\',this,\'otk\')"> 🔎</label>'
                  : (u.otk?'🔎':'—'));
     // ПОДТВЕРЖДЕНИЕ НАРЯДОВ — галочка, а не роль: поставил/снял конкретному человеку.
     // Показываем фактическое право (u.appr), подпись говорит, откуда оно взялось.
@@ -670,9 +672,10 @@ function saveUser(i,tgid){
   var ab=document.getElementById('ap'+i); if(ab) p.appr=ab.checked?'1':'0';   // подтверждение нарядов
   api(p).then(function(r){ m.innerHTML=(r&&r.ok)?'<span class="ok">✅</span>':'<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; }).catch(function(e){ m.innerHTML='<span class="err">ошибка</span>'; });
 }
-function saveOtk(i,tgid,name,el){
-  var on=el.checked, m=document.getElementById('um'+i); if(m) m.textContent='…'; el.disabled=true;
-  api({vapi:'setuser',tgid:TGID,target:tgid,name:name,otk:on?'1':'0'}).then(function(r){ el.disabled=false;
+function saveFlag(i,tgid,name,el,key){   // галочка ОТК / Раскрой у диспетчера
+  var on=el.checked, m=document.getElementById('um'+i), p={vapi:'setuser',tgid:TGID,target:tgid,name:name}; p[key]=on?'1':'0';
+  if(m) m.textContent='…'; el.disabled=true;
+  api(p).then(function(r){ el.disabled=false;
     if(!r||!r.ok) el.checked=!on;   // не сохранилось — галочку назад, чтобы экран не врал
     if(m) m.innerHTML=(r&&r.ok)?'<span class="ok">✅</span>':'<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; })
     .catch(function(){ el.disabled=false; el.checked=!on; if(m) m.innerHTML='<span class="err">ошибка сети</span>'; });
