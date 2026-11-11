@@ -741,7 +741,8 @@ function renderLed(){
     +'<div class="muted">'+(r.unp?'УНП '+esc(r.unp)+' · ':'')+'расчёты в '+esc(r.cur)+(r.curs.length>1?' · другие валюты: '+r.curs.filter(function(c){ return c!==r.cur; }).map(function(c){ return '<a href="javascript:void(0)" onclick="openSup(LED.key,\''+esc(c)+'\')">'+esc(c)+'</a>'; }).join(', '):'')
       +' · учёт с '+esc(r.startIso?fmtD(r.startIso):'первого документа')+'</div>'
     +'<div class="kpis" style="margin-top:var(--s-3)"><span><b>'+bal(r.closing,r.cur)+'</b>остаток'+(r.to?' на '+esc(fmtD(r.to)):' на сегодня')+'</span><span><b>'+money(r.credit)+'</b>получено по документам за период</span><span><b>'+money(r.debit)+'</b>оплачено и возвращено за период</span><span><b>'+bal(r.opening)+'</b>на начало периода</span></div>'
-    +'<div class="toolbar"><span class="muted">период с</span><input type="date" id="lFrom" value="'+esc(r.from||'')+'" onchange="ledReload()"><span class="muted">по</span><input type="date" id="lTo" value="'+esc(r.to||'')+'" onchange="ledReload()"><span class="msg" id="lmsg"></span></div>'
+    +'<div class="toolbar"><span class="muted">период с</span><input type="date" id="lFrom" value="'+esc(r.from||'')+'" onchange="ledReload()"><span class="muted">по</span><input type="date" id="lTo" value="'+esc(r.to||'')+'" onchange="ledReload()">'
+      +'<button class="sec" id="actBtn" onclick="makeAct()" title="акт сверки взаимных расчётов за выбранный период: наши данные заполнены, половина поставщика пустая">📄 Акт сверки</button><span class="msg" id="lmsg"></span></div>'
     +'<div class="lbl">Ведомость</div><div class="box tbl-wrap"><table class="tbl"><thead><tr><th>Дата</th><th>Операция</th><th class="num" title="наш долг растёт">Получено</th><th class="num" title="наш долг уменьшается">Оплачено, возвращено</th><th class="num" title="красным — мы должны; зелёным с минусом — оплачено больше, чем получено по документам">Остаток долга</th></tr></thead><tbody>'
       +(rows||'<tr><td colspan=5 class="center muted">за период движений нет</td></tr>')+'</tbody></table></div>'
     +'<div class="lbl">Документы <span class="muted" style="font-weight:normal;text-transform:none;letter-spacing:0">— оплаты закрывают их по номеру счёта из «основания», остальное по порядку дат</span></div><div class="box tbl-wrap"><table class="tbl"><thead><tr><th>Дата</th><th>Документ</th><th class="num">Сумма</th><th class="num">Возвращено</th><th class="num">Оплачено</th><th class="num">Осталось</th><th></th></tr></thead><tbody>'
@@ -753,6 +754,16 @@ function renderLed(){
         +'<input id="opAmt" inputmode="decimal" placeholder="сумма" value="'+(r.openingStart?String(Math.abs(r.openingStart)).replace('.',','):'')+'" style="width:140px"> <span class="muted">'+esc(r.cur)+'</span>'
         +'<button class="sec sm" onclick="saveOpening()">Сохранить</button><span class="muted">берётся из акта сверки или 1С на эту дату; пусто — ноля</span><span class="msg" id="opMsg"></span></div>'
       :'<div class="muted">У этого поставщика нет карточки в справочнике контрагентов — заведите её, чтобы вписать остаток на начало.</div>');
+}
+// акт сверки за период ведомости: документ собирается на сервере, файл — PDF или Word
+function makeAct(){
+  var m=$('lmsg'), b=$('actBtn'); m.className='msg'; m.textContent='Формирую акт… до минуты'; if(b) b.disabled=true;
+  api({vapi:'finsupact', contr:LED.key, cur:LED.cur, from:$('lFrom').value, to:$('lTo').value}).then(function(r){
+    if(b) b.disabled=false;
+    if(!r||!r.ok){ m.className='msg err'; m.textContent=(r&&r.error)||'акт не сформировался'; return; }
+    m.className='msg ok';
+    m.innerHTML='✓ Акт за '+esc(fmtD(r.from))+'–'+esc(fmtD(r.to))+': <a href="'+esc(ORIGIN+r.pdf)+'" target="_blank"><b>скачать PDF</b></a> · <a href="'+esc(ORIGIN+r.docx)+'" target="_blank">Word</a> · <a href="'+esc(r.url)+'" target="_blank">Google Документ</a>';
+  }).catch(function(){ if(b) b.disabled=false; m.className='msg err'; m.textContent='долгий ответ — нажмите ещё раз через минуту'; });
 }
 function saveOpening(){
   var m=$('opMsg'), v=$('opAmt').value.replace(/\s/g,'').replace(',','.'), n=Number(v);
