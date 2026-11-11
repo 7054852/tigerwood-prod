@@ -704,7 +704,9 @@ function drawSup(){
   var q=$('sQ').value.trim().toLowerCase(), all=$('sAll').checked, n=0, sk=SUP.skipped||{};
   $('sKpi').innerHTML=(SUP.totals||[]).map(function(t){ return '<span><b class="owe">'+money(t.owed)+'</b>должны поставщикам, '+esc(t.cur)+'</span><span title="оплаты, под которые нет накладной или акта: настоящий аванс — или документ ещё не загружен"><b class="adv">'+money(t.advance)+'</b>оплачено без документов, '+esc(t.cur)+'</span>'; }).join('')
     +'<span><b>'+esc(SUP.startIso?fmtD(SUP.startIso):'—')+'</b>начало учёта'+(sk.beforeStart?' · документов раньше этой даты: '+sk.beforeStart+' (не входят)':'')+'</span>'
-    +(sk.unrecognized?'<span class="warn"><b>'+sk.unrecognized+'</b>документов не распознано или без суммы — в расчёты не попали</span>':'');
+    +(sk.unrecognized?'<span class="warn"><b>'+sk.unrecognized+'</b>документов не распознано или без суммы — в расчёты не попали</span>':'')
+    +(sk.noParty?'<span class="warn"><b>'+sk.noParty+'</b>документов без поставщика — в расчёты не попали</span>':'')
+    +(sk.rejected?'<span><b>'+sk.rejected+'</b>документов не принято</span>':'');
   $('sTb').innerHTML=SUP.items.map(function(it,i){
     if(q&&it.name.toLowerCase().indexOf(q)<0) return '';
     return it.rows.map(function(x){
@@ -753,7 +755,10 @@ function renderLed(){
       :'<div class="muted">У этого поставщика нет карточки в справочнике контрагентов — заведите её, чтобы вписать остаток на начало.</div>');
 }
 function saveOpening(){
-  var m=$('opMsg'), v=$('opAmt').value.trim().replace(',','.'), amt=v===''?'':String((Number(v)||0)*Number($('opSign').value));
+  var m=$('opMsg'), v=$('opAmt').value.replace(/\s/g,'').replace(',','.'), n=Number(v);
+  // опечатка не должна превратиться в ноль и стереть остаток: не число — не сохраняем
+  if(v!==''&&(!isFinite(n)||n<0)){ m.className='msg err'; m.textContent='сумма — числом без знака, например 12500,50; долг или аванс выбирается слева'; return; }
+  var amt=v===''?'':String(n*Number($('opSign').value));
   m.className='msg'; m.textContent='Сохраняю…';
   apiPost({vapi:'finsupopening', data:JSON.stringify({counterpartyId:LED.id, cur:LED.cur, amount:amt, note:''})}).then(function(r){
     if(!r||!r.ok){ m.className='msg err'; m.textContent=(r&&r.error)||'не сохранилось'; return; }
