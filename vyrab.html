@@ -1038,8 +1038,9 @@ function sendWork(){
   // ВРЕМЯ ПРИХОДА обязательно при первом наряде за дату: спрашиваем здесь, а не отказом сервера
   var tRec=dayTime(worker,dRu);
   if(!tRec['in']){
-    askInline('Во сколько '+(worker===DATA.worker?'вы пришли':esc(worker)+' пришёл')+' на работу '+dRu+'?', nowHM(), function(v){
-      if(!v) { wmsg('<span class="err">Без времени прихода наряд не отправить</span>'); return; }
+    // себе подставляем «сейчас» (обычно наряд подают сразу по приходу); за другого — пусто: время человека вписывают осознанно (11.11.2026: диспетчер жал «ОК», и приходом становилось время подачи)
+    askInline('Во сколько '+(worker===DATA.worker?'вы пришли':worker+' пришёл')+' на работу '+dRu+'?', worker===DATA.worker?nowHM():'', function(v){
+      if(!v) { wmsg('<span class="err">'+(worker===DATA.worker?'Без времени прихода наряд не отправить':'Впишите, во сколько '+esc(worker)+' пришёл на работу — без этого наряд не отправить')+'</span>'); return; }
       setDayTime(worker,dRu,{'in':v},function(r){
         if(!r||!r.ok){ wmsg('<span class="err">'+esc((r&&r.error)||'не записалось')+'</span>'); return; }
         sendWork();   // время записано — отправляем наряд обычным путём
@@ -2694,7 +2695,7 @@ function dayLine(w,dRu){
 }
 function editDayTime(w,dRu){
   var t=dayTime(w,dRu);
-  askInline('Во сколько пришёл '+dRu+'?', t['in']||nowHM(), function(a){
+  askInline('Во сколько пришёл '+dRu+'?', t['in']||(w===DATA.worker?nowHM():''), function(a){
     if(!a) return;
     askInline('Во сколько ушёл? (пусто — ещё работает)', t.out||'', function(b){
       setDayTime(w,dRu,{'in':a,out:b||''},function(r){ if(r&&!r.ok) alert(r.error||'не записалось'); });
