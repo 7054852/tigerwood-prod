@@ -36,8 +36,11 @@
   #modal.split.one .fview{ display:none; }
   #modal.split .fview{ min-height:0; border:1px solid var(--line); border-radius:var(--r-ctl); overflow:auto; background:var(--bg2); }
   #modal.split .fview iframe{ width:100%; height:100%; border:0; display:block; }
-  .imgwrap{ cursor:zoom-in; } .imgwrap img{ width:100%; display:block; }
-  .imgwrap.zoom{ cursor:zoom-out; } .imgwrap.zoom img{ width:220%; max-width:none; }
+  #modal.split .fview{ position:relative; }
+  .imgwrap{ cursor:zoom-in; } .imgwrap img{ width:100%; max-width:none; display:block; user-select:none; -webkit-user-drag:none; }
+  .imgwrap.zoom{ cursor:grab; } .fview.grab .imgwrap{ cursor:grabbing; }
+  .zbar{ position:sticky; top:var(--s-2); left:0; z-index:2; height:0; display:flex; gap:var(--s-1); justify-content:flex-end; padding-right:var(--s-2); }
+  .zbar button{ box-shadow:var(--shadow-card); }
   #modal.split .fbody{ min-height:0; overflow:auto; padding-right:var(--s-2); }
   @media (max-width:900px){ #modal.split{ grid-template-columns:minmax(0,1fr); grid-template-rows:34vh minmax(0,1fr); height:96vh; max-height:96vh; } #modal.split.one{ grid-template-rows:minmax(0,1fr); } .dfoot{ position:static; } }
   .dfoot{ position:sticky; bottom:0; background:var(--card); padding:var(--s-3) 0 0; margin-top:var(--s-3); border-top:1px solid var(--line); display:flex; gap:var(--s-2); flex-wrap:wrap; align-items:center; }
@@ -292,10 +295,32 @@ function renderView(){
   var v=$('fview'), h=DOC||{}; if(!v) return;
   if(!h.viewUrl){ $('modal').className='modal dlg lg split one'; v.innerHTML=''; return; }   // Word/Excel в окне не показать — остаётся ссылка «открыть файл»
   var src=ORIGIN+h.viewUrl;
-  var img='<div class="imgwrap" onclick="this.classList.toggle(\'zoom\')" title="нажмите — увеличить или уменьшить"><img src="'+esc(src)+'" alt="файл документа"'
+  ZOOM=1;
+  var img='<div class="zbar"><button class="sec sm" title="уменьшить" onclick="zoomBy(-1)">－</button><button class="sec sm" title="увеличить" onclick="zoomBy(1)">＋</button></div>'
+    +'<div class="imgwrap" onmousedown="panDown(event)" title="нажмите — увеличить; зажмите левую кнопку и тяните — подвинуть"><img src="'+esc(src)+'" alt="файл документа" draggable="false"'
     +(h.view==='auto'?' onerror="viewAsPdf()"':'')+'></div>';   // тип файла не записан: пробуем как фото, не вышло — как PDF
   v.innerHTML = h.view==='pdf' ? pdfFrame(src) : img;
 }
+// фото документа: масштаб ступенями, сдвиг — зажатой левой кнопкой мыши (на телефоне — пальцем, обычной прокруткой)
+var ZOOM=1, ZSTEPS=[1,1.6,2.4,3.4], PAN=null;
+function zoomTo(z,cx,cy){   // cx, cy — точка окна просмотра, которая должна остаться на месте (по умолчанию центр)
+  var v=$('fview'), im=v&&v.querySelector('.imgwrap img'); if(!im) return;
+  var r=v.getBoundingClientRect(); if(cx==null){ cx=r.left+r.width/2; cy=r.top+r.height/2; }
+  var ir=im.getBoundingClientRect(), fx=(cx-ir.left)/(ir.width||1), fy=(cy-ir.top)/(ir.height||1);
+  ZOOM=z; im.style.width=(z*100)+'%'; im.parentNode.className='imgwrap'+(z>1?' zoom':'');
+  v.scrollLeft=fx*im.clientWidth-(cx-r.left); v.scrollTop=fy*im.clientHeight-(cy-r.top);
+}
+function zoomBy(d,cx,cy){ var i=ZSTEPS.indexOf(ZOOM)+d; if(i<0||i>=ZSTEPS.length) return; zoomTo(ZSTEPS[i],cx,cy); }
+function panDown(e){ if(e.button!==0) return; var v=$('fview'); PAN={x:e.clientX,y:e.clientY,l:v.scrollLeft,t:v.scrollTop,moved:false}; e.preventDefault(); }
+document.addEventListener('mousemove',function(e){
+  if(!PAN) return; var v=$('fview'); if(!v){ PAN=null; return; }
+  var dx=e.clientX-PAN.x, dy=e.clientY-PAN.y; if(Math.abs(dx)+Math.abs(dy)>4) PAN.moved=true;
+  if(PAN.moved){ v.scrollLeft=PAN.l-dx; v.scrollTop=PAN.t-dy; v.classList.add('grab'); }
+});
+document.addEventListener('mouseup',function(e){
+  if(!PAN) return; var moved=PAN.moved; PAN=null; var v=$('fview'); if(v) v.classList.remove('grab');
+  if(!moved) zoomBy(1,e.clientX,e.clientY);   // простое нажатие — приблизить к этому месту; уменьшить — кнопкой «－»
+});
 function pdfFrame(src){ return '<iframe src="'+esc(src)+'#navpanes=0&view=FitH" title="файл документа"></iframe>'; }
 function viewAsPdf(){ var v=$('fview'); if(v&&DOC&&DOC.viewUrl) v.innerHTML=pdfFrame(ORIGIN+DOC.viewUrl); }
 function matByName(name){ var k=String(name||'').trim().toLowerCase();
