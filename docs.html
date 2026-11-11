@@ -292,9 +292,12 @@ function renderView(){
   var v=$('fview'), h=DOC||{}; if(!v) return;
   if(!h.viewUrl){ $('modal').className='modal dlg lg split one'; v.innerHTML=''; return; }   // Word/Excel в окне не показать — остаётся ссылка «открыть файл»
   var src=ORIGIN+h.viewUrl;
-  v.innerHTML = h.view==='pdf' ? '<iframe src="'+esc(src)+'#navpanes=0&view=FitH" title="файл документа"></iframe>'
-    : '<div class="imgwrap" onclick="this.classList.toggle(\'zoom\')" title="нажмите — увеличить или уменьшить"><img src="'+esc(src)+'" alt="файл документа"></div>';
+  var img='<div class="imgwrap" onclick="this.classList.toggle(\'zoom\')" title="нажмите — увеличить или уменьшить"><img src="'+esc(src)+'" alt="файл документа"'
+    +(h.view==='auto'?' onerror="viewAsPdf()"':'')+'></div>';   // тип файла не записан: пробуем как фото, не вышло — как PDF
+  v.innerHTML = h.view==='pdf' ? pdfFrame(src) : img;
 }
+function pdfFrame(src){ return '<iframe src="'+esc(src)+'#navpanes=0&view=FitH" title="файл документа"></iframe>'; }
+function viewAsPdf(){ var v=$('fview'); if(v&&DOC&&DOC.viewUrl) v.innerHTML=pdfFrame(ORIGIN+DOC.viewUrl); }
 function matByName(name){ var k=String(name||'').trim().toLowerCase();
   for(var i=0;i<MATS.length;i++) if(MATS[i].name.toLowerCase()===k) return MATS[i]; return null; }
 function qf(x){ return String(Math.round((Number(x)||0)*1000)/1000).replace('.',','); }
