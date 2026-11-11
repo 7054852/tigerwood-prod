@@ -30,6 +30,27 @@
   .pcard input,.pcard select{ min-height:var(--h-sm); padding:0 var(--s-2); font:var(--t-small); }
   .pcard input.xs{ width:82px; } .pcard input.s{ width:120px; }
   .pres{ font:var(--t-small); padding-top:var(--s-1); border-top:1px dashed var(--line); }
+  /* карточка: файл слева, строки справа; на узком экране — файл сверху */
+  #modal.split{ width:min(1560px,97vw); max-width:none; height:94vh; max-height:94vh; display:grid; grid-template-columns:minmax(300px,42%) minmax(0,1fr); gap:var(--s-4); overflow:hidden; }
+  #modal.split.one{ grid-template-columns:minmax(0,1fr); width:min(980px,97vw); }
+  #modal.split.one .fview{ display:none; }
+  #modal.split .fview{ min-height:0; border:1px solid var(--line); border-radius:var(--r-ctl); overflow:auto; background:var(--bg2); }
+  #modal.split .fview iframe{ width:100%; height:100%; border:0; display:block; }
+  .imgwrap{ cursor:zoom-in; } .imgwrap img{ width:100%; display:block; }
+  .imgwrap.zoom{ cursor:zoom-out; } .imgwrap.zoom img{ width:220%; max-width:none; }
+  #modal.split .fbody{ min-height:0; overflow:auto; padding-right:var(--s-2); }
+  @media (max-width:900px){ #modal.split{ grid-template-columns:minmax(0,1fr); grid-template-rows:34vh minmax(0,1fr); height:96vh; max-height:96vh; } #modal.split.one{ grid-template-rows:minmax(0,1fr); } .dfoot{ position:static; } }
+  .dfoot{ position:sticky; bottom:0; background:var(--card); padding:var(--s-3) 0 0; margin-top:var(--s-3); border-top:1px solid var(--line); display:flex; gap:var(--s-2); flex-wrap:wrap; align-items:center; }
+  .pnote{ font:var(--t-small); color:var(--muted); margin:calc(-1 * var(--s-1)) 0 var(--s-2); }
+  .pnote.warn{ color:var(--amber); font-weight:600; }
+  .pcard input.need{ border-color:var(--amber); background:var(--amber-bg); }
+  .cand{ text-align:left; white-space:normal; }
+  .mres{ border:1px solid var(--line); border-radius:var(--r-ctl); margin:calc(-1 * var(--s-1)) 0 var(--s-2); max-height:260px; overflow:auto; }
+  .mres:empty{ display:none; }
+  .mrow{ padding:var(--s-2) var(--s-3); cursor:pointer; border-bottom:1px solid var(--line); font:var(--t-small); }
+  .mrow:last-child{ border-bottom:0; } .mrow:hover{ background:var(--bg2); }
+  .newmat{ background:var(--bg2); border-radius:var(--r-ctl); padding:var(--s-2); margin-bottom:var(--s-2); }
+  body.drop::after{ content:'Отпустите файлы — загружу и распознаю'; position:fixed; inset:var(--s-3); border:2px dashed var(--accent); border-radius:var(--r-card); background:var(--card); opacity:.94; display:flex; align-items:center; justify-content:center; font:var(--t-heading); z-index:60; pointer-events:none; }
 </style>
 </head>
 <body>
@@ -56,7 +77,6 @@
 <div id="list"><div class="center muted">Загрузка…</div></div>
 
 <div class="scrim ov" id="ov"><div class="modal dlg lg" id="modal"></div></div>
-<datalist id="matlist"></datalist>
 
 <script>
 var BASE=(window.TW_CFG&&TW_CFG.hub)||'https://script.google.com/macros/s/AKfycbxbCSBcKbG-az-3-_JPJpMLtlQHenJJftHwXM_N-7PvBMfHWVD6xqxDD36nrmtBIz8W/exec';   // адрес задаёт tw-config.js; запасной — живой GAS
@@ -85,8 +105,8 @@ function num(x){ return Number(String(x==null?'':x).replace(',','.'))||0; }
 
 var ROWS=[], STAT={}, CLASSES=[], CLASSMAP={}, SERVICES=[], TYPES=[], FILT='';
 
-function load(){
-  $('list').innerHTML='<div class="center muted">Загрузка…</div>';
+function load(quiet){
+  if(!quiet) $('list').innerHTML='<div class="center muted">Загрузка…</div>';
   var p={vapi:'docsregistry'};
   var f=$('from').value, t=$('to').value;
   if(f) p.from=f.split('-').reverse().join('.');     // экран даёт ISO, сервер ждёт дд.мм.гггг
@@ -94,7 +114,8 @@ function load(){
   api(p).then(function(r){
     if(!r||!r.ok){ $('list').innerHTML='<div class="center err">'+esc((r&&r.error)||'нет прав')+'</div>'; return; }
     ROWS=r.rows||[]; STAT=r.stat||{}; CLASSES=r.classes||[]; CLASSMAP=r.classMap||{};
-    SERVICES=r.services||SERVICES; TYPES=r.types||TYPES;
+    SERVICES=r.services||SERVICES; TYPES=r.types||TYPES; ALERT=r.alertPct||ALERT;
+    clearTimeout(window._poll); if(ROWS.some(function(x){ return x.recognizing; })) window._poll=setTimeout(function(){ if(!$('dbody')&&!UPQ.length) load(1); },6000);   // пока идёт распознавание — обновляем сами
     $('filters').innerHTML=[['','все'],['check','🔔 на проверке — '+(STAT.check||0)],['todo','разнести — '+(STAT.todo||0)],['done','разнесённые — '+(STAT.done||0)],['wait','ждут распознавания — '+(STAT.noscan||0)]]
       .map(function(f){ return '<span class="chip'+(FILT===f[0]?' on':'')+'" onclick="setFilt(\''+f[0]+'\')">'+esc(f[1])+'</span>'; }).join('');
     draw();
@@ -136,6 +157,8 @@ function docCard(r){
       +'<div class="top"><span class="dt">'+esc(r.date||'—')+'</span>'
         +'<span class="sup">'+esc(r.sup||'без поставщика')+'</span>'
         +statePill(r)+diff
+        +(r.priceUp>=ALERT?'<span class="pill bad" title="цена за нашу единицу выросла против прошлой закупки">⚠ цена +'+qf(r.priceUp)+' %</span>':'')
+        +(r.recognizing?'<span class="pill mute">🔍 распознаётся…</span>':'')
         +(r.dup?'<span class="pill bad" title="такой контрагент и номер уже есть">✕ возможно дубль</span>':'')
         +(r.exported?'<span class="pill ok" title="выгружен в 1С '+esc(r.exported)+'">1С ✓</span>':'')
         +'<span class="sum">'+money(r.sum)+' '+esc(r.cur)+'</span></div>'
@@ -150,8 +173,8 @@ function docCard(r){
 }
 function confirmDoc(fileId){
   api({vapi:'docconfirm', file:fileId}).then(function(r){
-    if(r&&r.ok) load(); else alert((r&&r.error)||'не вышло');
-  }).catch(function(){ alert('связь оборвалась'); });
+    if(r&&r.ok) load(); else { $('smsg').className='msg err'; $('smsg').textContent=(r&&r.error)||'не вышло'; }
+  }).catch(function(){ $('smsg').className='msg err'; $('smsg').textContent='связь оборвалась'; });
 }
 
 // ─────────── ЗАГРУЗКА ПАЧКОЙ ───────────
@@ -206,12 +229,18 @@ function recNext(i){
     drawUpl(); recNext(i+1);
   }).catch(function(){ u.state='ошибка'; u.note='распознавание не ответило — добьёт фоном'; drawUpl(); recNext(i+1); });
 }
+// удаление — вторым нажатием по той же корзине (confirm в Telegram не работает)
+var DEL_ARMED='';
 function delDoc(fileId, sup, force){
-  if(!force && !confirm('Удалить документ «'+sup+'»?\n\nУйдут: строка в реестре, все его позиции, строка в Фингении. Файл отправится в корзину Drive.')) return;
+  var m=$('smsg');
+  if(!force&&DEL_ARMED!==fileId){ DEL_ARMED=fileId; m.className='msg err'; m.textContent='Удалить документ «'+sup+'»? Уйдут позиции и закупки по нему, файл — в корзину Диска. Нажмите 🗑 ещё раз.';
+    setTimeout(function(){ if(DEL_ARMED===fileId){ DEL_ARMED=''; m.textContent=''; } },7000); return; }
+  if(force&&DEL_ARMED!==fileId+'!'){ DEL_ARMED=fileId+'!'; return; }
+  DEL_ARMED=''; m.className='msg'; m.textContent='Удаляю…';
   api({vapi:'docdelete', file:fileId, force:force?1:''}).then(function(r){
-    if(r&&r.needConfirm){ if(confirm(r.error)) delDoc(fileId,sup,1); return; }
-    if(r&&r.ok) load(); else alert((r&&r.error)||'не удалилось');
-  }).catch(function(){ alert('связь оборвалась'); });
+    if(r&&r.needConfirm){ DEL_ARMED=fileId+'!'; m.className='msg err'; m.innerHTML=esc(r.error)+' <a href="javascript:void(0)" onclick="delDoc(\''+fileId+'\',\'\',1)">Да, удалить</a>'; return; }
+    if(r&&r.ok){ m.className='msg ok'; m.textContent='✓ удалён'; load(); } else { m.className='msg err'; m.textContent=(r&&r.error)||'не удалилось'; }
+  }).catch(function(){ m.className='msg err'; m.textContent='связь оборвалась'; });
 }
 
 function scanNow(){
@@ -222,9 +251,10 @@ function scanNow(){
   }).catch(function(){ m.className='msg err'; m.textContent='Долгий ответ — распознавание идёт фоном, обновите через минуту'; });
 }
 
-function exportDocs(){
+// выгрузка для 1С: выбор «только новые / все» — ссылками, без confirm()
+function exportDocs(all){
   var m=$('smsg'); m.className='msg';
-  var all=confirm('Выгрузить для 1С разнесённые документы за период.\n\nОК — включая уже выгруженные ранее,\nОтмена — только новые.');
+  if(all===undefined){ m.innerHTML='Выгрузить для 1С разнесённые документы за период: <a href="javascript:void(0)" onclick="exportDocs(0)"><b>только новые</b></a> · <a href="javascript:void(0)" onclick="exportDocs(1)">включая уже выгруженные</a>'; return; }
   m.textContent='Готовлю файл…';
   var p={vapi:'docexport'};
   var f=$('from').value, t=$('to').value;
@@ -233,51 +263,69 @@ function exportDocs(){
   if(all) p.all=1;
   api(p).then(function(r){
     if(r&&r.ok){ m.className='msg ok';
-      m.innerHTML='✓ документов '+r.docs+', строк '+r.rows+' — <a href="'+esc(r.url)+'" target="_blank">скачать '+esc(r.name)+'</a>';
+      m.innerHTML='✓ документов '+r.docs+', строк '+r.rows+' — <a href="'+esc(/^https?:/.test(r.url)?r.url:ORIGIN+r.url)+'" target="_blank">скачать '+esc(r.name)+'</a>';
       load();
     } else { m.className='msg err'; m.textContent=(r&&r.error)||'ошибка'; }
   }).catch(function(){ m.className='msg err'; m.textContent='Связь оборвалась'; });
 }
 
-// ─────────── карточка документа ───────────
-var DOC=null, POS=[], MATS=[], EDIT={};
-function closeOv(){ $('ov').className='scrim ov'; }
-function openDoc(fileId){
-  $('ov').className='scrim ov on'; $('modal').innerHTML='<div class="center muted">Загрузка документа…</div>';
+// ─────────── карточка документа (11.11.2026: файл слева, строки справа; материал, листы и цену считает сервер) ───────────
+var DOC=null, POS=[], MATS=[], EDIT={}, NEWM={}, FIND={}, ALERT=5, DMSG=null;
+var ORIGIN=(function(){ try{ return new URL(BASE).origin; }catch(e){ return ''; } })();
+var WHY={ article:'по артикулу этого поставщика', alias_sup:'так называл этот поставщик', alias:'так называл другой поставщик', sup_name:'название у поставщика', similar:'похоже по названию' };
+function closeOv(){ $('ov').className='scrim ov'; $('modal').className='modal dlg lg'; $('modal').innerHTML=''; }
+// keep — файл слева уже показан (правка шапки, повторное распознавание): не перезагружаем его
+function openDoc(fileId, keep){
+  $('ov').className='scrim ov on';
+  if(!keep||!$('dbody')){ $('modal').className='modal dlg lg split';
+    $('modal').innerHTML='<div class="fview" id="fview"></div><div class="fbody" id="dbody"><div class="center muted">Загрузка документа…</div></div>'; keep=false; }
   api({vapi:'docpositions', file:fileId}).then(function(r){
-    if(!r||!r.ok){ $('modal').innerHTML='<button class="x ic" onclick="closeOv()">✕</button><div class="err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
-    DOC=r.header||{fileId:fileId}; DOC.fileId=fileId; POS=r.positions||[]; MATS=r.mats||[]; EDIT={};
+    if(!r||!r.ok){ $('dbody').innerHTML='<button class="x ic" onclick="closeOv()">✕</button><div class="err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
+    DOC=r.header||{fileId:fileId}; DOC.fileId=fileId; POS=r.positions||[]; MATS=r.mats||[]; EDIT={}; NEWM={}; FIND={}; ALERT=r.alertPct||ALERT;
     CLASSES=r.classes||CLASSES; CLASSMAP=r.classMap||CLASSMAP;
     SERVICES=r.services||SERVICES; TYPES=r.types||TYPES;
-    $('matlist').innerHTML=MATS.map(function(m){ return '<option value="'+esc(m.name)+'">'; }).join('');
+    if(!keep) renderView();
     renderDoc();
-  });
+  }).catch(function(){ $('dbody').innerHTML='<button class="x ic" onclick="closeOv()">✕</button><div class="err">связь оборвалась — закройте и откройте документ ещё раз</div>'; });
+}
+function renderView(){
+  var v=$('fview'), h=DOC||{}; if(!v) return;
+  if(!h.viewUrl){ $('modal').className='modal dlg lg split one'; v.innerHTML=''; return; }   // Word/Excel в окне не показать — остаётся ссылка «открыть файл»
+  var src=ORIGIN+h.viewUrl;
+  v.innerHTML = h.view==='pdf' ? '<iframe src="'+esc(src)+'#navpanes=0&view=FitH" title="файл документа"></iframe>'
+    : '<div class="imgwrap" onclick="this.classList.toggle(\'zoom\')" title="нажмите — увеличить или уменьшить"><img src="'+esc(src)+'" alt="файл документа"></div>';
 }
 function matByName(name){ var k=String(name||'').trim().toLowerCase();
   for(var i=0;i<MATS.length;i++) if(MATS[i].name.toLowerCase()===k) return MATS[i]; return null; }
+function qf(x){ return String(Math.round((Number(x)||0)*1000)/1000).replace('.',','); }
+function pf(x){ x=Number(x)||0; return (x>=1? x.toFixed(2) : x.toFixed(4)).replace('.',','); }
+function isInt(x){ x=Number(x); return x>0&&Math.floor(x)===x; }
 function renderDoc(){
+  var box=$('dbody'); if(!box) return;
   var h=DOC||{}, act=POS.filter(function(p){return p.status!=='пропущена';});
-  var done=act.filter(function(p){return p.status==='разнесена';}).length, skipped=POS.length-act.length;
-  var cards=POS.map(function(p,i){ return posCard(p,i); }).join('');
-  $('modal').innerHTML='<button class="x ic" onclick="closeOv()">✕</button>'
-    +'<h3>'+esc(h.sup||'')+'</h3>'
+  var done=act.filter(function(p){return p.status==='разнесена';}).length, skipped=POS.length-act.length, top=box.scrollTop;
+  var up=POS.filter(function(p){ return p.status!=='пропущена'&&p.price&&p.price.pct>=ALERT; }).length;
+  box.innerHTML='<button class="x ic" onclick="closeOv()">✕</button>'
+    +'<h3>'+esc(h.sup||'без поставщика')+'</h3>'
     +'<div class="muted">'+esc(h.type||'')+' '+esc(h.docNo||'')+' · '+esc(h.date?fmtD(h.date):'')+' · '+esc(h.cur||'BYN')
       +(h.unp?(' · УНП '+esc(h.unp)):'')+(h.dogovor?(' · '+esc(h.dogovor)):'')+'</div>'
-    +'<div class="muted" style="font:var(--t-small);margin-top:var(--s-1)">Реквизиты пойдут в 1С — если распознались неверно, поправьте: '
-      +'<a href="javascript:void(0)" onclick="editHead()">✎ изменить шапку</a> · '
-      +'<a href="'+esc(h.file||'')+'" target="_blank">открыть файл</a></div>'
+    +'<div class="muted" style="font:var(--t-small);margin-top:var(--s-1)">Реквизиты пойдут в 1С — если распознались неверно: '
+      +'<a href="javascript:void(0)" onclick="editHead()">✎ изменить шапку</a>'
+      +(h.file?' · <a href="'+esc(h.file)+'" target="_blank">открыть файл на Диске</a>':'')+'</div>'
     +sumCheckHtml()
+    +(up?'<div class="note warn" style="margin-top:var(--s-2)"><div><b>⚠ Цена выросла у '+up+' '+(up===1?'строки':'строк')+'</b> больше чем на '+qf(ALERT)+' % против прошлой закупки — проверьте, согласовано ли это с директором.</div></div>':'')
     +'<div class="lbl">Позиции — '+act.length+', разнесено '+done+(skipped?(' · убрано '+skipped):'')+'</div>'
-    +cards
-    +'<div style="margin-top:12px">'
+    +POS.map(function(p,i){ return posCard(p,i); }).join('')
+    +'<div class="dfoot">'
       +((h.status&&h.status!=='подтверждён'&&h.status!=='разнесён')
         ? '<button onclick="confirmFromCard()" title="реквизиты проверены — документ уйдёт из «на проверке» в общий список">✓ Реквизиты верны</button> ' : '')
-      +'<button class="green" onclick="commitDoc()">✓ Провести документ</button> '
+      +(done<act.length?'<button class="green" id="commitBtn" onclick="commitDoc()">✓ Провести документ</button> ':'')
       +(h.status!=='разнесён' ? '<button class="sec" id="rescanBtn" onclick="rescanDoc()" title="прочитать файл ещё раз: шапка, поправленная вручную, не меняется; разнесённые строки не трогаются">🔄 Распознать заново</button> ' : '')
       +'<span class="msg" id="dmsg"></span></div>';
-  for(var k=0;k<POS.length;k++) recalcPos(k);
+  if(DMSG){ var m=$('dmsg'); m.className='msg '+DMSG.cls; m.innerHTML=DMSG.html; DMSG=null; }
+  box.scrollTop=top;
 }
-// 🔄 распознать заново (11.11.2026): если строки уже есть — второе нажатие (confirm в Telegram не работает)
+// 🔄 распознать заново: если строки уже есть — второе нажатие (confirm в Telegram не работает)
 var RESCAN_ARMED=false;
 function rescanDoc(){
   var m=$('dmsg'), b=$('rescanBtn'), fid=DOC&&DOC.fileId;
@@ -288,7 +336,7 @@ function rescanDoc(){
   api({vapi:'docrecognize', file:fid}).then(function(r){
     if(b) b.disabled=false;
     if(!r||(!r.ok&&!r.recognized)){ m.className='msg err'; m.textContent=(r&&r.error)||'не распозналось'; return; }
-    load(); openDoc(fid);
+    load(); openDoc(fid,true);
   }).catch(function(){ if(b) b.disabled=false; m.className='msg err'; m.textContent='Долгий ответ — распознавание могло пройти, обновите документ через минуту'; });
 }
 // сумма позиций против суммы документа: расхождение почти всегда значит лишнюю или пропущенную строку
@@ -304,38 +352,137 @@ function sumCheckHtml(){
     +'или сумма документа в реестре не та — поправьте «✎ изменить шапку».</div></div>';
 }
 function fmtD(d){ var s=String(d); if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10).split('-').reverse().join('.'); return s; }
+function rowMsg(i,t,bad){ var m=$('pmsg'+i); if(m){ m.className='msg'+(bad?' err':''); m.textContent=t||''; } }
+// ответ сервера по строке — в память экрана (пустые значения тоже: материал мог сняться)
+function mergePos(i,r){
+  ['name','unit','qty','priceNet','vatPct','vatSum','sumGross','coef','qtyW','statya','acct','cls','mat'].forEach(function(k){ if(r[k]!==undefined) POS[i][k]=r[k]; });
+  if(r.price!==undefined) POS[i].price=r.price; if(r.sheet!==undefined) POS[i].sheet=r.sheet;
+}
+// правка строки сохраняется сразу: пересчёт листов и сравнение цен делает сервер
+function savePos(i,patch,after){
+  var p=POS[i]; rowMsg(i,'Сохраняю…');
+  return apiPost({vapi:'docsetpos', id:p.id, patch:JSON.stringify(patch)}).then(function(r){
+    if(!r||!r.ok){ rowMsg(i,(r&&r.error)||'не сохранилось',1); return false; }
+    mergePos(i,r); if(after) after(r); renderDoc(); return true;
+  }).catch(function(){ rowMsg(i,'связь оборвалась — повторите',1); return false; });
+}
 function posCard(p,i){
-  var opts=['<option value="">— класс не выбран —</option>'].concat(CLASSES.map(function(c){
-    return '<option value="'+esc(c)+'"'+(p.cls===c?' selected':'')+'>'+esc(c)+'</option>'; })).join('');
-  var isMat=(p.cls==='материал'||p.cls==='расходник');
-  var isSvc=(p.cls==='услуга');
-  var svcOpts=['<option value="">— выберите вид услуги —</option>'].concat(SERVICES.map(function(sv){
-    return '<option value="'+esc(sv.name)+'"'+(p.statya&&p.statya===sv.statya?' selected':'')+'>'+esc(sv.name)+'</option>'; })).join('');
-  return '<div class="pcard'+(p.status!=='новая'?' done':'')+'" id="pc'+i+'">'
-    +'<div class="prow"><b style="flex:1;min-width:200px">'+esc(p.name)+'</b>'
-      +(p.status!=='новая'?'<span class="pill '+(p.status==='пропущена'?'mute':'ok')+'">'+(p.status==='пропущена'?'':'✓ ')+esc(p.status)+'</span>':'')
-      +'<button class="sec sm" title="'+(p.status==='пропущена'?'вернуть строку':'убрать лишнюю строку распознавания')+'" onclick="skipPos('+i+')">'
-      +(p.status==='пропущена'?'↩':'✕')+'</button></div>'
-    +(EDIT[i]? numEditHtml(p,i) : ('<div class="prow"><span class="plbl">Кол-во</span><span><b>'+esc(String(p.qty))+'</b> '+esc(p.unit||'')+'</span>'
+  var posted=p.status==='разнесена', skipped=p.status==='пропущена', cls=p.cls||'';
+  var isMat=(cls==='материал'||cls==='расходник'), isSvc=(cls==='услуга'), m=matByName(p.mat);
+  var head='<div class="prow"><b style="flex:1;min-width:200px">'+esc(p.name)+(p.art?' <span class="muted" style="font-weight:400">· арт. '+esc(p.art)+'</span>':'')+'</b>'
+    +(p.status!=='новая'?'<span class="pill '+(skipped?'mute':'ok')+'">'+(skipped?'':'✓ ')+esc(p.status)+'</span>':'')
+    +(posted?'<button class="sec sm" id="unp'+i+'" title="закупка по этой строке будет отменена, строка снова станет «новой»" onclick="unpostPos('+i+')">↩ отменить проведение</button>'
+            :'<button class="sec sm" title="'+(skipped?'вернуть строку':'убрать лишнюю строку распознавания — её можно вернуть')+'" onclick="skipPos('+i+')">'+(skipped?'↩ вернуть':'✕')+'</button>')+'</div>';
+  var nums=(EDIT[i]&&!posted? numEditHtml(p,i) : ('<div class="prow"><span class="plbl">Кол-во</span><span><b>'+qf(p.qty)+'</b> '+esc(p.unit||'')+'</span>'
       +'<span class="plbl">Цена без НДС</span><span>'+money(p.priceNet)+'</span>'
       +'<span class="plbl">НДС</span><span>'+(p.vatPct||0)+'% = '+money(p.vatSum)+'</span>'
       +'<span class="plbl">Сумма с НДС</span><b>'+money(p.sumGross)+'</b>'
-      +'<button class="sec sm" title="распозналось неверно — поправить цифры и наименование" onclick="editNums('+i+')">✎</button></div>'))
-    +'<div class="prow"><span class="plbl">Что это</span>'
-      +'<select id="pc_cls'+i+'" onchange="setCls('+i+')">'+opts+'</select>'
-      +'<span class="plbl" id="plm'+i+'" style="'+(isMat?'':'display:none')+'">Наш материал</span>'
-      +'<input list="matlist" id="pm'+i+'" value="'+esc(p.mat||'')+'" placeholder="выберите" style="min-width:200px;'+(isMat?'':'display:none')+'" oninput="recalcPos('+i+')">'
-      +'<span class="plbl" id="plc'+i+'" style="'+(isMat?'':'display:none')+'">Коэф</span>'
-      +'<input class="xs" id="pk'+i+'" value="'+(p.coef||'')+'" style="'+(isMat?'':'display:none')+'" oninput="recalcPos('+i+')">'
-      +'<span class="plbl" id="pls'+i+'" style="'+(isSvc?'':'display:none')+'">Вид услуги</span>'
-      +'<select id="pv'+i+'" style="'+(isSvc?'':'display:none')+'" onchange="setSvc('+i+')">'+svcOpts+'</select>'
-      +'<a href="javascript:void(0)" id="pall'+i+'" style="'+(isSvc?'':'display:none')+'" class="muted" '
-      +'title="в акте обычно все строки — про одну услугу" onclick="svcToAll('+i+')">→ ко всем строкам</a></div>'
-    +'<div class="prow"><span class="plbl">Статья расхода</span>'
-      +'<input class="s" id="ps'+i+'" value="'+esc(p.statya||'')+'" placeholder="как в финансах" style="min-width:220px" oninput="POS['+i+'].statya=this.value;recalcPos('+i+')">'
-      +'<span class="plbl">Счёт учёта</span><input class="xs" id="pa'+i+'" value="'+esc(p.acct||'')+'" placeholder="10.01" oninput="POS['+i+'].acct=this.value;recalcPos('+i+')"></div>'
-    +'<div class="pres" id="pr'+i+'"></div>'
-  +'</div>';
+      +(posted||skipped?'':'<button class="sec sm" title="распозналось неверно — поправить цифры и наименование" onclick="editNums('+i+')">✎</button>')+'</div>'));
+  if(skipped) return '<div class="pcard done" id="pc'+i+'">'+head+'</div>';
+  if(posted) return '<div class="pcard done" id="pc'+i+'">'+head+nums
+    +'<div class="pres">'+(isMat&&p.mat?('→ <b>'+esc(p.mat)+'</b>: <b>'+qf(p.qtyW)+' '+esc(m?m.unit:'')+'</b>'+(p.qtyW>0?(', '+pf(p.sumGross*(Number(DOC.rate)||1)/p.qtyW)+' за 1 '+esc(m?m.unit:'ед')):'')+' · '):(esc(cls)+' · '))
+    +'<span class="muted">статья: '+esc(p.statya||'—')+' · счёт '+esc(p.acct||'—')+'</span></div></div>';
+  var opts=['<option value="">— что это? —</option>'].concat(CLASSES.map(function(c){
+    return '<option value="'+esc(c)+'"'+(cls===c?' selected':'')+'>'+esc(c)+'</option>'; })).join('');
+  var svcOpts=['<option value="">— выберите вид услуги —</option>'].concat(SERVICES.map(function(sv){
+    return '<option value="'+esc(sv.name)+'"'+(p.statya&&p.statya===sv.statya?' selected':'')+'>'+esc(sv.name)+'</option>'; })).join('');
+  return '<div class="pcard" id="pc'+i+'">'+head+nums
+    +'<div class="prow"><span class="plbl">Что это</span><select id="pc_cls'+i+'" onchange="setCls('+i+')">'+opts+'</select>'
+      +(isSvc?'<span class="plbl">Вид услуги</span><select id="pv'+i+'" onchange="setSvc('+i+')">'+svcOpts+'</select>'
+        +'<a href="javascript:void(0)" class="muted" title="в акте обычно все строки — про одну услугу" onclick="svcToAll('+i+')">→ ко всем строкам</a>':'')
+      +(!cls?'<span class="muted">от этого зависит статья расхода и счёт учёта</span>':'')+'</div>'
+    +(isMat? matBlock(p,i)+(p.mat&&!NEWM[i]&&!FIND[i]? qtyBlock(p,i,m)+priceBlock(p,m) : '') : '')
+    +(cls?'<div class="prow"><span class="plbl">Статья расхода</span>'
+      +'<input class="s" id="ps'+i+'" value="'+esc(p.statya||'')+'" placeholder="как в финансах" style="min-width:220px" onchange="savePos('+i+',{statya:this.value})">'
+      +'<span class="plbl">Счёт учёта</span><input class="xs" id="pa'+i+'" value="'+esc(p.acct||'')+'" placeholder="10.01" onchange="savePos('+i+',{acct:this.value})">'
+      +(!p.statya&&!isMat?'<span class="warn">укажите статью расхода — без неё строка не проведётся</span>':'')+'</div>':'')
+    +'<span class="msg" id="pmsg'+i+'"></span></div>';
+}
+// «наш материал»: подсказки с причиной → поиск по реестру → новый материал (только явно)
+function matBlock(p,i){
+  if(NEWM[i]) return newMatHtml(p,i);
+  if(p.mat&&!FIND[i]){
+    var c=(p.cands||[]).filter(function(x){ return x.name===p.mat; })[0], best=(p.cands||[])[0];
+    return '<div class="prow"><span class="plbl">Наш материал</span><b>'+esc(p.mat)+'</b>'
+      +(c?(c.sure?'<span class="pill ok">✓ '+esc(WHY[c.why])+'</span>'
+            :c.score>=0.99?'<span class="pill info" title="в названии из документа нашлись все слова и размеры нашего материала">название и размеры совпали</span>'
+            :'<span class="pill warn" title="система подобрала по части слов и размеров — убедитесь, что это тот материал">'+esc(WHY[c.why])+' — проверьте</span>')
+          :(best?'<button class="sec sm cand" title="по названию из документа больше подходит другой материал" onclick="pickMat('+i+',POS['+i+'].cands[0].name)">⚠ возможно, это «'+esc(best.name)+'» — выбрать</button>':''))
+      +'<a href="javascript:void(0)" onclick="FIND['+i+']=1;renderDoc()">сменить</a></div>';
+  }
+  var chips=(p.cands||[]).map(function(c,k){ return '<button class="sec sm cand" onclick="pickMat('+i+',POS['+i+'].cands['+k+'].name)">'+esc(c.name)+' <span class="muted">· '+esc(WHY[c.why]||'')+'</span></button>'; }).join('');
+  return '<div class="prow"><span class="plbl">Наш материал</span>'+(chips||'<span class="muted">подсказок нет — найдите материал в реестре или заведите новый</span>')+'</div>'
+    +'<div class="prow"><input type="search" id="pm'+i+'" placeholder="поиск по реестру: слово или размер…" oninput="findMat('+i+')" autocomplete="off" style="min-width:240px;flex:1">'
+      +'<button class="sec sm" onclick="NEWM['+i+']=1;renderDoc()">＋ новый материал</button>'
+      +(p.mat?'<a href="javascript:void(0)" onclick="delete FIND['+i+'];renderDoc()">отмена</a>':'')+'</div>'
+    +'<div class="mres" id="pmr'+i+'"></div>';
+}
+function findMat(i){
+  var q=String(($('pm'+i)||{}).value||'').toLowerCase().replace(/[х×*]/g,'x').split(/\s+/).filter(Boolean), out=$('pmr'+i); if(!out) return;
+  if(!q.length){ out.innerHTML=''; return; }
+  // число в запросе — целым словом: «15» находит «15мм», но не «1525x1525»
+  var hit=[]; for(var k=0;k<MATS.length&&hit.length<8;k++){ var n=MATS[k].name.toLowerCase().replace(/[х×*]/g,'x'), tk=n.replace(/(\d)\s*(мм|см|м|л|кг|шт)(?![а-яa-z])/g,'$1').split(/[^a-zа-я0-9x.,]+/);
+    if(q.every(function(w){ return /^[\d.,]+$/.test(w) ? tk.indexOf(w)>=0 : n.indexOf(w)>=0; })) hit.push(k); }
+  out.innerHTML=hit.map(function(k){ var m=MATS[k]; return '<div class="mrow" onclick="pickMat('+i+',MATS['+k+'].name)"><b>'+esc(m.name)+'</b> <span class="muted">'+esc(m.unit||'')+(m.price?(' · последняя цена '+pf(m.price)):'')+'</span></div>'; }).join('')
+    || '<div class="muted" style="padding:var(--s-2)">в реестре не найдено — проверьте слово или заведите «＋ новый материал»</div>';
+}
+function pickMat(i,name){
+  var cls=POS[i].cls; if(cls!=='материал'&&cls!=='расходник') cls='материал';
+  savePos(i,{cls:cls, mat:name},function(){ delete FIND[i]; delete NEWM[i]; });
+}
+function newMatHtml(p,i){
+  var units=['шт','лист','кг','м','м²','л','упак'].map(function(u){ return '<option>'+u+'</option>'; }).join('');
+  return '<div class="newmat"><div class="prow"><span class="plbl">Новый материал</span>'
+      +'<input id="nmn'+i+'" value="'+esc(p.name)+'" style="flex:1;min-width:240px" title="наше название — короткое и понятное; название поставщика запомнится само"></div>'
+    +'<div class="prow"><span class="plbl">Учитываем в</span><select id="nmu'+i+'" onchange="$(\'nms'+i+'\').style.display=this.value===\'лист\'?\'\':\'none\'">'+units+'</select>'
+      +'<span id="nms'+i+'" style="display:none"><span class="plbl">Толщина, мм</span> <input class="xs" id="nmt'+i+'" inputmode="decimal"> <span class="plbl">Лист, мм</span> <input class="s" id="nmz'+i+'" placeholder="1525x1525"></span>'
+      +'<button class="sm" onclick="saveNewMat('+i+')">Создать и выбрать</button><button class="sec sm" onclick="delete NEWM['+i+'];renderDoc()">Отмена</button></div>'
+    +'<div class="pnote">Сначала проверьте поиском, нет ли такого материала под другим названием — дубли потом придётся объединять.</div></div>';
+}
+function saveNewMat(i){
+  var name=$('nmn'+i).value.trim(), unit=$('nmu'+i).value, d={name:name, unit:unit};
+  if(!name){ rowMsg(i,'впишите название',1); return; }
+  if(matByName(name)){ pickMat(i,matByName(name).name); return; }
+  if(unit==='лист'){ d.thick=$('nmt'+i).value; d.size=$('nmz'+i).value;
+    if(!num(d.thick)||!/^\d{3,4}\s*[xх×*]\s*\d{3,4}$/i.test(String(d.size).trim())){ rowMsg(i,'для листа нужны толщина и размер (например 18 и 1525x1525) — без них кубы в листы не пересчитать',1); return; } }
+  rowMsg(i,'Создаю материал…');
+  apiPost({vapi:'savematerial', data:JSON.stringify(d)}).then(function(r){
+    if(!r||!r.ok){ rowMsg(i,(r&&r.error)||'не создался',1); return; }
+    MATS.push({name:r.name||name, unit:unit, size:String(d.size||'').replace(/[х×*\s]/g,'x'), thick:num(d.thick), price:0}); pickMat(i,r.name||name);
+  }).catch(function(){ rowMsg(i,'связь оборвалась',1); });
+}
+// количество в наших единицах: листы — только целые
+function qtyBlock(p,i,m){
+  var u=esc(m?m.unit:'ед'), h='<div class="prow"><span class="plbl">Приходуем</span><span>в документе <b>'+qf(p.qty)+' '+esc(p.unit||'')+'</b> →</span>';
+  if(p.sheet){
+    var s=p.sheet, val=isInt(p.qtyW)?p.qtyW:(s.snapped?s.whole:'');
+    h+='<input class="xs'+(val===''?' need':'')+'" id="pw'+i+'" type="number" step="1" min="1" inputmode="numeric" value="'+val+'" onchange="saveSheets('+i+')"><b>'+(val===1?'лист':'листов')+'</b>'
+      +'<span class="muted">'+(s.size?esc(s.size.replace(/x/i,'×'))+(s.thick?'×'+qf(s.thick):'')+' мм':'размер листа у материала не задан')+'</span></div>';
+    if(!s.coef) h+='<div class="pnote warn">Листы не посчитать: у материала не заданы размер листа или толщина. Впишите, сколько листов приехало.</div>';
+    else if(val!==''&&!(s.snapped&&val===s.whole)) h+='<div class="pnote">вписано вручную; по расчёту из документа — '+qf(s.exact)+'</div>';
+    else if(s.snapped) h+='<div class="pnote">'+(s.exact===s.whole?'по расчёту из документа — ровно '+qf(s.exact):'по расчёту '+qf(s.exact)+' — округлено до целого листа')+'</div>';
+    else h+='<div class="pnote warn">⚠ По расчёту '+qf(s.exact)+' листа — не целое. Впишите, сколько листов приехало; если неясно — уточните у директора.</div>';
+    return h;
+  }
+  h+='<span class="plbl">×</span><input class="xs'+(p.coef?'':' need')+'" id="pk'+i+'" value="'+(p.coef?qf(p.coef):'')+'" placeholder="коэф" inputmode="decimal" onchange="savePos('+i+',{coef:num(this.value)})" title="сколько наших единиц в одной единице документа">'
+    +'<span>= <b>'+(p.qtyW?qf(p.qtyW):'?')+' '+u+'</b></span></div>';
+  if(!p.coef) h+='<div class="pnote warn">В документе «'+esc(p.unit||'?')+'», а учитываем в «'+u+'» — впишите коэффициент: сколько '+u+' в 1 '+esc(p.unit||'ед. документа')+'.</div>';
+  return h;
+}
+function saveSheets(i){
+  var v=num($('pw'+i).value);
+  if(!isInt(v)){ rowMsg(i,'листы — только целые',1); return; }
+  savePos(i,{qtyW:v});
+}
+// цена за нашу единицу против прошлой закупки (с НДС, в BYN — как в журнале закупок)
+function priceBlock(p,m){
+  if(!(p.qtyW>0)||!(p.sumGross>0)) return '';
+  var u=esc(m?m.unit:'ед'), now=p.sumGross*(Number(DOC.rate)||1)/p.qtyW, c=p.price;
+  var h='<div class="prow"><span class="plbl">Цена</span><span><b>'+pf(now)+'</b> за 1 '+u+' <span class="muted">с НДС'+(DOC.cur&&DOC.cur!=='BYN'?', в BYN по курсу документа':'')+'</span></span>';
+  if(c&&c.prev>0) h+='<span class="pill '+(c.pct>=ALERT?'bad':c.pct>0?'warn':'mute')+'">'+(c.pct>0?'▲ +':c.pct<0?'▼ ':'= ')+qf(c.pct)+' %</span>'
+    +'<span class="muted">прошлая закупка — '+pf(c.prev)+', '+esc(c.prevDate)+(c.sameSup?', тот же поставщик':(', '+esc(c.prevSup||'другой поставщик')))+'</span>';
+  else h+='<span class="muted">первая закупка этого материала — сравнить не с чем</span>';
+  return h+'</div>';
 }
 // ЦИФРЫ ТОЖЕ РАСПОЗНАЮТСЯ С ОШИБКАМИ. Они идут в цену прихода и в 1С, поэтому правятся
 // здесь и сохраняются сразу — не «потом в журнале закупок», когда уже поздно.
@@ -344,6 +491,7 @@ function numEditHtml(p,i){
     +'<input class="xs" id="'+id+i+'" value="'+esc(val==null?'':String(val))+'" style="width:'+(w||82)+'px">'; };
   return '<div class="prow" style="background:var(--bg2);border-radius:var(--r-ctl);padding:var(--s-2)">'
     +'<span class="plbl">Наименование</span><input id="pn'+i+'" value="'+esc(p.name||'')+'" style="flex:1;min-width:200px">'
+    +fld('part','Артикул',p.art,110)
     +'</div><div class="prow" style="background:var(--bg2);border-radius:var(--r-ctl);padding:var(--s-2)">'
     +fld('pq','Кол-во',p.qty)+fld('pu','Ед',p.unit,70)
     +fld('ppn','Цена без НДС',p.priceNet,100)
@@ -351,102 +499,41 @@ function numEditHtml(p,i){
     +fld('pvs','Сумма НДС',p.vatSum,100)
     +fld('psg','Сумма с НДС',p.sumGross,110)
     +'<button class="sm" onclick="saveNums('+i+')">Сохранить</button>'
-    +'<button class="sec sm" onclick="cancelNums('+i+')">Отмена</button>'
-    +'<span class="msg" id="pnm'+i+'"></span></div>';
+    +'<button class="sec sm" onclick="cancelNums('+i+')">Отмена</button></div>';
 }
 function editNums(i){ EDIT[i]=1; renderDoc(); }
 function cancelNums(i){ delete EDIT[i]; renderDoc(); }
 function saveNums(i){
-  var p=POS[i], m=$('pnm'+i); m.className='msg'; m.textContent='Сохраняю…'; twSay('Сохраняю позицию…');
-  var patch={ name:$('pn'+i).value, qty:$('pq'+i).value, unit:$('pu'+i).value,
-              priceNet:$('ppn'+i).value, vatPct:$('pvp'+i).value, vatSum:$('pvs'+i).value, sumGross:$('psg'+i).value };
-  apiPost({vapi:'docsetpos', id:p.id, patch:JSON.stringify(patch)}).then(function(r){
-    if(!r||!r.ok){ m.className='msg err'; m.textContent=(r&&r.error)||'не сохранилось'; return; }
-    ['name','unit','qty','priceNet','vatPct','vatSum','sumGross','coef','qtyW','statya','acct'].forEach(function(k){
-      if(r[k]!==undefined&&r[k]!=='') POS[i][k]=r[k]; });
-    delete EDIT[i]; renderDoc();
-  }).catch(function(){ m.className='msg err'; m.textContent='связь оборвалась'; });
+  var art=$('part'+i).value;
+  savePos(i,{ name:$('pn'+i).value, art:art, qty:$('pq'+i).value, unit:$('pu'+i).value,
+    priceNet:$('ppn'+i).value, vatPct:$('pvp'+i).value, vatSum:$('pvs'+i).value, sumGross:$('psg'+i).value },function(){ POS[i].art=art; delete EDIT[i]; });
 }
+// убрать лишнюю строку: без вопроса — её можно вернуть кнопкой «↩ вернуть»
 function skipPos(i){
   var p=POS[i], back=(p.status==='пропущена');
-  if(!back && !confirm('Убрать строку «'+p.name+'» из документа?\n\nОна не пойдёт ни в материалы, ни в расходы, ни в выгрузку 1С.\nОбычно так поступают с лишней строкой, которую распознавание сделало из описательного текста.')) return;
   api({vapi:'docskippos', id:p.id, back:back?1:''}).then(function(r){
-    if(r&&r.ok){ POS[i].status=r.status; renderDoc(); } else alert((r&&r.error)||'не вышло');
-  });
+    if(r&&r.ok){ POS[i].status=r.status; renderDoc(); } else rowMsg(i,(r&&r.error)||'не вышло',1);
+  }).catch(function(){ rowMsg(i,'связь оборвалась',1); });
 }
-function setCls(i){
-  var cls=$('pc_cls'+i).value; POS[i].cls=cls;
-  var isMat=(cls==='материал'||cls==='расходник');
-  ['plm','pm','plc','pk'].forEach(function(pre){ var el=$(pre+i); if(el) el.style.display=isMat?'':'none'; });
-  ['pls','pv','pall'].forEach(function(pre){ var el=$(pre+i); if(el) el.style.display=(cls==='услуга')?'':'none'; });
-  var m=CLASSMAP[cls.toLowerCase()];
-  if(m){ POS[i].statya=m.statya||POS[i].statya||''; POS[i].acct=m.acct||POS[i].acct||'';
-    var se=$('ps'+i), ae=$('pa'+i); if(se) se.value=POS[i].statya; if(ae) ae.value=POS[i].acct; }
-  recalcPos(i);
+// отмена проведения строки — вторым нажатием: закупка сторнируется
+var UNP_ARMED=-1;
+function unpostPos(i){
+  var b=$('unp'+i);
+  if(UNP_ARMED!==i){ UNP_ARMED=i; if(b){ b.textContent='точно отменить? нажмите ещё раз'; b.className='sm danger'; } setTimeout(function(){ if(UNP_ARMED===i){ UNP_ARMED=-1; renderDoc(); } },6000); return; }
+  UNP_ARMED=-1; if(b) b.disabled=true;
+  api({vapi:'docunpost', id:POS[i].id}).then(function(r){
+    if(r&&r.ok){ load(); openDoc(DOC.fileId,true); } else { DMSG={cls:'err',html:esc((r&&r.error)||'не отменилось')}; renderDoc(); }
+  }).catch(function(){ DMSG={cls:'err',html:'связь оборвалась'}; renderDoc(); });
 }
+function setCls(i){ savePos(i,{cls:$('pc_cls'+i).value}); }
 // вид услуги сам проставляет статью и счёт: бухгалтеру не надо держать классификатор в голове
-function setSvc(i){
-  var nm=$('pv'+i).value, sv=null;
-  for(var k=0;k<SERVICES.length;k++) if(SERVICES[k].name===nm) sv=SERVICES[k];
-  if(!sv) return;
-  POS[i].statya=sv.statya; POS[i].acct=sv.acct;
-  var se=$('ps'+i), ae=$('pa'+i); if(se) se.value=sv.statya; if(ae) ae.value=sv.acct;
-  recalcPos(i);
-}
+function setSvc(i){ var nm=$('pv'+i).value; if(nm) savePos(i,{svc:nm}); }
 // акт мобильной связи — это десять строк про одну услугу: проставлять вид каждой отдельно бессмысленно
 function svcToAll(i){
-  var nm=$('pv'+i).value; if(!nm){ alert('Сначала выберите вид услуги'); return; }
-  for(var k=0;k<POS.length;k++){
-    if(POS[k].status==='пропущена'||POS[k].status==='разнесена') continue;
-    POS[k].cls='услуга';
-    var cs=$('pc_cls'+k); if(cs) cs.value='услуга';
-    setCls(k);
-    var vs=$('pv'+k); if(vs){ vs.value=nm; setSvc(k); }
-  }
-}
-// коэффициент и итог считаем на месте: сервер за этим дёргать нельзя, каждый вызов ~3 с
-function coefLocal(m, unitDoc){
-  if(!m) return 0;
-  var u=String(unitDoc||'').trim().toLowerCase().replace(/\./g,''), our=String(m.unit||'').trim().toLowerCase();
-  if(!u||!our) return 0;
-  var mult=1, mm=u.match(/^(тыс|тысяч[аи]?|тысячи)\s*(.*)$/);
-  if(mm){ mult=1000; u=(mm[2]||'').trim(); }
-  else if(u==='т'||u==='тн'||u==='тонн'||u==='тонна'){ mult=1000; u='кг'; }
-  if(!u) u=our;
-  var same=function(a,b){ return a.replace(/[³²3 2]/g,'')===b.replace(/[³²3 2]/g,''); };
-  if(same(u,our)||u==='шт') return mult;
-  if(our.indexOf('лист')<0) return 0;
-  var sz=String(m.size||'').match(/(\d{3,4})\s*[xх*]\s*(\d{3,4})/);
-  var area=sz? Number(sz[1])*Number(sz[2])/1000000 : 0; if(!(area>0)) return 0;
-  if(u==='м3'||u==='м³'||u==='куб'){ var t=Number(m.thick)||0; if(!(t>0)) return 0; return Math.round(mult/(area*t/1000)*1000)/1000; }
-  if(u==='м2'||u==='м²') return Math.round(mult/area*1000)/1000;
-  return 0;
-}
-function recalcPos(i){
-  var p=POS[i], out=$('pr'+i); if(!out) return;
-  var cls=($('pc_cls'+i)||{}).value||p.cls||'';
-  if(!cls){ out.innerHTML='<span class="muted">выберите, что это — от этого зависит статья расхода и счёт учёта</span>'; return; }
-  if(cls==='не связано'||cls==='услуга'){
-    var st=(($('ps'+i)||{}).value||'').trim();
-    out.innerHTML='<span class="muted">'+(cls==='услуга'?'услуга — на склад не приходуется, идёт в расходы и в 1С. ':'в реестр материалов не попадёт — только в расходы. ')+'</span>'
-      +(st?('<span class="muted">Статья: <b>'+esc(st)+'</b> · счёт '+esc((($('pa'+i)||{}).value||'').trim()||'—')+'</span>')
-          :'<span style="color:var(--amber)">укажите статью расхода — иначе бухгалтерия не разнесёт</span>');
-    return;
-  }
-  var name=(($('pm'+i)||{}).value||'').trim(); p.mat=name;
-  if(!name){ out.innerHTML='<span class="muted">укажите наш материал</span>'; return; }
-  var m=matByName(name);
-  if(!m){ out.innerHTML='<span class="muted">нового материала нет в реестре — создастся при проведении</span>'; return; }
-  var kEl=$('pk'+i), sug=coefLocal(m,p.unit);
-  if(kEl&&sug&&!num(kEl.value)) kEl.value=sug;
-  var coef=num((kEl||{}).value)||sug||1; p.coef=coef;
-  var qtyW=Math.round(p.qty*coef*1000)/1000;
-  var whole=Math.round(qtyW), round=(whole>0&&Math.abs(qtyW-whole)/whole<0.02)?whole:0;
-  var q=round||qtyW; p.qtyW=q;
-  var price=q>0? p.sumGross/q : 0;
-  var pf=function(x){ return (x>=1? x.toFixed(2) : x.toFixed(4)).replace('.',','); };
-  out.innerHTML='→ на склад <b>'+q+' '+esc(m.unit||'')+'</b>, цена за 1 '+esc(m.unit||'ед')+' — <b>'+pf(price)+' р</b>'
-    +' <span class="muted">· статья: '+esc(p.statya||'—')+' · счёт '+esc(p.acct||'—')+'</span>';
+  var nm=$('pv'+i).value; if(!nm){ rowMsg(i,'сначала выберите вид услуги',1); return; }
+  var todo=[]; for(var k=0;k<POS.length;k++) if(POS[k].status==='новая') todo.push(k);
+  (function next(){ if(!todo.length){ renderDoc(); return; } var k=todo.shift();
+    apiPost({vapi:'docsetpos', id:POS[k].id, patch:JSON.stringify({cls:'услуга', svc:nm})}).then(function(r){ if(r&&r.ok) mergePos(k,r); next(); }).catch(next); })();
 }
 // правка шапки — ФОРМОЙ, а не цепочкой prompt'ов: реквизиты идут в 1С,
 // и бухгалтер должен видеть их все сразу, а не вспоминать по одному
@@ -456,8 +543,8 @@ function editHead(){
     return '<option value="'+esc(t)+'"'+(h.type===t?' selected':'')+'>'+esc(t)+'</option>'; }).join('');
   var f=function(id,lbl,val,w){ return '<div class="prow"><span class="plbl" style="min-width:120px">'+lbl+'</span>'
     +'<input id="'+id+'" value="'+esc(val==null?'':val)+'" style="min-width:'+(w||220)+'px;flex:1"></div>'; };
-  $('modal').innerHTML='<button class="x ic" onclick="openDoc(\''+h.fileId+'\')">✕</button><h3>Реквизиты документа</h3>'
-    +'<div class="muted">Что поправите — уйдёт и в Фингений, и в выгрузку для 1С. '
+  $('dbody').innerHTML='<button class="x ic" title="назад к строкам" onclick="renderDoc()">✕</button><h3>Реквизиты документа</h3>'
+    +'<div class="muted">Сверяйте с файлом слева. Что поправите — уйдёт в расчёты с поставщиком и в выгрузку для 1С. '
     +'Правка запоминается: повторное распознавание её не затрёт, а сама поправка попадёт в «Что чаще правят».</div>'
     +'<div style="margin-top:var(--s-3)">'
     +f('eh_sup','Поставщик',h.sup)
@@ -470,19 +557,19 @@ function editHead(){
     +f('eh_sum','Сумма с НДС',h.sumGross,140)
     +'</div>'
     +'<div style="margin-top:12px"><button onclick="saveHead()">Сохранить</button> '
-    +'<button class="sec" onclick="openDoc(\''+h.fileId+'\')">Отмена</button> <span class="msg" id="ehmsg"></span></div>';
+    +'<button class="sec" onclick="renderDoc()">Отмена</button> <span class="msg" id="ehmsg"></span></div>';
 }
 function saveHead(){
   var h=DOC||{}, m=$('ehmsg'); m.className='msg'; m.textContent='Сохраняю…'; twSay('Сохраняю реквизиты…');
   var patch={ sup:$('eh_sup').value, unp:$('eh_unp').value, type:$('eh_type').value, docNo:$('eh_no').value,
               date:$('eh_date').value, dogovor:$('eh_dog').value, cur:$('eh_cur').value, sumGross:$('eh_sum').value };
   apiPost({vapi:'docsethead', file:h.fileId, patch:JSON.stringify(patch)}).then(function(r){
-    if(r&&r.ok){ openDoc(h.fileId); load(); } else { m.className='msg err'; m.textContent=(r&&r.error)||'не сохранилось'; }
+    if(r&&r.ok){ openDoc(h.fileId,true); load(); } else { m.className='msg err'; m.textContent=(r&&r.error)||'не сохранилось'; }
   }).catch(function(){ m.className='msg err'; m.textContent='связь оборвалась'; });
 }
 // что чаще всего правят за распознаванием — это и есть список того, что надо уточнить в промпте
 function showFixes(){
-  $('ov').className='scrim ov on'; $('modal').innerHTML='<div class="center muted">Считаю правки…</div>';
+  $('ov').className='scrim ov on'; $('modal').className='modal dlg lg'; $('modal').innerHTML='<div class="center muted">Считаю правки…</div>';
   api({vapi:'docfixes', limit:40}).then(function(r){
     if(!r||!r.ok){ $('modal').innerHTML='<button class="x ic" onclick="closeOv()">✕</button><div class="err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
     var top=(r.byField||[]).map(function(x){ return '<div class="uprow"><span style="flex:1">'+esc(x.field)+'</span><b>'+x.n+'</b></div>'; }).join('')
@@ -500,29 +587,24 @@ function showFixes(){
 }
 function confirmFromCard(){
   api({vapi:'docconfirm', file:DOC.fileId}).then(function(r){
-    if(r&&r.ok){ DOC.status=r.status; renderDoc(); load(); } else alert((r&&r.error)||'не вышло');
-  });
+    if(r&&r.ok){ DOC.status=r.status; renderDoc(); load(); } else { DMSG={cls:'err',html:esc((r&&r.error)||'не вышло')}; renderDoc(); }
+  }).catch(function(){ DMSG={cls:'err',html:'связь оборвалась'}; renderDoc(); });
 }
+// провести: строки уже сохранены на сервере (материал, количество, статья) — отправляем то, что на экране
 function commitDoc(){
-  var m=$('dmsg'); m.className='msg';
-  var lines=POS.map(function(p,i){
-    return { id:p.id, cls:($('pc_cls'+i)||{}).value||'', mat:(($('pm'+i)||{}).value||'').trim(),
-             coef:num(($('pk'+i)||{}).value), qty:p.qty, qtyW:p.qtyW||0,
-             statya:(($('ps'+i)||{}).value||'').trim(), acct:(($('pa'+i)||{}).value||'').trim() };
-  });
-  lines=lines.filter(function(l,i){ return POS[i].status!=='пропущена'; });   // убранные строки не проводим
+  var m=$('dmsg'), b=$('commitBtn'); m.className='msg';
+  var lines=[]; POS.forEach(function(p){ if(p.status==='новая') lines.push({ id:p.id, cls:p.cls||'', mat:p.mat||'', coef:p.coef||0, qty:p.qty, statya:p.statya||'', acct:p.acct||'' }); });
+  if(!lines.length){ m.textContent='все строки уже разнесены'; return; }
   var noCls=lines.filter(function(l){ return !l.cls; }).length;
-  if(noCls){ m.className='msg err'; m.textContent='Не выбран класс у позиций: '+noCls; return; }
-  if(!confirm('Провести документ?\n\nМатериалы и расходники попадут в журнал закупок и на склад, «не связано» — только в статью расхода.')) return;
-  m.textContent='Провожу…'; twSay('Провожу документ…');
+  if(noCls){ m.className='msg err'; m.textContent='Не выбрано «что это» у строк: '+noCls; return; }
+  if(b) b.disabled=true; m.textContent='Провожу…'; twSay('Провожу документ…');
   apiPost({vapi:'doccommit', file:DOC.fileId, lines:JSON.stringify(lines)}).then(function(r){
-    if(r&&r.ok){
-      m.className='msg ok';
-      m.textContent='✓ проведено позиций: '+r.placed+(r.failed&&r.failed.length?(', не прошло '+r.failed.length):'');
-      if(r.failed&&r.failed.length) m.innerHTML+='<br>'+r.failed.map(function(f){ return '• '+esc(f.name)+' — '+esc(f.error); }).join('<br>');
-      else setTimeout(function(){ closeOv(); load(); },900);
-    } else { m.className='msg err'; m.textContent='Ошибка: '+((r&&r.error)||'?'); }
-  }).catch(function(e){ m.className='msg err'; m.textContent='Связь оборвалась'; });
+    if(b) b.disabled=false;
+    if(!r||!r.ok){ m.className='msg err'; m.textContent='Ошибка: '+((r&&r.error)||'?'); return; }
+    var bad=r.failed||[];
+    DMSG={ cls:bad.length?'err':'ok', html:'✓ проведено строк: '+r.placed+(bad.length?(' · не прошло '+bad.length+':<br>'+bad.map(function(f){ return '• '+esc(f.name)+' — '+esc(f.error); }).join('<br>')):'') };
+    load(); openDoc(DOC.fileId,true);
+  }).catch(function(){ if(b) b.disabled=false; m.className='msg err'; m.textContent='Связь оборвалась — откройте документ заново и проверьте, что провелось'; });
 }
 
 // период по умолчанию — последние 90 дней
@@ -578,6 +660,11 @@ document.addEventListener('click',function(e){
   if(_api) api=wrap(_api);
   if(_post) apiPost=wrap(_post);
 })();
+
+// файлы можно бросить прямо на страницу
+document.addEventListener('dragover',function(e){ if(e.dataTransfer&&Array.prototype.indexOf.call(e.dataTransfer.types||[],'Files')>=0){ e.preventDefault(); document.body.classList.add('drop'); } });
+document.addEventListener('dragleave',function(e){ if(!e.relatedTarget) document.body.classList.remove('drop'); });
+document.addEventListener('drop',function(e){ document.body.classList.remove('drop'); if(e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files.length){ e.preventDefault(); if(!$('dbody')) uploadPicked(e.dataTransfer.files); } });
 
 load();
 window.addEventListener('message',function(e){ if(e&&e.data&&e.data.tw==='refresh') 
