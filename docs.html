@@ -300,7 +300,7 @@ function exportDocs(all){
 }
 
 // ─────────── карточка документа (11.11.2026: файл слева, строки справа; материал, листы и цену считает сервер) ───────────
-var DOC=null, POS=[], MATS=[], EDIT={}, NEWM={}, FIND={}, ALERT=5, DMSG=null, SETL=null, REJ=false;
+var DOC=null, POS=[], MATS=[], EDIT={}, NEWM={}, FIND={}, ALERT=5, DMSG=null, SETL=null, REJ=false, RETS=[], RET=null;
 var ORIGIN=(function(){ try{ return new URL(BASE).origin; }catch(e){ return ''; } })();
 var WHY={ article:'по артикулу этого поставщика', alias_sup:'так называл этот поставщик', alias:'так называл другой поставщик', sup_name:'название у поставщика', similar:'похоже по названию' };
 function closeOv(){ $('ov').className='scrim ov'; $('modal').className='modal dlg lg'; $('modal').innerHTML=''; }
@@ -311,7 +311,7 @@ function openDoc(fileId, keep){
     $('modal').innerHTML='<div class="fview" id="fview"></div><div class="fbody" id="dbody"><div class="center muted">Загрузка документа…</div></div>'; keep=false; }
   api({vapi:'docpositions', file:fileId}).then(function(r){
     if(!r||!r.ok){ $('dbody').innerHTML='<button class="x ic" onclick="closeOv()">✕</button><div class="err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
-    DOC=r.header||{fileId:fileId}; DOC.fileId=fileId; SETL=r.settlement||null; POS=r.positions||[]; MATS=r.mats||[]; EDIT={}; NEWM={}; FIND={}; ALERT=r.alertPct||ALERT;
+    DOC=r.header||{fileId:fileId}; DOC.fileId=fileId; SETL=r.settlement||null; RETS=r.returns||[]; POS=r.positions||[]; MATS=r.mats||[]; EDIT={}; NEWM={}; FIND={}; ALERT=r.alertPct||ALERT;
     CLASSES=r.classes||CLASSES; CLASSMAP=r.classMap||CLASSMAP;
     SERVICES=r.services||SERVICES; TYPES=r.types||TYPES;
     REJ=false; if(!keep) renderView();
@@ -368,6 +368,7 @@ function renderDoc(){
       +'<a href="javascript:void(0)" onclick="editHead()">✎ изменить шапку</a>'
       +(h.file?' · <a href="'+esc(h.file)+'" target="_blank">открыть файл на Диске</a>':'')+'</div>'
     +settleHtml()
+    +returnsHtml()
     +sumCheckHtml()
     +(up?'<div class="note warn" style="margin-top:var(--s-2)"><div><b>⚠ Цена выросла у '+up+' '+(up===1?'строки':'строк')+'</b> больше чем на '+qf(ALERT)+' % против прошлой закупки — проверьте, согласовано ли это с директором.</div></div>':'')
     +'<div class="lbl">Позиции — '+act.length+', разнесено '+done+(skipped?(' · убрано '+skipped):'')+'</div>'
@@ -376,6 +377,7 @@ function renderDoc(){
       +((h.status&&h.status!=='подтверждён'&&h.status!=='разнесён')
         ? '<button onclick="confirmFromCard()" title="реквизиты проверены — документ уйдёт из «на проверке» в общий список">✓ Реквизиты верны</button> ' : '')
       +(done<act.length&&!h.rejected?'<button class="green" id="commitBtn" onclick="commitDoc()">✓ Провести документ</button> ':'')
+      +(!h.rejected&&POS.some(function(p){ return p.status==='разнесена'&&p.cls!=='услуга'; }) ? '<button class="sec" onclick="openReturn()" title="вернуть поставщику весь товар или часть: система выпишет нашу ТН или ТТН на бланке и уменьшит долг поставщику">↩ Возврат поставщику</button> ' : '')
       +(!h.rejected&&!done ? '<button class="sec" onclick="REJ=true;renderDoc()" title="товар не приняли или документ выставлен ошибочно: останется в реестре, но долгом перед поставщиком считаться не будет">🚫 Не принят</button> ' : '')
       +(h.status!=='разнесён' ? '<button class="sec" id="rescanBtn" onclick="rescanDoc()" title="прочитать файл ещё раз: шапка, поправленная вручную, не меняется; разнесённые строки не трогаются">🔄 Распознать заново</button> ' : '')
       +'<span class="msg" id="dmsg"></span></div>';
@@ -420,6 +422,83 @@ function settleHtml(){
     +(s.pays&&s.pays.length?'<span class="muted">'+s.pays.map(function(p){ return (p.id==='opening'?'аванс на начало учёта':esc(p.date)+(p.invNo?' по счёту № '+esc(p.invNo):''))+' — '+money(p.sum)+(p.auto?'':' (привязана вручную)'); }).join('; ')+'</span>':'')
     +(s.party?'<a href="javascript:void(0)" onclick="var k=SETL.party;closeOv();setView(\'sup\');openSup(k)">все расчёты с поставщиком →</a>':'')+'</div>';
 }
+// ─────────── возврат поставщику ───────────
+function returnsHtml(){
+  if(!RETS.length) return '';
+  return '<div class="settle"><b>↩ Возвраты поставщику</b>'+RETS.map(function(r,i){
+    return '<span>'+esc(r.number)+' · '+esc(r.kind)+(r.blank?' '+esc(r.blank):'')+' от '+esc(r.date)+' · <b>'+money(r.amount)+'</b>'
+      +(r.url?' · <a href="'+esc(r.url)+'" target="_blank">накладная ↗</a>':'')
+      +' · <a href="javascript:void(0)" id="rc'+i+'" onclick="cancelReturn('+i+')" title="накладная будет отменена, бланк помечен испорченным, количество материала и долг поставщику вернутся">отменить</a></span>'; }).join('')+'</div>';
+}
+var RC_ARMED=-1;
+function cancelReturn(i){
+  var a=$('rc'+i);
+  if(RC_ARMED!==i){ RC_ARMED=i; if(a){ a.textContent='точно отменить? бланк будет испорчен — нажмите ещё раз'; a.className='err'; } setTimeout(function(){ if(RC_ARMED===i){ RC_ARMED=-1; renderDoc(); } },7000); return; }
+  RC_ARMED=-1; if(a) a.textContent='отменяю…';
+  api({vapi:'docreturncancel', id:RETS[i].id}).then(function(r){
+    if(r&&r.ok){ DMSG={cls:'ok',html:'✓ возврат '+esc(RETS[i].number)+' отменён'}; load(1); openDoc(DOC.fileId,true); }
+    else { DMSG={cls:'err',html:esc((r&&r.error)||'не отменился')}; renderDoc(); }
+  }).catch(function(){ DMSG={cls:'err',html:'связь оборвалась'}; renderDoc(); });
+}
+function openReturn(){
+  $('dbody').innerHTML='<button class="x ic" title="назад к строкам" onclick="renderDoc()">✕</button><h3>↩ Возврат поставщику</h3><div class="center muted">Загрузка…</div>';
+  api({vapi:'docreturnprep', file:DOC.fileId}).then(function(r){
+    if(!r||!r.ok){ DMSG={cls:'err',html:esc((r&&r.error)||'не открылось')}; renderDoc(); return; }
+    RET=r; RET.kind=(r.blanks.tn||[]).length||!(r.blanks.ttn||[]).length?'ТН':'ТТН'; renderReturn();   // свободны только бланки ТТН — сразу ТТН
+  }).catch(function(){ DMSG={cls:'err',html:'связь оборвалась'}; renderDoc(); });
+}
+function renderReturn(){
+  var r=RET, k=r.kind, blanks=(k==='ТН'?r.blanks.tn:r.blanks.ttn)||[];
+  var rows=r.lines.map(function(l,i){
+    return '<tr'+(l.can?'':' class="muted"')+'><td><div style="text-align:left">'+esc(l.name)+'<div class="sub2">получено '+qf(l.qty)+' '+esc(l.unit)+(l.returned?' · уже возвращено '+qf(l.returned):'')+(l.can?' · <a href="javascript:void(0)" onclick="retAll('+i+')" title="вернуть весь остаток по строке">вернуть всё ('+qf(l.left)+')</a>':'')+'</div></div></td>'
+      +'<td class="num" data-l="Возвращаем" style="flex-wrap:wrap;justify-content:flex-end">'+(l.can?(retOwn(l)?'<span style="white-space:nowrap"><input class="xs" id="rw'+i+'" inputmode="decimal" placeholder="0" oninput="retFromOwn('+i+')" title="сколько возвращаем в наших единицах — количество для накладной посчитается само" style="width:64px;text-align:right"> '+esc(l.ourUnit)+' =</span> ':'')
+        +'<span style="white-space:nowrap"><input class="xs" id="rq'+i+'" inputmode="decimal" placeholder="0" oninput="retTyped('+i+')" style="width:80px;text-align:right"> '+esc(l.unit)+'</span>':'<span class="muted">'+esc(l.why)+'</span>')+'</td>'
+      +'<td class="num" data-l="Цена с НДС">'+pf(l.price)+'</td><td class="num" data-l="НДС" style="white-space:nowrap">'+(l.vatRate?l.vatRate+'\u00a0%':'без НДС')+'</td></tr>'; }).join('');
+  $('dbody').innerHTML='<button class="x ic" title="назад к строкам" onclick="renderDoc()">✕</button><h3>↩ Возврат поставщику</h3>'
+    +'<div class="muted">'+esc(r.supplier)+'. Система выпишет нашу накладную на бланке строгой отчётности: цены и НДС — как в документе поставщика. Долг поставщику и количество полученного материала уменьшатся.</div>'
+    +(r.block?'<div class="note warn" style="margin-top:var(--s-2)"><div>'+esc(r.block)+'</div></div>':'')
+    +'<div class="lbl">Что возвращаем</div><div class="box tbl-wrap"><table class="tbl mob"><thead><tr><th>Позиция</th><th class="num">Возвращаем</th><th class="num" title="за единицу, с НДС">Цена</th><th class="num">НДС</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+    +'<div class="pnote" id="rtot" style="margin-top:var(--s-2)"></div>'
+    +'<div class="lbl">Накладная</div>'
+    +'<div class="prow"><span class="plbl">Вид</span><select id="rKind" onchange="RET.kind=this.value;keepRet();renderReturn()"><option'+(k==='ТН'?' selected':'')+'>ТН</option><option'+(k==='ТТН'?' selected':'')+'>ТТН</option></select>'
+      +'<span class="plbl">Дата</span><input class="s" id="rDate" value="'+esc(r.date||r.today)+'" placeholder="дд.мм.гггг">'
+      +'<span class="plbl">Бланк</span>'+(blanks.length?'<select id="rBlank">'+blanks.map(function(b){ return '<option value="'+esc(b.id)+'">'+esc(b.label||((b.seria||'')+' '+(b.num||'')))+'</option>'; }).join('')+'</select>'
+        :'<span class="err">свободных бланков '+esc(k)+' нет — загрузите бланки в «Книге бланков»</span>')+'</div>'
+    +'<div class="prow"><span class="plbl">Основание</span><input id="rBasis" value="'+esc(r.basisNow||r.basis)+'" style="flex:1;min-width:260px"></div>'
+    +'<div class="prow"><span class="plbl">Адрес поставщика</span><input id="rAddr" value="'+esc(r.addrNow||r.address)+'" placeholder="'+(k==='ТТН'?'пункт разгрузки — обязательно для ТТН':'куда возвращаем')+'" style="flex:1;min-width:260px"></div>'
+    +(k==='ТТН'?'<div class="prow"><span class="plbl">Водитель</span><input class="s" id="rDrv" style="width:200px"><span class="plbl">Автомобиль</span><input class="s" id="rCar" style="width:160px"><span class="plbl">Путевой лист</span><input class="s" id="rWb" style="width:120px"></div>':'')
+    +'<div class="dfoot"><button class="green" id="retBtn" onclick="doReturn()"'+(r.block||!blanks.length?' disabled':'')+'>Выписать возвратную накладную</button><button class="sec" onclick="renderDoc()">Отмена</button><span class="msg" id="rmsg"></span></div>';
+  (RET.qty||[]).forEach(function(v,i){ var e=$('rq'+i); if(e&&v) e.value=v; }); (RET.own||[]).forEach(function(v,i){ var e=$('rw'+i); if(e&&v) e.value=v; }); retTotal();
+}
+// фанера: поставщик считает в кубах, мы — в листах. Вписали листы — кубы для накладной считаются сами, с учёта уйдут ровно эти листы.
+function retOwn(l){ return l.coef>0&&l.ourUnit&&l.ourUnit!==l.unit; }
+function retFromOwn(i){ var l=RET.lines[i], w=num($('rw'+i).value); $('rq'+i).value=w>0?String(Math.min(l.left, Math.round(w/l.coef*1000)/1000)).replace('.',','):''; retTotal(); }
+function retTyped(i){ var w=$('rw'+i); if(w) w.value=''; retTotal(); }
+function retAll(i){ var w=$('rw'+i); if(w) w.value=''; $('rq'+i).value=String(RET.lines[i].left).replace('.',','); retTotal(); }
+// при смене вида накладной форма перерисовывается — введённое не теряем
+function keepRet(){ RET.qty=RET.lines.map(function(_,i){ return ($('rq'+i)||{}).value||''; }); RET.own=RET.lines.map(function(_,i){ return ($('rw'+i)||{}).value||''; }); RET.date=($('rDate')||{}).value; RET.basisNow=($('rBasis')||{}).value; RET.addrNow=($('rAddr')||{}).value; }
+function retPick(){ var out=[]; RET.lines.forEach(function(l,i){ var v=num(($('rq'+i)||{}).value); if(l.can&&v>0) out.push({lineId:l.id, qty:v, qtyW:num(($('rw'+i)||{}).value)||0, line:l}); }); return out; }
+function retTotal(){
+  var pick=retPick(), t=0, over=[];
+  pick.forEach(function(p){ t+=p.qty*p.line.price; if(p.qty>p.line.left+0.0005) over.push(p.line.name); });
+  var e=$('rtot'); if(!e) return;
+  e.className='pnote'+(over.length?' warn':'');
+  // накладная поставщику — в его единицах (кубы); рядом показываем, сколько это в наших (листы)
+  var ours=pick.filter(function(p){ return retOwn(p.line); }).map(function(p){ var all=p.qty>=p.line.left-0.0005; return qf(p.qty)+' '+p.line.unit+(p.qtyW>0&&!all?' = '+qf(p.qtyW):' ≈ '+qf(Math.round(p.qty*p.line.coef*10)/10))+' '+p.line.ourUnit+(all?' (весь остаток)':''); }).join('; ');
+  e.textContent=over.length?('Больше, чем можно вернуть: '+over.join('; ')):pick.length?('К возврату: строк '+pick.length+', примерно на '+money(t)+' с НДС — точную сумму посчитает накладная.'+(ours?' В наших единицах: '+ours+'.':'')):'Впишите количество хотя бы в одной строке — в единицах документа поставщика.';
+}
+function doReturn(){
+  var m=$('rmsg'), b=$('retBtn'), pick=retPick();
+  if(!pick.length){ m.className='msg err'; m.textContent='впишите, сколько возвращаем'; return; }
+  var data={ kind:RET.kind, date:$('rDate').value.trim(), basis:$('rBasis').value.trim(), address:$('rAddr').value.trim(), blankId:($('rBlank')||{}).value||'',
+    transport:{ driver:($('rDrv')||{}).value||'', car:($('rCar')||{}).value||'', waybillDoc:($('rWb')||{}).value||'' }, lines:pick.map(function(p){ var o={lineId:p.lineId, qty:p.qty}; if(p.qtyW>0) o.qtyW=p.qtyW; return o; }) };
+  if(b) b.disabled=true; m.className='msg'; m.textContent='Выписываю накладную… до минуты'; twSay('Выписываю возвратную накладную…');
+  apiPost({vapi:'docreturn', file:DOC.fileId, data:JSON.stringify(data)}).then(function(r){
+    if(!r||!r.ok){ if(b) b.disabled=false; m.className='msg err'; m.textContent=(r&&r.error)||'накладная не выписалась'; return; }
+    DMSG={cls:'ok',html:'✓ Возврат '+esc(r.number)+' на '+money(r.amount)+' выписан'+(r.waybill?' · бланк '+esc(r.waybill):'')+(r.url?' · <a href="'+esc(r.url)+'" target="_blank">открыть накладную ↗</a>':'')};
+    load(1); openDoc(DOC.fileId,true);
+  }).catch(function(){ if(b) b.disabled=false; m.className='msg err'; m.textContent='долгий ответ — закройте окно и проверьте, появился ли возврат в карточке, прежде чем нажимать ещё раз'; });
+}
 function rejectDoc(undo){
   var p={vapi:'docreject', file:DOC.fileId}; if(undo) p.undo=1; else p.reason=($('rejWhy')||{}).value||'';
   api(p).then(function(r){
@@ -457,7 +536,8 @@ function posCard(p,i){
   if(skipped) return '<div class="pcard done" id="pc'+i+'">'+head+'</div>';
   if(posted) return '<div class="pcard done" id="pc'+i+'">'+head+nums
     +'<div class="pres">'+(isMat&&p.mat?('→ <b>'+esc(p.mat)+'</b>: <b>'+qf(p.qtyW)+' '+esc(m?m.unit:'')+'</b>'+(p.qtyW>0?(', '+pf(p.sumGross*(Number(DOC.rate)||1)/p.qtyW)+' за 1 '+esc(m?m.unit:'ед')):'')+' · '):(esc(cls)+' · '))
-    +'<span class="muted">статья: '+esc(p.statya||'—')+' · счёт '+esc(p.acct||'—')+'</span></div></div>';
+    +'<span class="muted">статья: '+esc(p.statya||'—')+' · счёт '+esc(p.acct||'—')+'</span>'
+    +(p.returned>0?' <span class="pill warn" title="возвращено поставщику по возвратной накладной">↩ возвращено '+qf(p.returned)+' '+esc(p.unit||'')+'</span>':'')+'</div></div>';
   var opts=['<option value="">— что это? —</option>'].concat(CLASSES.map(function(c){
     return '<option value="'+esc(c)+'"'+(cls===c?' selected':'')+'>'+esc(c)+'</option>'; })).join('');
   var svcOpts=['<option value="">— выберите вид услуги —</option>'].concat(SERVICES.map(function(sv){
