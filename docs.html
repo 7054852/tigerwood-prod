@@ -8,6 +8,12 @@
 <title>Тигервуд — входящие документы</title>
 <style>
   #cnt{ margin:0 0 var(--s-2); }
+  #views{ margin:0 0 var(--s-3); }
+  .kpis{ display:flex; gap:var(--s-5); flex-wrap:wrap; margin:0 0 var(--s-3); color:var(--muted); font:var(--t-small); }
+  .kpis b{ color:var(--fg); font:var(--t-heading); display:block; }
+  #sTb tr{ cursor:pointer; }
+  .owe{ color:var(--red); font-weight:600; } .adv{ color:var(--green); font-weight:600; }
+  .settle{ border:1px solid var(--line); border-radius:var(--r-ctl); padding:var(--s-2) var(--s-3); margin-top:var(--s-2); font:var(--t-small); display:flex; gap:var(--s-2); flex-wrap:wrap; align-items:center; }
   #filters{ margin:0 0 var(--s-4); }
   /* документ — карточкой: в таблице поставщик и номер уезжали за край */
   .doc{ border:1px solid var(--line); border-radius:var(--r-card); background:var(--card); box-shadow:var(--shadow-card); padding:var(--s-3) var(--s-4); margin-bottom:var(--s-2); cursor:pointer; transition:border-color .15s var(--ease); }
@@ -60,6 +66,8 @@
 <div id="twload"><i></i></div>
 <div id="twwait"><div class="wb"><div class="sp"></div><div class="wt" id="twwt">Отправляю…</div><div class="wh">идёт обмен с сервером — не нажимайте</div></div></div>
 <div class="hi">📑 Входящие документы</div>
+<div class="chips" id="views"><span class="chip on" id="vDoc" onclick="setView('doc')">Документы</span><span class="chip" id="vSup" onclick="setView('sup')">Расчёты с поставщиками</span></div>
+<div id="docView">
 <div class="toolbar">
   <span class="muted">с</span><input type="date" id="from" onchange="load()">
   <span class="muted">по</span><input type="date" id="to" onchange="load()">
@@ -78,6 +86,17 @@
 <div class="meta" id="cnt">загрузка…</div>
 <div class="chips" id="filters"></div>
 <div id="list"><div class="center muted">Загрузка…</div></div>
+</div>
+<div id="supView" style="display:none">
+  <div class="toolbar">
+    <input type="search" class="search" id="sQ" placeholder="поставщик…" oninput="drawSup()">
+    <label class="muted"><input type="checkbox" id="sAll" onchange="drawSup()"> и без остатка</label>
+    <div class="end"><button class="sec" onclick="loadSup()">Обновить</button></div>
+  </div>
+  <div class="note hint">Накладная, акт или УПД поставщика — наш долг перед ним; оплаты его уменьшают. Счёт на оплату долгом не считается. Если оплачено больше, чем получено по документам, — это наш аванс или документ ещё не загружен. Считается с начала учёта в Прохабе; что было раньше — одной суммой «на начало» у поставщика. Валюты не складываются.</div>
+  <div class="kpis" id="sKpi"></div>
+  <div class="box tbl-wrap"><table class="tbl"><thead><tr><th>Поставщик</th><th class="num" title="остаток на дату начала учёта: + мы должны, − наш аванс">На начало</th><th class="num">Получено по документам</th><th class="num">Оплачено</th><th class="num">Возвращено</th><th class="num">Остаток</th><th>Что не закрыто</th></tr></thead><tbody id="sTb"><tr><td colspan=7 class="center muted">Загрузка…</td></tr></tbody></table></div>
+</div>
 
 <div class="scrim ov" id="ov"><div class="modal dlg lg" id="modal"></div></div>
 
@@ -119,13 +138,19 @@ function load(quiet){
     ROWS=r.rows||[]; STAT=r.stat||{}; CLASSES=r.classes||[]; CLASSMAP=r.classMap||{};
     SERVICES=r.services||SERVICES; TYPES=r.types||TYPES; ALERT=r.alertPct||ALERT;
     clearTimeout(window._poll); if(ROWS.some(function(x){ return x.recognizing; })) window._poll=setTimeout(function(){ if(!$('dbody')&&!UPQ.length) load(1); },6000);   // пока идёт распознавание — обновляем сами
-    $('filters').innerHTML=[['','все'],['check','🔔 на проверке — '+(STAT.check||0)],['todo','разнести — '+(STAT.todo||0)],['done','разнесённые — '+(STAT.done||0)],['wait','ждут распознавания — '+(STAT.noscan||0)]]
+    $('filters').innerHTML=[['','все'],['check','🔔 на проверке — '+(STAT.check||0)],['todo','разнести — '+(STAT.todo||0)],['done','разнесённые — '+(STAT.done||0)],['wait','ждут распознавания — '+(STAT.noscan||0)],['unpaid','не оплачены — '+(STAT.unpaid||0)]]
       .map(function(f){ return '<span class="chip'+(FILT===f[0]?' on':'')+'" onclick="setFilt(\''+f[0]+'\')">'+esc(f[1])+'</span>'; }).join('');
     draw();
   }).catch(function(e){ $('list').innerHTML='<div class="center err">Связь оборвалась: '+esc(e.message||e)+'</div>'; });
 }
 function setFilt(f){ FILT=f; load(); }
 
+function payPill(p){
+  if(!p) return '';
+  if(p.left<=0.004) return '<span class="pill ok" title="по расчётам с поставщиком">оплачен</span>';
+  if(p.paid>0.004||p.returned>0.004) return '<span class="pill warn" title="по расчётам с поставщиком">осталось оплатить '+money(p.left)+'</span>';
+  return '<span class="pill mute" title="по расчётам с поставщиком">не оплачен</span>';
+}
 function statePill(r){
   if(r.state==='разнесено') return '<span class="pill ok">✓ разнесено</span>';
   if(r.state==='разнести') return '<span class="pill warn">⚠ разнести '+(r.positions-r.placed)+' из '+r.positions+'</span>';
@@ -140,6 +165,7 @@ function draw(){
     if(FILT==='todo'&&r.state!=='разнести') return false;
     if(FILT==='done'&&r.state!=='разнесено') return false;
     if(FILT==='wait'&&r.state!=='ждёт распознавания'&&r.state!=='не распозналось') return false;
+    if(FILT==='unpaid'&&!(r.pay&&r.pay.left>0.004&&!r.rejected)) return false;
     if(q&&(r.sup+' '+r.docNo).toLowerCase().indexOf(q)<0) return false;
     return true;
   });
@@ -160,6 +186,7 @@ function docCard(r){
       +'<div class="top"><span class="dt">'+esc(r.date||'—')+'</span>'
         +'<span class="sup">'+esc(r.sup||'без поставщика')+'</span>'
         +statePill(r)+diff
+        +(r.rejected?'<span class="pill mute" title="'+esc(r.rejectReason||'')+'">🚫 не принят</span>':payPill(r.pay))
         +(r.priceUp>=ALERT?'<span class="pill bad" title="цена за нашу единицу выросла против прошлой закупки">⚠ цена +'+qf(r.priceUp)+' %</span>':'')
         +(r.recognizing?'<span class="pill mute">🔍 распознаётся…</span>':'')
         +(r.dup?'<span class="pill bad" title="такой контрагент и номер уже есть">✕ возможно дубль</span>':'')
@@ -273,7 +300,7 @@ function exportDocs(all){
 }
 
 // ─────────── карточка документа (11.11.2026: файл слева, строки справа; материал, листы и цену считает сервер) ───────────
-var DOC=null, POS=[], MATS=[], EDIT={}, NEWM={}, FIND={}, ALERT=5, DMSG=null;
+var DOC=null, POS=[], MATS=[], EDIT={}, NEWM={}, FIND={}, ALERT=5, DMSG=null, SETL=null, REJ=false;
 var ORIGIN=(function(){ try{ return new URL(BASE).origin; }catch(e){ return ''; } })();
 var WHY={ article:'по артикулу этого поставщика', alias_sup:'так называл этот поставщик', alias:'так называл другой поставщик', sup_name:'название у поставщика', similar:'похоже по названию' };
 function closeOv(){ $('ov').className='scrim ov'; $('modal').className='modal dlg lg'; $('modal').innerHTML=''; }
@@ -284,10 +311,10 @@ function openDoc(fileId, keep){
     $('modal').innerHTML='<div class="fview" id="fview"></div><div class="fbody" id="dbody"><div class="center muted">Загрузка документа…</div></div>'; keep=false; }
   api({vapi:'docpositions', file:fileId}).then(function(r){
     if(!r||!r.ok){ $('dbody').innerHTML='<button class="x ic" onclick="closeOv()">✕</button><div class="err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
-    DOC=r.header||{fileId:fileId}; DOC.fileId=fileId; POS=r.positions||[]; MATS=r.mats||[]; EDIT={}; NEWM={}; FIND={}; ALERT=r.alertPct||ALERT;
+    DOC=r.header||{fileId:fileId}; DOC.fileId=fileId; SETL=r.settlement||null; POS=r.positions||[]; MATS=r.mats||[]; EDIT={}; NEWM={}; FIND={}; ALERT=r.alertPct||ALERT;
     CLASSES=r.classes||CLASSES; CLASSMAP=r.classMap||CLASSMAP;
     SERVICES=r.services||SERVICES; TYPES=r.types||TYPES;
-    if(!keep) renderView();
+    REJ=false; if(!keep) renderView();
     renderDoc();
   }).catch(function(){ $('dbody').innerHTML='<button class="x ic" onclick="closeOv()">✕</button><div class="err">связь оборвалась — закройте и откройте документ ещё раз</div>'; });
 }
@@ -340,6 +367,7 @@ function renderDoc(){
     +'<div class="muted" style="font:var(--t-small);margin-top:var(--s-1)">Реквизиты пойдут в 1С — если распознались неверно: '
       +'<a href="javascript:void(0)" onclick="editHead()">✎ изменить шапку</a>'
       +(h.file?' · <a href="'+esc(h.file)+'" target="_blank">открыть файл на Диске</a>':'')+'</div>'
+    +settleHtml()
     +sumCheckHtml()
     +(up?'<div class="note warn" style="margin-top:var(--s-2)"><div><b>⚠ Цена выросла у '+up+' '+(up===1?'строки':'строк')+'</b> больше чем на '+qf(ALERT)+' % против прошлой закупки — проверьте, согласовано ли это с директором.</div></div>':'')
     +'<div class="lbl">Позиции — '+act.length+', разнесено '+done+(skipped?(' · убрано '+skipped):'')+'</div>'
@@ -348,6 +376,7 @@ function renderDoc(){
       +((h.status&&h.status!=='подтверждён'&&h.status!=='разнесён')
         ? '<button onclick="confirmFromCard()" title="реквизиты проверены — документ уйдёт из «на проверке» в общий список">✓ Реквизиты верны</button> ' : '')
       +(done<act.length?'<button class="green" id="commitBtn" onclick="commitDoc()">✓ Провести документ</button> ':'')
+      +(!h.rejected&&!done ? '<button class="sec" onclick="REJ=true;renderDoc()" title="товар не приняли или документ выставлен ошибочно: останется в реестре, но долгом перед поставщиком считаться не будет">🚫 Не принят</button> ' : '')
       +(h.status!=='разнесён' ? '<button class="sec" id="rescanBtn" onclick="rescanDoc()" title="прочитать файл ещё раз: шапка, поправленная вручную, не меняется; разнесённые строки не трогаются">🔄 Распознать заново</button> ' : '')
       +'<span class="msg" id="dmsg"></span></div>';
   if(DMSG){ var m=$('dmsg'); m.className='msg '+DMSG.cls; m.innerHTML=DMSG.html; DMSG=null; }
@@ -378,6 +407,25 @@ function sumCheckHtml(){
     +'<b>⚠ Суммы не сходятся:</b> позиций на <b>'+money(sum)+'</b>, в документе <b>'+money(doc)+'</b> (разница '+money(d)+').'
     +'<div class="muted">Проверьте: лишняя строка — уберите её «✕»; не хватает строки — распознайте документ заново; '
     +'или сумма документа в реестре не та — поправьте «✎ изменить шапку».</div></div>';
+}
+// расчёт с поставщиком по этому документу и отметка «не принят»
+function settleHtml(){
+  var h=DOC||{}, s=SETL, out='';
+  if(h.rejected) out+='<div class="note warn" style="margin-top:var(--s-2)"><div><b>🚫 Документ не принят</b>'+(h.rejectReason?' — '+esc(h.rejectReason):'')+'. В расчётах с поставщиком не участвует. <a href="javascript:void(0)" onclick="rejectDoc(1)">Вернуть в работу</a></div></div>';
+  else if(REJ) out+='<div class="settle"><b>Не принимаем документ.</b><input id="rejWhy" placeholder="почему: не заказывали, брак, ошибка в документе…" style="flex:1;min-width:220px"><button class="sm danger" onclick="rejectDoc()">Отметить «не принят»</button><button class="sec sm" onclick="REJ=false;renderDoc()">Отмена</button></div>';
+  if(!s||h.rejected) return out;
+  if(!s.counted) return out+(s.why?'<div class="settle muted">'+esc(s.why)+'</div>':'');
+  var st=s.left<=0.004?'<span class="pill ok">оплачен</span>':(s.paid>0.004||s.returned>0.004)?'<span class="pill warn">оплачен частично</span>':'<span class="pill mute">не оплачен</span>';
+  return out+'<div class="settle"><b>Расчёт с поставщиком</b>'+st+'<span>оплачено <b>'+money(s.paid)+'</b> из '+money(s.sum)+' '+esc(s.cur)+(s.returned>0.004?' · возвращено '+money(s.returned):'')+(s.left>0.004?' · <b>осталось '+money(s.left)+'</b>':'')+'</span>'
+    +(s.pays&&s.pays.length?'<span class="muted">'+s.pays.map(function(p){ return (p.id==='opening'?'аванс на начало учёта':esc(p.date)+(p.invNo?' по счёту № '+esc(p.invNo):''))+' — '+money(p.sum)+(p.auto?'':' (привязана вручную)'); }).join('; ')+'</span>':'')
+    +(s.party?'<a href="javascript:void(0)" onclick="var k=SETL.party;closeOv();setView(\'sup\');openSup(k)">все расчёты с поставщиком →</a>':'')+'</div>';
+}
+function rejectDoc(undo){
+  var p={vapi:'docreject', file:DOC.fileId}; if(undo) p.undo=1; else p.reason=($('rejWhy')||{}).value||'';
+  api(p).then(function(r){
+    if(!r||!r.ok){ DMSG={cls:'err',html:esc((r&&r.error)||'не вышло')}; REJ=false; renderDoc(); return; }
+    REJ=false; load(1); openDoc(DOC.fileId,true);
+  }).catch(function(){ DMSG={cls:'err',html:'связь оборвалась'}; renderDoc(); });
 }
 function fmtD(d){ var s=String(d); if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10).split('-').reverse().join('.'); return s; }
 function rowMsg(i,t,bad){ var m=$('pmsg'+i); if(m){ m.className='msg'+(bad?' err':''); m.textContent=t||''; } }
@@ -633,6 +681,92 @@ function commitDoc(){
     DMSG={ cls:bad.length?'err':'ok', html:'✓ проведено строк: '+r.placed+(bad.length?(' · не прошло '+bad.length+':<br>'+bad.map(function(f){ return '• '+esc(f.name)+' — '+esc(f.error); }).join('<br>')):'') };
     load(); openDoc(DOC.fileId,true);
   }).catch(function(){ if(b) b.disabled=false; m.className='msg err'; m.textContent='Связь оборвалась — откройте документ заново и проверьте, что провелось'; });
+}
+
+// ─────────── расчёты с поставщиками ───────────
+var SUP=null, LED=null;
+function setView(v){
+  $('vDoc').className='chip'+(v==='doc'?' on':''); $('vSup').className='chip'+(v==='sup'?' on':'');
+  $('docView').style.display=v==='doc'?'':'none'; $('supView').style.display=v==='sup'?'':'none';
+  if(v==='sup'&&!SUP) loadSup();
+}
+function bal(x,cur){ return Math.abs(x)<0.005?'<span class="muted">0,00</span>':x>0?'<span class="owe" title="мы должны поставщику">должны '+money(x)+(cur?' '+esc(cur):'')+'</span>':'<span class="adv" title="оплачено больше, чем получено по документам: это наш аванс — или накладная / акт ещё не загружены">оплачено без документов '+money(-x)+(cur?' '+esc(cur):'')+'</span>'; }
+function balShort(x){ return Math.abs(x)<0.005?'<span class="muted">0,00</span>':x>0?'<span class="owe">'+money(x)+'</span>':'<span class="adv">−'+money(-x)+'</span>'; }
+function loadSup(){
+  $('sTb').innerHTML='<tr><td colspan=7 class="center muted">Загрузка…</td></tr>';
+  api({vapi:'finsuplist'}).then(function(r){
+    if(!r||!r.ok){ $('sTb').innerHTML='<tr><td colspan=7 class="center err">'+esc((r&&r.error)||'нет прав')+'</td></tr>'; return; }
+    SUP=r; drawSup();
+  }).catch(function(){ $('sTb').innerHTML='<tr><td colspan=7 class="center err">связь оборвалась</td></tr>'; });
+}
+function drawSup(){
+  if(!SUP) return;
+  var q=$('sQ').value.trim().toLowerCase(), all=$('sAll').checked, n=0, sk=SUP.skipped||{};
+  $('sKpi').innerHTML=(SUP.totals||[]).map(function(t){ return '<span><b class="owe">'+money(t.owed)+'</b>должны поставщикам, '+esc(t.cur)+'</span><span title="оплаты, под которые нет накладной или акта: настоящий аванс — или документ ещё не загружен"><b class="adv">'+money(t.advance)+'</b>оплачено без документов, '+esc(t.cur)+'</span>'; }).join('')
+    +'<span><b>'+esc(SUP.startIso?fmtD(SUP.startIso):'—')+'</b>начало учёта'+(sk.beforeStart?' · документов раньше этой даты: '+sk.beforeStart+' (не входят)':'')+'</span>'
+    +(sk.unrecognized?'<span class="warn"><b>'+sk.unrecognized+'</b>документов не распознано или без суммы — в расчёты не попали</span>':'');
+  $('sTb').innerHTML=SUP.items.map(function(it,i){
+    if(q&&it.name.toLowerCase().indexOf(q)<0) return '';
+    return it.rows.map(function(x){
+      if(!all&&Math.abs(x.balance)<0.005&&!x.docsUnpaid&&!x.paysFree) return '';
+      n++;
+      var open=[]; if(x.docsUnpaid) open.push('документов без оплаты: '+x.docsUnpaid+' на '+money(x.docsUnpaidSum)); if(x.paysFree) open.push('оплат без документов: '+x.paysFree+' на '+money(x.paysFreeSum));
+      return '<tr onclick="openSup(SUP.items['+i+'].key,\''+esc(x.cur)+'\')"><td><b>'+esc(it.name||'без названия')+'</b>'+(it.id?'':' <span class="pill mute" title="в справочнике контрагентов такой карточки нет — имя взято из документа или оплаты">нет карточки</span>')+'</td>'
+        +'<td class="num">'+(x.opening?bal(x.opening):'<span class="muted">—</span>')+'</td><td class="num">'+money(x.docs)+' <span class="muted">· '+x.docsN+'</span></td><td class="num">'+money(x.paid)+'</td><td class="num">'+(x.returns?money(x.returns):'<span class="muted">—</span>')+'</td>'
+        +'<td class="num">'+bal(x.balance,x.cur)+'</td><td class="muted">'+esc(open.join(' · ')||'всё закрыто')+'</td></tr>';
+    }).join('');
+  }).join('')||'<tr><td colspan=7 class="center muted">'+(SUP.items.length?'у всех поставщиков расчёты закрыты — поставьте «и без остатка», чтобы увидеть всех':'расчётов пока нет: нет распознанных накладных и актов с начала учёта')+'</td></tr>';
+}
+function openSup(key,cur,from,to){
+  $('ov').className='scrim ov on'; $('modal').className='modal dlg lg'; if(!LED||LED.key!==key) $('modal').innerHTML='<div class="center muted">Считаю расчёты…</div>';
+  api({vapi:'finsupledger', contr:key, cur:cur||'', from:from||'', to:to||''}).then(function(r){
+    if(!r||!r.ok){ $('modal').innerHTML='<button class="x ic" onclick="closeOv()">✕</button><div class="err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
+    LED=r; renderLed();
+  }).catch(function(){ $('modal').innerHTML='<button class="x ic" onclick="closeOv()">✕</button><div class="err">связь оборвалась</div>'; });
+}
+function ledReload(){ openSup(LED.key, LED.cur, $('lFrom').value, $('lTo').value); }
+function renderLed(){
+  var r=LED, kind={doc:'📄',pay:'💳','return':'↩'};
+  var rows=r.rows.map(function(e){ return '<tr><td>'+esc(fmtD(e.date))+'</td><td>'+kind[e.kind]+' '+esc(e.label)+'</td><td class="num">'+(e.credit?money(e.credit):'')+'</td><td class="num">'+(e.debit?money(e.debit):'')+'</td><td class="num">'+balShort(e.balance)+'</td></tr>'; }).join('');
+  var docs=r.docs.map(function(d){
+    var st=d.left<=0.004?'<span class="pill ok">оплачен</span>':(d.paid>0.004||d.returned>0.004)?'<span class="pill warn">частично</span>':'<span class="pill mute">не оплачен</span>';
+    return '<tr><td>'+esc(d.date)+'</td><td>'+(d.fileId?'<a href="javascript:void(0)" onclick="openDoc(\''+esc(d.fileId)+'\')">'+esc((d.type||'Документ')+' '+(d.docNo||''))+'</a>':esc((d.type||'Документ')+' '+(d.docNo||'')))+'</td>'
+      +'<td class="num">'+money(d.sum)+'</td><td class="num">'+(d.returned?money(d.returned):'')+'</td><td class="num">'+money(d.paid)+'</td><td class="num">'+(d.left>0.004?'<b>'+money(d.left)+'</b>':'')+'</td><td>'+st+'</td></tr>'; }).join('');
+  var dOpts=r.docs.filter(function(d){ return d.left>0.004; }).map(function(d){ return '<option value="'+esc(d.id)+'">'+esc((d.type||'Документ')+' '+(d.docNo||'')+' от '+d.date+' — осталось '+money(d.left))+'</option>'; }).join('');
+  var free=r.freePays.map(function(p,i){ return '<tr><td>'+esc(p.date)+'</td><td>'+esc(p.purpose||'оплата')+(p.invNo?' <span class="muted">· счёт № '+esc(p.invNo)+'</span>':'')+'</td><td class="num">'+money(p.sum)+'</td><td class="num"><b>'+money(p.free)+'</b></td>'
+      +'<td>'+(dOpts?'<select id="lk'+i+'"><option value="">— к документу —</option>'+dOpts+'</select> <button class="sec sm" onclick="linkPay('+i+')">привязать</button>':'<span class="muted">неоплаченных документов нет: это аванс или документ ещё не загружен</span>')+'</td></tr>'; }).join('');
+  $('modal').innerHTML='<button class="x ic" onclick="closeOv()">✕</button><h3>'+esc(r.name||'Поставщик')+'</h3>'
+    +'<div class="muted">'+(r.unp?'УНП '+esc(r.unp)+' · ':'')+'расчёты в '+esc(r.cur)+(r.curs.length>1?' · другие валюты: '+r.curs.filter(function(c){ return c!==r.cur; }).map(function(c){ return '<a href="javascript:void(0)" onclick="openSup(LED.key,\''+esc(c)+'\')">'+esc(c)+'</a>'; }).join(', '):'')
+      +' · учёт с '+esc(r.startIso?fmtD(r.startIso):'первого документа')+'</div>'
+    +'<div class="kpis" style="margin-top:var(--s-3)"><span><b>'+bal(r.closing,r.cur)+'</b>остаток'+(r.to?' на '+esc(fmtD(r.to)):' на сегодня')+'</span><span><b>'+money(r.credit)+'</b>получено по документам за период</span><span><b>'+money(r.debit)+'</b>оплачено и возвращено за период</span><span><b>'+bal(r.opening)+'</b>на начало периода</span></div>'
+    +'<div class="toolbar"><span class="muted">период с</span><input type="date" id="lFrom" value="'+esc(r.from||'')+'" onchange="ledReload()"><span class="muted">по</span><input type="date" id="lTo" value="'+esc(r.to||'')+'" onchange="ledReload()"><span class="msg" id="lmsg"></span></div>'
+    +'<div class="lbl">Ведомость</div><div class="box tbl-wrap"><table class="tbl"><thead><tr><th>Дата</th><th>Операция</th><th class="num" title="наш долг растёт">Получено</th><th class="num" title="наш долг уменьшается">Оплачено, возвращено</th><th class="num" title="красным — мы должны; зелёным с минусом — оплачено больше, чем получено по документам">Остаток долга</th></tr></thead><tbody>'
+      +(rows||'<tr><td colspan=5 class="center muted">за период движений нет</td></tr>')+'</tbody></table></div>'
+    +'<div class="lbl">Документы <span class="muted" style="font-weight:normal;text-transform:none;letter-spacing:0">— оплаты закрывают их по номеру счёта из «основания», остальное по порядку дат</span></div><div class="box tbl-wrap"><table class="tbl"><thead><tr><th>Дата</th><th>Документ</th><th class="num">Сумма</th><th class="num">Возвращено</th><th class="num">Оплачено</th><th class="num">Осталось</th><th></th></tr></thead><tbody>'
+      +(docs||'<tr><td colspan=7 class="center muted">документов нет</td></tr>')+'</tbody></table></div>'
+    +(free?'<div class="lbl">Оплаты без документа</div><div class="box tbl-wrap"><table class="tbl"><thead><tr><th>Дата</th><th>Оплата</th><th class="num">Сумма</th><th class="num">Свободно</th><th></th></tr></thead><tbody>'+free+'</tbody></table></div>':'')
+    +(r.mismatch?'<div class="note warn" style="margin-top:var(--s-2)"><div>Оплат в другой валюте, чем документ, к которому они привязаны: '+r.mismatch+'. Они учтены в своей валюте.</div></div>':'')
+    +'<div class="lbl">Остаток на начало учёта'+(r.startIso?' ('+esc(fmtD(r.startIso))+')':'')+'</div>'
+    +(r.id?'<div class="toolbar"><select id="opSign"><option value="1"'+(r.openingStart>=0?' selected':'')+'>мы были должны</option><option value="-1"'+(r.openingStart<0?' selected':'')+'>был наш аванс (переплата)</option></select>'
+        +'<input id="opAmt" inputmode="decimal" placeholder="сумма" value="'+(r.openingStart?String(Math.abs(r.openingStart)).replace('.',','):'')+'" style="width:140px"> <span class="muted">'+esc(r.cur)+'</span>'
+        +'<button class="sec sm" onclick="saveOpening()">Сохранить</button><span class="muted">берётся из акта сверки или 1С на эту дату; пусто — ноля</span><span class="msg" id="opMsg"></span></div>'
+      :'<div class="muted">У этого поставщика нет карточки в справочнике контрагентов — заведите её, чтобы вписать остаток на начало.</div>');
+}
+function saveOpening(){
+  var m=$('opMsg'), v=$('opAmt').value.trim().replace(',','.'), amt=v===''?'':String((Number(v)||0)*Number($('opSign').value));
+  m.className='msg'; m.textContent='Сохраняю…';
+  apiPost({vapi:'finsupopening', data:JSON.stringify({counterpartyId:LED.id, cur:LED.cur, amount:amt, note:''})}).then(function(r){
+    if(!r||!r.ok){ m.className='msg err'; m.textContent=(r&&r.error)||'не сохранилось'; return; }
+    SUP=null; loadSup(); ledReload();
+  }).catch(function(){ m.className='msg err'; m.textContent='связь оборвалась'; });
+}
+function linkPay(i){
+  var doc=($('lk'+i)||{}).value, m=$('lmsg'); if(!doc) return;
+  m.className='msg'; m.textContent='Привязываю…';
+  api({vapi:'finsupdoclink', id:LED.freePays[i].id, doc:doc}).then(function(r){
+    if(!r||!r.ok){ m.className='msg err'; m.textContent=(r&&r.error)||'не вышло'; return; }
+    SUP=null; loadSup(); ledReload();
+  }).catch(function(){ m.className='msg err'; m.textContent='связь оборвалась'; });
 }
 
 // период по умолчанию — последние 90 дней
