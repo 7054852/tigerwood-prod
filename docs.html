@@ -273,8 +273,23 @@ function renderDoc(){
       +((h.status&&h.status!=='подтверждён'&&h.status!=='разнесён')
         ? '<button onclick="confirmFromCard()" title="реквизиты проверены — документ уйдёт из «на проверке» в общий список">✓ Реквизиты верны</button> ' : '')
       +'<button class="green" onclick="commitDoc()">✓ Провести документ</button> '
+      +(h.status!=='разнесён' ? '<button class="sec" id="rescanBtn" onclick="rescanDoc()" title="прочитать файл ещё раз: шапка, поправленная вручную, не меняется; разнесённые строки не трогаются">🔄 Распознать заново</button> ' : '')
       +'<span class="msg" id="dmsg"></span></div>';
   for(var k=0;k<POS.length;k++) recalcPos(k);
+}
+// 🔄 распознать заново (11.11.2026): если строки уже есть — второе нажатие (confirm в Telegram не работает)
+var RESCAN_ARMED=false;
+function rescanDoc(){
+  var m=$('dmsg'), b=$('rescanBtn'), fid=DOC&&DOC.fileId;
+  var lines=POS.some(function(p){ return p.status!=='разнесена'; });
+  if(lines&&!RESCAN_ARMED){ RESCAN_ARMED=true; m.className='msg err'; m.textContent='Строки распознаются заново — правки в неразнесённых строках пропадут. Нажмите ещё раз, чтобы продолжить.';
+    setTimeout(function(){ RESCAN_ARMED=false; },8000); return; }
+  RESCAN_ARMED=false; if(b) b.disabled=true; m.className='msg'; m.textContent='Распознаю… до минуты';
+  api({vapi:'docrecognize', file:fid}).then(function(r){
+    if(b) b.disabled=false;
+    if(!r||(!r.ok&&!r.recognized)){ m.className='msg err'; m.textContent=(r&&r.error)||'не распозналось'; return; }
+    load(); openDoc(fid);
+  }).catch(function(){ if(b) b.disabled=false; m.className='msg err'; m.textContent='Долгий ответ — распознавание могло пройти, обновите документ через минуту'; });
 }
 // сумма позиций против суммы документа: расхождение почти всегда значит лишнюю или пропущенную строку
 function sumCheckHtml(){
