@@ -56,6 +56,11 @@
   .cand{ text-align:left; white-space:normal; }
   .mres{ border:1px solid var(--line); border-radius:var(--r-ctl); margin:calc(-1 * var(--s-1)) 0 var(--s-2); max-height:260px; overflow:auto; }
   .mres:empty{ display:none; }
+  /* окно «Загрузка из 1С»: прокручивается середина, кнопки всегда видны */
+  #modal.imp{ display:flex; flex-direction:column; }
+  #modal.imp #i1c{ flex:1 1 auto; min-height:0; overflow:auto; padding-right:var(--s-2); }
+  #modal.imp .dfoot{ position:static; flex:none; }
+  #modal.imp .ihead{ display:flex; align-items:center; gap:var(--s-2); flex:none; } #modal.imp .ihead h3{ flex:1; margin:0; } #modal.imp .ihead .x{ position:static; float:none; margin:0; }
   .mrow{ padding:var(--s-2) var(--s-3); cursor:pointer; border-bottom:1px solid var(--line); font:var(--t-small); }
   .mrow:last-child{ border-bottom:0; } .mrow:hover{ background:var(--bg2); }
   .newmat{ background:var(--bg2); border-radius:var(--r-ctl); padding:var(--s-2); margin-bottom:var(--s-2); }
@@ -77,6 +82,8 @@
     <button class="sec" onclick="load()">Обновить</button>
     <button class="sec" onclick="scanNow()" title="распознать ближайшие документы прямо сейчас, не дожидаясь фонового прогона">⚡ Распознать сейчас</button>
     <button class="sec" onclick="exportDocs()" title="файл со всеми реквизитами — бухгалтеру останется загрузить его в 1С">⬇️ Выгрузить для 1С</button>
+    <button class="sec" onclick="document.getElementById('upl1c').click()" title="карточка счёта 60.1 из 1С за период (Excel): система найдёт документы, которых у нас нет, и покажет расхождения — сначала предпросмотр, ничего не записывается">⬆️ Загрузить из 1С</button>
+    <input type="file" id="upl1c" accept=".xls,.xlsx" style="display:none" onchange="pick1c(this.files)">
     <button class="sec" onclick="showFixes()" title="что бухгалтер чаще всего исправляет за распознаванием — по этому списку уточняется промпт">📊 Что чаще правят</button>
     <button onclick="document.getElementById('upl').click()" title="накладные, акты, УПД, чеки — сразу несколько файлов">⬆️ Загрузить документы</button>
     <input type="file" id="upl" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.doc,.docx,.xls,.xlsx" style="display:none" onchange="uploadPicked(this.files)">
@@ -138,7 +145,7 @@ function load(quiet){
     ROWS=r.rows||[]; STAT=r.stat||{}; CLASSES=r.classes||[]; CLASSMAP=r.classMap||{};
     SERVICES=r.services||SERVICES; TYPES=r.types||TYPES; ALERT=r.alertPct||ALERT;
     clearTimeout(window._poll); if(ROWS.some(function(x){ return x.recognizing; })) window._poll=setTimeout(function(){ if(!$('dbody')&&!UPQ.length) load(1); },6000);   // пока идёт распознавание — обновляем сами
-    $('filters').innerHTML=[['','все'],['check','🔔 на проверке — '+(STAT.check||0)],['todo','разнести — '+(STAT.todo||0)],['done','разнесённые — '+(STAT.done||0)],['wait','ждут распознавания — '+(STAT.noscan||0)],['unpaid','не оплачены — '+(STAT.unpaid||0)]]
+    $('filters').innerHTML=[['','все'],['check','🔔 на проверке — '+(STAT.check||0)],['todo','разнести — '+(STAT.todo||0)],['done','разнесённые — '+(STAT.done||0)],['wait','ждут распознавания — '+(STAT.noscan||0)],['unpaid','не оплачены — '+(STAT.unpaid||0)]].concat(STAT.noFile?[['nofile','из 1С без скана — '+STAT.noFile]]:[])
       .map(function(f){ return '<span class="chip'+(FILT===f[0]?' on':'')+'" onclick="setFilt(\''+f[0]+'\')">'+esc(f[1])+'</span>'; }).join('');
     draw();
   }).catch(function(e){ $('list').innerHTML='<div class="center err">Связь оборвалась: '+esc(e.message||e)+'</div>'; });
@@ -156,7 +163,14 @@ function statePill(r){
   if(r.state==='разнести') return '<span class="pill warn">⚠ разнести '+(r.positions-r.placed)+' из '+r.positions+'</span>';
   if(r.state==='не распозналось') return '<span class="pill bad">✗ не распозналось</span>';
   if(r.state==='нет позиций') return '<span class="pill bad">✕ нет позиций</span>';
+  if(r.state==='без скана') return '<span class="pill info" title="документ заведён из выгрузки 1С: в расчётах с поставщиком участвует, скана и позиций нет. Загрузите скан — система сама соединит его с этой записью">из 1С · без скана</span>';
   return '<span class="pill mute">⏳ ждёт распознавания</span>';
+}
+// документ найден в выгрузке 1С: суммы равны — «есть в 1С», не равны — расхождение (наш документ со сканом система сама не правит)
+function onecPill(r){
+  if(!r.onec) return '';
+  if(Math.abs(r.onec.sum-(r.sumGross||0))>=0.01) return '<span class="pill bad" title="в 1С этот документ на '+money(r.onec.sum)+', у нас на '+money(r.sumGross)+' — сверьте со сканом; выгрузка 1С от '+esc(r.onec.at)+'">≠ 1С: '+money(r.onec.sum)+'</span>';
+  return r.exported||r.noFile?'':'<span class="pill ok" title="документ есть в 1С, сумма совпадает; выгрузка 1С от '+esc(r.onec.at)+'">есть в 1С</span>';
 }
 function draw(){
   var q=$('q').value.trim().toLowerCase();
@@ -166,6 +180,7 @@ function draw(){
     if(FILT==='done'&&r.state!=='разнесено') return false;
     if(FILT==='wait'&&r.state!=='ждёт распознавания'&&r.state!=='не распозналось') return false;
     if(FILT==='unpaid'&&!(r.pay&&r.pay.left>0.004&&!r.rejected)) return false;
+    if(FILT==='nofile'&&r.state!=='без скана') return false;
     if(q&&(r.sup+' '+r.docNo).toLowerCase().indexOf(q)<0) return false;
     return true;
   });
@@ -191,8 +206,9 @@ function docCard(r){
         +(r.recognizing?'<span class="pill mute">🔍 распознаётся…</span>':'')
         +(r.dup?'<span class="pill bad" title="такой контрагент и номер уже есть">✕ возможно дубль</span>':'')
         +(r.exported?'<span class="pill ok" title="выгружен в 1С '+esc(r.exported)+'">1С ✓</span>':'')
+        +onecPill(r)
         +'<span class="sum">'+money(r.sum)+' '+esc(r.cur)+'</span></div>'
-      +'<div class="sub"><span>'+esc(r.type)+' '+esc(r.docNo)+'</span>'
+      +'<div class="sub"><span>'+esc(r.type||(r.noFile?r.note1c:''))+(r.docNo?(r.type?' ':' № ')+esc(r.docNo):'')+'</span>'
         +(r.unp?'<span>УНП '+esc(r.unp)+'</span>':'')
         +(r.positions?'<span>позиций: '+r.positions+'</span>':'')
         +'<span style="margin-left:auto">'
@@ -299,6 +315,123 @@ function exportDocs(all){
   }).catch(function(){ m.className='msg err'; m.textContent='Связь оборвалась'; });
 }
 
+// ─────────── ЗАГРУЗКА ИЗ 1С (12.11.2026): карточка счёта 60.1 → предпросмотр (ничего не пишет) → загрузка ───────────
+var IMP=null;   // {b64, name, map:{название в 1С: id карточки}, edit:{название:1}, r: ответ предпросмотра}
+function pick1c(files){
+  if(!files||!files.length) return; var f=files[0]; $('upl1c').value='';
+  var fr=new FileReader();
+  fr.onload=function(){ IMP={b64:String(fr.result).split(',')[1]||'', name:f.name, map:{}, edit:{}, r:null}; open1c(); };
+  fr.onerror=function(){ $('smsg').className='msg err'; $('smsg').textContent='не прочитать файл'; };
+  fr.readAsDataURL(f);
+}
+function open1c(){
+  $('ov').className='scrim ov on'; $('modal').className='modal dlg lg imp';
+  $('modal').innerHTML='<div class="ihead"><h3>Загрузка из 1С</h3><button class="x ic" onclick="closeOv()">✕</button></div><div id="i1c"><div class="center muted">Читаю файл «'+esc(IMP.name)+'» и сверяю с документами…</div></div><div id="f1c"></div>';
+  prev1c();
+}
+function prev1c(after){
+  apiPost({vapi:'doc1cpreview', b64:IMP.b64, name:IMP.name, map:JSON.stringify(IMP.map)}).then(function(r){
+    if(!$('i1c')) return;
+    if(!r||!r.ok){ $('f1c').innerHTML=''; $('i1c').innerHTML='<div class="note bad"><div><b>Файл не подошёл.</b> '+esc((r&&r.error)||'нет прав')+'</div></div>'
+      +'<div class="muted" style="margin-top:var(--s-2)">Нужна выгрузка из 1С: отчёт «Карточка счёта», счёт 60.1, за нужный период, сохранённый как таблица Excel.</div>'; return; }
+    IMP.r=r; draw1c(after);
+  }).catch(function(){ if($('i1c')) $('i1c').innerHTML='<div class="err">связь оборвалась — закройте окно и выберите файл ещё раз</div>'; });
+}
+function t1c(head, rows){ return '<div class="box tbl-wrap" style="max-height:none"><table class="tbl sm"><thead><tr>'+head.map(function(h){ return '<th'+(h.charAt(0)==='#'?' class="num">'+esc(h.slice(1)):'>'+esc(h))+'</th>'; }).join('')+'</tr></thead><tbody>'+rows.join('')+'</tbody></table></div>'; }
+function s1c(title, n, hint, body, open){ return n? '<details class="twp-d" style="margin-top:var(--s-3)"'+(open?' open':'')+'><summary>'+title+' — '+n+'</summary>'+(hint?'<div class="muted" style="font:var(--t-small);margin-bottom:var(--s-2)">'+hint+'</div>':'')+body+'</details>' : ''; }
+function sup1c(x){ return esc(x.name)+(x.cpName&&x.cpName!==x.name?' <span class="muted">→ '+esc(x.cpName)+'</span>':''); }
+function ourLink(o){ return o? '<a href="javascript:void(0)" onclick="openDoc(\''+o.fileId+'\')">'+esc((o.type||'документ')+' '+(o.docNo||'б/н'))+'</a>' : ''; }
+function draw1c(after){
+  var r=IMP.r, f=r.file, st=r.stat, box=$('i1c'); if(!box) return;
+  var bad=f.problems.length, cpl='<datalist id="cpl1c">'+r.cps.map(function(c){ return '<option value="'+esc(c.name)+'">'; }).join('')+'</datalist>';
+  var supRows=r.suppliers.filter(function(x){ return x.docs||!x.cpId; }).map(function(x,i){
+    var pick=!x.cpId||IMP.edit[x.name];
+    return '<tr><td>'+esc(x.name)+'</td><td>'+(pick
+        ? (IMP.mk===x.name
+          ? '<input id="n1c'+i+'" value="'+esc(cardName1c(x.name))+'" style="min-width:260px" title="название новой карточки — поправьте, если нужно"> <button class="sm" onclick="new1c('+i+')">Создать карточку</button> <a href="javascript:void(0)" class="muted" onclick="IMP.mk=\'\';draw1c()">отмена</a>'
+          : '<input list="cpl1c" id="m1c'+i+'" placeholder="начните вводить название карточки…" style="min-width:260px" onchange="map1c('+i+')">'
+            +(x.cpId?'':' <a href="javascript:void(0)" style="white-space:nowrap" onclick="IMP.mk=IMP.sup['+i+'].name;draw1c()" title="такого поставщика в Прохабе ещё нет — завести ему карточку">＋ новая карточка</a>'))
+        : esc(x.cpName)+' <a href="javascript:void(0)" class="muted" onclick="IMP.edit[IMP.r.suppliers['+r.suppliers.indexOf(x)+'].name]=1;draw1c()" title="выбрать другую карточку для этого названия">сменить</a>')
+      +'</td><td class="num">'+x.docs+'</td><td class="num">'+money(x.sum)+'</td></tr>'; });
+  IMP.sup=r.suppliers.filter(function(x){ return x.docs||!x.cpId; });
+  var p=r.pays;
+  box.innerHTML=cpl
+    +'<div class="muted">Карточка счёта '+esc(f.account)+' за '+esc(f.from)+' – '+esc(f.to)+' · проводок в файле: '+f.entries+'</div>'
+    +(bad? '<div class="note bad" style="margin-top:var(--s-2)"><div><b>Файл прочитан с ошибкой — загрузка закрыта.</b> '+esc(f.problems.join('; '))+'. Пришлите этот файл разработчику.</div></div>'
+         : '<div class="note ok" style="margin-top:var(--s-2)"><div>✓ Файл прочитан полностью: сумма проводок сходится с итогом «Обороты за период» в самом файле — по кредиту '+money(f.turnC)+', по дебету '+money(f.turnD)+'.</div></div>')
+    +(f.warnings.length?'<div class="note warn" style="margin-top:var(--s-2)"><div>'+esc(f.warnings.join('; '))+'</div></div>':'')
+    +(after?'<div class="note ok" style="margin-top:var(--s-2)"><div><b>Загружено.</b> '+after+'</div></div>':'')
+    +'<div class="kpis" style="margin-top:var(--s-3)">'
+      +'<span><b>'+st.news+'</b>новых — будут заведены'+(st.news?'<br>на '+money(st.newsSum)+' BYN с НДС':'')+'</span>'
+      +'<span><b>'+st.same+'</b>уже есть у нас,<br>суммы совпадают</span>'
+      +'<span><b>'+st.differ+'</b>есть у нас,<br>но расходятся с 1С</span>'
+      +(st.noSup?'<span><b class="err">'+st.noSup+'</b>ждут карточки поставщика<br>на '+money(st.noSupSum)+' BYN — пока не заводятся</span>':'')
+      +(st.changed?'<span><b>'+st.changed+'</b>изменились в 1С<br>после прошлой загрузки</span>':'')
+      +(p?'<span><b>'+p.missing.length+'</b>оплат из 1С<br>нет в Прохабе</span>':'')
+    +'</div>'
+    +(st.before?'<div class="muted" style="font:var(--t-small)">Ещё '+st.before+' док. в файле — раньше начала расчётов с поставщиками ('+esc(r.start)+'): они уже учтены остатком на начало и не загружаются.</div>':'')
+    +s1c('Поставщики файла', IMP.sup.length, 'Слева — как поставщик записан в 1С, справа — его карточка в Прохабе. Если карточка не нашлась сама, выберите её из списка или заведите новую: соответствие запомнится для следующих загрузок.'
+        +(st.unknownSup?' <b class="err">Не опознано: '+st.unknownSup+' — их документы не заводятся, пока карточка не выбрана.</b>':''), t1c(['Как в 1С','Карточка в Прохабе','#Документов','#Сумма'], supRows), st.unknownSup>0)
+    +s1c('Новые документы', r.news.length, 'Их нет в Прохабе. Будут заведены «из 1С · без скана»: поставщик, номер, дата и сумма — как в 1С. Это долг перед поставщиком.',
+        t1c(['Дата','Документ 1С','Поставщик','#Сумма с НДС','#в т. ч. НДС'], r.news.map(function(x){ return '<tr><td>'+esc(x.date)+'</td><td>'+esc(x.kind+' '+x.no)+(x.note?'<div class="muted">'+esc(x.note)+'</div>':'')+'</td><td>'+sup1c(x)+'</td><td class="num">'+money(x.sum)+'</td><td class="num">'+(x.vat?money(x.vat):'—')+'</td></tr>'; })), r.news.length<=30)
+    +s1c('Ждут карточки поставщика', r.nosup.length, 'Поставщик из 1С не опознан, поэтому документы не заводятся: тот же документ мог прийти сканом на настоящую карточку, и долг посчитался бы дважды. Выберите или создайте карточку в блоке «Поставщики файла» выше.',
+        t1c(['Дата','Документ 1С','Поставщик в 1С','#Сумма с НДС'], r.nosup.map(function(x){ return '<tr><td>'+esc(x.date)+'</td><td>'+esc(x.kind+' '+x.no)+'</td><td>'+esc(x.name)+'</td><td class="num">'+money(x.sum)+'</td></tr>'; })))
+    +s1c('Расходятся с 1С', r.differ.length, 'Документ есть и у нас, и в 1С, но отличается. Наш документ система не меняет: откройте его, сверьте со сканом и поправьте там, где ошибка, — у нас или в 1С.',
+        t1c(['Дата в 1С','Документ 1С','Поставщик','#Сумма в 1С','Наш документ','Что расходится'], r.differ.map(function(x){ return '<tr><td>'+esc(x.date)+'</td><td>'+esc(x.kind+' '+x.no)+'</td><td>'+sup1c(x)+'</td><td class="num">'+money(x.sum)+'</td><td>'+ourLink(x.our)+'</td><td>'+esc(x.notes.join('; '))+'</td></tr>'; })), true)
+    +s1c('Изменились в 1С', r.changed.length, 'Эти записи заведены из 1С раньше, а в 1С их с тех пор исправили. При загрузке запись обновится по 1С.',
+        t1c(['Дата','Документ 1С','Поставщик','#Сумма в 1С','Что изменилось'], r.changed.map(function(x){ return '<tr><td>'+esc(x.date)+'</td><td>'+esc(x.kind+' '+x.no)+'</td><td>'+sup1c(x)+'</td><td class="num">'+money(x.sum)+'</td><td>'+esc(x.notes.join('; ')||'номер или поставщик')+'</td></tr>'; })), true)
+    +s1c('Есть у нас, нет в выгрузке 1С', r.onlyOurs.length, 'Накладные и акты за период файла, которых в выгрузке нет: ещё не внесены в 1С либо записаны там на другого поставщика или другой датой.',
+        t1c(['Дата','Документ','Поставщик','#Сумма'], r.onlyOurs.map(function(o){ return '<tr><td>'+esc(o.date)+'</td><td>'+ourLink(o)+'</td><td>'+esc(o.sup)+'</td><td class="num">'+money(o.sum)+'</td></tr>'; })))
+    +s1c('Отметка «есть в 1С» будет снята', r.unmark.length, 'Эти наши документы были найдены в прошлой выгрузке 1С, а в этой за тот же период их нет: в 1С документ удалили или перенесли. Отметка снимется — документ снова попадёт в «Выгрузить для 1С».',
+        t1c(['Дата','Документ','Поставщик','#Сумма'], r.unmark.map(function(o){ return '<tr><td>'+esc(o.date)+'</td><td>'+ourLink(o)+'</td><td>'+esc(o.sup)+'</td><td class="num">'+money(o.sum)+'</td></tr>'; })), true)
+    +s1c('Заведены из 1С, а в 1С их больше нет', r.gone.length, 'В прошлой выгрузке эти документы были, в этой — нет (в 1С удалили или перенесли на другую дату вне периода). Система их не трогает: если документ лишний — удалите его в реестре.',
+        t1c(['Дата','Документ','Поставщик','#Сумма'], r.gone.map(function(o){ return '<tr><td>'+esc(o.date)+'</td><td>'+ourLink(o)+'</td><td>'+esc(o.sup)+'</td><td class="num">'+money(o.sum)+'</td></tr>'; })), true)
+    +s1c('Удалены у нас вручную', r.deleted.length, 'Эти записи из 1С вы уже удаляли в реестре — повторно они не заводятся.',
+        t1c(['Дата','Документ 1С','Поставщик','#Сумма'], r.deleted.map(function(x){ return '<tr><td>'+esc(x.date)+'</td><td>'+esc(x.kind+' '+x.no)+'</td><td>'+sup1c(x)+'</td><td class="num">'+money(x.sum)+'</td></tr>'; })))
+    +(p? s1c('Оплаты из 1С, которых нет в Прохабе', p.missing.length, 'Всего оплат поставщикам в файле: '+p.in1c+', из них найдено в Прохабе: '+p.matched+' (тот же получатель и сумма, дата в пределах трёх дней). Остальные — ниже: обычно это ещё не загруженная банковская выписка, наличные или зачёт. Сами оплаты загрузка не создаёт.',
+        t1c(['Дата','Документ 1С','Получатель','#Сумма'], p.missing.map(function(x){ return '<tr><td>'+esc(x.date)+'</td><td>'+esc(x.doc)+'</td><td>'+esc(x.name)+'</td><td class="num">'+money(x.sum)+'</td></tr>'; })))
+      +s1c('Оплаты в Прохабе, которых нет в 1С', p.onlyOurs.length, 'Оплаченные расходы поставщикам за период файла, которым не нашлось пары в 1С: не проведены в 1С, проведены по другому счёту или на другого получателя.',
+        t1c(['Дата','Получатель','#Сумма','Назначение'], p.onlyOurs.map(function(x){ return '<tr><td>'+esc(x.date)+'</td><td>'+esc(x.name)+'</td><td class="num">'+money(x.sum)+'</td><td>'+esc(x.purpose)+'</td></tr>'; }))) : '')
+    +s1c('Прочие операции по счёту', r.other.length+r.refunds.length, 'Зачёты, возвраты, сторно и возвраты денег от поставщика. Не загружаются — показаны, чтобы было видно, из чего ещё складывается остаток в 1С.',
+        t1c(['Дата','Документ 1С','Поставщик','Что это','#Дебет','#Кредит'], r.refunds.map(function(x){ return '<tr><td>'+esc(x.date)+'</td><td>'+esc(x.doc)+'</td><td>'+esc(x.name)+'</td><td>возврат денег от поставщика</td><td class="num"></td><td class="num">'+money(x.sum)+'</td></tr>'; })
+          .concat(r.other.map(function(x){ return '<tr><td>'+esc(x.date)+'</td><td>'+esc(x.doc)+'</td><td>'+esc(x.name)+'</td><td>'+esc(x.what)+(x.corr?' <span class="muted">(счёт '+esc(x.corr)+')</span>':'')+'</td><td class="num">'+(x.side==='D'?money(x.sum):'')+'</td><td class="num">'+(x.side==='C'?money(x.sum):'')+'</td></tr>'; }))))
+    ;
+  $('f1c').innerHTML='<div class="dfoot">'
+      +(r.locked ? '<span class="muted">🔒 '+esc(r.locked)+'</span> ' : r.canLoad
+        ? (bad||!(st.news+st.changed+st.toMark+st.unmark) ? '<span class="muted">'+(bad?'':st.noSup?'Загружать пока нечего: выберите карточки поставщиков — тогда их документы ('+st.noSup+') можно будет завести.':'Всё из этого файла уже загружено — новых документов и изменений нет.')+'</span> '
+          : '<button class="green" id="go1c" onclick="apply1c()">'+(st.news||st.changed?'Загрузить: завести '+st.news+(st.changed?', обновить '+st.changed:''):st.toMark?'Отметить найденные «есть в 1С» — '+st.toMark:'Снять отметку «есть в 1С» — '+st.unmark)+'</button> '
+            +(st.noSup?'<span class="muted">ещё '+st.noSup+' — после выбора карточки поставщика</span> ':''))
+        : '')
+      +'<button class="sec" onclick="closeOv()">Закрыть</button> <span class="msg" id="m1c"></span></div>';
+}
+// «РЕЧИЦАДРЕВ ОАО» → «ОАО "РЕЧИЦАДРЕВ"»: в 1С форма стоит в конце, в карточке — в начале; название можно поправить перед созданием
+function cardName1c(n){ var m=/^(.*\S)\s+(ООО|ОАО|ЗАО|ОДО|СООО|ИООО|ЧУП|ЧТУП|ЧПУП|ЧНПУП|ЧТПУП|УП|РУП|КУП|ГП|ПО|ИП)$/.exec(String(n).trim()); return !m? String(n).trim() : m[2]==='ИП'? 'ИП '+m[1] : m[2]+' "'+m[1]+'"'; }
+function new1c(i){
+  var x=IMP.sup[i], name=(($('n1c'+i)||{}).value||'').trim(), m=$('m1c'); if(!x||!name) return;
+  if(m){ m.className='msg'; m.textContent='Создаю карточку…'; }
+  apiPost({vapi:'fincontrsave', data:JSON.stringify({name:name, type:/^ИП\s/.test(name)?'ИП':'юр'})}).then(function(r){
+    if(!r||!r.ok||!r.id){ if(m){ m.className='msg err'; m.textContent=(r&&r.error)||'карточка не создана'; } return; }
+    IMP.map[x.name]=r.id; IMP.mk=''; delete IMP.edit[x.name];
+    $('f1c').innerHTML=''; $('i1c').innerHTML='<div class="center muted">Пересчитываю…</div>'; prev1c();
+  }).catch(function(){ if(m){ m.className='msg err'; m.textContent='связь оборвалась'; } });
+}
+// выбрали карточку для названия из 1С — пересчитываем предпросмотр с этим соответствием (в базу оно попадёт только при загрузке)
+function map1c(i){
+  var x=IMP.sup[i], v=($('m1c'+i)||{}).value||'', c=null; if(!x) return;
+  IMP.r.cps.forEach(function(k){ if(k.name===v) c=k; });
+  if(!c){ if(v){ $('m1c').className='msg err'; $('m1c').textContent='выберите карточку из списка'; } return; }
+  IMP.map[x.name]=c.id; delete IMP.edit[x.name];
+  $('f1c').innerHTML=''; $('i1c').innerHTML='<div class="center muted">Пересчитываю…</div>'; prev1c();
+}
+function apply1c(){
+  var b=$('go1c'), m=$('m1c'); if(!b||b.disabled) return; b.disabled=true; m.className='msg'; m.textContent='Загружаю…';
+  apiPost({vapi:'doc1capply', b64:IMP.b64, name:IMP.name, map:JSON.stringify(IMP.map)}).then(function(r){
+    if(!r||!r.ok){ b.disabled=false; m.className='msg err'; m.textContent=(r&&r.error)||'не вышло'; return; }
+    var t='Заведено документов: '+r.created+(r.created?' на '+money(r.createdSum)+' BYN':'')+' · отмечено «есть в 1С»: '+r.marked+(r.updated?' · обновлено по 1С: '+r.updated:'')+(r.unmarked?' · отметка снята: '+r.unmarked:'')+(r.moved?' · перенесено на другую карточку: '+r.moved:'')+(r.differ?' · расходятся: '+r.differ:'')+'.';
+    IMP.map={}; load(1); prev1c(t);
+  }).catch(function(){ b.disabled=false; m.className='msg err'; m.textContent='связь оборвалась — проверьте реестр и повторите: повторная загрузка ничего не задвоит'; });
+}
+
 // ─────────── карточка документа (11.11.2026: файл слева, строки справа; материал, листы и цену считает сервер) ───────────
 var DOC=null, POS=[], MATS=[], EDIT={}, NEWM={}, FIND={}, ALERT=5, DMSG=null, SETL=null, REJ=false, RETS=[], RET=null;
 var ORIGIN=(function(){ try{ return new URL(BASE).origin; }catch(e){ return ''; } })();
@@ -364,14 +497,21 @@ function renderDoc(){
     +'<h3>'+esc(h.sup||'без поставщика')+'</h3>'
     +'<div class="muted">'+esc(h.type||'')+' '+esc(h.docNo||'')+' · '+esc(h.date?fmtD(h.date):'')+' · '+esc(h.cur||'BYN')
       +(h.unp?(' · УНП '+esc(h.unp)):'')+(h.dogovor?(' · '+esc(h.dogovor)):'')+'</div>'
-    +'<div class="muted" style="font:var(--t-small);margin-top:var(--s-1)">Реквизиты пойдут в 1С — если распознались неверно: '
-      +'<a href="javascript:void(0)" onclick="editHead()">✎ изменить шапку</a>'
-      +(h.file?' · <a href="'+esc(h.file)+'" target="_blank">открыть файл на Диске</a>':'')+'</div>'
+    +(h.noFile
+      ? '<div class="note info" style="margin-top:var(--s-2)"><div><b>Документ заведён из выгрузки 1С, скана нет.</b> '+(h.note1c?esc(h.note1c)+'. ':'')
+          +'В расчётах с поставщиком он участвует. Когда загрузите скан этой накладной или акта через «⬆️ Загрузить документы», система сама соединит его с этой записью — второго долга не появится. '
+          +'<a href="javascript:void(0)" onclick="editHead()">✎ изменить шапку</a></div></div>'
+      : '<div class="muted" style="font:var(--t-small);margin-top:var(--s-1)">Реквизиты пойдут в 1С — если распознались неверно: '
+        +'<a href="javascript:void(0)" onclick="editHead()">✎ изменить шапку</a>'
+        +(h.file?' · <a href="'+esc(h.file)+'" target="_blank">открыть файл на Диске</a>':'')+'</div>')
+    +(h.onec&&(!h.noFile||Math.abs(h.onec.sum-(h.sumGross||0))>=0.01) ? (Math.abs(h.onec.sum-(h.sumGross||0))>=0.01
+        ? '<div class="note bad" style="margin-top:var(--s-2)"><div><b>Расходится с 1С:</b> в 1С документ на '+money(h.onec.sum)+', у нас на '+money(h.sumGross)+' '+esc(h.cur||'BYN')+' (выгрузка 1С от '+esc(h.onec.at)+'). Сверьте со сканом: ошибка либо в распознавании, либо в 1С.</div></div>'
+        : '<div class="muted" style="font:var(--t-small);margin-top:var(--s-1)">✓ Есть в 1С, сумма совпадает (выгрузка от '+esc(h.onec.at)+'). Обратно в 1С этот документ не выгружается.</div>') : '')
     +settleHtml()
     +returnsHtml()
     +sumCheckHtml()
     +(up?'<div class="note warn" style="margin-top:var(--s-2)"><div><b>⚠ Цена выросла у '+up+' '+(up===1?'строки':'строк')+'</b> больше чем на '+qf(ALERT)+' % против прошлой закупки — проверьте, согласовано ли это с директором.</div></div>':'')
-    +'<div class="lbl">Позиции — '+act.length+', разнесено '+done+(skipped?(' · убрано '+skipped):'')+'</div>'
+    +(h.noFile&&!POS.length?'':'<div class="lbl">Позиции — '+act.length+', разнесено '+done+(skipped?(' · убрано '+skipped):'')+'</div>')
     +POS.map(function(p,i){ return posCard(p,i); }).join('')
     +'<div class="dfoot">'
       +((h.status&&h.status!=='подтверждён'&&h.status!=='разнесён')
@@ -379,7 +519,7 @@ function renderDoc(){
       +(done<act.length&&!h.rejected?'<button class="green" id="commitBtn" onclick="commitDoc()">✓ Провести документ</button> ':'')
       +(!h.rejected&&POS.some(function(p){ return p.status==='разнесена'&&p.cls!=='услуга'; }) ? '<button class="sec" onclick="openReturn()" title="вернуть поставщику весь товар или часть: система выпишет нашу ТН или ТТН на бланке и уменьшит долг поставщику">↩ Возврат поставщику</button> ' : '')
       +(!h.rejected&&!done ? '<button class="sec" onclick="REJ=true;renderDoc()" title="товар не приняли или документ выставлен ошибочно: останется в реестре, но долгом перед поставщиком считаться не будет">🚫 Не принят</button> ' : '')
-      +(h.status!=='разнесён' ? '<button class="sec" id="rescanBtn" onclick="rescanDoc()" title="прочитать файл ещё раз: шапка, поправленная вручную, не меняется; разнесённые строки не трогаются">🔄 Распознать заново</button> ' : '')
+      +(h.status!=='разнесён'&&!h.noFile ? '<button class="sec" id="rescanBtn" onclick="rescanDoc()" title="прочитать файл ещё раз: шапка, поправленная вручную, не меняется; разнесённые строки не трогаются">🔄 Распознать заново</button> ' : '')
       +'<span class="msg" id="dmsg"></span></div>';
   if(DMSG){ var m=$('dmsg'); m.className='msg '+DMSG.cls; m.innerHTML=DMSG.html; DMSG=null; }
   box.scrollTop=top;
@@ -400,6 +540,7 @@ function rescanDoc(){
 }
 // сумма позиций против суммы документа: расхождение почти всегда значит лишнюю или пропущенную строку
 function sumCheckHtml(){
+  if(DOC&&DOC.noFile&&!POS.length) return '';   // запись из 1С — только шапка: сверять сумму позиций не с чем
   var h=DOC||{}, act=POS.filter(function(p){ return p.status!=='пропущена'; });
   var sum=0; act.forEach(function(p){ sum+=Number(p.sumGross)||0; });
   sum=Math.round(sum*100)/100;
