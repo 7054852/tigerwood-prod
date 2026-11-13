@@ -82,8 +82,8 @@
     <button class="sec" onclick="load()">Обновить</button>
     <button class="sec" onclick="scanNow()" title="распознать ближайшие документы прямо сейчас, не дожидаясь фонового прогона">⚡ Распознать сейчас</button>
     <button class="sec" onclick="exportDocs()" title="файл со всеми реквизитами — бухгалтеру останется загрузить его в 1С">⬇️ Выгрузить для 1С</button>
-    <button class="sec" onclick="document.getElementById('upl1c').click()" title="карточка счёта 60.1 из 1С за период (Excel): система найдёт документы, которых у нас нет, и покажет расхождения — сначала предпросмотр, ничего не записывается">⬆️ Загрузить из 1С</button>
-    <input type="file" id="upl1c" accept=".xls,.xlsx" style="display:none" onchange="pick1c(this.files)">
+    <button class="sec" onclick="document.getElementById('upl1c').click()" title="выгрузка из 1С за период (Excel): «Реестр документов» вместе с отчётом «Движение материалов на складах» — выберите оба файла сразу — или «Карточка счёта 60.1». Система найдёт документы, которых у нас нет, заведёт их со строками и покажет расхождения. Сначала предпросмотр, ничего не записывается">⬆️ Загрузить из 1С</button>
+    <input type="file" id="upl1c" accept=".xls,.xlsx" multiple style="display:none" onchange="pick1c(this.files)">
     <button class="sec" onclick="showFixes()" title="что бухгалтер чаще всего исправляет за распознаванием — по этому списку уточняется промпт">📊 Что чаще правят</button>
     <button onclick="document.getElementById('upl').click()" title="накладные, акты, УПД, чеки — сразу несколько файлов">⬆️ Загрузить документы</button>
     <input type="file" id="upl" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.doc,.docx,.xls,.xlsx" style="display:none" onchange="uploadPicked(this.files)">
@@ -159,8 +159,9 @@ function payPill(p){
   return '<span class="pill mute" title="по расчётам с поставщиком">не оплачен</span>';
 }
 function statePill(r){
-  if(r.state==='разнесено') return '<span class="pill ok">✓ разнесено</span>';
-  if(r.state==='разнести') return '<span class="pill warn">⚠ разнести '+(r.positions-r.placed)+' из '+r.positions+'</span>';
+  var o1=r.from1c&&r.noFile?' <span class="pill info" title="документ заведён из выгрузки 1С вместе со строками; скана нет. Загрузите скан — система сама соединит его с этой записью">из 1С</span>':'';
+  if(r.state==='разнесено') return '<span class="pill ok">✓ разнесено</span>'+o1;
+  if(r.state==='разнести') return '<span class="pill warn">⚠ разнести '+(r.positions-r.placed)+' из '+r.positions+'</span>'+o1;
   if(r.state==='не распозналось') return '<span class="pill bad">✗ не распозналось</span>';
   if(r.state==='нет позиций') return '<span class="pill bad">✕ нет позиций</span>';
   if(r.state==='без скана') return '<span class="pill info" title="документ заведён из выгрузки 1С: в расчётах с поставщиком участвует, скана и позиций нет. Загрузите скан — система сама соединит его с этой записью">из 1С · без скана</span>';
@@ -316,24 +317,27 @@ function exportDocs(all){
 }
 
 // ─────────── ЗАГРУЗКА ИЗ 1С (12.11.2026): карточка счёта 60.1 → предпросмотр (ничего не пишет) → загрузка ───────────
-var IMP=null;   // {b64, name, map:{название в 1С: id карточки}, edit:{название:1}, r: ответ предпросмотра}
+var IMP=null;   // {b64, b64m, name, map:{название в 1С: id карточки}, edit:{название:1}, r: ответ предпросмотра}
+// один файл или два сразу (реестр документов + движение материалов): какой из них какой, сервер определяет по содержимому
 function pick1c(files){
-  if(!files||!files.length) return; var f=files[0]; $('upl1c').value='';
-  var fr=new FileReader();
-  fr.onload=function(){ IMP={b64:String(fr.result).split(',')[1]||'', name:f.name, map:{}, edit:{}, r:null}; open1c(); };
-  fr.onerror=function(){ $('smsg').className='msg err'; $('smsg').textContent='не прочитать файл'; };
-  fr.readAsDataURL(f);
+  if(!files||!files.length) return; var fs=[].slice.call(files,0,2), got=[], left=fs.length; $('upl1c').value='';
+  if(files.length>2){ $('smsg').className='msg err'; $('smsg').textContent='выберите не больше двух файлов: реестр документов и движение материалов'; return; }
+  fs.forEach(function(f,i){ var fr=new FileReader();
+    fr.onload=function(){ got[i]=String(fr.result).split(',')[1]||''; if(--left===0){ IMP={b64:got[0], b64m:got[1]||'', name:fs.map(function(x){ return x.name; }).join(' + '), map:{}, edit:{}, r:null}; open1c(); } };
+    fr.onerror=function(){ $('smsg').className='msg err'; $('smsg').textContent='не прочитать файл'; };
+    fr.readAsDataURL(f); });
 }
+function q1c(vapi){ var q={vapi:vapi, b64:IMP.b64, name:IMP.name, map:JSON.stringify(IMP.map)}; if(IMP.b64m) q.b64m=IMP.b64m; return q; }
 function open1c(){
   $('ov').className='scrim ov on'; $('modal').className='modal dlg lg imp';
-  $('modal').innerHTML='<div class="ihead"><h3>Загрузка из 1С</h3><button class="x ic" onclick="closeOv()">✕</button></div><div id="i1c"><div class="center muted">Читаю файл «'+esc(IMP.name)+'» и сверяю с документами…</div></div><div id="f1c"></div>';
+  $('modal').innerHTML='<div class="ihead"><h3>Загрузка из 1С</h3><button class="x ic" onclick="closeOv()">✕</button></div><div id="i1c"><div class="center muted">Читаю «'+esc(IMP.name)+'» и сверяю с документами…</div></div><div id="f1c"></div>';
   prev1c();
 }
 function prev1c(after){
-  apiPost({vapi:'doc1cpreview', b64:IMP.b64, name:IMP.name, map:JSON.stringify(IMP.map)}).then(function(r){
+  apiPost(q1c('doc1cpreview')).then(function(r){
     if(!$('i1c')) return;
     if(!r||!r.ok){ $('f1c').innerHTML=''; $('i1c').innerHTML='<div class="note bad"><div><b>Файл не подошёл.</b> '+esc((r&&r.error)||'нет прав')+'</div></div>'
-      +'<div class="muted" style="margin-top:var(--s-2)">Нужна выгрузка из 1С: отчёт «Карточка счёта», счёт 60.1, за нужный период, сохранённый как таблица Excel.</div>'; return; }
+      +'<div class="muted" style="margin-top:var(--s-2)">Нужна выгрузка из 1С, сохранённая как таблица Excel: «Реестр документов» (поступления материалов за период) и отчёт «Движение материалов на складах» за тот же период — выберите оба файла сразу. Либо отчёт «Карточка счёта», счёт 60.1.</div>'; return; }
     IMP.r=r; draw1c(after);
   }).catch(function(){ if($('i1c')) $('i1c').innerHTML='<div class="err">связь оборвалась — закройте окно и выберите файл ещё раз</div>'; });
 }
@@ -342,7 +346,7 @@ function s1c(title, n, hint, body, open){ return n? '<details class="twp-d" styl
 function sup1c(x){ return esc(x.name)+(x.cpName&&x.cpName!==x.name?' <span class="muted">→ '+esc(x.cpName)+'</span>':''); }
 function ourLink(o){ return o? '<a href="javascript:void(0)" onclick="openDoc(\''+o.fileId+'\')">'+esc((o.type||'документ')+' '+(o.docNo||'б/н'))+'</a>' : ''; }
 function draw1c(after){
-  var r=IMP.r, f=r.file, st=r.stat, box=$('i1c'); if(!box) return;
+  var r=IMP.r, f=r.file, st=r.stat, mv=f.moves, vt=st.vat||{}, box=$('i1c'); if(!box) return;
   var bad=f.problems.length, cpl='<datalist id="cpl1c">'+r.cps.map(function(c){ return '<option value="'+esc(c.name)+'">'; }).join('')+'</datalist>';
   var supRows=r.suppliers.filter(function(x){ return x.docs||!x.cpId; }).map(function(x,i){
     var pick=!x.cpId||IMP.edit[x.name];
@@ -356,13 +360,21 @@ function draw1c(after){
   IMP.sup=r.suppliers.filter(function(x){ return x.docs||!x.cpId; });
   var p=r.pays;
   box.innerHTML=cpl
-    +'<div class="muted">Карточка счёта '+esc(f.account)+' за '+esc(f.from)+' – '+esc(f.to)+' · проводок в файле: '+f.entries+'</div>'
+    +'<div class="muted">'+(f.kind==='card' ? 'Карточка счёта '+esc(f.account)+' за '+esc(f.from)+' – '+esc(f.to)+' · проводок в файле: '+f.entries
+        : f.kind==='registry' ? 'Реестр документов за '+esc(f.from)+' – '+esc(f.to)+' · документов: '+f.entries+(mv?'':' · <b class="err">движение материалов не приложено — строк у накладных не будет</b>')
+        : 'Движение материалов за '+esc(f.from)+' – '+esc(f.to)+' — без реестра документов')
+      +(mv?' · движение материалов за '+esc(mv.from)+' – '+esc(mv.to)+': материалов '+mv.items+', строк документов '+mv.rows:'')+'</div>'
     +(bad? '<div class="note bad" style="margin-top:var(--s-2)"><div><b>Файл прочитан с ошибкой — загрузка закрыта.</b> '+esc(f.problems.join('; '))+'. Пришлите этот файл разработчику.</div></div>'
-         : '<div class="note ok" style="margin-top:var(--s-2)"><div>✓ Файл прочитан полностью: сумма проводок сходится с итогом «Обороты за период» в самом файле — по кредиту '+money(f.turnC)+', по дебету '+money(f.turnD)+'.</div></div>')
+         : '<div class="note ok" style="margin-top:var(--s-2)"><div>✓ '+(f.kind==='card' ? 'Файл прочитан полностью: сумма проводок сходится с итогом «Обороты за период» в самом файле — по кредиту '+money(f.turnC)+', по дебету '+money(f.turnD)+'.'
+           : (f.kind==='registry'?'Реестр прочитан полностью: сумма документов сходится с его строкой «Итого» — '+money(f.turnC)+'. ':'')
+             +(mv?'Движение материалов прочитано полностью: у каждого материала «начало + приход − расход = остаток», документы в сумме дают приход '+money(mv.sin)+' и расход '+money(mv.sout)+' (суммы без НДС).':''))+'</div></div>')
     +(f.warnings.length?'<div class="note warn" style="margin-top:var(--s-2)"><div>'+esc(f.warnings.join('; '))+'</div></div>':'')
     +(after?'<div class="note ok" style="margin-top:var(--s-2)"><div><b>Загружено.</b> '+after+'</div></div>':'')
     +'<div class="kpis" style="margin-top:var(--s-3)">'
       +'<span><b>'+st.news+'</b>новых — будут заведены'+(st.news?'<br>на '+money(st.newsSum)+' BYN с НДС':'')+'</span>'
+      +(st.lines?'<span><b>'+st.lines+'</b>строк с материалами<br>'+[vt.vat20?vt.vat20+' накл. с НДС 20 %':'', vt.vat10?vt.vat10+' — 10 %':'', vt.vat0?vt.vat0+' без НДС':'', vt.mixed?vt.mixed+' с разными ставками':''].filter(Boolean).join(', ')+'</span>':'')
+      +(st.history?'<span><b>'+st.history+'</b>из них — до начала расчётов:<br>для истории цен, в долг не входят</span>':'')
+      +(st.addLines?'<span><b>'+st.addLines+'</b>заведённым раньше<br>добавятся строки</span>':'')
       +'<span><b>'+st.same+'</b>уже есть у нас,<br>суммы совпадают</span>'
       +'<span><b>'+st.differ+'</b>есть у нас,<br>но расходятся с 1С</span>'
       +(st.noSup?'<span><b class="err">'+st.noSup+'</b>ждут карточки поставщика<br>на '+money(st.noSupSum)+' BYN — пока не заводятся</span>':'')
@@ -372,8 +384,15 @@ function draw1c(after){
     +(st.before?'<div class="muted" style="font:var(--t-small)">Ещё '+st.before+' док. в файле — раньше начала расчётов с поставщиками ('+esc(r.start)+'): они уже учтены остатком на начало и не загружаются.</div>':'')
     +s1c('Поставщики файла', IMP.sup.length, 'Слева — как поставщик записан в 1С, справа — его карточка в Прохабе. Если карточка не нашлась сама, выберите её из списка или заведите новую: соответствие запомнится для следующих загрузок.'
         +(st.unknownSup?' <b class="err">Не опознано: '+st.unknownSup+' — их документы не заводятся, пока карточка не выбрана.</b>':''), t1c(['Как в 1С','Карточка в Прохабе','#Документов','#Сумма'], supRows), st.unknownSup>0)
-    +s1c('Новые документы', r.news.length, 'Их нет в Прохабе. Будут заведены «из 1С · без скана»: поставщик, номер, дата и сумма — как в 1С. Это долг перед поставщиком.',
-        t1c(['Дата','Документ 1С','Поставщик','#Сумма с НДС','#в т. ч. НДС'], r.news.map(function(x){ return '<tr><td>'+esc(x.date)+'</td><td>'+esc(x.kind+' '+x.no)+(x.note?'<div class="muted">'+esc(x.note)+'</div>':'')+'</td><td>'+sup1c(x)+'</td><td class="num">'+money(x.sum)+'</td><td class="num">'+(x.vat?money(x.vat):'—')+'</td></tr>'; })), r.news.length<=30)
+    +(st.noGross?'<div class="note warn" style="margin-top:var(--s-2)"><div><b>Ждут реестра: '+st.noGross+' накладных за '+esc(st.noGrossFrom)+' – '+esc(st.noGrossTo)+'</b> на '+money(st.noGrossNet)+' без НДС. В движении материалов они есть, но сумма с НДС берётся из «Реестра документов» — попросите бухгалтера сформировать его за этот период и загрузите вместе с этим же отчётом о движении.</div></div>':'')
+    +s1c('Новые документы', r.news.length, 'Их нет в Прохабе. Будут заведены «из 1С · без скана»: поставщик, номер, дата и сумма — как в 1С'+(st.lines?', строки — из движения материалов (суммы без НДС), НДС — разница с суммой реестра':'')+'. Документы с начала расчётов ('+esc(r.start)+') — это долг перед поставщиком; более ранние заводятся только для поступлений и истории цен.',
+        t1c(['Дата','Документ 1С','Поставщик','#Сумма с НДС','#в т. ч. НДС','#Строк','НДС'], r.news.map(function(x){ return '<tr><td>'+esc(x.date)+(x.before?' <span class="muted" title="раньше начала расчётов — в долг не входит">·&nbsp;история</span>':'')+'</td><td>'+esc(x.kind+' '+x.no)+(x.note?'<div class="muted">'+esc(x.note)+'</div>':'')+'</td><td>'+sup1c(x)+'</td><td class="num">'+money(x.sum)+'</td><td class="num">'+(x.vat?money(x.vat):'—')+'</td><td class="num">'+(x.lines||'—')+'</td><td>'+(!x.lines?'':x.rate===null?'<span class="err">разные ставки</span>':x.rate===0?'без НДС':x.rate+' %')+'</td></tr>'; })), r.news.length<=30)
+    +s1c('В валюте — не заводятся', (r.cur||[]).length, 'Сумма документа в реестре не похожа на «материалы + НДС» в белорусских рублях — скорее всего, документ в валюте (сумма в тенге, рублях РФ, евро). Расчёты в валюте ведутся отдельно: такой документ заведите вручную.',
+        t1c(['Дата','Документ 1С','Поставщик','#Сумма в реестре'], (r.cur||[]).map(function(x){ return '<tr><td>'+esc(x.date)+'</td><td>'+esc(x.kind+' '+x.no)+'</td><td>'+sup1c(x)+'</td><td class="num">'+money(x.sum)+'</td></tr>'; })), true)
+    +s1c('Поступления без строк — не заводятся', (r.nolines||[]).length, mv?'Этим накладным из реестра не нашлось строк в движении материалов (тот же номер и дата): поступление проведено в 1С не на склад материалов, либо отчёт о движении за другой период.':'Отчёт «Движение материалов на складах» не приложен: без строк не проверить даже валюту суммы. Выберите оба файла сразу.',
+        t1c(['Дата','Документ 1С','Поставщик','#Сумма'], (r.nolines||[]).map(function(x){ return '<tr><td>'+esc(x.date)+'</td><td>'+esc(x.kind+' '+x.no)+'</td><td>'+sup1c(x)+'</td><td class="num">'+money(x.sum)+'</td></tr>'; })), true)
+    +s1c('Есть в движении материалов, нет в реестре', (r.stray||[]).length, 'Поступления материалов за период реестра, которых в самом реестре нет. Сверьте с бухгалтером: реестр сформирован не по всем документам?',
+        t1c(['Дата','Накладная','Поставщик в 1С','#Сумма без НДС','#Строк'], (r.stray||[]).map(function(x){ return '<tr><td>'+esc(x.date)+'</td><td>№ '+esc(x.no)+'</td><td>'+esc(x.name)+'</td><td class="num">'+money(x.net)+'</td><td class="num">'+x.lines+'</td></tr>'; })), true)
     +s1c('Ждут карточки поставщика', r.nosup.length, 'Поставщик из 1С не опознан, поэтому документы не заводятся: тот же документ мог прийти сканом на настоящую карточку, и долг посчитался бы дважды. Выберите или создайте карточку в блоке «Поставщики файла» выше.',
         t1c(['Дата','Документ 1С','Поставщик в 1С','#Сумма с НДС'], r.nosup.map(function(x){ return '<tr><td>'+esc(x.date)+'</td><td>'+esc(x.kind+' '+x.no)+'</td><td>'+esc(x.name)+'</td><td class="num">'+money(x.sum)+'</td></tr>'; })))
     +s1c('Расходятся с 1С', r.differ.length, 'Документ есть и у нас, и в 1С, но отличается. Наш документ система не меняет: откройте его, сверьте со сканом и поправьте там, где ошибка, — у нас или в 1С.',
@@ -392,14 +411,14 @@ function draw1c(after){
         t1c(['Дата','Документ 1С','Получатель','#Сумма'], p.missing.map(function(x){ return '<tr><td>'+esc(x.date)+'</td><td>'+esc(x.doc)+'</td><td>'+esc(x.name)+'</td><td class="num">'+money(x.sum)+'</td></tr>'; })))
       +s1c('Оплаты в Прохабе, которых нет в 1С', p.onlyOurs.length, 'Оплаченные расходы поставщикам за период файла, которым не нашлось пары в 1С: не проведены в 1С, проведены по другому счёту или на другого получателя.',
         t1c(['Дата','Получатель','#Сумма','Назначение'], p.onlyOurs.map(function(x){ return '<tr><td>'+esc(x.date)+'</td><td>'+esc(x.name)+'</td><td class="num">'+money(x.sum)+'</td><td>'+esc(x.purpose)+'</td></tr>'; }))) : '')
-    +s1c('Прочие операции по счёту', r.other.length+r.refunds.length, 'Зачёты, возвраты, сторно и возвраты денег от поставщика. Не загружаются — показаны, чтобы было видно, из чего ещё складывается остаток в 1С.',
+    +s1c(f.kind==='card'?'Прочие операции по счёту':'Прочие строки реестра', r.other.length+r.refunds.length, f.kind==='card'?'Зачёты, возвраты, сторно и возвраты денег от поставщика. Не загружаются — показаны, чтобы было видно, из чего ещё складывается остаток в 1С.':'Строки реестра, которые не загружаются: другой вид документа, нет поставщика или суммы.',
         t1c(['Дата','Документ 1С','Поставщик','Что это','#Дебет','#Кредит'], r.refunds.map(function(x){ return '<tr><td>'+esc(x.date)+'</td><td>'+esc(x.doc)+'</td><td>'+esc(x.name)+'</td><td>возврат денег от поставщика</td><td class="num"></td><td class="num">'+money(x.sum)+'</td></tr>'; })
           .concat(r.other.map(function(x){ return '<tr><td>'+esc(x.date)+'</td><td>'+esc(x.doc)+'</td><td>'+esc(x.name)+'</td><td>'+esc(x.what)+(x.corr?' <span class="muted">(счёт '+esc(x.corr)+')</span>':'')+'</td><td class="num">'+(x.side==='D'?money(x.sum):'')+'</td><td class="num">'+(x.side==='C'?money(x.sum):'')+'</td></tr>'; }))))
     ;
   $('f1c').innerHTML='<div class="dfoot">'
       +(r.locked ? '<span class="muted">🔒 '+esc(r.locked)+'</span> ' : r.canLoad
-        ? (bad||!(st.news+st.changed+st.toMark+st.unmark) ? '<span class="muted">'+(bad?'':st.noSup?'Загружать пока нечего: выберите карточки поставщиков — тогда их документы ('+st.noSup+') можно будет завести.':'Всё из этого файла уже загружено — новых документов и изменений нет.')+'</span> '
-          : '<button class="green" id="go1c" onclick="apply1c()">'+(st.news||st.changed?'Загрузить: завести '+st.news+(st.changed?', обновить '+st.changed:''):st.toMark?'Отметить найденные «есть в 1С» — '+st.toMark:'Снять отметку «есть в 1С» — '+st.unmark)+'</button> '
+        ? (bad||!(st.news+st.changed+st.toMark+st.unmark+(st.addLines||0)) ? '<span class="muted">'+(bad?'':st.noSup?'Загружать пока нечего: выберите карточки поставщиков — тогда их документы ('+st.noSup+') можно будет завести.':'Всё из этого файла уже загружено — новых документов и изменений нет.')+'</span> '
+          : '<button class="green" id="go1c" onclick="apply1c()">'+(st.news||st.changed?'Загрузить: завести '+st.news+(st.changed?', обновить '+st.changed:''):st.addLines?'Добавить строки документам — '+st.addLines:st.toMark?'Отметить найденные «есть в 1С» — '+st.toMark:'Снять отметку «есть в 1С» — '+st.unmark)+'</button> '
             +(st.noSup?'<span class="muted">ещё '+st.noSup+' — после выбора карточки поставщика</span> ':''))
         : '')
       +'<button class="sec" onclick="closeOv()">Закрыть</button> <span class="msg" id="m1c"></span></div>';
@@ -425,11 +444,22 @@ function map1c(i){
 }
 function apply1c(){
   var b=$('go1c'), m=$('m1c'); if(!b||b.disabled) return; b.disabled=true; m.className='msg'; m.textContent='Загружаю…';
-  apiPost({vapi:'doc1capply', b64:IMP.b64, name:IMP.name, map:JSON.stringify(IMP.map)}).then(function(r){
+  apiPost(q1c('doc1capply')).then(function(r){
     if(!r||!r.ok){ b.disabled=false; m.className='msg err'; m.textContent=(r&&r.error)||'не вышло'; return; }
-    var t='Заведено документов: '+r.created+(r.created?' на '+money(r.createdSum)+' BYN':'')+' · отмечено «есть в 1С»: '+r.marked+(r.updated?' · обновлено по 1С: '+r.updated:'')+(r.unmarked?' · отметка снята: '+r.unmarked:'')+(r.moved?' · перенесено на другую карточку: '+r.moved:'')+(r.differ?' · расходятся: '+r.differ:'')+'.';
-    IMP.map={}; load(1); prev1c(t);
+    var t='Заведено документов: '+r.created+(r.created?' на '+money(r.createdSum)+' BYN':'')+(r.history?' (из них до начала расчётов: '+r.history+')':'')+(r.lines?' · строк: '+r.lines:'')+' · отмечено «есть в 1С»: '+r.marked+(r.updated?' · обновлено по 1С: '+r.updated:'')+(r.unmarked?' · отметка снята: '+r.unmarked:'')+(r.moved?' · перенесено на другую карточку: '+r.moved:'')+(r.differ?' · расходятся: '+r.differ:'')+'.';
+    IMP.map={};
+    if(r.lines) post1c(t, 0, 0); else { load(1); prev1c(t); }
   }).catch(function(){ b.disabled=false; m.className='msg err'; m.textContent='связь оборвалась — проверьте реестр и повторите: повторная загрузка ничего не задвоит'; });
+}
+// строки, у которых название 1С уже сопоставлено с нашим материалом, проводятся в закупки — порциями, пока не кончатся
+function go1cNames(){ try{ localStorage.setItem('tw_mat_view','onec'); }catch(e){} try{ window.top.postMessage({tw:'go',id:'materials'},'*'); }catch(e){} if(window.top===window) window.open('materials.html?view=onec','_blank'); }
+function post1c(t, posted, tries){
+  var m=$('m1c'); if(m){ m.className='msg'; m.textContent='Провожу сопоставленные строки…'+(posted?' '+posted:''); }
+  var done=function(n){ load(1); prev1c(t+' Строк проведено в закупки: '+n+'. Остальные ждут сопоставления названий: <a href="javascript:void(0)" onclick="go1cNames()">Материалы → вкладка «Названия 1С»</a>.'); };
+  apiPost({vapi:'onecpost'}).then(function(r){
+    if(!r||!r.ok) return done(posted);
+    if(r.left>0&&tries<60) post1c(t, posted+r.posted, tries+1); else done(posted+r.posted);
+  }).catch(function(){ done(posted); });
 }
 
 // ─────────── карточка документа (11.11.2026: файл слева, строки справа; материал, листы и цену считает сервер) ───────────

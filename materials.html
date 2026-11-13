@@ -22,6 +22,16 @@
   .pch line{ stroke:var(--line); stroke-width:1; }
   .pch circle{ fill:var(--accent); } .pch circle.nv{ fill:var(--card); stroke:var(--muted); stroke-width:1.5; }
   .pch text{ fill:var(--muted); font:var(--t-tiny); }
+  .pch line.base{ stroke-dasharray:3 4; } .pch text.now{ fill:var(--fg); font:var(--t-strong); }
+  .pch polyline.up, .spk polyline.up{ stroke:var(--red); } .pch polyline.down, .spk polyline.down{ stroke:var(--green); }
+  /* маленький график цены в строке таблицы */
+  .spk{ width:150px; height:34px; display:block; } .spk polyline{ fill:none; stroke:var(--muted); stroke-width:1.75; stroke-linejoin:round; }
+  .spk circle{ fill:var(--muted); } .spk circle.up{ fill:var(--red); } .spk circle.down{ fill:var(--green); }
+  td .tr{ font:var(--t-small); white-space:nowrap; }
+  /* названия 1С: строка сопоставления */
+  #oTb td{ vertical-align:top; } #oTb input.m{ width:100%; min-width:190px; } #oTb input.k{ width:76px; text-align:right; } #oTb select{ max-width:150px; }
+  #oTb .cd{ display:flex; gap:var(--s-1); flex-wrap:wrap; margin-top:var(--s-1); } #oTb .cd .chip{ font:var(--t-small); padding:2px 8px; }
+  #oTb tr.ok1 td:first-child{ box-shadow:inset 3px 0 0 var(--green); }
   /* карточка материала поверх экрана: класс .ov переключает JS (ov / ov on) */
   .ov{ position:fixed; inset:0; background:var(--scrim); display:none; align-items:flex-start; justify-content:center;
        padding:var(--s-5) var(--s-3); overflow:auto; z-index:50; }
@@ -50,7 +60,7 @@
 <div class="hi">🧱 Материалы</div>
 <!-- документы живут в своём разделе: здесь остаётся справочник материалов и ручной приход.
      Раньше накладную можно было разнести из двух мест, и каждое открытие заново оплачивало распознавание. -->
-<div class="chips" id="views"><span class="chip on" id="vReg" onclick="setView('reg')">Реестр материалов</span><span class="chip" id="vRec" onclick="setView('rec')">Поступления за период</span></div>
+<div class="chips" id="views"><span class="chip on" id="vReg" onclick="setView('reg')">Реестр материалов</span><span class="chip" id="vRec" onclick="setView('rec')">Поступления за период</span><span class="chip" id="vPrc" onclick="setView('prc')">📈 Динамика цен</span><span class="chip" id="vOnec" onclick="setView('onec')">Названия 1С</span></div>
 <div id="regView">
 <div class="note info"><div>Накладные и акты поставщиков — в разделе
   <a href="javascript:void(0)" onclick="goDocs()"><b>📑 Входящие документы</b></a>: там загрузка, распознавание и разнесение по материалам.</div></div>
@@ -101,7 +111,32 @@
   <div class="kpis" id="rKpi"></div>
   <div class="box tbl-wrap"><table class="tbl"><thead><tr><th>Материал</th><th class="num">Получено</th><th class="num">Сумма, BYN</th><th class="num" title="сумма ÷ количество за период">Средняя цена</th><th class="num">Документов</th><th>Поставщики</th><th>Последний приход</th></tr></thead><tbody id="rTb"><tr><td colspan=7 class="center muted">Загрузка…</td></tr></tbody></table></div>
 </div>
+<div id="prcView" style="display:none">
+  <div class="toolbar">
+    <span class="muted">с</span><input type="date" id="cFrom" onchange="loadPrc()">
+    <span class="muted">по</span><input type="date" id="cTo" onchange="loadPrc()">
+    <input type="search" class="search" id="cQ" placeholder="материал или поставщик…" oninput="drawPrc()">
+    <select id="cRole" onchange="drawPrc()"></select>
+    <select id="cSort" onchange="drawPrc()"><option value="sum">сначала крупные закупки</option><option value="up">сильнее всего подорожали</option><option value="down">сильнее всего подешевели</option></select>
+  </div>
+  <div class="note hint">Как менялась цена каждого материала от первой закупки периода к последней. Все цены — <b>без НДС</b>, за нашу единицу учёта: так цены сравнимы у поставщиков с НДС и без НДС. Нажмите на материал — откроется его карточка с полным графиком и всеми закупками.</div>
+  <div class="kpis" id="cKpi"></div>
+  <div class="box tbl-wrap"><table class="tbl"><thead><tr><th>Материал</th><th>Как шла цена</th><th class="num">Было</th><th class="num">Стало</th><th class="num" title="последняя закупка периода против первой">Изменение</th><th class="num">Закупок</th><th>Последний поставщик</th></tr></thead><tbody id="cTb"></tbody></table></div>
+</div>
+<div id="onecView" style="display:none">
+  <div class="toolbar">
+    <input type="search" class="search" id="oQ" placeholder="название в 1С, наш материал или поставщик…" oninput="drawOnec()">
+    <span class="chips" id="oF" style="margin:0"></span>
+    <span class="msg" id="oMsg"></span>
+  </div>
+  <div class="note hint">Один и тот же материал приходит по накладным под разными названиями. Здесь каждому названию из 1С один раз назначается <b>наш материал</b> — дальше все строки накладных с этим названием сами встают на него и проводятся в закупки: появляются в поступлениях и в истории цен.
+    <b>Пересчёт</b> — сколько наших единиц в одной единице 1С: фанера в 1С в м³, у нас в листах — 23,89; единицы одинаковые — 1. То, что материалом не является (инструмент, канцтовары, хозтовары), отметьте «не связано» и выберите статью расхода.</div>
+  <div class="kpis" id="oKpi"></div>
+  <div class="box tbl-wrap"><table class="tbl"><thead><tr><th>Название в 1С</th><th class="num" title="сумма строк накладных с этим названием, без НДС">Поступило</th><th class="num" title="последняя накладная: сумма без НДС ÷ количество, за единицу 1С">Цена в 1С</th><th>Что это</th><th style="min-width:230px">Наш материал / статья</th><th class="num" title="сколько наших единиц в одной единице 1С">Пересчёт</th><th></th></tr></thead><tbody id="oTb"></tbody></table></div>
+  <div class="muted" id="oMore" style="margin-top:var(--s-2)"></div>
+</div>
 <datalist id="matlist"></datalist>
+<datalist id="statlist"></datalist>
 
 <div class="ov" id="ov"><div class="modal dlg md" id="modal"></div></div>
 
@@ -406,9 +441,15 @@ function renderCard(name, r){
   var sups=(r&&r.suppliers)||[], buys=(r&&r.buys)||[];
   var qn=function(s){ return esc(String(s)).replace(/\x27/g,"\\x27"); };
   var supRows=sups.map(function(s){ return '<tr><td>'+esc(s.supplier)+'</td><td class="muted">'+esc(s.supName||'')+'</td><td class="num">'+(s.coef||'')+'</td><td class="num">'+money(s.price)+' '+esc(s.cur)+'</td><td class="muted">'+esc(s.terms||'')+'</td><td><button class="sec sm" title="удалить поставщика" onclick="delSup(\''+qn(name)+'\',\''+qn(s.supplier)+'\')">🗑</button></td></tr>'; }).join('')||'<tr><td colspan=6 class="muted">нет поставщиков</td></tr>';
-  var buyRows=buys.map(function(b){ return '<tr><td>'+esc(b.date)+'</td><td>'+esc(b.supplier)+'</td><td class="muted">'+esc(b.docNo)
+  // история: цена без НДС (сравнима у любых поставщиков), рядом — с НДС покупали или без; стрелка — к предыдущей по дате закупке
+  var buyRows=buys.map(function(b,i){
+    var older=null; for(var j=i+1;j<buys.length;j++) if(buys[j].priceNet>0){ older=buys[j]; break; }
+    var d=b.priceNet>0&&older? Math.round((b.priceNet-older.priceNet)/older.priceNet*1000)/10 : null;
+    return '<tr><td>'+esc(b.date)+'</td><td>'+esc(b.supplier)+'</td><td class="muted">'+esc(b.docNo)
       +(b.fileId?' <a href="docs.html?doc='+encodeURIComponent(b.fileId)+'" target="_blank" title="открыть документ, по которому пришёл материал">документ ↗</a>':'')+'</td>'
-    +'<td class="num">'+qf(b.qtyW)+'</td><td class="num"><b>'+pf(b.priceW)+'</b>'+(b.noVat?' <span class="pill mute" title="закупки до '+esc(r.vatFrom||'')+' записаны без НДС — с более поздними не сравниваются">без НДС</span>':'')+'</td><td class="num">'+money(b.sum)+' '+esc(b.cur)+'</td><td><button class="sec sm" title="удалить запись" onclick="delBuy(\''+qn(name)+'\',\''+qn(b.docNo)+'\',\''+qn(b.supplier)+'\')">🗑</button></td></tr>'; }).join('')||'<tr><td colspan=7 class="muted">закупок нет</td></tr>';
+    +'<td class="num">'+qf(b.qtyW)+'</td>'
+    +'<td class="num">'+(b.priceNet>0?'<b>'+pf(b.priceNet)+'</b>'+(d===null||d===0?'':' <span class="tr '+(d>0?'up':'down')+'" title="к предыдущей закупке — '+pf(older.priceNet)+' ('+esc(older.date)+')">'+(d>0?'▲ +':'▼ ')+pct(d)+' %</span>'):'<span class="muted" title="не известно, с НДС записана эта закупка или без">—</span>')+'</td>'
+    +'<td>'+vatTag(b,r)+'</td><td class="num">'+money(b.sum)+' '+esc(b.cur)+'</td><td><button class="sec sm" title="удалить запись" onclick="delBuy(\''+qn(name)+'\',\''+qn(b.docNo)+'\',\''+qn(b.supplier)+'\')">🗑</button></td></tr>'; }).join('')||'<tr><td colspan=8 class="muted">закупок нет</td></tr>';
   $('modal').innerHTML=
     '<button class="x sm" onclick="closeOv()">✕</button><h3>'+esc(name)+'</h3>'
     +priceHtml(r||{})
@@ -431,7 +472,7 @@ function renderCard(name, r){
     +'</div><div id="p_prev" class="muted" style="margin-top:var(--s-2)"></div>'
     +'<div class="muted" style="margin-top:var(--s-1)">коэф = сколько рабочих ед в 1 ед. документа (кубы→листы, пачка→листы). Подставляется сам по толщине и размеру листа.</div>'
     +'<div class="msg" id="p_msg"></div>'
-    +'<div class="lbl">Журнал закупок</div><div class="box tbl-wrap"><table class="tbl"><thead><tr><th>Дата</th><th>Поставщик</th><th>№</th><th class="num">Кол-во (раб.)</th><th class="num">Цена/ед</th><th class="num">Сумма</th><th></th></tr></thead><tbody>'+buyRows+'</tbody></table></div>';
+    +'<div class="lbl">Журнал закупок</div><div class="box tbl-wrap"><table class="tbl"><thead><tr><th>Дата</th><th>Поставщик</th><th>№</th><th class="num">Кол-во</th><th class="num" title="за нашу единицу, без НДС">Цена без НДС</th><th title="с НДС покупали или без">НДС</th><th class="num">Сумма с НДС</th><th></th></tr></thead><tbody>'+buyRows+'</tbody></table></div>';
   loadAliases(name);
   renderLink(name);
 }
@@ -610,39 +651,59 @@ function coefLocal(m, unitDoc){
   return 0;
 }
 // ── цены материала: график по закупкам и сводка по поставщикам ──
-function priceHtml(r){
-  var buys=(r.buys||[]).filter(function(b){ return b.priceW>0&&b.iso; }).slice().reverse(), u=esc(r.unit||'ед');   // от старых к новым
-  if(!buys.length) return '<div class="lbl">Цены</div><div class="box muted">Закупок ещё не было — цена появится после первого проведённого документа.</div>';
-  var vat=buys.filter(function(b){ return !b.noVat; }), last=vat[vat.length-1], prev=vat[vat.length-2];
-  var head='<div class="lbl">Цены <span class="muted" style="font-weight:normal;text-transform:none;letter-spacing:0">— за 1 '+u+', с НДС, BYN</span></div>';
-  var sum=last? '<div class="frm" style="margin-bottom:var(--s-2)"><span>Последняя закупка: <b>'+pf(last.priceW)+'</b> · '+esc(last.date)+' · '+esc(last.supplier||'без поставщика')+'</span>'
-      +(prev? (function(){ var p=Math.round((last.priceW-prev.priceW)/prev.priceW*1000)/10;
-          return '<span class="pill '+(p>=ALERT?'bad':p>0?'warn':'mute')+'">'+(p>0?'▲ +':p<0?'▼ ':'= ')+pct(p)+' %</span><span class="muted">к прошлой — '+pf(prev.priceW)+', '+esc(prev.date)+'</span>'; })()
-        : '<span class="muted">это единственная закупка с НДС — сравнить не с чем</span>')+'</div>'
-    : '<div class="muted" style="margin-bottom:var(--s-2)">Все закупки сделаны до '+esc(r.vatFrom||'')+' и записаны без НДС — новые с ними не сравниваются.</div>';
-  var by=(r.bySupplier||[]).map(function(x){ return '<tr><td>'+esc(x.supplier)+'</td><td class="num">'+x.n+'</td><td class="num"><b>'+pf(x.last)+'</b></td><td class="muted">'+esc(x.lastDate)+'</td><td class="num">'+pf(x.avg)+'</td><td class="num">'+pf(x.min)+' – '+pf(x.max)+'</td></tr>'; }).join('');
-  return head+'<div class="box">'+sum+(buys.length>1?chartSvg(buys,u):'')
-    +(by?'<div class="tbl-wrap" style="margin-top:var(--s-2)"><table class="tbl"><thead><tr><th>Поставщик</th><th class="num">Закупок</th><th class="num">Последняя цена</th><th>Когда</th><th class="num" title="сумма ÷ количество по всем закупкам у поставщика">Средняя</th><th class="num">От – до</th></tr></thead><tbody>'+by+'</tbody></table></div>':'')
-    +(buys.length>vat.length&&vat.length?'<div class="muted" style="font:var(--t-tiny);margin-top:var(--s-1)">Пустые точки на графике — закупки до '+esc(r.vatFrom||'')+': они записаны без НДС, в сравнение и сводку не входят.</div>':'')+'</div>';
+// НДС закупки: ставка из строки документа; 0 — поставщик без НДС; не известна — закупка внесена вручную или в накладной разные ставки
+function vatTag(b,r){
+  if(b.vat===0) return '<span class="pill info" title="поставщик не выставляет НДС: цена в накладной — полная стоимость">без НДС</span>';
+  if(b.vat>0) return '<span class="pill mute" title="в накладной НДС '+qf(b.vat)+' %: цена с НДС — '+pf(b.priceW)+'">с НДС '+qf(b.vat)+' %</span>';
+  if(b.noVat) return '<span class="pill mute" title="закупка внесена вручную до '+esc((r&&r.vatFrom)||'')+': записана суммой без НДС; был ли НДС в накладной — не указано">записано без НДС</span>';
+  return '<span class="pill warn" title="'+(b.fileId?'в накладной разные ставки НДС или НДС не распознан':'закупка внесена вручную: с НДС или без — не указано')+'">нет данных</span>';
 }
+function priceHtml(r){
+  var all=(r.buys||[]).filter(function(b){ return b.iso; }).slice().reverse(), u=esc(r.unit||'ед');   // от старых к новым
+  if(!all.length) return '<div class="lbl">Цены</div><div class="box muted">Закупок ещё не было — цена появится после первого проведённого документа.</div>';
+  var buys=all.filter(function(b){ return b.priceNet>0; }), last=buys[buys.length-1], prev=buys[buys.length-2], first=buys[0];
+  var head='<div class="lbl">Цены <span class="muted" style="font-weight:normal;text-transform:none;letter-spacing:0">— за 1 '+u+', без НДС, BYN</span></div>';
+  if(!last) return head+'<div class="box muted">По этим закупкам не известно, с НДС они записаны или без, — цену без НДС не посчитать. Закупки, проведённые из документа, такую цену дают: в документе есть ставка НДС.</div>';
+  var chg=function(a,b){ return Math.round((a-b)/b*1000)/10; }, pill=function(p){ return '<span class="pill '+(p>=ALERT?'bad':p>0?'warn':p<0?'ok':'mute')+'">'+(p>0?'▲ +':p<0?'▼ ':'= ')+pct(p)+' %</span>'; };
+  var sum='<div class="frm" style="margin-bottom:var(--s-2)"><span>Последняя закупка: <b>'+pf(last.priceNet)+'</b> · '+esc(last.date)+' · '+esc(last.supplier||'без поставщика')+'</span>'+vatTag(last,r)
+      +(prev? pill(chg(last.priceNet,prev.priceNet))+'<span class="muted">к прошлой — '+pf(prev.priceNet)+', '+esc(prev.date)+'</span>' : '<span class="muted">это единственная закупка — сравнить не с чем</span>')+'</div>'
+    +(buys.length>2? '<div class="frm" style="margin-bottom:var(--s-2)"><span class="muted">С первой закупки ('+esc(first.date)+', '+pf(first.priceNet)+'):</span>'+pill(chg(last.priceNet,first.priceNet))+'</div>':'');
+  // по поставщикам — из тех же закупок: последняя, средняя (сумма ÷ количество), от – до
+  var bs={}, order=[];
+  buys.forEach(function(b){ var k=b.supplier||'(без поставщика)', x=bs[k]; if(!x){ x=bs[k]={n:0,sum:0,qty:0,min:b.priceNet,max:b.priceNet,vat:{}}; order.push(k); }
+    x.n++; x.sum+=b.priceNet*b.qtyW; x.qty+=b.qtyW; x.min=Math.min(x.min,b.priceNet); x.max=Math.max(x.max,b.priceNet); x.last=b.priceNet; x.lastDate=b.date; x.lastB=b; });
+  order.sort(function(a,b){ return bs[b].n-bs[a].n; });
+  var by=order.map(function(k){ var x=bs[k]; return '<tr><td>'+esc(k)+'</td><td>'+vatTag(x.lastB,r)+'</td><td class="num">'+x.n+'</td><td class="num"><b>'+pf(x.last)+'</b></td><td class="muted">'+esc(x.lastDate)+'</td><td class="num">'+pf(x.qty>0?x.sum/x.qty:0)+'</td><td class="num">'+pf(x.min)+' – '+pf(x.max)+'</td></tr>'; }).join('');
+  return head+'<div class="box">'+sum+(buys.length>1?chartSvg(buys,u):'')
+    +(by?'<div class="tbl-wrap" style="margin-top:var(--s-2)"><table class="tbl"><thead><tr><th>Поставщик</th><th>НДС</th><th class="num">Закупок</th><th class="num">Последняя цена</th><th>Когда</th><th class="num" title="сумма ÷ количество по всем закупкам у поставщика">Средняя</th><th class="num">От – до</th></tr></thead><tbody>'+by+'</tbody></table></div>':'')
+    +(all.length>buys.length?'<div class="muted" style="font:var(--t-tiny);margin-top:var(--s-1)">Ещё '+(all.length-buys.length)+' закуп. без данных о НДС — на график и в сводку не попали.</div>':'')+'</div>';
+}
+// график цены: линия по закупкам, пунктир — цена первой закупки (от неё видно, выросла цена или упала), кружок без заливки — поставщик без НДС
 function chartSvg(b,u){
-  var W=600,H=150,L=46,R=10,T=12,B=22, t=b.map(function(x){ return Date.parse(x.iso); }), p=b.map(function(x){ return x.priceW; });
-  var t0=Math.min.apply(null,t), t1=Math.max.apply(null,t), p0=Math.min.apply(null,p), p1=Math.max.apply(null,p), pad=(p1-p0)*0.15||p1*0.1||1; p0=Math.max(0,p0-pad); p1+=pad;
+  var W=600,H=170,L=52,R=64,T=14,B=24, t=b.map(function(x){ return Date.parse(x.iso); }), p=b.map(function(x){ return x.priceNet; });
+  var t0=Math.min.apply(null,t), t1=Math.max.apply(null,t), lo=Math.min.apply(null,p), hi=Math.max.apply(null,p), pad=(hi-lo)*0.18||hi*0.1||1, p0=Math.max(0,lo-pad), p1=hi+pad;
   var X=function(v){ return t1===t0? (L+(W-L-R)/2) : L+(v-t0)/(t1-t0)*(W-L-R); }, Y=function(v){ return T+(1-(v-p0)/(p1-p0))*(H-T-B); };
-  var line=b.map(function(x,i){ return x.noVat?null:(X(t[i]).toFixed(1)+','+Y(p[i]).toFixed(1)); }).filter(Boolean).join(' ');
-  var dots=b.map(function(x,i){ return '<circle'+(x.noVat?' class="nv"':'')+' cx="'+X(t[i]).toFixed(1)+'" cy="'+Y(p[i]).toFixed(1)+'" r="3.5"><title>'+esc(x.date+' · '+pf(x.priceW)+' за 1 '+u+(x.noVat?' (без НДС)':'')+' · '+(x.supplier||''))+'</title></circle>'; }).join('');
-  return '<svg class="pch" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="цена по закупкам">'
-    +'<line x1="'+L+'" y1="'+Y(p1-pad).toFixed(1)+'" x2="'+(W-R)+'" y2="'+Y(p1-pad).toFixed(1)+'"/><line x1="'+L+'" y1="'+(H-B)+'" x2="'+(W-R)+'" y2="'+(H-B)+'"/>'
-    +'<text x="'+(L-6)+'" y="'+(Y(p1-pad)+4).toFixed(1)+'" text-anchor="end">'+pf(p1-pad)+'</text><text x="'+(L-6)+'" y="'+(H-B)+'" text-anchor="end">'+pf(p0)+'</text>'
-    +'<text x="'+L+'" y="'+(H-6)+'">'+esc(b[0].date)+'</text><text x="'+(W-R)+'" y="'+(H-6)+'" text-anchor="end">'+esc(b[b.length-1].date)+'</text>'
-    +(line.indexOf(' ')>0?'<polyline points="'+line+'"/>':'')+dots+'</svg>';
+  var n=b.length-1, dir=p[n]>p[0]?'up':p[n]<p[0]?'down':'';
+  var line=b.map(function(x,i){ return X(t[i]).toFixed(1)+','+Y(p[i]).toFixed(1); }).join(' ');
+  var dots=b.map(function(x,i){ return '<circle'+(x.vat===0?' class="nv"':'')+' cx="'+X(t[i]).toFixed(1)+'" cy="'+Y(p[i]).toFixed(1)+'" r="'+(i===n?4.5:3.5)+'"><title>'+esc(x.date+' · '+pf(x.priceNet)+' за 1 '+u+' без НДС'+(x.vat===0?' (поставщик без НДС)':x.vat>0?' (с НДС '+pf(x.priceW)+')':'')+' · '+(x.supplier||''))+'</title></circle>'; }).join('');
+  return '<svg class="pch" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="цена без НДС по закупкам">'
+    +'<line x1="'+L+'" y1="'+Y(hi).toFixed(1)+'" x2="'+(W-R)+'" y2="'+Y(hi).toFixed(1)+'"/><line x1="'+L+'" y1="'+Y(lo).toFixed(1)+'" x2="'+(W-R)+'" y2="'+Y(lo).toFixed(1)+'"/>'
+    +(hi>lo?'<text x="'+(L-6)+'" y="'+(Y(hi)+4).toFixed(1)+'" text-anchor="end">'+pf(hi)+'</text>':'')+'<text x="'+(L-6)+'" y="'+(Y(lo)+4).toFixed(1)+'" text-anchor="end">'+pf(lo)+'</text>'
+    +(p[0]!==lo&&p[0]!==hi?'<line class="base" x1="'+L+'" y1="'+Y(p[0]).toFixed(1)+'" x2="'+(W-R)+'" y2="'+Y(p[0]).toFixed(1)+'"/>':'')
+    +'<text x="'+L+'" y="'+(H-6)+'">'+esc(b[0].date)+'</text><text x="'+(W-R)+'" y="'+(H-6)+'" text-anchor="end">'+esc(b[n].date)+'</text>'
+    +'<polyline class="'+dir+'" points="'+line+'"/>'+dots
+    +'<text class="now" x="'+(X(t[n])+9).toFixed(1)+'" y="'+(Y(p[n])+4).toFixed(1)+'">'+pf(p[n])+'</text></svg>';
 }
 // ── поступления за период ──
 var REC=null;
+var VIEW='reg';
 function setView(v){
-  $('vReg').className='chip'+(v==='reg'?' on':''); $('vRec').className='chip'+(v==='rec'?' on':'');
-  $('regView').style.display=v==='reg'?'':'none'; $('recView').style.display=v==='rec'?'':'none';
-  if(v==='rec'){ if(!$('rFrom').value){ var t=new Date(), f=new Date(t.getTime()-90*86400000), iso=function(d){ return d.toISOString().slice(0,10); }; $('rFrom').value=iso(f); $('rTo').value=iso(t); } loadRec(); }
+  VIEW=v; var ids={reg:['vReg','regView'], rec:['vRec','recView'], prc:['vPrc','prcView'], onec:['vOnec','onecView']};
+  for(var k in ids){ $(ids[k][0]).className='chip'+(v===k?' on':''); $(ids[k][1]).style.display=v===k?'':'none'; }
+  var iso=function(d){ return d.toISOString().slice(0,10); }, t=new Date();
+  if(v==='rec'){ if(!$('rFrom').value){ $('rFrom').value=iso(new Date(t.getTime()-90*86400000)); $('rTo').value=iso(t); } loadRec(); }
+  if(v==='prc'){ if(!$('cFrom').value){ $('cFrom').value=t.getFullYear()+'-01-01'; $('cTo').value=iso(t); } loadPrc(); }
+  if(v==='onec') loadOnec();
 }
 function loadRec(){
   var d=function(v){ return v? v.split('-').reverse().join('.') : ''; };
@@ -678,6 +739,105 @@ function recCsv(){
     .concat(list.map(function(x){ return [q(x.name),q(x.unit),n(x.qty),n(x.sum),n(x.avg),x.docs,q(x.suppliers.join(', ')),q(x.last)].join(';'); }));
   var a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['\ufeff'+rows.join('\r\n')],{type:'text/csv;charset=utf-8'}));
   a.download='Поступления материалов '+$('rFrom').value+' — '+$('rTo').value+'.csv'; document.body.appendChild(a); a.click(); a.remove();
+}
+// ── динамика цен: материал × как шла цена (без НДС) ──
+var PRC=null;
+function loadPrc(){
+  var d=function(v){ return v? v.split('-').reverse().join('.') : ''; };
+  $('cTb').innerHTML='<tr><td colspan=7 class="center muted">Загрузка…</td></tr>';
+  api({vapi:'matprices', from:d($('cFrom').value), to:d($('cTo').value)}).then(function(r){
+    if(!r||!r.ok){ $('cTb').innerHTML='<tr><td colspan=7 class="center err">'+esc((r&&r.error)||'нет прав')+'</td></tr>'; return; }
+    PRC=r; ALERT=r.alertPct||ALERT; var cur=$('cRole').value;
+    $('cRole').innerHTML='<option value="">все роли</option>'+(r.roles||[]).map(function(x){ return '<option'+(x===cur?' selected':'')+'>'+esc(x)+'</option>'; }).join('');
+    drawPrc();
+  }).catch(function(){ $('cTb').innerHTML='<tr><td colspan=7 class="center err">связь оборвалась</td></tr>'; });
+}
+function spark(pts, dir){
+  var W=150,H=34,P=4, t=pts.map(function(x){ return Date.parse(x[0]); }), p=pts.map(function(x){ return x[1]; });
+  var t0=Math.min.apply(null,t), t1=Math.max.apply(null,t), p0=Math.min.apply(null,p), p1=Math.max.apply(null,p);
+  var X=function(v){ return t1===t0? W/2 : P+(v-t0)/(t1-t0)*(W-2*P); }, Y=function(v){ return p1===p0? H/2 : P+(1-(v-p0)/(p1-p0))*(H-2*P); }, n=pts.length-1;
+  return '<svg class="spk" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="цена по закупкам">'+(n>0?'<polyline class="'+dir+'" points="'+pts.map(function(x,i){ return X(t[i]).toFixed(1)+','+Y(p[i]).toFixed(1); }).join(' ')+'"/>':'')
+    +'<circle class="'+dir+'" cx="'+X(t[n]).toFixed(1)+'" cy="'+Y(p[n]).toFixed(1)+'" r="3"/></svg>';
+}
+function drawPrc(){
+  if(!PRC) return;
+  var q=$('cQ').value.trim().toLowerCase(), role=$('cRole').value, sort=$('cSort').value;
+  var list=PRC.rows.filter(function(x){ if(role&&x.role!==role) return false; if(q&&(x.name+' '+x.sups.join(' ')).toLowerCase().indexOf(q)<0) return false; return true; });
+  if(sort!=='sum') list=list.filter(function(x){ return x.pct!==null; }).sort(function(a,b){ return sort==='up'? b.pct-a.pct : a.pct-b.pct; });
+  var up=0, down=0, same=0, one=0; list.forEach(function(x){ if(x.pct===null) one++; else if(x.pct>0) up++; else if(x.pct<0) down++; else same++; });
+  $('cKpi').innerHTML='<span><b>'+list.length+'</b>материалов с закупками</span><span><b class="up">'+up+'</b>подорожали</span><span><b class="down">'+down+'</b>подешевели</span><span><b>'+same+'</b>без изменений</span>'
+    +(one&&sort==='sum'?'<span><b>'+one+'</b>одна закупка —<br>сравнить не с чем</span>':'');
+  var vt=function(v){ return v===0?' <span class="pill info" title="поставщик без НДС">без НДС</span>':v===null?' <span class="pill warn" title="в накладной разные ставки НДС">НДС ?</span>':''; };
+  $('cTb').innerHTML=list.map(function(x){ var dir=x.pct>0?'up':x.pct<0?'down':'';
+    return '<tr><td><span class="nm" onclick="openCard(\''+esc(x.name).replace(/\x27/g,"\\x27")+'\')">'+esc(x.name)+'</span></td><td>'+spark(x.pts,dir)+'</td>'
+      +'<td class="num">'+(x.n>1?pf(x.first)+'<div class="sub2 muted">'+esc(x.firstDate)+'</div>':'<span class="muted">—</span>')+'</td>'
+      +'<td class="num"><b>'+pf(x.last)+'</b> <span class="muted">/ '+esc(x.unit)+'</span><div class="sub2 muted">'+esc(x.lastDate)+'</div></td>'
+      +'<td class="num">'+(x.pct===null?'<span class="muted">—</span>':'<span class="pill '+(x.pct>=ALERT?'bad':x.pct>0?'warn':x.pct<0?'ok':'mute')+'">'+(x.pct>0?'▲ +':x.pct<0?'▼ ':'= ')+pct(x.pct)+' %</span>')+'</td>'
+      +'<td class="num">'+x.n+'</td><td class="muted">'+esc(x.lastSup)+vt(x.lastVat)+'</td></tr>';
+  }).join('')||'<tr><td colspan=7 class="center muted">за этот период закупок с известной ценой без НДС нет</td></tr>';
+}
+
+// ── названия 1С → наш материал ──
+var ONEC=null, OF='todo', OLIM=150;
+function loadOnec(keepMsg){
+  if(!ONEC) $('oTb').innerHTML='<tr><td colspan=7 class="center muted">Загрузка…</td></tr>';
+  api({vapi:'onecitems'}).then(function(r){
+    if(!r||!r.ok){ $('oTb').innerHTML='<tr><td colspan=7 class="center err">'+esc((r&&r.error)||'нет прав')+'</td></tr>'; return; }
+    ONEC=r; $('statlist').innerHTML=(r.statyi||[]).map(function(x){ return '<option value="'+esc(x)+'">'; }).join('');
+    $('matlist').innerHTML=(r.mats||[]).map(function(m){ return '<option value="'+esc(m.name)+'">'; }).join('');
+    if(!keepMsg) $('oMsg').textContent=''; drawOnec();
+  }).catch(function(){ $('oTb').innerHTML='<tr><td colspan=7 class="center err">связь оборвалась</td></tr>'; });
+}
+function onecList(){
+  var q=$('oQ').value.trim().toLowerCase();
+  return ONEC.rows.filter(function(x){ if(OF==='todo'&&(x.decided||!x.n)) return false; if(OF==='done'&&!x.decided) return false; if(OF==='idle'&&(x.n||x.decided)) return false;
+    if(q&&(x.name+' '+x.code+' '+x.mat+' '+x.sups.join(' ')).toLowerCase().indexOf(q)<0) return false; return true; })
+    .sort(function(a,b){ return b.net-a.net || a.name.localeCompare(b.name,'ru'); });
+}
+function matOf(name){ var m=null; (ONEC.mats||[]).forEach(function(x){ if(x.name===name) m=x; }); return m; }
+function drawOnec(){
+  if(!ONEC) return; var st=ONEC.stat, all=ONEC.rows, done=all.filter(function(x){ return x.decided; }).length, idle=all.filter(function(x){ return !x.n&&!x.decided; }).length;
+  $('oF').innerHTML=[['todo','сопоставить — '+st.todo],['done','готово — '+done],['idle','ещё не приходили — '+idle],['','все — '+all.length]].map(function(f){ return '<span class="chip'+(OF===f[0]?' on':'')+'" onclick="OF=\''+f[0]+'\';OLIM=150;drawOnec()">'+f[1]+'</span>'; }).join('');
+  $('oKpi').innerHTML='<span><b>'+st.withLines+'</b>названий в загруженных<br>накладных</span><span><b'+(st.todo?' class="up"':'')+'>'+st.todo+'</b>ещё не сопоставлено<br>на '+money(st.todoNet)+' BYN без НДС</span>'
+    +'<span><b>'+(st.net>0?pct((st.net-st.todoNet)/st.net*100):'0')+' %</b>суммы поступлений<br>уже сопоставлено</span>';
+  var list=onecList(), cls=ONEC.classes||[];
+  $('oTb').innerHTML=list.slice(0,OLIM).map(function(x){ var i=ONEC.rows.indexOf(x), mat=x.cls&&x.cls!=='материал'&&x.cls!=='расходник'?false:true, c=x.cls||'материал';
+    return '<tr id="o_'+i+'"'+(x.decided?' class="ok1"':'')+'><td><b>'+esc(x.name)+'</b><div class="sub2 muted">код '+esc(x.code)+(x.sups.length?' · '+esc(x.sups.join(', ')):'')+'</div></td>'
+      +'<td class="num">'+(x.n?money(x.net)+'<div class="sub2 muted">'+x.n+' строк'+(x.posted?' · проведено '+x.posted:'')+'</div>':'<span class="muted">—</span>')+'</td>'
+      +'<td class="num">'+(x.lastPrice?pf(x.lastPrice)+'<div class="sub2 muted">'+esc(x.last)+'</div>':'<span class="muted">—</span>')+'</td>'
+      +'<td><select id="oc_'+i+'" onchange="onecCls('+i+')">'+cls.map(function(k){ return '<option'+(k===c?' selected':'')+'>'+esc(k)+'</option>'; }).join('')+'</select></td>'
+      +'<td><span id="om_'+i+'"'+(mat?'':' style="display:none"')+'><input class="m" list="matlist" id="omat_'+i+'" value="'+esc(x.mat)+'" placeholder="наш материал…" onchange="onecHint('+i+')">'
+          +(x.cands&&x.cands.length?'<div class="cd">'+x.cands.map(function(k){ return '<span class="chip" title="'+(k.sure?'система уверена':'похоже по названию')+'" onclick="document.getElementById(\'omat_'+i+'\').value=this.textContent;onecHint('+i+')">'+esc(k.name)+'</span>'; }).join('')+'</div>':'')
+          +'<div class="sub2 muted" id="oh_'+i+'"></div></span>'
+        +'<span id="os_'+i+'"'+(mat?' style="display:none"':'')+'><input class="m" list="statlist" id="ost_'+i+'" value="'+esc(x.statya||(ONEC.classMap||{})[c]||'')+'" placeholder="статья расхода…"></span></td>'
+      +'<td class="num"><input class="k" id="ok_'+i+'" value="'+(x.coef?qf(x.coef):'1')+'" inputmode="decimal"'+(mat?'':' style="display:none"')+'></td>'
+      +'<td><button class="sm'+(x.decided?' sec':' green')+'" id="ob_'+i+'" onclick="onecSave('+i+')">'+(x.decided?'Изменить':'Сохранить')+'</button></td></tr>';
+  }).join('')||'<tr><td colspan=7 class="center muted">'+(OF==='todo'?'всё сопоставлено — новых названий нет':'ничего не найдено')+'</td></tr>';
+  $('oMore').innerHTML=list.length>OLIM?'Показаны первые '+OLIM+' из '+list.length+' (по убыванию суммы). <a href="javascript:void(0)" onclick="OLIM+=300;drawOnec()">показать ещё</a>':'';
+  list.slice(0,OLIM).forEach(function(x){ if(x.mat) onecHint(ONEC.rows.indexOf(x)); });
+}
+function onecCls(i){ var c=$('oc_'+i).value, mat=c==='материал'||c==='расходник'; $('om_'+i).style.display=mat?'':'none'; $('os_'+i).style.display=mat?'none':''; $('ok_'+i).style.display=mat?'':'none';
+  if(!mat&&!$('ost_'+i).value) $('ost_'+i).value=(ONEC.classMap||{})[c]||''; }
+// подсказка пересчёта: наша единица и последняя цена материала; для листового — сколько листов в кубометре
+function onecHint(i){
+  var x=ONEC.rows[i], m=matOf($('omat_'+i).value.trim()), h=$('oh_'+i); if(!h) return;
+  if(!m){ h.innerHTML=$('omat_'+i).value.trim()?'<span class="err">такого материала в реестре нет — выберите из списка или заведите во вкладке «Реестр материалов»</span>':''; return; }
+  var t='у нас в «'+esc(m.unit)+'»'+(m.price?', последняя цена '+pf(m.price):''), sz=/^(\d+)[xх](\d+)$/.exec(m.size||''), per=sz&&m.thick? 1/(sz[1]/1000*sz[2]/1000*m.thick/1000) : 0;
+  if(per) t+=' · если в 1С кубометры: <a href="javascript:void(0)" onclick="document.getElementById(\'ok_'+i+'\').value=\''+qf(Math.round(per*100)/100)+'\'">× '+qf(Math.round(per*100)/100)+' листа в м³</a>';
+  h.innerHTML=t;
+}
+function onecSave(i){
+  var x=ONEC.rows[i], c=$('oc_'+i).value, mat=c==='материал'||c==='расходник', b=$('ob_'+i), m=$('oMsg');
+  var f={code:x.code, cls:c}; if(mat){ f.mat=$('omat_'+i).value.trim(); f.coef=$('ok_'+i).value.replace(',','.'); if(!f.mat){ m.className='msg err'; m.textContent='выберите наш материал для «'+x.name+'»'; return; } if(!(Number(f.coef)>0)){ m.className='msg err'; m.textContent='пересчёт — число больше нуля'; return; } }
+  else { f.statya=$('ost_'+i).value.trim(); if(!f.statya){ m.className='msg err'; m.textContent='выберите статью расхода для «'+x.name+'»'; return; } }
+  var q={vapi:'onecitemset', data:JSON.stringify(f)}; if(x.posted) q.repost=1;   // уже проведённые строки перепроводятся с новым сопоставлением
+  b.disabled=true; m.className='msg'; m.textContent='Сохраняю «'+x.name+'»…';
+  apiPost(q).then(function(r){
+    b.disabled=false;
+    if(!r||!r.ok){ m.className='msg err'; m.textContent=(r&&r.error)||'не сохранилось'; return; }
+    m.className='msg ok'; m.textContent='✓ «'+x.name+'»: строк '+(r.lines||0)+', проведено '+(r.posted||0)+(r.kept?' · уже проведённых не тронуто: '+r.kept:'')+(r.skipped&&r.skipped.length?' · не проведено '+r.skipped.length+': '+r.skipped[0].why:'');
+    loadOnec(true); load();
+  }).catch(function(){ b.disabled=false; m.className='msg err'; m.textContent='связь оборвалась'; });
 }
 function goDocs(){
   try{ window.top.postMessage({tw:'go',id:'indocs'},'*'); }catch(e){}
@@ -732,12 +892,15 @@ document.addEventListener('click',function(e){
 })();
 
 load();
+(function(){ var v=qp('view'); try{ v=v||localStorage.getItem('tw_mat_view')||''; localStorage.removeItem('tw_mat_view'); }catch(e){} if(v==='onec'||v==='prc'||v==='rec') setView(v); })();
 
 // авто-обновление: оболочка шлёт «refresh» при возврате на раздел — перечитываем данные без перезагрузки страницы
 (function(){
   try{ var m=/[?&]twsec=([^&]+)/.exec(location.search); window.top.postMessage({tw:'hello',sec:m?decodeURIComponent(m[1]):''},'*'); }catch(e){}
-  window.addEventListener('message',function(e){ var d=e&&e.data; if(d&&d.tw==='refresh'){ try{ 
-load(); }catch(err){} } });
+  window.addEventListener('message',function(e){ var d=e&&e.data; if(d&&d.tw==='refresh'){ try{
+    var v=''; try{ v=localStorage.getItem('tw_mat_view')||''; localStorage.removeItem('tw_mat_view'); }catch(err){}
+    if(v) setView(v); else if(VIEW==='onec') loadOnec(); else if(VIEW==='prc') loadPrc(); else if(VIEW==='rec') loadRec(); else load();
+  }catch(err){} } });
 })();
 </script>
 </body>
