@@ -320,14 +320,14 @@ function exportDocs(all){
 var IMP=null;   // {b64, b64m, name, map:{название в 1С: id карточки}, edit:{название:1}, r: ответ предпросмотра}
 // один файл или два сразу (реестр документов + движение материалов): какой из них какой, сервер определяет по содержимому
 function pick1c(files){
-  if(!files||!files.length) return; var fs=[].slice.call(files,0,2), got=[], left=fs.length; $('upl1c').value='';
-  if(files.length>2){ $('smsg').className='msg err'; $('smsg').textContent='выберите не больше двух файлов: реестр документов и движение материалов'; return; }
+  if(!files||!files.length) return; var fs=[].slice.call(files,0,3), got=[], left=fs.length; $('upl1c').value='';
+  if(files.length>3){ $('smsg').className='msg err'; $('smsg').textContent='выберите не больше трёх файлов: реестр документов, движение материалов и материальный отчёт (единицы измерения)'; return; }
   fs.forEach(function(f,i){ var fr=new FileReader();
-    fr.onload=function(){ got[i]=String(fr.result).split(',')[1]||''; if(--left===0){ IMP={b64:got[0], b64m:got[1]||'', name:fs.map(function(x){ return x.name; }).join(' + '), map:{}, edit:{}, r:null}; open1c(); } };
+    fr.onload=function(){ got[i]=String(fr.result).split(',')[1]||''; if(--left===0){ IMP={b64:got[0], b64m:got[1]||'', b64u:got[2]||'', name:fs.map(function(x){ return x.name; }).join(' + '), map:{}, edit:{}, r:null}; open1c(); } };
     fr.onerror=function(){ $('smsg').className='msg err'; $('smsg').textContent='не прочитать файл'; };
     fr.readAsDataURL(f); });
 }
-function q1c(vapi){ var q={vapi:vapi, b64:IMP.b64, name:IMP.name, map:JSON.stringify(IMP.map)}; if(IMP.b64m) q.b64m=IMP.b64m; return q; }
+function q1c(vapi){ var q={vapi:vapi, b64:IMP.b64, name:IMP.name, map:JSON.stringify(IMP.map)}; if(IMP.b64m) q.b64m=IMP.b64m; if(IMP.b64u) q.b64u=IMP.b64u; return q; }
 function open1c(){
   $('ov').className='scrim ov on'; $('modal').className='modal dlg lg imp';
   $('modal').innerHTML='<div class="ihead"><h3>Загрузка из 1С</h3><button class="x ic" onclick="closeOv()">✕</button></div><div id="i1c"><div class="center muted">Читаю «'+esc(IMP.name)+'» и сверяю с документами…</div></div><div id="f1c"></div>';
@@ -362,7 +362,8 @@ function draw1c(after){
   box.innerHTML=cpl
     +'<div class="muted">'+(f.kind==='card' ? 'Карточка счёта '+esc(f.account)+' за '+esc(f.from)+' – '+esc(f.to)+' · проводок в файле: '+f.entries
         : f.kind==='registry' ? 'Реестр документов за '+esc(f.from)+' – '+esc(f.to)+' · документов: '+f.entries+(mv?'':' · <b class="err">движение материалов не приложено — строк у накладных не будет</b>')
-        : 'Движение материалов за '+esc(f.from)+' – '+esc(f.to)+' — без реестра документов')
+        : f.kind==='moves' ? 'Движение материалов за '+esc(f.from)+' – '+esc(f.to)+' — без реестра документов' : 'Материальный отчёт: единицы измерения')
+      +(f.units?' · единицы измерения: '+f.units+' материалов':'')
       +(mv?' · движение материалов за '+esc(mv.from)+' – '+esc(mv.to)+': материалов '+mv.items+', строк документов '+mv.rows:'')+'</div>'
     +(bad? '<div class="note bad" style="margin-top:var(--s-2)"><div><b>Файл прочитан с ошибкой — загрузка закрыта.</b> '+esc(f.problems.join('; '))+'. Пришлите этот файл разработчику.</div></div>'
          : '<div class="note ok" style="margin-top:var(--s-2)"><div>✓ '+(f.kind==='card' ? 'Файл прочитан полностью: сумма проводок сходится с итогом «Обороты за период» в самом файле — по кредиту '+money(f.turnC)+', по дебету '+money(f.turnD)+'.'
@@ -417,8 +418,8 @@ function draw1c(after){
     ;
   $('f1c').innerHTML='<div class="dfoot">'
       +(r.locked ? '<span class="muted">🔒 '+esc(r.locked)+'</span> ' : r.canLoad
-        ? (bad||!(st.news+st.changed+st.toMark+st.unmark+(st.addLines||0)) ? '<span class="muted">'+(bad?'':st.noSup?'Загружать пока нечего: выберите карточки поставщиков — тогда их документы ('+st.noSup+') можно будет завести.':'Всё из этого файла уже загружено — новых документов и изменений нет.')+'</span> '
-          : '<button class="green" id="go1c" onclick="apply1c()">'+(st.news||st.changed?'Загрузить: завести '+st.news+(st.changed?', обновить '+st.changed:''):st.addLines?'Добавить строки документам — '+st.addLines:st.toMark?'Отметить найденные «есть в 1С» — '+st.toMark:'Снять отметку «есть в 1С» — '+st.unmark)+'</button> '
+        ? (bad||!(st.news+st.changed+st.toMark+st.unmark+(st.addLines||0)+(f.units||0)) ? '<span class="muted">'+(bad?'':st.noSup?'Загружать пока нечего: выберите карточки поставщиков — тогда их документы ('+st.noSup+') можно будет завести.':'Всё из этого файла уже загружено — новых документов и изменений нет.')+'</span> '
+          : '<button class="green" id="go1c" onclick="apply1c()">'+(st.news||st.changed?'Загрузить: завести '+st.news+(st.changed?', обновить '+st.changed:''):st.addLines?'Добавить строки документам — '+st.addLines:f.units&&!st.toMark&&!st.unmark?'Записать единицы измерения':st.toMark?'Отметить найденные «есть в 1С» — '+st.toMark:'Снять отметку «есть в 1С» — '+st.unmark)+'</button> '
             +(st.noSup?'<span class="muted">ещё '+st.noSup+' — после выбора карточки поставщика</span> ':''))
         : '')
       +'<button class="sec" onclick="closeOv()">Закрыть</button> <span class="msg" id="m1c"></span></div>';
@@ -446,7 +447,7 @@ function apply1c(){
   var b=$('go1c'), m=$('m1c'); if(!b||b.disabled) return; b.disabled=true; m.className='msg'; m.textContent='Загружаю…';
   apiPost(q1c('doc1capply')).then(function(r){
     if(!r||!r.ok){ b.disabled=false; m.className='msg err'; m.textContent=(r&&r.error)||'не вышло'; return; }
-    var t='Заведено документов: '+r.created+(r.created?' на '+money(r.createdSum)+' BYN':'')+(r.history?' (из них до начала расчётов: '+r.history+')':'')+(r.lines?' · строк: '+r.lines:'')+' · отмечено «есть в 1С»: '+r.marked+(r.updated?' · обновлено по 1С: '+r.updated:'')+(r.unmarked?' · отметка снята: '+r.unmarked:'')+(r.moved?' · перенесено на другую карточку: '+r.moved:'')+(r.differ?' · расходятся: '+r.differ:'')+'.';
+    var t='Заведено документов: '+r.created+(r.created?' на '+money(r.createdSum)+' BYN':'')+(r.history?' (из них до начала расчётов: '+r.history+')':'')+(r.lines?' · строк: '+r.lines:'')+' · отмечено «есть в 1С»: '+r.marked+(r.updated?' · обновлено по 1С: '+r.updated:'')+(r.unmarked?' · отметка снята: '+r.unmarked:'')+(r.moved?' · перенесено на другую карточку: '+r.moved:'')+(r.differ?' · расходятся: '+r.differ:'')+(r.unitsSet?' · единиц измерения записано: '+r.unitsSet:'')+'.';
     IMP.map={};
     if(r.lines) post1c(t, 0, 0); else { load(1); prev1c(t); }
   }).catch(function(){ b.disabled=false; m.className='msg err'; m.textContent='связь оборвалась — проверьте реестр и повторите: повторная загрузка ничего не задвоит'; });
