@@ -375,7 +375,8 @@ function draw1c(after){
       +'<span><b>'+st.news+'</b>новых — будут заведены'+(st.news&&st.newsSum?'<br>на '+money(st.newsSum)+' BYN с НДС':'')+((st.foreign||[]).length?'<br>'+st.foreign.map(function(c){ return c.n+' в '+esc(c.cur)+' на '+money(c.sum)+' '+esc(c.cur); }).join(', '):'')+'</span>'
       +(st.lines?'<span><b>'+st.lines+'</b>строк с материалами<br>'+[vt.vat20?vt.vat20+' накл. с НДС 20 %':'', vt.vat10?vt.vat10+' — 10 %':'', vt.vat0?vt.vat0+' без НДС':'', vt.split?vt.split+' — часть строк без НДС':'', vt.mixed?vt.mixed+' — ставки строк не определились':''].filter(Boolean).join(', ')+'</span>':'')
       +(st.history?'<span><b>'+st.history+'</b>из них — до начала расчётов:<br>для истории цен, в долг не входят</span>':'')
-      +(st.addLines?'<span><b>'+st.addLines+'</b>заведённым раньше<br>добавятся строки</span>':'')
+      +(st.addLines?'<span><b>'+st.addLines+'</b>документам добавятся<br>строки из 1С'+(st.replaceLines?' (у '+st.replaceLines+' сканов — вместо распознанных)':'')+'</span>':'')
+      +(st.confirm?'<span><b>'+st.confirm+'</b>сканов совпали с 1С —<br>будут подтверждены</span>':'')
       +'<span><b>'+st.same+'</b>уже есть у нас,<br>суммы совпадают</span>'
       +'<span><b>'+st.differ+'</b>есть у нас,<br>но расходятся с 1С</span>'
       +(st.noSup?'<span><b class="err">'+st.noSup+'</b>ждут карточки поставщика<br>на '+money(st.noSupSum)+' BYN — пока не заводятся</span>':'')
@@ -418,8 +419,8 @@ function draw1c(after){
     ;
   $('f1c').innerHTML='<div class="dfoot">'
       +(r.locked ? '<span class="muted">🔒 '+esc(r.locked)+'</span> ' : r.canLoad
-        ? (bad||!(st.news+st.changed+st.toMark+st.unmark+(st.addLines||0)+(f.units||0)) ? '<span class="muted">'+(bad?'':st.noSup?'Загружать пока нечего: выберите карточки поставщиков — тогда их документы ('+st.noSup+') можно будет завести.':'Всё из этого файла уже загружено — новых документов и изменений нет.')+'</span> '
-          : '<button class="green" id="go1c" onclick="apply1c()">'+(st.news||st.changed?'Загрузить: завести '+st.news+(st.changed?', обновить '+st.changed:''):st.addLines?'Добавить строки документам — '+st.addLines:f.units&&!st.toMark&&!st.unmark?'Записать единицы измерения':st.toMark?'Отметить найденные «есть в 1С» — '+st.toMark:'Снять отметку «есть в 1С» — '+st.unmark)+'</button> '
+        ? (bad||!(st.news+st.changed+st.toMark+st.unmark+(st.addLines||0)+(st.confirm||0)+(f.units||0)) ? '<span class="muted">'+(bad?'':st.noSup?'Загружать пока нечего: выберите карточки поставщиков — тогда их документы ('+st.noSup+') можно будет завести.':'Всё из этого файла уже загружено — новых документов и изменений нет.')+'</span> '
+          : '<button class="green" id="go1c" onclick="apply1c()">'+(st.news||st.changed?'Загрузить: завести '+st.news+(st.changed?', обновить '+st.changed:''):st.addLines||st.confirm?'Сверить с 1С: подтвердить '+(st.confirm||0)+(st.addLines?', строки из 1С — '+st.addLines:''):f.units&&!st.toMark&&!st.unmark?'Записать единицы измерения':st.toMark?'Отметить найденные «есть в 1С» — '+st.toMark:'Снять отметку «есть в 1С» — '+st.unmark)+'</button> '
             +(st.noSup?'<span class="muted">ещё '+st.noSup+' — после выбора карточки поставщика</span> ':''))
         : '')
       +'<button class="sec" onclick="closeOv()">Закрыть</button> <span class="msg" id="m1c"></span></div>';
@@ -447,7 +448,7 @@ function apply1c(){
   var b=$('go1c'), m=$('m1c'); if(!b||b.disabled) return; b.disabled=true; m.className='msg'; m.textContent='Загружаю…';
   apiPost(q1c('doc1capply')).then(function(r){
     if(!r||!r.ok){ b.disabled=false; m.className='msg err'; m.textContent=(r&&r.error)||'не вышло'; return; }
-    var t='Заведено документов: '+r.created+(r.created&&r.createdSum?' на '+money(r.createdSum)+' BYN':'')+((r.createdCur||[]).length?' (в валюте: '+r.createdCur.map(esc).join('; ')+')':'')+(r.history?' (из них до начала расчётов: '+r.history+')':'')+(r.lines?' · строк: '+r.lines:'')+' · отмечено «есть в 1С»: '+r.marked+(r.updated?' · обновлено по 1С: '+r.updated:'')+(r.unmarked?' · отметка снята: '+r.unmarked:'')+(r.moved?' · перенесено на другую карточку: '+r.moved:'')+(r.differ?' · расходятся: '+r.differ:'')+(r.unitsSet?' · единиц измерения записано: '+r.unitsSet:'')+'.';
+    var t='Заведено документов: '+r.created+(r.created&&r.createdSum?' на '+money(r.createdSum)+' BYN':'')+((r.createdCur||[]).length?' (в валюте: '+r.createdCur.map(esc).join('; ')+')':'')+(r.history?' (из них до начала расчётов: '+r.history+')':'')+(r.lines?' · строк: '+r.lines:'')+' · отмечено «есть в 1С»: '+r.marked+(r.updated?' · обновлено по 1С: '+r.updated:'')+(r.unmarked?' · отметка снята: '+r.unmarked:'')+(r.moved?' · перенесено на другую карточку: '+r.moved:'')+(r.differ?' · расходятся: '+r.differ:'')+(r.unitsSet?' · единиц измерения записано: '+r.unitsSet:'')+(r.confirmed?' · подтверждено по 1С: '+r.confirmed:'')+(r.linesReplaced?' · распознанных строк заменено строками 1С: '+r.linesReplaced:'')+'.';
     IMP.map={};
     if(r.lines) post1c(t, 0, 0); else { load(1); prev1c(t); }
   }).catch(function(){ b.disabled=false; m.className='msg err'; m.textContent='связь оборвалась — проверьте реестр и повторите: повторная загрузка ничего не задвоит'; });
