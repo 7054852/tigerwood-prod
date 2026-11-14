@@ -12,9 +12,13 @@
   #sTb tr{ cursor:pointer; }
   .owe{ color:var(--red); font-weight:600; } .adv{ color:var(--green); font-weight:600; }
   .settle{ border:1px solid var(--line); border-radius:var(--r-ctl); padding:var(--s-2) var(--s-3); margin-top:var(--s-2); font:var(--t-small); display:flex; gap:var(--s-2); flex-wrap:wrap; align-items:center; }
-  .toph{ display:flex; align-items:center; gap:var(--s-3); flex-wrap:wrap; margin:0 0 var(--s-2); } .toph .hi{ margin:0; } .toph .chips{ margin:0; }
+  .toph{ display:flex; align-items:center; gap:var(--s-3); flex-wrap:wrap; margin:0 0 var(--s-2); } .toph .end{ margin-left:auto; display:flex; gap:var(--s-2); align-items:center; } .toph .hi{ margin:0; } .toph .chips{ margin:0; }
   .frow{ display:flex; align-items:center; gap:var(--s-2); flex-wrap:wrap; margin:0 0 var(--s-3); } .frow .chips{ margin:0; } .frow #cnt{ margin:0 0 0 auto; }
-  .frow #tfilters{ min-height:var(--h-sm); padding:0 var(--s-2); font:var(--t-small); }
+  .kinds{ max-width:100%; overflow-x:auto; scrollbar-width:none; } .kinds::-webkit-scrollbar{ display:none; }
+  .toolbar #q{ flex:1 1 150px; min-width:140px; width:auto; }
+  .kinds button{ white-space:nowrap; font-weight:600; color:var(--fg2); } .kinds button .n{ font-weight:400; color:var(--muted); margin-left:4px; font-variant-numeric:tabular-nums; }
+  .kinds button.on{ color:var(--accent-text); } .kinds button.zero{ opacity:.6; }
+  .more .menu .per{ display:flex; align-items:center; gap:var(--s-1); flex-wrap:wrap; padding-bottom:var(--s-2); border-bottom:1px solid var(--line); margin-bottom:var(--s-1); font:var(--t-small); }
   .more{ position:relative; } .more summary{ list-style:none; cursor:pointer; } .more summary::-webkit-details-marker{ display:none; }
   .more .menu{ position:absolute; right:0; top:calc(100% + var(--s-1)); z-index:30; display:flex; flex-direction:column; gap:var(--s-1); padding:var(--s-2); background:var(--card); border:1px solid var(--line); border-radius:var(--r-ctl); box-shadow:var(--shadow-pop); min-width:220px; }
   .more .menu button{ justify-content:flex-start; text-align:left; }
@@ -126,17 +130,11 @@
 <body>
 <div id="twload"><i></i></div>
 <div id="twwait"><div class="wb"><div class="sp"></div><div class="wt" id="twwt">Отправляю…</div><div class="wh">идёт обмен с сервером — не нажимайте</div></div></div>
-<div class="toph"><div class="hi">📑 Входящие документы</div><div class="chips" id="views"><span class="chip on" id="vDoc" onclick="setView('doc')">Документы</span><span class="chip" id="vSup" onclick="setView('sup')">Расчёты с поставщиками</span></div></div>
-<div id="docView">
-<div class="toolbar">
-  <span class="muted">с</span><input type="date" id="from" onchange="load()">
-  <span class="muted">по</span><input type="date" id="to" onchange="load()">
-  <input type="search" class="search" id="q" placeholder="поставщик или № документа…" oninput="draw()">
-  <span class="msg" id="smsg"></span>
-  <div class="end">
-    <select id="upType" title="что загружаете: выбранный тип распознавание не меняет; «тип: авто» — тип найдёт распознавание"><option value="">тип: авто</option><option>ТН</option><option>ТТН</option><option>Акт</option><option>УПД</option><option>Счёт</option><option>Чек</option><option>Акт сверки</option><option>Прочее</option></select>
-    <button onclick="document.getElementById('upl').click()" title="накладные, акты, УПД, чеки — сразу несколько файлов; можно перетащить файлы на страницу">⬆️ Загрузить</button>
-    <details class="more"><summary class="btn sec" title="ещё действия">⋯</summary><div class="menu">
+<div class="toph"><div class="hi">📑 Входящие документы</div><div class="chips" id="views"><span class="chip on" id="vDoc" onclick="setView('doc')">Документы</span><span class="chip" id="vSup" onclick="setView('sup')">Расчёты с поставщиками</span></div>
+<div class="end">
+    <button id="uplBtn" onclick="document.getElementById('upl').click()" title="можно сразу несколько файлов или перетащить их на страницу">⬆️ Загрузить</button>
+    <details class="more"><summary class="btn sec" title="период и другие действия">⋯</summary><div class="menu">
+      <div class="per"><span class="muted">период с</span><input type="date" id="from" onchange="load()"><span class="muted">по</span><input type="date" id="to" onchange="load()"></div>
       <button class="sec" onclick="moreClose();load()">Обновить</button>
       <button class="sec" onclick="moreClose();scanNow()" title="распознать ближайшие документы прямо сейчас, не дожидаясь фонового прогона">⚡ Распознать сейчас</button>
       <button class="sec" onclick="moreClose();exportDocs()" title="файл со всеми реквизитами — бухгалтеру останется загрузить его в 1С">⬇️ Выгрузить для 1С</button>
@@ -145,10 +143,15 @@
     </div></details>
     <input type="file" id="upl1c" accept=".xls,.xlsx" multiple style="display:none" onchange="pick1c(this.files)">
     <input type="file" id="upl" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.doc,.docx,.xls,.xlsx" style="display:none" onchange="uploadPicked(this.files)">
-  </div>
+</div>
+<div id="docView">
+<div class="toolbar">
+  <div class="seg kinds" id="kinds"></div>
+  <input type="search" class="search" id="q" placeholder="поиск: поставщик или №" oninput="draw()">
+  <span class="msg" id="smsg"></span>
 </div>
 <div id="uplbox" class="box" style="display:none;margin-bottom:var(--s-3)"></div>
-<div class="frow"><div class="chips" id="filters"></div><select id="tfilters" title="вид документа" onchange="TFILT=this.value;draw()"></select><span class="meta" id="cnt"></span></div>
+<div class="frow"><div class="chips" id="filters"></div><span class="meta" id="cnt"></span></div>
 <div id="list"><div class="center muted">Загрузка…</div></div>
 </div>
 <div id="supView" style="display:none">
@@ -192,6 +195,11 @@ function num(x){ return Number(String(x==null?'':x).replace(',','.'))||0; }
 var ROWS=[], STAT={}, CLASSES=[], CLASSMAP={}, SERVICES=[], TYPES=[], FILT='', TFILT='';
 // вид документа для фильтра реестра (владелец 14.11.2026: «выбрать, что это — накладные, акты или чеки»)
 var TGROUPS=[['nakl','Накладные'],['act','Акты'],['inv','Счета'],['chek','Чеки'],['recon','Акты сверки'],['other','Прочее']];
+// выбранный вид — это и фильтр списка, и тип при загрузке: в «Чеках» загружаются чеки (накладные — ТН/ТТН/УПД — различит распознавание)
+var KIND_TYPE={'':'', nakl:'', act:'Акт', inv:'Счёт', chek:'Чек', recon:'Акт сверки', other:'Прочее'};
+var KIND_UP={'':'⬆️ Загрузить', nakl:'⬆️ Загрузить накладные', act:'⬆️ Загрузить акты', inv:'⬆️ Загрузить счета', chek:'⬆️ Загрузить чеки', recon:'⬆️ Загрузить акт сверки', other:'⬆️ Загрузить'};
+function setKind(k){ TFILT=k; try{ localStorage.setItem('tw_docs_kind',k); }catch(e){} drawTypes(); draw(); }
+try{ TFILT=localStorage.getItem('tw_docs_kind')||''; }catch(e){}
 function typeGroup(t,note){ t=String(t||'').trim().toLowerCase();
   if(!t&&note){ if(/поступлени/i.test(note)) return 'nakl'; if(/услуг/i.test(note)) return 'act'; }   // запись из 1С без типа — по виду операции 1С
   if(/сверк/.test(t)) return 'recon'; if(/^акт/.test(t)) return 'act'; if(/^сч[её]т/.test(t)) return 'inv'; if(/^чек/.test(t)) return 'chek';
@@ -216,8 +224,9 @@ function load(quiet){
 function setFilt(f){ FILT=f; load(); }
 function drawTypes(){
   var n={}; ROWS.forEach(function(r){ var g=typeGroup(r.type,r.note1c); n[g]=(n[g]||0)+1; });
-  $('tfilters').innerHTML='<option value="">все виды</option>'+TGROUPS.filter(function(g){ return n[g[0]]; })
-    .map(function(g){ return '<option value="'+g[0]+'"'+(TFILT===g[0]?' selected':'')+'>'+esc(g[1])+' — '+n[g[0]]+'</option>'; }).join('');
+  $('kinds').innerHTML=[['','Все']].concat(TGROUPS).map(function(g){ var c=g[0]?(n[g[0]]||0):ROWS.length;
+    return '<button class="'+(TFILT===g[0]?'on':'')+(c?'':' zero')+'" onclick="setKind(\''+g[0]+'\')">'+esc(g[1])+'<span class="n">'+c+'</span></button>'; }).join('');
+  var b=$('uplBtn'); if(b){ b.textContent=KIND_UP[TFILT]||KIND_UP['']; b.title=(KIND_TYPE[TFILT]?'файлы запишутся как «'+KIND_TYPE[TFILT]+'» — распознавание тип не поменяет; ':'тип найдёт распознавание; ')+'можно сразу несколько файлов или перетащить их на страницу'; }
 }
 function moreClose(){ var d=document.querySelector('details.more'); if(d) d.open=false; }
 document.addEventListener('click',function(e){ var d=document.querySelector('details.more'); if(d&&d.open&&!d.contains(e.target)) d.open=false; });
@@ -264,7 +273,7 @@ function draw(){
       +need.map(docCard).join('')
       +(rest.length?'<div class="sect">Все документы — '+rest.length+'</div>':'') : '')
     +rest.map(docCard).join('')
-    || '<div class="center muted">ничего не найдено</div>';
+    || '<div class="center muted">'+(!ROWS.length?'документов нет':TFILT==='chek'&&!q?'Чеков пока нет. Загрузите кнопкой «⬆️ Загрузить чеки» или сфотографируйте чек в боте Тигервуда — кнопка «🧾 Загрузить чек».':TFILT&&!q&&!FILT?'Здесь пока пусто — загрузите кнопкой «'+esc(KIND_UP[TFILT].replace('⬆️ ',''))+'».':'ничего не найдено — сбросьте фильтр или поиск')+'</div>';
 }
 function docCard(r){
   return (function(r){
@@ -303,7 +312,7 @@ function uploadPicked(files){
   if(!files||!files.length) return;
   var box=$('uplbox'); box.style.display='';
   UPQ=[];
-  var ty=($('upType')||{}).value||'';   // тип на всю пачку: выбранный распознавание не меняет
+  var ty=KIND_TYPE[TFILT]||'';   // тип на всю пачку = выбранный вид; выбранный распознавание не меняет
   for(var i=0;i<files.length;i++) UPQ.push({name:files[i].name, file:files[i], state:'ждёт', type:ty});
   drawUpl();
   saveNext(0);
@@ -1079,6 +1088,7 @@ var SUP=null, LED=null;
 function setView(v){
   $('vDoc').className='chip'+(v==='doc'?' on':''); $('vSup').className='chip'+(v==='sup'?' on':'');
   $('docView').style.display=v==='doc'?'':'none'; $('supView').style.display=v==='sup'?'':'none';
+  var e=document.querySelector('.toph .end'); if(e) e.style.display=v==='doc'?'':'none';   // «Загрузить» и «⋯» — для документов
   if(v==='sup'&&!SUP) loadSup();
 }
 function bal(x,cur){ return Math.abs(x)<0.005?'<span class="muted">0,00</span>':x>0?'<span class="owe" title="мы должны поставщику">должны '+money(x)+(cur?' '+esc(cur):'')+'</span>':'<span class="adv" title="оплачено больше, чем получено по документам: это наш аванс — или накладная / акт ещё не загружены">оплачено без документов '+money(-x)+(cur?' '+esc(cur):'')+'</span>'; }
