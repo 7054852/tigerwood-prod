@@ -14,7 +14,7 @@
   #sTb tr{ cursor:pointer; }
   .owe{ color:var(--red); font-weight:600; } .adv{ color:var(--green); font-weight:600; }
   .settle{ border:1px solid var(--line); border-radius:var(--r-ctl); padding:var(--s-2) var(--s-3); margin-top:var(--s-2); font:var(--t-small); display:flex; gap:var(--s-2); flex-wrap:wrap; align-items:center; }
-  #filters{ margin:0 0 var(--s-4); }
+  #filters{ margin:0 0 var(--s-2); } #tfilters{ margin:0 0 var(--s-4); }
   /* документ — карточкой: в таблице поставщик и номер уезжали за край */
   .doc{ border:1px solid var(--line); border-radius:var(--r-card); background:var(--card); box-shadow:var(--shadow-card); padding:var(--s-3) var(--s-4); margin-bottom:var(--s-2); cursor:pointer; transition:border-color .15s var(--ease); }
   .doc:hover{ border-color:var(--muted); }
@@ -68,6 +68,7 @@
   .dhead h3{ margin:0; }
   .dmeta{ display:flex; flex-wrap:wrap; gap:var(--s-1) var(--s-3); color:var(--muted); font:var(--t-small); margin-top:var(--s-1); }
   .dmeta b{ color:var(--fg2); font-weight:600; }
+  .dmeta .tsel{ min-height:var(--h-sm); padding:0 var(--s-2); font:var(--t-small); font-weight:600; }
   .dtot{ text-align:right; }
   .dtot .v{ font:var(--t-title); font-variant-numeric:tabular-nums; }
   .dtot .l{ font:var(--t-label); color:var(--muted); text-transform:uppercase; letter-spacing:.06em; }
@@ -137,6 +138,7 @@
     <button class="sec" onclick="document.getElementById('upl1c').click()" title="выгрузка из 1С за период (Excel): «Реестр документов» вместе с отчётом «Движение материалов на складах» — выберите оба файла сразу — или «Карточка счёта 60.1». Система найдёт документы, которых у нас нет, заведёт их со строками и покажет расхождения. Сначала предпросмотр, ничего не записывается">⬆️ Загрузить из 1С</button>
     <input type="file" id="upl1c" accept=".xls,.xlsx" multiple style="display:none" onchange="pick1c(this.files)">
     <button class="sec" onclick="showFixes()" title="что бухгалтер чаще всего исправляет за распознаванием — по этому списку уточняется промпт">📊 Что чаще правят</button>
+    <select id="upType" title="что загружаете: выбранный тип распознавание не меняет; «определить автоматически» — тип найдёт распознавание"><option value="">тип: определить автоматически</option><option>ТН</option><option>ТТН</option><option>Акт</option><option>УПД</option><option>Счёт</option><option>Чек</option><option>Акт сверки</option><option>Прочее</option></select>
     <button onclick="document.getElementById('upl').click()" title="накладные, акты, УПД, чеки — сразу несколько файлов">⬆️ Загрузить документы</button>
     <input type="file" id="upl" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.doc,.docx,.xls,.xlsx" style="display:none" onchange="uploadPicked(this.files)">
   </div>
@@ -144,6 +146,7 @@
 <div id="uplbox" class="box" style="display:none;margin-bottom:var(--s-3)"></div>
 <div class="meta" id="cnt">загрузка…</div>
 <div class="chips" id="filters"></div>
+<div class="chips" id="tfilters"></div>
 <div id="list"><div class="center muted">Загрузка…</div></div>
 </div>
 <div id="supView" style="display:none">
@@ -184,7 +187,13 @@ function $(id){ return document.getElementById(id); }
 function money(n){ n=Number(n)||0; return n.toFixed(2).replace('.',','); }
 function num(x){ return Number(String(x==null?'':x).replace(',','.'))||0; }
 
-var ROWS=[], STAT={}, CLASSES=[], CLASSMAP={}, SERVICES=[], TYPES=[], FILT='';
+var ROWS=[], STAT={}, CLASSES=[], CLASSMAP={}, SERVICES=[], TYPES=[], FILT='', TFILT='';
+// вид документа для фильтра реестра (владелец 14.11.2026: «выбрать, что это — накладные, акты или чеки»)
+var TGROUPS=[['nakl','Накладные'],['act','Акты'],['inv','Счета'],['chek','Чеки'],['recon','Акты сверки'],['other','Прочее']];
+function typeGroup(t,note){ t=String(t||'').trim().toLowerCase();
+  if(!t&&note){ if(/поступлени/i.test(note)) return 'nakl'; if(/услуг/i.test(note)) return 'act'; }   // запись из 1С без типа — по виду операции 1С
+  if(/сверк/.test(t)) return 'recon'; if(/^акт/.test(t)) return 'act'; if(/^сч[её]т/.test(t)) return 'inv'; if(/^чек/.test(t)) return 'chek';
+  if(/^(тн|ттн|упд|инвойс)$|накладн/.test(t)) return 'nakl'; return 'other'; }
 
 function load(quiet){
   if(!quiet) $('list').innerHTML='<div class="center muted">Загрузка…</div>';
@@ -199,10 +208,15 @@ function load(quiet){
     clearTimeout(window._poll); if(ROWS.some(function(x){ return x.recognizing; })) window._poll=setTimeout(function(){ if(!$('dbody')&&!UPQ.length) load(1); },6000);   // пока идёт распознавание — обновляем сами
     $('filters').innerHTML=[['','все'],['check','🔔 на проверке — '+(STAT.check||0)],['todo','разнести — '+(STAT.todo||0)],['done','разнесённые — '+(STAT.done||0)],['wait','ждут распознавания — '+(STAT.noscan||0)],['unpaid','не оплачены — '+(STAT.unpaid||0)]].concat(STAT.noFile?[['nofile','из 1С без скана — '+STAT.noFile]]:[])
       .map(function(f){ return '<span class="chip'+(FILT===f[0]?' on':'')+'" onclick="setFilt(\''+f[0]+'\')">'+esc(f[1])+'</span>'; }).join('');
-    draw();
+    drawTypes(); draw();
   }).catch(function(e){ $('list').innerHTML='<div class="center err">Связь оборвалась: '+esc(e.message||e)+'</div>'; });
 }
 function setFilt(f){ FILT=f; load(); }
+function drawTypes(){
+  var n={}; ROWS.forEach(function(r){ var g=typeGroup(r.type,r.note1c); n[g]=(n[g]||0)+1; });
+  $('tfilters').innerHTML='<span class="muted" style="font:var(--t-small);align-self:center">вид:</span>'+[['','все']].concat(TGROUPS).filter(function(g){ return !g[0]||n[g[0]]; })
+    .map(function(g){ return '<span class="chip'+(TFILT===g[0]?' on':'')+'" onclick="TFILT=\''+g[0]+'\';drawTypes();draw()">'+esc(g[1])+(g[0]?' — '+n[g[0]]:'')+'</span>'; }).join('');
+}
 
 function payPill(p){
   if(!p) return '';
@@ -234,6 +248,7 @@ function draw(){
     if(FILT==='wait'&&r.state!=='ждёт распознавания'&&r.state!=='не распозналось') return false;
     if(FILT==='unpaid'&&!(r.pay&&r.pay.left>0.004&&!r.rejected)) return false;
     if(FILT==='nofile'&&r.state!=='без скана') return false;
+    if(TFILT&&typeGroup(r.type,r.note1c)!==TFILT) return false;
     if(q&&(r.sup+' '+r.docNo).toLowerCase().indexOf(q)<0) return false;
     return true;
   });
@@ -254,14 +269,14 @@ function docCard(r){
       +'<div class="top"><span class="dt">'+esc(r.date||'—')+'</span>'
         +'<span class="sup">'+esc(r.sup||'без поставщика')+'</span>'
         +statePill(r)+diff
-        +(r.rejected?'<span class="pill mute" title="'+esc(r.rejectReason||'')+'">🚫 не принят</span>':payPill(r.pay))
+        +(r.rejected?'<span class="pill mute" title="'+esc(r.rejectReason||'')+'">🚫 не принят</span>':typeGroup(r.type)==='chek'?'<span class="pill ok" title="чек оплачен в момент покупки — долгом перед продавцом не считается">оплачен при покупке</span>':payPill(r.pay))
         +(r.priceUp>=ALERT?'<span class="pill bad" title="цена за нашу единицу выросла против прошлой закупки">⚠ цена +'+qf(r.priceUp)+' %</span>':'')
         +(r.recognizing?'<span class="pill mute">🔍 распознаётся…</span>':'')
         +(r.dup?'<span class="pill bad" title="такой контрагент и номер уже есть">✕ возможно дубль</span>':'')
         +(r.exported?'<span class="pill ok" title="выгружен в 1С '+esc(r.exported)+'">1С ✓</span>':'')
         +onecPill(r)
         +'<span class="sum">'+money(r.sum)+' '+esc(r.cur)+'</span></div>'
-      +'<div class="sub"><span>'+esc(r.type||(r.noFile?r.note1c:''))+(r.docNo?(r.type?' ':' № ')+esc(r.docNo):'')+'</span>'
+      +'<div class="sub"><span>'+(r.type?'<span class="pill mute">'+esc(r.type)+'</span> ':esc(r.noFile?r.note1c:''))+(r.docNo?(r.type?'№ ':' № ')+esc(r.docNo):'')+'</span>'
         +(r.unp?'<span>УНП '+esc(r.unp)+'</span>':'')
         +(r.positions?'<span>позиций: '+r.positions+'</span>':'')
         +'<span style="margin-left:auto">'
@@ -284,7 +299,8 @@ function uploadPicked(files){
   if(!files||!files.length) return;
   var box=$('uplbox'); box.style.display='';
   UPQ=[];
-  for(var i=0;i<files.length;i++) UPQ.push({name:files[i].name, file:files[i], state:'ждёт'});
+  var ty=($('upType')||{}).value||'';   // тип на всю пачку: выбранный распознавание не меняет
+  for(var i=0;i<files.length;i++) UPQ.push({name:files[i].name, file:files[i], state:'ждёт', type:ty});
   drawUpl();
   saveNext(0);
   document.getElementById('upl').value='';   // чтобы можно было выбрать те же файлы снова
@@ -309,7 +325,7 @@ function saveNext(i){
   var fr=new FileReader();
   fr.onload=function(){
     var b64=String(fr.result).split(',')[1]||'';
-    apiPost({vapi:'docuploadfile', b64:b64, name:u.name, mime:u.file.type||''}).then(function(r){
+    apiPost({vapi:'docuploadfile', b64:b64, name:u.name, mime:u.file.type||'', type:u.type||''}).then(function(r){
       if(r&&r.ok){ u.state='добавлен'; u.fileId=r.fileId; } else { u.state='ошибка'; u.note=(r&&r.error)||'не сохранился'; }
       drawUpl(); saveNext(i+1);
     }).catch(function(){ u.state='ошибка'; u.note='связь оборвалась'; drawUpl(); saveNext(i+1); });
@@ -572,6 +588,18 @@ function matByName(name){ var k=String(name||'').trim().toLowerCase();
 function qf(x){ return String(Math.round((Number(x)||0)*1000)/1000).replace('.',','); }
 function pf(x){ x=Number(x)||0; return (x>=1? x.toFixed(2) : x.toFixed(4)).replace('.',','); }
 function isInt(x){ x=Number(x); return x>0&&Math.floor(x)===x; }
+// тип документа меняется в шапке одним выбором; выбор человека распознавание не трогает
+function typeSelect(cur){
+  var list=(TYPES.length?TYPES:['ТН','ТТН','Акт','Акт сверки','УПД','Инвойс','Счёт','Чек','Прочее']).slice(); if(cur&&list.indexOf(cur)<0) list.unshift(cur);
+  return '<select class="tsel" title="что это за документ — накладная, акт, чек… От типа зависит, считается ли он долгом" onchange="setType(this.value)">'+(cur?'':'<option value="">— тип —</option>')
+    +list.map(function(t){ return '<option'+(t===cur?' selected':'')+'>'+esc(t)+'</option>'; }).join('')+'</select>';
+}
+function setType(t){
+  DMSG={cls:'',html:'Сохраняю тип…'}; renderDoc();
+  apiPost({vapi:'docsethead', file:DOC.fileId, patch:JSON.stringify({type:t})}).then(function(r){
+    if(r&&r.ok){ DMSG={cls:'ok',html:'✓ тип: '+esc(t)}; load(1); openDoc(DOC.fileId,true); } else { DMSG={cls:'err',html:esc((r&&r.error)||'не сохранилось')}; renderDoc(); }
+  }).catch(function(){ DMSG={cls:'err',html:'связь оборвалась'}; renderDoc(); });
+}
 function renderDoc(){
   var box=$('dbody'); if(!box) return;
   var h=DOC||{}, act=POS.filter(function(p){return p.status!=='пропущена';});
@@ -580,7 +608,7 @@ function renderDoc(){
   var pct=act.length?Math.round(done*100/act.length):0;
   box.innerHTML='<button class="x ic" onclick="closeOv()">✕</button>'
     +'<div class="dhead"><div><h3>'+esc(h.sup||'без поставщика')+'</h3>'
-      +'<div class="dmeta"><span><b>'+esc((h.type||'Документ')+' '+(h.docNo||''))+'</b></span><span>от <b>'+esc(h.date?fmtD(h.date):'—')+'</b></span>'
+      +'<div class="dmeta"><span>'+typeSelect(h.type)+'</span><span><b>№ '+esc(h.docNo||'—')+'</b></span><span>от <b>'+esc(h.date?fmtD(h.date):'—')+'</b></span>'
       +(h.unp?'<span>УНП '+esc(h.unp)+'</span>':'')+(h.dogovor?'<span>'+esc(h.dogovor)+'</span>':'')+'</div></div>'
       +'<div class="dtot"><div class="l">Сумма с НДС</div><div class="v">'+money(h.sumGross)+' <span class="muted" style="font:var(--t-small)">'+esc(h.cur||'BYN')+'</span></div>'
       +(act.length?'<div class="dprog"><i><b style="width:'+pct+'%"></b></i>разнесено '+done+' из '+act.length+'</div>':'')+'</div></div>'
