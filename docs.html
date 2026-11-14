@@ -136,7 +136,7 @@
 <body>
 <div id="twload"><i></i></div>
 <div id="twwait"><div class="wb"><div class="sp"></div><div class="wt" id="twwt">Отправляю…</div><div class="wh">идёт обмен с сервером — не нажимайте</div></div></div>
-<div class="toph"><div class="hi">📑 Входящие документы</div><div class="chips" id="views"><span class="chip on" id="vDoc" onclick="setView('doc')">Документы</span><span class="chip" id="vSup" onclick="setView('sup')">Расчёты с поставщиками</span></div>
+<div class="toph"><div class="hi">📑 Входящие документы</div><div class="chips" id="views"><span class="chip on" id="vDoc" onclick="setView('doc')">Документы</span><span class="chip" id="vCov" onclick="setView('cov')" title="каждая оплата поставщику из выписки: закрыта ли она накладной или актом, каких документов не хватает, что не сходится">Все ли документы</span><span class="chip" id="vSup" onclick="setView('sup')">Расчёты с поставщиками</span></div>
 <div class="end">
     <button id="uplBtn" onclick="document.getElementById('upl').click()" title="можно сразу несколько файлов или перетащить их на страницу">⬆️ Загрузить</button>
     <details class="more"><summary class="btn sec" title="период и другие действия">⋯</summary><div class="menu">
@@ -161,16 +161,27 @@
 <div class="frow"><div class="chips" id="filters"></div><span class="meta" id="cnt"></span></div>
 <div id="list"><div class="center muted">Загрузка…</div></div>
 </div>
+<div id="covView" style="display:none">
+  <div class="toolbar">
+    <div class="seg kinds" id="cSt"></div>
+    <input type="search" class="search" id="cQ" placeholder="поставщик…" oninput="drawCov()">
+    <select id="cYm" onchange="drawCov()" title="за какой месяц смотреть"></select>
+    <div class="end"><button class="sec" onclick="loadCov()">Обновить</button></div>
+  </div>
+  <div class="note hint">Берём оплаты поставщикам из банковской выписки и смотрим, закрыта ли каждая накладной, актом или УПД. Зарплата, налоги, комиссии банка, лизинг и переводы между своими счетами сюда не входят — документ по ним не нужен (это задаётся у статьи расхода в «Финансах»). Оплата и документ сводятся так же, как в «Расчётах с поставщиками»: по привязке, по номеру счёта, остальное по порядку дат. Свежая оплата без документа — обычное дело: товар ещё едет; смотрите на срок ожидания.</div>
+  <div class="kpis" id="cKpi"></div>
+  <div id="cWarn"></div>
+  <div class="box tbl-wrap"><table class="tbl sm mob"><thead id="cTh"></thead><tbody id="cTb"><tr><td class="center muted">Загрузка…</td></tr></tbody></table></div>
+</div>
 <div id="supView" style="display:none">
   <div class="toolbar">
     <input type="search" class="search" id="sQ" placeholder="поставщик…" oninput="drawSup()">
-    <span class="chip" id="sPre" onclick="togglePre()" title="оплаты поставщикам, под которые нет накладной или акта: сколько дней ждём, письмо на возврат">📦 оплачено — документа нет</span>
+    <span class="chip" onclick="covGo('miss')" title="оплаты, под которые нет накладной или акта, — на вкладке «Все ли документы»">оплаты без документа →</span>
     <label class="muted"><input type="checkbox" id="sAll" onchange="drawSup()"> и без остатка</label>
     <div class="end"><button class="sec" onclick="loadSup()">Обновить</button></div>
   </div>
   <div class="note hint">Накладная, акт или УПД поставщика — наш долг перед ним; оплаты его уменьшают. Счёт на оплату долгом не считается. Если оплачено больше, чем получено по документам, — это наш аванс или документ ещё не загружен. Считается с начала учёта в Прохабе; что было раньше — одной суммой «на начало» у поставщика. Валюты не складываются.</div>
   <div class="kpis" id="sKpi"></div>
-  <div id="sPreBox" style="display:none"></div>
   <div class="box tbl-wrap" id="sMain"><table class="tbl"><thead><tr><th>Поставщик</th><th class="num" title="остаток на дату начала учёта: + мы должны, − наш аванс">На начало</th><th class="num">Получено по документам</th><th class="num">Оплачено</th><th class="num">Возвращено</th><th class="num">Остаток</th><th>Что не закрыто</th></tr></thead><tbody id="sTb"><tr><td colspan=7 class="center muted">Загрузка…</td></tr></tbody></table></div>
 </div>
 
@@ -1168,32 +1179,105 @@ function commitDoc(){
 
 // ─────────── расчёты с поставщиками ───────────
 var SUP=null, LED=null;
+var VIEW_NOW='doc';
 function setView(v){
-  $('vDoc').className='chip'+(v==='doc'?' on':''); $('vSup').className='chip'+(v==='sup'?' on':'');
-  $('docView').style.display=v==='doc'?'':'none'; $('supView').style.display=v==='sup'?'':'none';
+  VIEW_NOW=v;
+  $('vDoc').className='chip'+(v==='doc'?' on':''); $('vSup').className='chip'+(v==='sup'?' on':''); $('vCov').className='chip'+(v==='cov'?' on':'');
+  $('docView').style.display=v==='doc'?'':'none'; $('supView').style.display=v==='sup'?'':'none'; $('covView').style.display=v==='cov'?'':'none';
   var e=document.querySelector('.toph .end'); if(e) e.style.display=v==='doc'?'':'none';   // «Загрузить» и «⋯» — для документов
   if(v==='sup'&&!SUP) loadSup();
+  if(v==='cov'&&!COV) loadCov();
 }
+// ─────────── все ли документы (14.11.2026): оплаты из выписки ↔ документы, один расчёт с «Расчётами с поставщиками» ───────────
+var COV=null, COV_ST='miss', WV=null, COV_WAIT=14;
+function cm(n){ var a=money(n).split(','); return a[0].replace(/\B(?=(\d{3})+(?!\d))/g,'\u00a0')+','+a[1]; }
+function covGo(st){ COV_ST=st||'miss'; setView('cov'); if(COV) drawCov(); }
+function covStale(){ COV=null; if(VIEW_NOW==='cov') loadCov(); }   // привязали оплату, загрузили документ — список пересчитывается
+function loadCov(){
+  $('cTh').innerHTML=''; $('cTb').innerHTML='<tr><td class="center muted">Считаю…</td></tr>';
+  api({vapi:'findoccover'}).then(function(r){
+    if(!r||!r.ok){ $('cTb').innerHTML='<tr><td class="center err">'+esc((r&&r.error)||'нет прав')+'</td></tr>'; return; }
+    COV=r; var ym={}; r.pays.concat(r.docs).forEach(function(x){ ym[x.ym]=1; });
+    var keep=$('cYm').value, MON=['январь','февраль','март','апрель','май','июнь','июль','август','сентябрь','октябрь','ноябрь','декабрь'];
+    $('cYm').innerHTML='<option value="">всё с '+esc(r.startIso?fmtD(r.startIso):'начала')+'</option>'+Object.keys(ym).sort().reverse().map(function(k){ return '<option value="'+k+'"'+(k===keep?' selected':'')+'>'+MON[Number(k.slice(5))-1]+' '+k.slice(0,4)+'</option>'; }).join('');
+    drawCov();
+  }).catch(function(){ $('cTb').innerHTML='<tr><td class="center err">связь оборвалась</td></tr>'; });
+}
+function covSum(a,f){ var by={}; a.forEach(function(x){ var v=f(x); if(v) by[x.cur]=Math.round(((by[x.cur]||0)+v)*100)/100; }); return by; }
+function covMoney(by){ var k=Object.keys(by).sort(function(a,b){ return a==='BYN'?-1:b==='BYN'?1:a<b?-1:1; }); return k.length?k.map(function(c){ return cm(by[c])+' '+esc(c); }).join(' + '):'0,00'; }
+function drawCov(){
+  if(!COV) return;
+  var q=$('cQ').value.trim().toLowerCase(), ym=$('cYm').value, inQ=function(x){ return (!ym||x.ym===ym)&&(!q||String(x.name||'').toLowerCase().indexOf(q)>=0); };
+  var pays=COV.pays.filter(inQ), miss=pays.filter(function(x){ return x.status!=='ok'; }), ok=pays.filter(function(x){ return x.status==='ok'; });
+  var debt=COV.docs.filter(function(x){ return x.left>0.004&&inQ(x); }), wv=COV.waived.filter(inQ), old=miss.filter(function(x){ return x.days>=COV_WAIT; });
+  var paidBy=covSum(pays,function(x){ return x.sum; }), freeBy=covSum(miss,function(x){ return x.free; }), tot=paidBy.BYN||0, cl=Math.round((tot-(freeBy.BYN||0))*100)/100;
+  var noScan=COV.docs.filter(function(x){ return x.noFile&&inQ(x); }).length, nDocs=COV.docs.filter(inQ).length;
+  $('cSt').innerHTML=[['miss','Нет документа',miss.length],['debt','Документ без оплаты',debt.length],['ok','Закрыто',ok.length],['waived','Документ не нужен',wv.length]].map(function(t){
+    return '<button class="'+(COV_ST===t[0]?'on':'')+(t[2]?'':' zero')+'" onclick="COV_ST=\''+t[0]+'\';drawCov()">'+t[1]+'<span class="n">'+t[2]+'</span></button>'; }).join('');
+  $('cKpi').innerHTML='<span><b>'+covMoney(paidBy)+'</b>оплачено поставщикам '+(ym?'за месяц':'с '+esc(COV.startIso?fmtD(COV.startIso):'начала'))+' · оплат: '+pays.length+'</span>'
+    +(tot>0?'<span title="доля оплат в BYN, под которые есть накладная, акт или УПД (или они закрыли долг на начало учёта)"><b'+(cl/tot>=0.995?' class="adv"':'')+'>'+(Math.floor(cl/tot*1000)/10).toString().replace('.',',')+' %</b>закрыто документами, BYN</span>':'')
+    +'<span><b'+(miss.length?' class="owe"':'')+'>'+covMoney(freeBy)+'</b>нет документа · оплат: '+miss.length+'</span>'
+    +'<span title="оплаты без документа старше '+COV_WAIT+' дней — по ним пора звонить поставщику или просить документ у бухгалтера"><b'+(old.length?' class="owe"':'')+'>'+covMoney(covSum(old,function(x){ return x.free; }))+'</b>из них ждём дольше '+COV_WAIT+' дней · '+old.length+'</span>'
+    +'<span title="накладная или акт есть, а оплаты под них в выписке нет: наш долг — или оплатили наличными и не внесли"><b>'+covMoney(covSum(debt,function(x){ return x.left; }))+'</b>документы без оплаты · '+debt.length+'</span>'
+    +(nDocs?'<span title="документ внесён из 1С, скана в Прохабе нет — оригинал у бухгалтера"><b>'+noScan+' из '+nDocs+'</b>документов без скана</span>':'');
+  $('cWarn').innerHTML=(COV.twins||[]).filter(function(t){ return !q||(t.a.name+' '+t.b.name).toLowerCase().indexOf(q)>=0; }).map(function(t){
+    return '<div class="note warn" style="margin-bottom:var(--s-2)"><div>Похоже, это один поставщик под двумя названиями: <b>'+esc(t.a.name)+'</b> — оплачено без документа '+cm(t.a.free)+' '+esc(t.cur)+', и <b>'+esc(t.b.name)+'</b> — документ без оплаты '+cm(t.b.left)+' '+esc(t.cur)+'. Объедините карточки в «Контрагентах» — оплата и документ сойдутся сами.</div></div>'; }).join('');
+  var sup=function(x){ return '<a href="javascript:void(0)" onclick="openSup(\''+esc(x.key)+'\',\''+esc(x.cur)+'\')">'+esc(x.name||'без названия')+'</a>'; };
+  var payCell=function(x){ var same=String(x.purpose||'').trim().toLowerCase()===String(x.name||'').trim().toLowerCase(); return (same||!x.purpose?'':esc(x.purpose))+'<div class="sub2">'+[x.cat&&esc(x.cat), x.payNo&&'п/п № '+esc(x.payNo), x.invNo&&'счёт № '+esc(x.invNo)].filter(Boolean).join(' · ')+'</div>'; };
+  var docLinks=function(x){ return x.docs.map(function(d){ return '<div>'+(d.fileId?'<a href="javascript:void(0)" onclick="openDoc(\''+esc(d.fileId)+'\')">'+esc(d.label)+'</a>':esc(d.label))+' <span class="muted">· '+cm(d.sum)+(d.noFile?' · без скана':'')+'</span></div>'; }).join('')
+    +(x.opening>0.004?'<div class="muted">в счёт долга на начало учёта · '+cm(x.opening)+'</div>':''); };
+  var th, rows;
+  if(COV_ST==='miss'){
+    th='<tr><th>Оплата</th><th>Поставщик</th><th>За что</th><th class="num">Сумма</th><th class="num">Без документа</th><th class="num" title="дней с оплаты">Ждём</th><th></th></tr>';
+    rows=miss.map(function(x){ var i=COV.pays.indexOf(x); return '<tr><td data-l="Оплата">'+esc(x.date)+'</td><td data-l="Поставщик">'+sup(x)+'</td><td data-l="За что">'+payCell(x)+(x.docs.length?'<div class="sub2">частично закрыта:</div>'+docLinks(x):'')+'</td>'
+      +'<td class="num" data-l="Сумма">'+cm(x.sum)+' '+esc(x.cur)+'</td><td class="num" data-l="Без документа"><b class="owe">'+cm(x.free)+'</b></td>'
+      +'<td class="num" data-l="Ждём">'+(x.days>=COV_WAIT?'<span class="pill warn">'+x.days+' дн.</span>':x.days+' дн.')+'</td>'
+      +'<td class="acts2"><button onclick="openSup(COV.pays['+i+'].key,COV.pays['+i+'].cur)" title="открыть расчёты с поставщиком: привязать оплату к документу">привязать</button>'
+      +'<button onclick="waiveOpen('+i+')" title="по этой оплате документа не будет и он не нужен — убрать из списка">не нужен</button>'
+      +'<button onclick="refundOpen(COV.pays['+i+'].key,COV.pays['+i+'].cur,[COV.pays['+i+'].id])" title="письмо поставщику: просим вернуть деньги">возврат</button></td></tr>'; }).join('')
+      ||'<tr><td colspan=7 class="center muted">Оплат без документа нет — всё оплаченное закрыто накладными и актами.</td></tr>';
+  } else if(COV_ST==='ok'){
+    th='<tr><th>Оплата</th><th>Поставщик</th><th>За что</th><th class="num">Сумма</th><th>Чем закрыта</th></tr>';
+    rows=ok.map(function(x){ return '<tr><td data-l="Оплата">'+esc(x.date)+'</td><td data-l="Поставщик">'+sup(x)+'</td><td data-l="За что">'+payCell(x)+'</td><td class="num" data-l="Сумма">'+cm(x.sum)+' '+esc(x.cur)+'</td><td data-l="Чем закрыта">'+docLinks(x)+'</td></tr>'; }).join('')
+      ||'<tr><td colspan=5 class="center muted">Закрытых оплат за этот период нет.</td></tr>';
+  } else if(COV_ST==='debt'){
+    th='<tr><th>Дата</th><th>Поставщик</th><th>Документ</th><th class="num">Сумма</th><th class="num">Не оплачено</th><th class="num" title="дней с даты документа">Дней</th></tr>';
+    rows=debt.map(function(x){ return '<tr><td data-l="Дата">'+esc(x.date)+'</td><td data-l="Поставщик">'+sup(x)+'</td><td data-l="Документ">'+(x.fileId?'<a href="javascript:void(0)" onclick="openDoc(\''+esc(x.fileId)+'\')">'+esc(x.label)+'</a>':esc(x.label))+(x.noFile?' <span class="muted">· без скана</span>':'')+'</td>'
+      +'<td class="num" data-l="Сумма">'+cm(x.sum)+' '+esc(x.cur)+'</td><td class="num" data-l="Не оплачено"><b class="owe">'+cm(x.left)+'</b></td><td class="num" data-l="Дней">'+x.days+'</td></tr>'; }).join('')
+      ||'<tr><td colspan=6 class="center muted">Все документы оплачены.</td></tr>';
+  } else {
+    th='<tr><th>Оплата</th><th>Поставщик</th><th>За что</th><th class="num">Сумма</th><th>Почему документ не нужен</th><th></th></tr>';
+    rows=wv.map(function(x){ return '<tr><td data-l="Оплата">'+esc(x.date)+'</td><td data-l="Поставщик">'+esc(x.name)+'</td><td data-l="За что">'+(String(x.purpose||'').trim().toLowerCase()===String(x.name||'').trim().toLowerCase()?'':esc(x.purpose))+'<div class="sub2">'+esc(x.cat)+'</div></td><td class="num" data-l="Сумма">'+cm(x.sum)+' '+esc(x.cur)+'</td><td data-l="Почему">'+esc(x.note)+'</td>'
+      +'<td class="acts2"><button onclick="waiveUndo(\''+esc(x.id)+'\')" title="снова ждать документ по этой оплате">вернуть в список</button></td></tr>'; }).join('')
+      ||'<tr><td colspan=6 class="center muted">Таких оплат нет. Отметка «не нужен» ставится в списке «Нет документа».</td></tr>';
+  }
+  $('cTh').innerHTML=th; $('cTb').innerHTML=rows;
+}
+function waiveOpen(i){
+  var x=COV.pays[i]; WV=x;
+  $('ov').className='scrim ov on'; $('modal').className='modal dlg md';
+  $('modal').innerHTML='<button class="x ic" onclick="closeOv()">✕</button><h3>Документ по оплате не нужен</h3>'
+    +'<div class="muted">'+esc(x.name)+' · '+esc(x.date)+' · '+cm(x.sum)+' '+esc(x.cur)+'<br>'+esc(x.purpose||'')+'</div>'
+    +'<div class="prow"><span class="plbl">Почему</span><input id="wvNote" list="wvList" placeholder="например: оплата сервиса по карте, документов не выдают" style="flex:1"><datalist id="wvList"><option value="оплата сервиса по карте, документов не выдают"><option value="госпошлина или сбор"><option value="документ в бумажном архиве до начала учёта"></datalist></div>'
+    +'<div class="muted" style="font:var(--t-small)">Оплата уйдёт из списка «Нет документа» и перестанет считаться авансом поставщику. Вернуть можно на вкладке «Документ не нужен». Если документ не нужен по всей статье расхода — отключите «документ требуется» у статьи в настройках «Финансов».</div>'
+    +'<div class="dfoot"><button onclick="waiveGo()" id="wvBtn">Убрать из списка</button><button class="sec" onclick="closeOv()">Отмена</button><span class="msg" id="wvMsg"></span></div>';
+  setTimeout(function(){ var e=$('wvNote'); if(e) e.focus(); },50);
+}
+function waiveGo(){
+  var b=$('wvBtn'), m=$('wvMsg'), note=$('wvNote').value.trim(); if(!note){ m.className='msg err'; m.textContent='напишите причину — её увидит бухгалтер'; return; }
+  b.disabled=true; m.className='msg'; m.textContent='Сохраняю…';
+  apiPost({vapi:'finpaywaive', id:WV.id, note:note}).then(function(r){
+    b.disabled=false; if(!r||!r.ok){ m.className='msg err'; m.textContent=(r&&r.error)||'не сохранилось'; return; }
+    closeOv(); SUP=null; loadCov();
+  }).catch(function(){ b.disabled=false; m.className='msg err'; m.textContent='связь оборвалась — обновите список и проверьте'; });
+}
+function waiveUndo(id){
+  apiPost({vapi:'finpaywaive', id:id, undo:'1'}).then(function(r){ if(r&&r.ok){ SUP=null; loadCov(); } else covMsg((r&&r.error)||'не вышло'); }).catch(function(){ covMsg('связь оборвалась'); });
+}
+function covMsg(t){ $('cWarn').innerHTML='<div class="note warn" style="margin-bottom:var(--s-2)"><div>'+esc(t)+'</div></div>'; }
 function bal(x,cur){ return Math.abs(x)<0.005?'<span class="muted">0,00</span>':x>0?'<span class="owe" title="мы должны поставщику">должны '+money(x)+(cur?' '+esc(cur):'')+'</span>':'<span class="adv" title="оплачено больше, чем получено по документам: это наш аванс — или накладная / акт ещё не загружены">оплачено без документов '+money(-x)+(cur?' '+esc(cur):'')+'</span>'; }
 function balShort(x){ return Math.abs(x)<0.005?'<span class="muted">0,00</span>':x>0?'<span class="owe">'+money(x)+'</span>':'<span class="adv">−'+money(-x)+'</span>'; }
-// ─────────── оплачено — документа нет; письмо на возврат (14.11.2026) ───────────
-var PRE=null, PRE_ON=false;
-function togglePre(){ PRE_ON=!PRE_ON; $('sPre').className='chip'+(PRE_ON?' on':''); $('sPreBox').style.display=PRE_ON?'':'none'; $('sMain').style.display=PRE_ON?'none':''; if(PRE_ON) loadPre(); }
-function loadPre(){
-  $('sPreBox').innerHTML='<div class="center muted">Считаю…</div>';
-  api({vapi:'finprepaid'}).then(function(r){ if(!r||!r.ok){ $('sPreBox').innerHTML='<div class="err">'+esc((r&&r.error)||'нет прав')+'</div>'; return; } PRE=r; drawPre(); })
-    .catch(function(){ $('sPreBox').innerHTML='<div class="err">связь оборвалась</div>'; });
-}
-function drawPre(){
-  var q=$('sQ').value.trim().toLowerCase(), rows=PRE.rows.filter(function(x){ return !q||x.name.toLowerCase().indexOf(q)>=0; });
-  $('sPreBox').innerHTML=rows.length?'<div class="box tbl-wrap"><table class="tbl sm"><thead><tr><th>Поставщик</th><th>Оплата</th><th class="num">Свободно</th><th class="num" title="дней с оплаты">Ждём</th><th></th></tr></thead><tbody>'
-    +rows.map(function(x,i){ return '<tr><td><a href="javascript:void(0)" onclick="openSup(\''+esc(x.key)+'\',\''+esc(x.cur)+'\')">'+esc(x.name||'без названия')+'</a></td>'
-      +'<td>'+esc(x.date)+(x.invNo?' <span class="muted">· счёт № '+esc(x.invNo)+'</span>':'')+'<div class="muted" style="font:var(--t-small)">'+esc(x.purpose||'')+'</div></td>'
-      +'<td class="num"><b>'+money(x.free)+'</b> '+esc(x.cur)+(Math.abs(x.free-x.sum)>0.004?'<div class="muted" style="font:var(--t-small)">из '+money(x.sum)+'</div>':'')+'</td>'
-      +'<td class="num">'+(x.days>=14?'<span class="pill warn">'+x.days+' дн.</span>':x.days+' дн.')+'</td>'
-      +'<td><button class="sec sm" onclick="refundOpen(PRE.rows['+PRE.rows.indexOf(x)+'].key,\''+esc(x.cur)+'\',[PRE.rows['+PRE.rows.indexOf(x)+'].payId])" title="письмо поставщику: просим вернуть деньги">📄 письмо на возврат</button></td></tr>'; }).join('')
-    +'</tbody></table></div>':'<div class="center muted">Оплат без документа нет — всё оплаченное закрыто накладными и актами.</div>';
-}
+// ─────────── письмо на возврат (14.11.2026); список оплат без документа — на вкладке «Все ли документы» ───────────
 var RF=null;
 function refundOpen(key,cur,pays){
   RF={key:key,cur:cur,pays:pays||[]};
@@ -1224,7 +1308,7 @@ function loadSup(){
 function drawSup(){
   if(!SUP) return;
   var q=$('sQ').value.trim().toLowerCase(), all=$('sAll').checked, n=0, sk=SUP.skipped||{};
-  $('sKpi').innerHTML=(SUP.totals||[]).map(function(t){ return '<span><b class="owe">'+money(t.owed)+'</b>должны поставщикам, '+esc(t.cur)+'</span><span title="оплаты, под которые нет накладной или акта: настоящий аванс — или документ ещё не загружен"><b class="adv">'+money(t.advance)+'</b>оплачено без документов, '+esc(t.cur)+'</span>'; }).join('')
+  $('sKpi').innerHTML=(SUP.totals||[]).map(function(t){ return '<span><b class="owe">'+money(t.owed)+'</b>должны поставщикам, '+esc(t.cur)+'</span><span title="оплаты, под которые нет накладной или акта: настоящий аванс — или документ ещё не загружен. Нажмите — список по оплатам" style="cursor:pointer" onclick="covGo(\'miss\')"><b class="adv">'+money(t.advance)+'</b>оплачено без документов, '+esc(t.cur)+'</span>'; }).join('')
     +'<span><b>'+esc(SUP.startIso?fmtD(SUP.startIso):'—')+'</b>начало учёта'+(sk.beforeStart?' · документов раньше этой даты: '+sk.beforeStart+' (не входят)':'')+'</span>'
     +(sk.unrecognized?'<span class="warn"><b>'+sk.unrecognized+'</b>документов не распознано или без суммы — в расчёты не попали</span>':'')
     +(sk.noParty?'<span class="warn"><b>'+sk.noParty+'</b>документов без поставщика — в расчёты не попали</span>':'')
@@ -1298,7 +1382,7 @@ function saveOpening(){
   m.className='msg'; m.textContent='Сохраняю…';
   apiPost({vapi:'finsupopening', data:JSON.stringify({counterpartyId:LED.id, cur:LED.cur, amount:amt, note:''})}).then(function(r){
     if(!r||!r.ok){ m.className='msg err'; m.textContent=(r&&r.error)||'не сохранилось'; return; }
-    SUP=null; loadSup(); ledReload();
+    SUP=null; loadSup(); ledReload(); covStale();
   }).catch(function(){ m.className='msg err'; m.textContent='связь оборвалась'; });
 }
 function linkPay(i){
@@ -1306,7 +1390,7 @@ function linkPay(i){
   m.className='msg'; m.textContent='Привязываю…';
   api({vapi:'finsupdoclink', id:LED.freePays[i].id, doc:doc}).then(function(r){
     if(!r||!r.ok){ m.className='msg err'; m.textContent=(r&&r.error)||'не вышло'; return; }
-    SUP=null; loadSup(); ledReload();
+    SUP=null; loadSup(); ledReload(); covStale();
   }).catch(function(){ m.className='msg err'; m.textContent='связь оборвалась'; });
 }
 
