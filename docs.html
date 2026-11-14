@@ -288,7 +288,8 @@ function draw(){
   $('cnt').textContent=list.length===ROWS.length?'':'показано '+list.length;
   var need=list.filter(function(r){ return r.needCheck; }), rest=list.filter(function(r){ return !r.needCheck; });
   $('list').innerHTML=
-    (need.length? '<div class="note warn"><div><b>🔔 На проверке — '+need.length+'</b>'
+    (TFILT==='inv'?'<div class="note hint" style="margin-bottom:var(--s-3)"><div>Счета поставщиков ведутся в одном месте — <a href="javascript:void(0)" onclick="goFinInvoices()">Финансы → Счета</a>: одобрение, оплата, «оплачено / получено по накладным». Счёт, загруженный здесь, сразу уходит туда; ниже — только старые, ещё не перенесённые.</div></div>':'')
+    +(need.length? '<div class="note warn"><div><b>🔔 На проверке — '+need.length+'</b>'
         +' проверьте реквизиты и нажмите «Подтвердить», после этого документ уйдёт в общий список</div></div>'
       +need.map(docCard).join('')
       +(rest.length?'<div class="sect">Все документы — '+rest.length+'</div>':'') : '')
@@ -556,6 +557,7 @@ function apply1c(){
   }).catch(function(){ b.disabled=false; m.className='msg err'; m.textContent='связь оборвалась — проверьте реестр и повторите: повторная загрузка ничего не задвоит'; });
 }
 // строки, у которых название 1С уже сопоставлено с нашим материалом, проводятся в закупки — порциями, пока не кончатся
+function goFinInvoices(){ try{ localStorage.setItem('tw_fin_tab','invoices'); }catch(e){} try{ window.top.postMessage({tw:'go',id:'finance'},'*'); }catch(e){} if(window.top===window) location.href='finance.html?tab=invoices'; }
 function go1cNames(){ try{ localStorage.setItem('tw_mat_view','onec'); }catch(e){} try{ window.top.postMessage({tw:'go',id:'materials'},'*'); }catch(e){} if(window.top===window) window.open('materials.html?view=onec','_blank'); }
 function post1c(t, posted, tries){
   var m=$('m1c'); if(m){ m.className='msg'; m.textContent='Провожу сопоставленные строки…'+(posted?' '+posted:''); }
