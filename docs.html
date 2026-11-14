@@ -109,6 +109,10 @@
   .tag{ display:inline-flex; align-items:center; gap:4px; padding:1px var(--s-2); border-radius:var(--r-pill); background:var(--card); border:1px solid var(--line); font:var(--t-small); font-variant-numeric:tabular-nums; white-space:nowrap; }
   .tag b{ font-weight:600; }
   .tag.up{ background:var(--red-bg); color:var(--red); border-color:transparent; }
+  .tag.go{ cursor:pointer; } .tag.go:hover{ text-decoration:underline; }
+  .mlink{ color:inherit; text-decoration:none; border-bottom:1px dashed var(--muted); } .mlink:hover{ color:var(--accent-text); border-bottom-color:var(--accent-text); }
+  table.hist tr.me td{ background:var(--accent-bg); }
+  table.hist td.num{ white-space:nowrap; }
   .tag.dn{ background:var(--blue-bg); color:var(--blue); border-color:transparent; }
   .pc-bot .stat{ flex-basis:100%; font:var(--t-small); color:var(--muted); }
   .pc-bot .ln-acts{ margin:0; grid-column:auto; }
@@ -563,7 +567,7 @@ function openDoc(fileId, keep){
     $('modal').innerHTML='<div class="fview" id="fview"></div><div class="fbody" id="dbody"><div class="center muted">Загрузка документа…</div></div>'; keep=false; }
   api({vapi:'docpositions', file:fileId}).then(function(r){
     if(!r||!r.ok){ $('dbody').innerHTML='<button class="x ic" onclick="closeOv()">✕</button><div class="err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
-    DOC=r.header||{fileId:fileId}; DOC.fileId=fileId; SETL=r.settlement||null; INVL=r.invoice||null; RECON=r.recon||null; RETS=r.returns||[]; POS=r.positions||[]; MATS=r.mats||[]; EDIT={}; NEWM={}; FIND={}; SPLIT={}; ALERT=r.alertPct||ALERT;
+    DOC=r.header||{fileId:fileId}; DOC.fileId=fileId; SETL=r.settlement||null; INVL=r.invoice||null; RECON=r.recon||null; RETS=r.returns||[]; POS=r.positions||[]; MATS=r.mats||[]; EDIT={}; NEWM={}; FIND={}; SPLIT={}; HIST={}; ALERT=r.alertPct||ALERT;
     CLASSES=r.classes||CLASSES; CLASSMAP=r.classMap||CLASSMAP;
     SERVICES=r.services||SERVICES; TYPES=r.types||TYPES;
     REJ=false; if(!keep) renderView();
@@ -861,11 +865,11 @@ function posCard(p,i){
   var edit=EDIT[i]?'<div class="pc-panel">'+numEditHtml(p,i,posted)+'</div>':'';
   var tags=function(){ if(!(isMat&&p.mat&&p.qtyW>0)) return ''; var pr=p.sumGross*(Number(DOC.rate)||1)/p.qtyW, c=p.price;
       return '<span class="tag"><b>'+qf(p.qtyW)+'</b> '+esc(plural(p.qtyW,u))+'</span><span class="tag">'+pf(pr)+' за 1 '+esc(u||'ед')+'</span>'
-        +(c&&c.prev>0&&Math.abs(c.pct)>=0.5?'<span class="tag '+(c.pct>=ALERT?'up':c.pct<0?'dn':'')+'" title="прошлая закупка — '+pf(c.prev)+', '+esc(c.prevDate)+'">'+(c.pct>0?'▲ +':'▼ ')+qf(c.pct)+' %</span>':''); };
+        +(c&&c.prev>0&&Math.abs(c.pct)>=0.5?'<span class="tag go '+(c.pct>=ALERT?'up':c.pct<0?'dn':'')+'" title="прошлая закупка — '+pf(c.prev)+', '+esc(c.prevDate)+'. Нажмите — история закупок" onclick="histOpen('+i+')">'+(c.pct>0?'▲ +':'▼ ')+qf(c.pct)+' %</span>':''); };
   if(skipped) return '<div class="pcard skip" id="pc'+i+'">'+top+'<div class="pc-bot"><span></span><div class="what ln-sub">строка убрана — не приходуется</div></div></div>';
   // снизу — во что приходуем; проведено — зелёным
-  if(posted) return '<div class="pcard done" id="pc'+i+'">'+top+edit
-    +'<div class="pc-bot"><span class="ln-badge">✓</span><div class="what"><span class="ln-name">'+esc(isMat&&p.mat?p.mat:(cls||'—'))+'</span>'+tags()
+  if(posted) return '<div class="pcard done" id="pc'+i+'">'+top+edit+(HIST[i]?histHtml(i):'')
+    +'<div class="pc-bot"><span class="ln-badge">✓</span><div class="what">'+(isMat&&p.mat?matLink(i,p.mat):'<span class="ln-name">'+esc(cls||'—')+'</span>')+tags()
       +'<span class="stat">'+esc(p.statya||'—')+' · счёт '+esc(p.acct||'—')+(p.returned>0?' · <span class="warn">возвращено '+qf(p.returned)+' '+esc(p.unit||'')+'</span>':'')+'</span>'
       +'<span class="msg" id="pmsg'+i+'"></span></div>'
       +'<div class="ln-acts"><button class="sec sm" id="unp'+i+'" title="закупка по этой строке будет отменена, строка снова станет «новой»" onclick="unpostPos('+i+')">↩ отменить проведение</button></div></div></div>';
@@ -883,9 +887,35 @@ function posCard(p,i){
       +(!p.statya&&!isMat?'<div class="pnote warn">укажите статью расхода — без неё строка не проведётся</div>':'')):'')
     +'<span class="msg" id="pmsg'+i+'"></span></div>';
   var wait='<div class="pc-bot wait"><span class="ln-badge">→</span><div class="what">'
-    +(isMat&&p.mat?'<span class="ln-name">'+esc(p.mat)+'</span>'+tags():cls&&!isMat?'<span class="ln-name">'+esc(cls)+'</span>':'<span class="ln-name none">ещё не сопоставлено — выберите ниже, что это у нас</span>')
+    +(isMat&&p.mat?matLink(i,p.mat)+tags():cls&&!isMat?'<span class="ln-name">'+esc(cls)+'</span>':'<span class="ln-name none">ещё не сопоставлено — выберите ниже, что это у нас</span>')
     +(p.statya?'<span class="stat">'+esc(p.statya)+(p.acct?' · счёт '+esc(p.acct):'')+'</span>':'')+'</div></div>';
-  return '<div class="pcard" id="pc'+i+'">'+top+edit+(SPLIT[i]?splitHtml(i):'')+wait+form+'</div>';
+  return '<div class="pcard" id="pc'+i+'">'+top+edit+(SPLIT[i]?splitHtml(i):'')+wait+(HIST[i]?histHtml(i):'')+form+'</div>';
+}
+// ─────────── история закупок материала прямо в строке (владелец 14.11.2026: «цена выросла — по чём брали раньше?») ───────────
+var HIST={};
+function matLink(i,name){ return '<a href="javascript:void(0)" class="ln-name mlink" title="история закупок: по чём и у кого брали раньше" onclick="histOpen('+i+')">'+esc(name)+'</a>'; }
+function histOpen(i){
+  if(HIST[i]){ delete HIST[i]; renderDoc(); return; }   // повторное нажатие — свернуть
+  var name=POS[i].mat; if(!name) return;
+  HIST[i]={loading:true}; renderDoc();
+  api({vapi:'matsuppliers', name:name}).then(function(r){ HIST[i]=r&&r.ok?r:{error:(r&&r.error)||'не загрузилось'}; renderDoc(); })
+    .catch(function(){ HIST[i]={error:'связь оборвалась'}; renderDoc(); });
+}
+function histHtml(i){
+  var h=HIST[i], p=POS[i];
+  if(h.loading) return '<div class="pc-panel muted">Загружаю историю закупок…</div>';
+  if(h.error) return '<div class="pc-panel err">'+esc(h.error)+'</div>';
+  var cur=(DOC.docNo||'').replace(/\D/g,''), buys=(h.buys||[]).slice(0,12);
+  var rows=buys.map(function(b,k){ var prev=buys[k+1], d=prev&&prev.priceW>0&&!prev.noVat===!b.noVat?(b.priceW-prev.priceW)/prev.priceW*100:null, me=b.fileId?b.fileId===DOC.fileId:cur&&String(b.docNo||'').replace(/\D/g,'')===cur;
+    return '<tr'+(me?' class="me"':'')+'><td>'+esc(b.date)+'</td><td>'+esc(b.supplier||'—')+'</td>'
+      +'<td>'+(b.fileId&&!me?'<a href="javascript:void(0)" onclick="openDoc(\''+esc(b.fileId)+'\')">'+esc(b.docNo||'документ')+'</a>':esc(b.docNo||'—'))+(me?' <span class="pill info">этот</span>':'')+'</td>'
+      +'<td class="num">'+qf(b.qtyW)+' '+esc(h.unit||'')+'</td><td class="num"><b>'+pf(b.priceW)+'</b>'+(b.noVat?' <span class="muted" title="закупка до 01.08.2026 записана без НДС">без НДС</span>':'')+'</td>'
+      +'<td class="num">'+(d==null?'':'<span class="'+(d>=ALERT?'bad':d<=-0.5?'ok':'muted')+'">'+(d>0?'+':'')+qf(Math.round(d*10)/10)+' %</span>')+'</td></tr>'; }).join('');
+  var bs=(h.bySupplier||[]).map(function(x){ return '<span class="tag" title="закупок: '+x.n+' · средняя '+pf(x.avg)+' · мин '+pf(x.min)+' · макс '+pf(x.max)+'">'+esc(x.supplier)+': <b>'+pf(x.last)+'</b> <span class="muted">от '+esc(x.lastDate)+'</span></span>'; }).join('');
+  return '<div class="pc-panel"><div class="prow"><b>История закупок: '+esc(p.mat)+'</b><span class="muted">цена за 1 '+esc(h.unit||'ед.')+' с НДС</span><span style="margin-left:auto"></span><a href="javascript:void(0)" onclick="histOpen('+i+')">свернуть</a></div>'
+    +(bs?'<div class="prow" style="gap:var(--s-1)"><span class="muted" style="font:var(--t-small)">последняя цена у поставщиков:</span>'+bs+'</div>':'')
+    +(rows?'<div class="tbl-wrap"><table class="tbl sm hist"><thead><tr><th>Дата</th><th>Поставщик</th><th>Документ</th><th class="num">Кол-во</th><th class="num">Цена</th><th class="num" title="к предыдущей закупке">±</th></tr></thead><tbody>'+rows+'</tbody></table></div>':'<div class="muted">закупок этого материала ещё нет</div>')
+    +((h.buys||[]).length>12?'<div class="muted" style="font:var(--t-small)">показаны последние 12 из '+h.buys.length+' — вся история в «Материалах»</div>':'')+'</div>';
 }
 function pcRow(k,v){ return '<div class="pc-row"><div class="k">'+k+'</div><div class="v">'+v+'</div></div>'; }
 // ─────────── разбить строку на несколько материалов (владелец 14.11.2026) ───────────
