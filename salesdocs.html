@@ -488,7 +488,7 @@ function loadRegistry(){
     el('rgShown').textContent='показано '+r.count;
     var head='';
     if(!rows.length){ box.innerHTML=head+'<div class="empty">Ничего не найдено.</div>'; return; }
-    box.innerHTML=head+'<div class="tbl-wrap fill"><table class="tbl reg mob adapt"><thead><tr><th>Бланк / дата</th><th>Клиент</th><th>Заказ</th><th>Договор</th><th class="num">Сумма</th><th>Оплата ЕРИП</th><th>Статус</th><th></th></tr></thead><tbody>'
+    box.innerHTML=head+'<div class="tbl-wrap fill"><table class="tbl reg mob adapt"><thead><tr><th>Бланк / дата</th><th>Клиент</th><th>Заказ</th><th>Договор</th><th class="num">Сумма</th><th title="оплачено по сделке — ЕРИП, банк, ссылки; тот же расчёт, что в карточке сделки">Оплачено</th><th>Статус</th><th></th></tr></thead><tbody>'
       +rows.map(function(x, i){
         var st=WB_ST[x.status]||['',''], sum=(x.sum===''||x.sum==null)?'':(typeof x.sum==='number'?money(x.sum)+' <span class="muted">'+esc(x.currency||'BYN')+'</span>':esc(x.sum));
         // 12.10.2026: вид и дата — под номером бланка, действия в один ряд, длинное основание-договор обрезается (целиком — в подсказке)
@@ -520,7 +520,7 @@ function csvSave(name, head, rows){
   var txt='﻿'+[head].concat(rows).map(function(r){ return r.map(q).join(';'); }).join('\n');
   var a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([txt],{type:'text/csv;charset=utf-8'})); a.download=name; document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 500); }
 function regCsv(){
-  csvSave('Накладные.csv', ['Серия','№','Дата','Вид','Клиент','Заказ','Договор','Сумма','Валюта','Оплата','Статус','Подписана','Оплачено ЕРИП','Выписано по сделке'],
+  csvSave('Накладные.csv', ['Серия','№','Дата','Вид','Клиент','Заказ','Договор','Сумма','Валюта','Оплата','Статус','Подписана','Оплачено по сделке','Выписано по сделке'],
     REG_ROWS.map(function(x){ return [x.seria, x.num, x.date, x.kind, x.contra, x.order, x.dogovor, typeof x.sum==='number'?String(x.sum).replace('.',','):x.sum, x.currency, x.pay, (WB_ST[x.status]||[])[1], x.signedAt,
       x.erip?String(x.erip.paid).replace('.',','):'', x.erip?String(x.erip.issued).replace('.',','):'']; })); }
 

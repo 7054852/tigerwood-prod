@@ -559,9 +559,10 @@ function incomesHtml(ic){
   // счета, у которых нет договора в списке (старые) — отдельной таблицей, как раньше
   var inInv={}; cts.forEach(function(m){ m.supplies.forEach(function(s){ inInv[s.invoice]=1; }); });
   var inv=(ic.invoices||[]).filter(function(v){ return !inInv[v.number]; });
+  inv.forEach(function(v){ var add=function(k,x){ if(x>0.009) T[k][v.cur]=(T[k][v.cur]||0)+x; }; add('pre',v.prepayLeft); if(!v.shipped) add('ship',v.balanceLeft); if(v.overdue) add('late',v.balanceLeft); });   // плитки — по всему, что клиент должен
   var h='<div class="sect">Деньги от клиента</div><div class="tiles">'+tile('Получено', curs(payT), pays.length+' '+plural(pays.length,['платёж','платежа','платежей']))
     +tile('Ждём предоплату', curs(T.pre), 'сроков нет — внесёт и запускаем')+tile('Остаток после отгрузки', curs(T.ship), 'наступит, когда отгрузим')
-    +(Object.keys(T.adv).length?tile('Аванс', curs(T.adv), 'зачтётся в следующий счёт'):tile('Просрочено', curs(T.late), 'остаток по отгруженному'))+'</div>';
+    +tile('Просрочено', curs(T.late), 'остаток по отгруженному')+(Object.keys(T.adv).length?tile('Аванс', curs(T.adv), 'зачтётся в следующий счёт'):'')+'</div>';
   // договор — контейнер оплат (14.10.2026): по каждому — что должен всего, внесено, осталось; внутри — поставки
   if(cts.length) h+='<div class="sect">Договоры <span class="n">'+cts.length+'</span></div>'+cts.map(function(m){
     return '<div class="card" style="margin-bottom:var(--s-3)"><div class="row" style="justify-content:space-between;margin-bottom:var(--s-3)"><div><a href="'+esc(pageUrl('contract.html','contract',m.id))+'"><b>'+(m.isFramework?'Рамочный ':'Договор ')+'№ '+esc(m.number)+'</b></a> <span class="muted">от '+esc(ruDate(m.contractDateIso))+'</span></div>'

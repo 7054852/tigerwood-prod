@@ -1,6 +1,7 @@
 /* Оплата онлайн (05.10.2026): ссылки «Экспресс Платежей» ЕРИП / картой к договору физлица и «оплачено / остаток».
    Один блок на карточку договора (contract.html — можно создавать ссылки) и карточку сделки (sales.html — смотреть, копировать, проверять).
-   Ждёт от страницы: run, ask, info, esc, money, el, setm. twPay(boxId, pay, {contract, canCreate, onDone}). */
+   Ждёт от страницы: run, ask, info, esc, money, el, setm. twPay(boxId, pay, {contract, canCreate, onDone, noSummary}).
+   pay.total / paid / rest — единый расчёт денег сделки (как «Деньги по договору»); pay.payable — сколько можно внести онлайн. */
 var TWPAY = { box: '', opts: {} };
 function twPay(boxId, pay, opts){
   TWPAY.box = boxId; TWPAY.opts = opts || {};
@@ -8,11 +9,13 @@ function twPay(boxId, pay, opts){
   if(!pay){ box.innerHTML = ''; box.style.display = 'none'; return; }
   box.style.display = '';
   var links = pay.links || [], o = TWPAY.opts, h = '<div class="h">💳 Оплата онлайн (ЕРИП / карта)</div>';
-  if(pay.total > 0){
+  var payable = pay.payable == null ? pay.rest : pay.payable;
+  if(pay.total > 0 && !o.noSummary){
     var inst = pay.dueByToday !== pay.total;
     h += '<div class="note ' + (pay.rest <= 0 ? 'ok' : (pay.overdue > 0 && inst ? 'warn' : '')) + '"><div>Оплачено <b>' + money(pay.paid) + '</b> из ' + money(pay.total) + ' руб. · остаток <b>' + money(pay.rest) + '</b>'
       + (inst ? ' · по графику на сегодня ' + money(pay.dueByToday) + (pay.overdue > 0 ? ' — <b>просрочено ' + money(pay.overdue) + '</b>' : '') : '') + '</div></div>';
   }
+  if(pay.rest > 0 && payable < pay.rest) h += '<div class="sm">Онлайн — только предоплата: ' + (payable > 0 ? 'осталось внести <b>' + money(payable) + '</b> руб.' : 'внесена') + '; остаток клиент платит при получении.</div>';
   h += links.length ? links.map(function(l){
     var cls = l.status === 'paid' ? 'ok' : l.status === 'partial' ? 'info' : (l.status === 'expired' || l.status === 'cancelled') ? 'muted' : 'warn';
     var live = l.status === 'active' || l.status === 'partial';
@@ -23,7 +26,7 @@ function twPay(boxId, pay, opts){
       + (o.canCreate && l.status === 'active' && !l.paid ? ' <button class="gho sm" onclick="twPayCancel(\'' + esc(l.id) + '\')">отменить</button>' : '') + '</span></div>';
   }).join('') : '<div class="sm">Ссылок на оплату нет.</div>';
   h += '<div class="row" style="margin-top:var(--s-2)">';
-  if(o.canCreate && pay.rest > 0){
+  if(o.canCreate && payable > 0){
     h += '<button class="sec sm" onclick="twPayNew(\'erip\')">＋ Ссылка ЕРИП</button><button class="sec sm" onclick="twPayNew(\'card\')">＋ Ссылка на оплату картой</button>';
   }
   if(links.length) h += '<button class="gho sm" onclick="twPayCheck()">🔄 Проверить оплату</button>';
