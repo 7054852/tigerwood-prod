@@ -572,15 +572,19 @@ function post1c(t, posted, tries){
 var DOC=null, POS=[], MATS=[], EDIT={}, NEWM={}, FIND={}, ALERT=5, DMSG=null, SETL=null, REJ=false, RETS=[], RET=null;
 var ORIGIN=(function(){ try{ return new URL(BASE).origin; }catch(e){ return ''; } })();
 var WHY={ article:'по артикулу этого поставщика', alias_sup:'так называл этот поставщик', alias:'так называл другой поставщик', sup_name:'название у поставщика', similar:'похоже по названию' };
-function closeOv(){ BACK=null; $('ov').className='scrim ov'; $('modal').className='modal dlg lg'; $('modal').innerHTML=''; }
-// «← назад» (15.11.2026): документ, открытый из расчётов с поставщиком, возвращает к ним, а не закрывает всё
-var BACK=null;
-function openDocFromLed(fid){ var L=LED; BACK={ label:L.name||'расчёты с поставщиком', fn:function(){ BACK=null; openSup(L.key,L.cur,L.from,L.to); } }; openDoc(fid,false,true); }
-function goBack(){ var b=BACK; if(b) b.fn(); }
-function backBtn(){ return BACK?'<button class="sec sm" style="margin-bottom:var(--s-2)" onclick="goBack()" title="вернуться к расчётам с поставщиком">← '+esc(BACK.label)+'</button>':''; }
+function closeOv(){ BACK=[]; $('ov').className='scrim ov'; $('modal').className='modal dlg lg'; $('modal').innerHTML=''; }
+// «← назад» (15.11.2026): откуда пришли — туда и возвращаемся: «Все ли документы» → поставщик → документ; ✕ закрывает всё
+var BACK=[];
+function closeToList(){ BACK=[]; $('ov').className='scrim ov'; $('modal').className='modal dlg lg'; $('modal').innerHTML=''; }
+var COV_BACK={ label:'Все ли документы', fn:closeToList };
+function openSupFromCov(key,cur){ BACK=[COV_BACK]; openSup(key,cur); }
+function openDocFromCov(fid){ BACK=[COV_BACK]; openDoc(fid,false,true); }
+function openDocFromLed(fid){ var L=LED; BACK.push({ label:L.name||'расчёты с поставщиком', fn:function(){ openSup(L.key,L.cur,L.from,L.to); } }); openDoc(fid,false,true); }
+function goBack(){ var b=BACK.pop(); if(b) b.fn(); }
+function backBtn(){ var b=BACK[BACK.length-1]; return b?'<button class="sec sm" style="margin-bottom:var(--s-2)" onclick="goBack()" title="вернуться туда, откуда открыли">← '+esc(b.label)+'</button>':''; }
 // keep — файл слева уже показан (правка шапки, повторное распознавание): не перезагружаем его
 function openDoc(fileId, keep, fromLed){
-  if(!keep&&!fromLed) BACK=null;
+  if(!keep&&!fromLed) BACK=[];
   $('ov').className='scrim ov on';
   if(!keep||!$('dbody')){ $('modal').className='modal dlg lg split';
     $('modal').innerHTML='<div class="fview" id="fview"></div><div class="fbody" id="dbody"><div class="center muted">Загрузка документа…</div></div>'; keep=false; }
@@ -1230,9 +1234,9 @@ function drawCov(){
     +(nDocs?'<span title="документ внесён из 1С, скана в Прохабе нет — оригинал у бухгалтера"><b>'+noScan+' из '+nDocs+'</b>документов без скана</span>':'');
   $('cWarn').innerHTML=(COV.twins||[]).filter(function(t){ return !q||(t.a.name+' '+t.b.name).toLowerCase().indexOf(q)>=0; }).map(function(t){
     return '<div class="note warn" style="margin-bottom:var(--s-2)"><div>Похоже, это один поставщик под двумя названиями: <b>'+esc(t.a.name)+'</b> — оплачено без документа '+cm(t.a.free)+' '+esc(t.cur)+', и <b>'+esc(t.b.name)+'</b> — документ без оплаты '+cm(t.b.left)+' '+esc(t.cur)+'. Объедините карточки в «Контрагентах» — оплата и документ сойдутся сами.</div></div>'; }).join('');
-  var sup=function(x){ return '<a href="javascript:void(0)" onclick="openSup(\''+esc(x.key)+'\',\''+esc(x.cur)+'\')">'+esc(x.name||'без названия')+'</a>'; };
+  var sup=function(x){ return '<a href="javascript:void(0)" onclick="openSupFromCov(\''+esc(x.key)+'\',\''+esc(x.cur)+'\')">'+esc(x.name||'без названия')+'</a>'; };
   var payCell=function(x){ var same=String(x.purpose||'').trim().toLowerCase()===String(x.name||'').trim().toLowerCase(); return (same||!x.purpose?'':esc(x.purpose))+'<div class="sub2">'+[x.cat&&esc(x.cat), x.payNo&&'п/п № '+esc(x.payNo), x.invNo&&'счёт № '+esc(x.invNo)].filter(Boolean).join(' · ')+'</div>'; };
-  var docLinks=function(x){ return x.docs.map(function(d){ return '<div>'+(d.fileId?'<a href="javascript:void(0)" onclick="openDoc(\''+esc(d.fileId)+'\')">'+esc(d.label)+'</a>':esc(d.label))+' <span class="muted">· '+cm(d.sum)+(d.noFile?' · без скана':'')+'</span></div>'; }).join('')
+  var docLinks=function(x){ return x.docs.map(function(d){ return '<div>'+(d.fileId?'<a href="javascript:void(0)" onclick="openDocFromCov(\''+esc(d.fileId)+'\')">'+esc(d.label)+'</a>':esc(d.label))+' <span class="muted">· '+cm(d.sum)+(d.noFile?' · без скана':'')+'</span></div>'; }).join('')
     +(x.opening>0.004?'<div class="muted">в счёт долга на начало учёта · '+cm(x.opening)+'</div>':''); };
   var th, rows;
   if(COV_ST==='miss'){
@@ -1240,7 +1244,7 @@ function drawCov(){
     rows=miss.map(function(x){ var i=COV.pays.indexOf(x); return '<tr><td data-l="Оплата">'+esc(x.date)+'</td><td data-l="Поставщик">'+sup(x)+'</td><td data-l="За что">'+payCell(x)+(x.docs.length?'<div class="sub2">частично закрыта:</div>'+docLinks(x):'')+'</td>'
       +'<td class="num" data-l="Сумма">'+cm(x.sum)+' '+esc(x.cur)+'</td><td class="num" data-l="Без документа"><b class="owe">'+cm(x.free)+'</b></td>'
       +'<td class="num" data-l="Ждём">'+(x.days>=COV_WAIT?'<span class="pill warn">'+x.days+' дн.</span>':x.days+' дн.')+'</td>'
-      +'<td class="acts2"><button onclick="openSup(COV.pays['+i+'].key,COV.pays['+i+'].cur)" title="открыть расчёты с поставщиком: привязать оплату к документу">привязать</button>'
+      +'<td class="acts2"><button onclick="openSupFromCov(COV.pays['+i+'].key,COV.pays['+i+'].cur)" title="открыть расчёты с поставщиком: привязать оплату к документу">привязать</button>'
       +'<button onclick="waiveOpen('+i+')" title="по этой оплате документа не будет и он не нужен — убрать из списка">не нужен</button>'
       +'<button onclick="refundOpen(COV.pays['+i+'].key,COV.pays['+i+'].cur,[COV.pays['+i+'].id])" title="письмо поставщику: просим вернуть деньги">возврат</button></td></tr>'; }).join('')
       ||'<tr><td colspan=7 class="center muted">Оплат без документа нет — всё оплаченное закрыто накладными и актами.</td></tr>';
@@ -1250,7 +1254,7 @@ function drawCov(){
       ||'<tr><td colspan=5 class="center muted">Закрытых оплат за этот период нет.</td></tr>';
   } else if(COV_ST==='debt'){
     th='<tr><th>Дата</th><th>Поставщик</th><th>Документ</th><th class="num">Сумма</th><th class="num">Не оплачено</th><th class="num" title="дней с даты документа">Дней</th></tr>';
-    rows=debt.map(function(x){ return '<tr><td data-l="Дата">'+esc(x.date)+'</td><td data-l="Поставщик">'+sup(x)+'</td><td data-l="Документ">'+(x.fileId?'<a href="javascript:void(0)" onclick="openDoc(\''+esc(x.fileId)+'\')">'+esc(x.label)+'</a>':esc(x.label))+(x.noFile?' <span class="muted">· без скана</span>':'')+'</td>'
+    rows=debt.map(function(x){ return '<tr><td data-l="Дата">'+esc(x.date)+'</td><td data-l="Поставщик">'+sup(x)+'</td><td data-l="Документ">'+(x.fileId?'<a href="javascript:void(0)" onclick="openDocFromCov(\''+esc(x.fileId)+'\')">'+esc(x.label)+'</a>':esc(x.label))+(x.noFile?' <span class="muted">· без скана</span>':'')+'</td>'
       +'<td class="num" data-l="Сумма">'+cm(x.sum)+' '+esc(x.cur)+'</td><td class="num" data-l="Не оплачено"><b class="owe">'+cm(x.left)+'</b></td><td class="num" data-l="Дней">'+x.days+'</td></tr>'; }).join('')
       ||'<tr><td colspan=6 class="center muted">Все документы оплачены.</td></tr>';
   } else {
@@ -1352,7 +1356,7 @@ function renderLed(){
   var dOpts=r.docs.filter(function(d){ return d.left>0.004; }).map(function(d){ return '<option value="'+esc(d.id)+'">'+esc((d.type||'Документ')+' '+(d.docNo||'')+' от '+d.date+' — осталось '+money(d.left))+'</option>'; }).join('');
   var free=r.freePays.map(function(p,i){ return '<tr><td>'+esc(p.date)+'</td><td>'+esc(p.purpose||'оплата')+(p.invNo?' <span class="muted">· счёт № '+esc(p.invNo)+'</span>':'')+'</td><td class="num">'+money(p.sum)+'</td><td class="num"><b>'+money(p.free)+'</b></td>'
       +'<td>'+(dOpts?'<select id="lk'+i+'"><option value="">— к документу —</option>'+dOpts+'</select> <button class="sec sm" onclick="linkPay('+i+')">привязать</button>':'<span class="muted">неоплаченных документов нет: это аванс или документ ещё не загружен</span>')+'</td></tr>'; }).join('');
-  $('modal').innerHTML='<button class="x ic" onclick="closeOv()">✕</button><h3>'+esc(r.name||'Поставщик')+'</h3>'
+  $('modal').innerHTML='<button class="x ic" onclick="closeOv()">✕</button>'+backBtn()+'<h3>'+esc(r.name||'Поставщик')+'</h3>'
     +'<div class="muted">'+(r.unp?'УНП '+esc(r.unp)+' · ':'')+'расчёты в '+esc(r.cur)+(r.curs.length>1?' · другие валюты: '+r.curs.filter(function(c){ return c!==r.cur; }).map(function(c){ return '<a href="javascript:void(0)" onclick="openSup(LED.key,\''+esc(c)+'\')">'+esc(c)+'</a>'; }).join(', '):'')
       +' · учёт с '+esc(r.startIso?fmtD(r.startIso):'первого документа')+'</div>'
     +'<div class="kpis" style="margin-top:var(--s-3)"><span><b>'+bal(r.closing,r.cur)+'</b>остаток'+(r.to?' на '+esc(fmtD(r.to)):' на сегодня')+'</span><span><b>'+money(r.credit)+'</b>получено по документам за период</span><span><b>'+money(r.debit)+'</b>оплачено и возвращено за период</span><span title="остаток на начало периода: оплата до этой даты, под которую документ пришёл позже, — наш аванс; документ без оплаты — наш долг"><b>'+startBal(r.opening,r.cur)+'</b>на '+esc(fmtD(r.from||r.startIso||''))+'</span></div>'
