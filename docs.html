@@ -7,14 +7,17 @@
 <script src="tw-config.js"></script>
 <title>Тигервуд — входящие документы</title>
 <style>
-  #cnt{ margin:0 0 var(--s-2); }
-  #views{ margin:0 0 var(--s-3); }
   .kpis{ display:flex; gap:var(--s-5); flex-wrap:wrap; margin:0 0 var(--s-3); color:var(--muted); font:var(--t-small); }
   .kpis b{ color:var(--fg); font:var(--t-heading); display:block; }
   #sTb tr{ cursor:pointer; }
   .owe{ color:var(--red); font-weight:600; } .adv{ color:var(--green); font-weight:600; }
   .settle{ border:1px solid var(--line); border-radius:var(--r-ctl); padding:var(--s-2) var(--s-3); margin-top:var(--s-2); font:var(--t-small); display:flex; gap:var(--s-2); flex-wrap:wrap; align-items:center; }
-  #filters{ margin:0 0 var(--s-2); } #tfilters{ margin:0 0 var(--s-4); }
+  .toph{ display:flex; align-items:center; gap:var(--s-3); flex-wrap:wrap; margin:0 0 var(--s-2); } .toph .hi{ margin:0; } .toph .chips{ margin:0; }
+  .frow{ display:flex; align-items:center; gap:var(--s-2); flex-wrap:wrap; margin:0 0 var(--s-3); } .frow .chips{ margin:0; } .frow #cnt{ margin:0 0 0 auto; }
+  .frow #tfilters{ min-height:var(--h-sm); padding:0 var(--s-2); font:var(--t-small); }
+  .more{ position:relative; } .more summary{ list-style:none; cursor:pointer; } .more summary::-webkit-details-marker{ display:none; }
+  .more .menu{ position:absolute; right:0; top:calc(100% + var(--s-1)); z-index:30; display:flex; flex-direction:column; gap:var(--s-1); padding:var(--s-2); background:var(--card); border:1px solid var(--line); border-radius:var(--r-ctl); box-shadow:var(--shadow-pop); min-width:220px; }
+  .more .menu button{ justify-content:flex-start; text-align:left; }
   /* документ — карточкой: в таблице поставщик и номер уезжали за край */
   .doc{ border:1px solid var(--line); border-radius:var(--r-card); background:var(--card); box-shadow:var(--shadow-card); padding:var(--s-3) var(--s-4); margin-bottom:var(--s-2); cursor:pointer; transition:border-color .15s var(--ease); }
   .doc:hover{ border-color:var(--muted); }
@@ -123,8 +126,7 @@
 <body>
 <div id="twload"><i></i></div>
 <div id="twwait"><div class="wb"><div class="sp"></div><div class="wt" id="twwt">Отправляю…</div><div class="wh">идёт обмен с сервером — не нажимайте</div></div></div>
-<div class="hi">📑 Входящие документы</div>
-<div class="chips" id="views"><span class="chip on" id="vDoc" onclick="setView('doc')">Документы</span><span class="chip" id="vSup" onclick="setView('sup')">Расчёты с поставщиками</span></div>
+<div class="toph"><div class="hi">📑 Входящие документы</div><div class="chips" id="views"><span class="chip on" id="vDoc" onclick="setView('doc')">Документы</span><span class="chip" id="vSup" onclick="setView('sup')">Расчёты с поставщиками</span></div></div>
 <div id="docView">
 <div class="toolbar">
   <span class="muted">с</span><input type="date" id="from" onchange="load()">
@@ -132,21 +134,21 @@
   <input type="search" class="search" id="q" placeholder="поставщик или № документа…" oninput="draw()">
   <span class="msg" id="smsg"></span>
   <div class="end">
-    <button class="sec" onclick="load()">Обновить</button>
-    <button class="sec" onclick="scanNow()" title="распознать ближайшие документы прямо сейчас, не дожидаясь фонового прогона">⚡ Распознать сейчас</button>
-    <button class="sec" onclick="exportDocs()" title="файл со всеми реквизитами — бухгалтеру останется загрузить его в 1С">⬇️ Выгрузить для 1С</button>
-    <button class="sec" onclick="document.getElementById('upl1c').click()" title="выгрузка из 1С за период (Excel): «Реестр документов» вместе с отчётом «Движение материалов на складах» — выберите оба файла сразу — или «Карточка счёта 60.1». Система найдёт документы, которых у нас нет, заведёт их со строками и покажет расхождения. Сначала предпросмотр, ничего не записывается">⬆️ Загрузить из 1С</button>
+    <select id="upType" title="что загружаете: выбранный тип распознавание не меняет; «тип: авто» — тип найдёт распознавание"><option value="">тип: авто</option><option>ТН</option><option>ТТН</option><option>Акт</option><option>УПД</option><option>Счёт</option><option>Чек</option><option>Акт сверки</option><option>Прочее</option></select>
+    <button onclick="document.getElementById('upl').click()" title="накладные, акты, УПД, чеки — сразу несколько файлов; можно перетащить файлы на страницу">⬆️ Загрузить</button>
+    <details class="more"><summary class="btn sec" title="ещё действия">⋯</summary><div class="menu">
+      <button class="sec" onclick="moreClose();load()">Обновить</button>
+      <button class="sec" onclick="moreClose();scanNow()" title="распознать ближайшие документы прямо сейчас, не дожидаясь фонового прогона">⚡ Распознать сейчас</button>
+      <button class="sec" onclick="moreClose();exportDocs()" title="файл со всеми реквизитами — бухгалтеру останется загрузить его в 1С">⬇️ Выгрузить для 1С</button>
+      <button class="sec" onclick="moreClose();document.getElementById('upl1c').click()" title="выгрузка из 1С за период (Excel): «Реестр документов» вместе с отчётом «Движение материалов на складах» — выберите оба файла сразу — или «Карточка счёта 60.1». Сначала предпросмотр, ничего не записывается">⬆️ Загрузить из 1С</button>
+      <button class="sec" onclick="moreClose();showFixes()" title="что бухгалтер чаще всего исправляет за распознаванием — по этому списку уточняется промпт">📊 Что чаще правят</button>
+    </div></details>
     <input type="file" id="upl1c" accept=".xls,.xlsx" multiple style="display:none" onchange="pick1c(this.files)">
-    <button class="sec" onclick="showFixes()" title="что бухгалтер чаще всего исправляет за распознаванием — по этому списку уточняется промпт">📊 Что чаще правят</button>
-    <select id="upType" title="что загружаете: выбранный тип распознавание не меняет; «определить автоматически» — тип найдёт распознавание"><option value="">тип: определить автоматически</option><option>ТН</option><option>ТТН</option><option>Акт</option><option>УПД</option><option>Счёт</option><option>Чек</option><option>Акт сверки</option><option>Прочее</option></select>
-    <button onclick="document.getElementById('upl').click()" title="накладные, акты, УПД, чеки — сразу несколько файлов">⬆️ Загрузить документы</button>
     <input type="file" id="upl" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.doc,.docx,.xls,.xlsx" style="display:none" onchange="uploadPicked(this.files)">
   </div>
 </div>
 <div id="uplbox" class="box" style="display:none;margin-bottom:var(--s-3)"></div>
-<div class="meta" id="cnt">загрузка…</div>
-<div class="chips" id="filters"></div>
-<div class="chips" id="tfilters"></div>
+<div class="frow"><div class="chips" id="filters"></div><select id="tfilters" title="вид документа" onchange="TFILT=this.value;draw()"></select><span class="meta" id="cnt"></span></div>
 <div id="list"><div class="center muted">Загрузка…</div></div>
 </div>
 <div id="supView" style="display:none">
@@ -206,7 +208,7 @@ function load(quiet){
     ROWS=r.rows||[]; STAT=r.stat||{}; CLASSES=r.classes||[]; CLASSMAP=r.classMap||{};
     SERVICES=r.services||SERVICES; TYPES=r.types||TYPES; ALERT=r.alertPct||ALERT;
     clearTimeout(window._poll); if(ROWS.some(function(x){ return x.recognizing; })) window._poll=setTimeout(function(){ if(!$('dbody')&&!UPQ.length) load(1); },6000);   // пока идёт распознавание — обновляем сами
-    $('filters').innerHTML=[['','все'],['check','🔔 на проверке — '+(STAT.check||0)],['todo','разнести — '+(STAT.todo||0)],['done','разнесённые — '+(STAT.done||0)],['wait','ждут распознавания — '+(STAT.noscan||0)],['unpaid','не оплачены — '+(STAT.unpaid||0)]].concat(STAT.noFile?[['nofile','из 1С без скана — '+STAT.noFile]]:[])
+    $('filters').innerHTML=[['','все — '+ROWS.length],['check','🔔 на проверке — '+(STAT.check||0)],['todo','разнести — '+(STAT.todo||0)],['done','разнесённые — '+(STAT.done||0)],['wait','ждут распознавания — '+(STAT.noscan||0)],['unpaid','не оплачены — '+(STAT.unpaid||0)]].concat(STAT.noFile?[['nofile','из 1С без скана — '+STAT.noFile]]:[])
       .map(function(f){ return '<span class="chip'+(FILT===f[0]?' on':'')+'" onclick="setFilt(\''+f[0]+'\')">'+esc(f[1])+'</span>'; }).join('');
     drawTypes(); draw();
   }).catch(function(e){ $('list').innerHTML='<div class="center err">Связь оборвалась: '+esc(e.message||e)+'</div>'; });
@@ -214,9 +216,11 @@ function load(quiet){
 function setFilt(f){ FILT=f; load(); }
 function drawTypes(){
   var n={}; ROWS.forEach(function(r){ var g=typeGroup(r.type,r.note1c); n[g]=(n[g]||0)+1; });
-  $('tfilters').innerHTML='<span class="muted" style="font:var(--t-small);align-self:center">вид:</span>'+[['','все']].concat(TGROUPS).filter(function(g){ return !g[0]||n[g[0]]; })
-    .map(function(g){ return '<span class="chip'+(TFILT===g[0]?' on':'')+'" onclick="TFILT=\''+g[0]+'\';drawTypes();draw()">'+esc(g[1])+(g[0]?' — '+n[g[0]]:'')+'</span>'; }).join('');
+  $('tfilters').innerHTML='<option value="">все виды</option>'+TGROUPS.filter(function(g){ return n[g[0]]; })
+    .map(function(g){ return '<option value="'+g[0]+'"'+(TFILT===g[0]?' selected':'')+'>'+esc(g[1])+' — '+n[g[0]]+'</option>'; }).join('');
 }
+function moreClose(){ var d=document.querySelector('details.more'); if(d) d.open=false; }
+document.addEventListener('click',function(e){ var d=document.querySelector('details.more'); if(d&&d.open&&!d.contains(e.target)) d.open=false; });
 
 function payPill(p){
   if(!p) return '';
@@ -252,7 +256,7 @@ function draw(){
     if(q&&(r.sup+' '+r.docNo).toLowerCase().indexOf(q)<0) return false;
     return true;
   });
-  $('cnt').textContent=list.length+' из '+ROWS.length+' документов · на проверке: '+(STAT.check||0)+' · разнести: '+(STAT.todo||0)+' · ждут распознавания: '+(STAT.noscan||0);
+  $('cnt').textContent=list.length===ROWS.length?'':'показано '+list.length;
   var need=list.filter(function(r){ return r.needCheck; }), rest=list.filter(function(r){ return !r.needCheck; });
   $('list').innerHTML=
     (need.length? '<div class="note warn"><div><b>🔔 На проверке — '+need.length+'</b>'
