@@ -137,7 +137,7 @@
 <div class="tabs" id="tabs">
   <button data-tab="board" onclick="setTab('board')">Доска</button>
   <button data-tab="statement" onclick="setTab('statement')">Выписка</button>
-  <button data-tab="invoices" onclick="setTab('invoices')">Счета</button>
+  <button data-tab="invoices" onclick="setTab('invoices')">Счета поставщиков</button>
   <button data-tab="salary" onclick="setTab('salary')">Зарплата</button>
   <button data-tab="recurring" onclick="setTab('recurring')">Регулярные</button>
   <button data-tab="reports" onclick="setTab('reports')">Долги и отчёты</button>
@@ -240,8 +240,8 @@
 </div>
 <!-- ═══ ДОЛГИ И ОТЧЁТЫ ═══ -->
 <div id="tab_reports" class="hide">
-  <div class="sect">Нам должны <small id="dbRecvSum"></small></div><div id="dbRecv"></div>
-  <div class="sect">Мы должны <small id="dbPaySum"></small></div><div id="dbPay"></div>
+  <div class="sect" title="ожидаемые поступления по плану: рассрочка, остатки по счетам, графики. Долг покупателя по отгрузкам — в карточке клиента, вкладка «Акт сверки»">Ждём поступлений по плану <small id="dbRecvSum"></small></div><div id="dbRecv"></div>
+  <div class="sect" title="запланированные оплаты: счета на оплату, аренда, графики. Долг перед поставщиком по его накладным — «Входящие документы → Расчёты с поставщиками»">К оплате по плану <small id="dbPaySum"></small></div><div id="dbPay"></div>
   <div class="sect">Оплаты и закрывающие документы</div>
   <div class="mut">Каких документов не хватает и что не сходится — в одном месте: <a href="#" onclick="goSettle('cov');return false">Входящие документы → Все ли документы</a>. Долг и аванс по каждому поставщику — <a href="#" onclick="goSettle('sup');return false">Расчёты с поставщиками</a>.</div>
   <div class="sect">Аналитика за период</div>
@@ -271,7 +271,7 @@ function twTok(){ try{ return qp('tok')||localStorage.getItem('tw_tok')||''; }ca
 (function(){ var t=qp('tok'); if(t){ try{ localStorage.setItem('tw_tok',t); }catch(e){} } })();
 function el(id){ return document.getElementById(id); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
-function money(n){ n=Number(n)||0; return n.toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,' '); }
+function money(n){ if(window.twMoney) return twMoney(n); n=Number(n)||0; return n.toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,' '); }
 function dm(iso){ return iso?iso.slice(8,10)+'.'+iso.slice(5,7):''; }
 function dmy(iso){ return iso?iso.slice(8,10)+'.'+iso.slice(5,7)+'.'+iso.slice(0,4):''; }
 function setm(m, cls, html){ if(typeof m==='string') m=el(m); if(!m) return; m.className='msg '+(cls||''); m.innerHTML=html||''; }
@@ -720,7 +720,7 @@ function byContrOpen(i){
       +'<div class="tbl-wrap" style="margin-top:var(--s-3)"><table class="reg"><thead><tr><th>Договор</th><th class="num">Должен</th><th class="num">Внесено</th><th class="num">Осталось</th><th class="num">Сумма на договор</th></tr></thead><tbody>'
       +cs.map(function(c, j){ return '<tr><td><b>'+(c.isFramework?'Рамочный ':'')+'№ '+esc(c.number)+'</b> <span class="mut">'+esc(c.currency)+(c.prelim?' · предварительно':'')+'</span></td><td class="num">'+money(c.obligation)+'</td><td class="num">'+money(c.paid)+'</td>'
         +'<td class="num">'+(c.left>0.009?money(c.left):c.advance>0.009?'<span class="mut">аванс '+money(c.advance)+'</span>':'<span class="pill ok">оплачен</span>')+'</td>'
-        +'<td class="num"><input id="bc_'+j+'" inputmode="decimal" style="width:120px;text-align:right" value="'+(cs.length===1?money(L.sum).replace(/ /g,''):'')+'" oninput="bcSum()"></td></tr>'; }).join('')
+        +'<td class="num"><input id="bc_'+j+'" inputmode="decimal" style="width:120px;text-align:right" value="'+(cs.length===1?money(L.sum).replace(/\s/g,''):'')+'" oninput="bcSum()"></td></tr>'; }).join('')
       +'</tbody></table></div><div class="mut" id="bcTot" style="margin-top:var(--s-2)"></div>'
       +'<div class="mut">Внутри договора деньги лягут на ожидаемые суммы по порядку сроков; что сверх — останется на договоре авансом и зачтётся в следующий счёт.</div>'
       +dlgFoot('byContrGo()','Провести по договорам'));

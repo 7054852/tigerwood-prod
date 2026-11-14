@@ -209,7 +209,7 @@ function api(p){ var _t=twTok(); if(_t) p.tok=_t; p.app=APP; if(TGID&&!p.tgid) p
 function apiPost(p){ var _t=twTok(); if(_t) p.tok=_t; p.app=APP; if(TGID&&!p.tgid) p.tgid=TGID; var b=Object.keys(p).map(function(k){return encodeURIComponent(k)+'='+encodeURIComponent(p[k]==null?'':p[k]);}).join('&'); return fetch(BASE,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8'},body:b}).then(function(r){return r.json();}); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
 function $(id){ return document.getElementById(id); }
-function money(n){ n=Number(n)||0; return n.toFixed(2).replace('.',','); }
+function money(n){ if(window.twMoney) return twMoney(n); n=Number(n)||0; return n.toFixed(2).replace('.',','); }
 function num(x){ return Number(String(x==null?'':x).replace(',','.'))||0; }
 
 var ROWS=[], STAT={}, CLASSES=[], CLASSMAP={}, SERVICES=[], TYPES=[], FILT='', TFILT='';
@@ -288,7 +288,7 @@ function draw(){
   $('cnt').textContent=list.length===ROWS.length?'':'показано '+list.length;
   var need=list.filter(function(r){ return r.needCheck; }), rest=list.filter(function(r){ return !r.needCheck; });
   $('list').innerHTML=
-    (TFILT==='inv'?'<div class="note hint" style="margin-bottom:var(--s-3)"><div>Счета поставщиков ведутся в одном месте — <a href="javascript:void(0)" onclick="goFinInvoices()">Финансы → Счета</a>: одобрение, оплата, «оплачено / получено по накладным». Счёт, загруженный здесь, сразу уходит туда; ниже — только старые, ещё не перенесённые.</div></div>':'')
+    (TFILT==='inv'?'<div class="note hint" style="margin-bottom:var(--s-3)"><div>Счета поставщиков ведутся в одном месте — <a href="javascript:void(0)" onclick="goFinInvoices()">Финансы → Счета поставщиков</a>: одобрение, оплата, «оплачено / получено по накладным». Счёт, загруженный здесь, сразу уходит туда; ниже — только старые, ещё не перенесённые.</div></div>':'')
     +(need.length? '<div class="note warn"><div><b>🔔 На проверке — '+need.length+'</b>'
         +' проверьте реквизиты и нажмите «Подтвердить», после этого документ уйдёт в общий список</div></div>'
       +need.map(docCard).join('')

@@ -208,5 +208,8 @@
     return /инвойс|commercial/i.test(t)?'CI':/проформ/i.test(t)?'PI':/ттн/i.test(t)?'ТТН':/(^|\s)тн(\s|$)/i.test(t)?'ТН':/чек/i.test(t)?'ЧЕК':/счёт|счет/i.test(t)?'СЧ':/догов|контракт/i.test(t)?'ДОГ':/акт/i.test(t)?'АКТ':'ДОК';   // «Контракт» содержит «акт» — договоры раньше акта (19.10.2026)
   };
 
+  // суммы — один вид на всех экранах (14.11.2026): «1 234,56», тысячи — неразрывным пробелом, копейки через запятую
+  root.twMoney=function(n){ n=Number(n)||0; var p=Math.abs(n).toFixed(2).split('.'); return (n<0?'-':'')+p[0].replace(/\B(?=(\d{3})+(?!\d))/g,'\u00a0')+','+p[1]; };
+
   root.twTheme={ get:function(){ return MODE; }, set:set, now:current, sun:sun, text:nowText, icon:icon };
 })(typeof window!=='undefined'?window:this);
