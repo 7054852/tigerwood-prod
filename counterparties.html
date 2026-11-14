@@ -590,19 +590,23 @@ function incomesHtml(ic){
   return h;
 }
 function plural(n, f){ n=Math.abs(n)%100; var d=n%10; return n>10&&n<20?f[2]:d>1&&d<5?f[1]:d===1?f[0]:f[2]; }
+function goSettle(view,key,cur){ try{ localStorage.setItem('tw_docs_go',JSON.stringify({view:view||'sup',key:key||'',cur:cur||''})); }catch(e){} try{ window.top.postMessage({tw:'go',id:'indocs'},'*'); }catch(e){} if(window.top===window) location.href='docs.html'+(location.search||''); }
 function renderFin(){
   var r=FIN, b=(CC&&CC.buyer)||{}, ic=r.incomes||{}, hasInc=(ic.gotCount||0)+((ic.wait||[]).length)+((ic.invoices||[]).length);
   if(!b.supplier){ el('finBody').innerHTML=incomesHtml(ic); return; }
   var m=r.money||{}, nat=Object.keys(m.owedNative||{}).filter(function(c){ return c!=='BYN'; }).map(function(c){ return money(m.owedNative[c])+' '+esc(c); }).join(' + ');
-  var h='<div class="tiles">'+tile('Мы должны, BYN', money(m.owed), nat?('в валюте: '+nat):'')+tile('Из них просрочено', money(m.overdue), '')+tile('Авансы поставщику', money(m.advance), '')+'</div>';
-  h+='<div class="sect">Неоплаченные счета <span class="n">'+(m.unpaid||[]).length+'</span></div><div class="card"><div class="tbl-wrap"><table class="tbl sm mob"><thead><tr><th>Счёт</th><th>За что</th><th>Статья</th><th>Срок</th><th class="num">Сумма</th></tr></thead><tbody>'
+  var h='<div class="tiles">'+tile('К оплате по плану, BYN', money(m.owed), nat?('в валюте: '+nat):'')+tile('Из них просрочено', money(m.overdue), '')+'</div>';
+  h+='<div class="sect">Запланированные оплаты <span class="n">'+(m.unpaid||[]).length+'</span></div><div class="card"><div class="tbl-wrap"><table class="tbl sm mob"><thead><tr><th>Счёт</th><th>За что</th><th>Статья</th><th>Срок</th><th class="num">Сумма</th></tr></thead><tbody>'
     +((m.unpaid||[]).length?m.unpaid.map(function(e){ return '<tr><td data-l="Счёт">'+esc(e.invNo||'—')+(e.invDateIso?(' <span class="sm muted">от '+esc(ruDate(e.invDateIso))+'</span>'):'')+'</td><td data-l="За что" class="sm">'+esc(e.name)+'</td><td data-l="Статья" class="sm">'+esc(e.cat)+'</td>'
-        +'<td data-l="Срок" class="sm">'+esc(ruDate(e.planIso))+'</td><td data-l="Сумма" class="num">'+money(e.sum)+' '+esc(e.cur)+'</td></tr>'; }).join(''):'<tr><td colspan="5" class="sm muted">Неоплаченных счетов нет.</td></tr>')
+        +'<td data-l="Срок" class="sm">'+esc(ruDate(e.planIso))+'</td><td data-l="Сумма" class="num">'+money(e.sum)+' '+esc(e.cur)+'</td></tr>'; }).join(''):'<tr><td colspan="5" class="sm muted">Запланированных оплат нет.</td></tr>')
     +'</tbody></table></div></div>';
-  if((r.docBalance||[]).length || r.docsNote) h+='<div class="sect">Оплаты и документы</div><div class="card">'+(r.docsNote?('<div class="note warn"><div>'+esc(r.docsNote)+'</div></div>'):'')
-    +'<div class="tbl-wrap"><table class="tbl sm mob"><thead><tr><th>Валюта</th><th class="num">Оплачено</th><th class="num">Получено документов</th><th class="num">Разница</th></tr></thead><tbody>'
-    +(r.docBalance||[]).map(function(x){ return '<tr><td data-l="Валюта">'+esc(x.cur)+'</td><td data-l="Оплачено" class="num">'+money(x.paid)+'</td><td data-l="Получено документов" class="num">'+money(x.docs)+'</td><td data-l="Разница" class="num">'+money(x.diff)+'</td></tr>'; }).join('')
-    +'</tbody></table></div><div class="sm muted" style="margin-top:var(--s-2)">Разница больше нуля — оплатили, а накладной или акта ещё нет.</div></div>';
+  // расчёты по документам — те же цифры, что в ведомости «Расчёты с поставщиками» (один расчёт на сервере)
+  var st=r.settle, sr=(st&&st.rows)||[];
+  if(sr.length || r.docsNote) h+='<div class="sect">Расчёты по документам'+(st&&st.startIso?' <span class="sm muted">накладные и акты против оплат, с '+esc(ruDate(st.startIso))+'</span>':'')+'</div><div class="card">'+(r.docsNote?('<div class="note warn"><div>'+esc(r.docsNote)+'</div></div>'):'')
+    +(sr.length?'<div class="tbl-wrap"><table class="tbl sm mob"><thead><tr><th>Валюта</th><th class="num">Получено по документам</th><th class="num">Оплачено</th><th class="num">Итог</th></tr></thead><tbody>'
+    +sr.map(function(x){ return '<tr><td data-l="Валюта">'+esc(x.cur)+'</td><td data-l="Получено по документам" class="num">'+money(x.docs)+' <span class="muted">· '+x.docsN+'</span></td><td data-l="Оплачено" class="num">'+money(x.paid)+'</td><td data-l="Итог" class="num">'
+      +(x.owed>0.004?'<b style="color:var(--red)">должны '+money(x.owed)+'</b>':'')+(x.owed>0.004&&x.advance>0.004?' · ':'')+(x.advance>0.004?'оплачено без документов '+money(x.advance):'')+(x.owed<=0.004&&x.advance<=0.004?'закрыто':'')+'</td></tr>'; }).join('')
+    +'</tbody></table></div><div class="sm" style="margin-top:var(--s-2)"><a href="#" onclick="goSettle(\'sup\',\''+esc(st.key)+'\',\''+esc(sr[0].cur)+'\');return false">Ведомость и документы поставщика →</a></div>':'')+'</div>';
   h+='<div class="sect">Последние оплаты <span class="n">'+(r.history||[]).length+'</span></div><div class="card"><div class="tbl-wrap"><table class="tbl sm mob"><thead><tr><th>Дата</th><th>За что</th><th>Статья</th><th>Кошелёк</th><th class="num">Сумма</th></tr></thead><tbody>'
     +((r.history||[]).length?r.history.map(function(e){ return '<tr><td data-l="Дата" class="sm">'+esc(ruDate(e.paidDateIso))+'</td><td data-l="За что" class="sm">'+esc(e.name)+(e.invNo?(' <span class="muted">сч. '+esc(e.invNo)+'</span>'):'')+'</td><td data-l="Статья" class="sm">'+esc(e.cat)+'</td>'
         +'<td data-l="Кошелёк" class="sm">'+esc(e.wallet)+'</td><td data-l="Сумма" class="num">'+money(e.sum)+'</td></tr>'; }).join(''):'<tr><td colspan="5" class="sm muted">Оплат не было.</td></tr>')

@@ -242,9 +242,8 @@
 <div id="tab_reports" class="hide">
   <div class="sect">Нам должны <small id="dbRecvSum"></small></div><div id="dbRecv"></div>
   <div class="sect">Мы должны <small id="dbPaySum"></small></div><div id="dbPay"></div>
-  <div class="sect">Оплаты и закрывающие документы <small>накладные и акты — из «Финансового гения»</small></div>
-  <div class="toolbar"><button class="sec" onclick="docLoad()">Показать сверку</button><label><input type="checkbox" id="docDiff" checked onchange="docRender()"> только с разницей</label></div>
-  <div id="docBox"></div>
+  <div class="sect">Оплаты и закрывающие документы</div>
+  <div class="mut">Каких документов не хватает и что не сходится — в одном месте: <a href="#" onclick="goSettle('cov');return false">Входящие документы → Все ли документы</a>. Долг и аванс по каждому поставщику — <a href="#" onclick="goSettle('sup');return false">Расчёты с поставщиками</a>.</div>
   <div class="sect">Аналитика за период</div>
   <div class="toolbar"><label>с <input type="date" id="anFrom"></label><label>по <input type="date" id="anTo"></label><button class="sec" onclick="anLoad()">Показать</button><button class="sec" onclick="anRange('m')">Этот месяц</button><button class="sec" onclick="anRange('pm')">Прошлый</button><button class="sec" onclick="anRange('q')">Квартал</button><button class="sec" onclick="anRange('y')">Год</button></div>
   <div id="anBox"></div>
@@ -1067,23 +1066,21 @@ function contrOpen(name){
     var p=r.passport, m=r.money, req=[p.unp?'УНП '+esc(p.unp):'', p.account?'р/с '+esc(p.account):'', esc(p.bank), p.bik?'БИК '+esc(p.bik):'', esc(p.addr), esc(p.note)].filter(Boolean).join(' · ');
     var nat=Object.keys(m.owedNative).filter(function(c){ return c!=='BYN'; }).map(function(c){ return money(m.owedNative[c])+' '+c; }).join(', ');
     dlgOpen('<h3>'+esc(r.name)+(p.type?' <small class="mut">'+esc(p.type)+'</small>':'')+'</h3><div class="mut">'+(req||(r.known?'Реквизиты не заполнены.':'В справочнике контрагентов такой записи нет.'))+'</div>'
-      +'<div class="strip" style="margin-top:var(--s-3)"><div class="kps">'+tile('Мы должны', money(m.owed), nat)+tile('Просрочено', money(m.overdue), '', m.overdue?'bad':'')+tile('Аванс выдан', money(m.advance))+'</div></div>'
-      +(m.unpaid.length?'<div class="sect">Неоплаченные счета</div><table class="reg"><tbody>'+m.unpaid.map(function(x){ return '<tr><td>'+esc(x.name)+(x.invNo?' <span class="mut">№ '+esc(x.invNo)+'</span>':'')+'</td><td class="n">'+dmy(x.planIso)+'</td><td class="num">'+money(x.sum)+(x.cur!=='BYN'?' '+x.cur:'')+'</td></tr>'; }).join('')+'</tbody></table>':'')
-      +(r.docBalance.length?'<div class="sect">Оплачено и закрыто документами</div><table class="reg"><thead><tr><th>Валюта</th><th class="num">Оплачено</th><th class="num">По документам</th><th class="num">Разница</th></tr></thead><tbody>'+r.docBalance.map(function(x){ return '<tr><td>'+x.cur+'</td><td class="num">'+money(x.paid)+'</td><td class="num">'+money(x.docs)+'</td><td class="num"'+(Math.abs(x.diff)>=0.01?' style="color:var(--red)"':'')+'>'+money(x.diff)+'</td></tr>'; }).join('')+'</tbody></table>':'')
-      +(r.docsNote?'<div class="note warn">'+esc(r.docsNote)+'</div>':'')
+      +'<div class="strip" style="margin-top:var(--s-3)"><div class="kps">'+tile('К оплате по плану', money(m.owed), nat)+tile('Из них просрочено', money(m.overdue), '', m.overdue?'bad':'')+'</div></div>'
+      +(m.unpaid.length?'<div class="sect">Запланированные оплаты</div><table class="reg"><tbody>'+m.unpaid.map(function(x){ return '<tr><td>'+esc(x.name)+(x.invNo?' <span class="mut">№ '+esc(x.invNo)+'</span>':'')+'</td><td class="n">'+dmy(x.planIso)+'</td><td class="num">'+money(x.sum)+(x.cur!=='BYN'?' '+x.cur:'')+'</td></tr>'; }).join('')+'</tbody></table>':'')
+      +settleHtml(r)
       +(r.history.length?'<div class="sect">Последние оплаты</div><table class="reg"><tbody>'+r.history.map(function(x){ return '<tr><td class="n">'+dmy(x.paidDateIso)+'</td><td>'+esc(x.name)+' <span class="mut">'+esc(x.cat)+'</span></td><td class="mut">'+esc(x.wallet)+'</td><td class="num">'+money(x.sum)+'</td></tr>'; }).join('')+'</tbody></table>':'')
       +'<div class="dlg-btns"><button class="sec" style="margin-right:auto" onclick="dlgClose()">Закрыть</button><button class="sec" onclick="cardEdit(\''+esc(r.id||'')+'\')">Реквизиты</button><button class="sec" onclick="cardExp(CN['+cn(r.name)+'])">+ Расход</button>'+(m.unpaid.length?'<button class="primary" onclick="cardAct(CN['+cn(r.name)+'])">Оплатить по акту сверки</button>':'')+'</div>'); });
 }
 function cardExp(name){ dlgClose(); needBoard(function(){ expOpen(''); el('exContr').value=name; }); }
 function cardAct(name){ dlgClose(); needBoard(function(){ actOpen(name); }); }
-var DOCS=null;
-function docLoad(){ el('docBox').innerHTML='<div class="mut">Читаю документы…</div>'; get({vapi:'findocsbalance'}).then(function(r){ if(!r||!r.ok){ el('docBox').innerHTML='<div class="note warn">'+esc(errText(r))+'</div>'; return; } DOCS=r.items; docRender(); }, function(e){ el('docBox').innerHTML='<div class="note warn">Лист документов не ответил: '+esc(String(e&&e.message||e))+'</div>'; }); }
-function docRender(){
-  if(!DOCS) return; var only=el('docDiff').checked, l=DOCS.filter(function(g){ return !only||g.totals.some(function(t){ return Math.abs(t.diff)>=0.01; }); });
-  if(!l.length){ el('docBox').innerHTML='<div class="empty">'+(only?'Расхождений нет: все оплаты закрыты документами.':'Нет оплат и документов.')+'</div>'; return; }
-  el('docBox').innerHTML='<div class="tbl-wrap"><table class="reg"><thead><tr><th>Контрагент</th><th>Договор</th><th>Валюта</th><th class="num">Оплачено</th><th class="num">По документам</th><th class="num">Разница</th></tr></thead><tbody>'
-    +l.map(function(g){ return g.rows.map(function(x, k){ return '<tr><td>'+(k?'':'<a href="#" onclick="contrOpen(CN['+cn(g.contr)+']);return false">'+esc(g.contr)+'</a>')+'</td><td>'+esc(x.dogovor)+'</td><td>'+x.cur+'</td><td class="num">'+money(x.paid)+'</td><td class="num">'+money(x.docs)+'</td><td class="num"'+(Math.abs(x.diff)>=0.01?' style="color:var(--red)"':'')+'>'+money(x.diff)+'</td></tr>'; }).join(''); }).join('')
-    +'</tbody></table></div><div class="mut">Разница больше нуля — оплачено, а накладной или акта нет; меньше нуля — документ есть, оплаты нет.</div>';
+function goSettle(view,key,cur){ try{ localStorage.setItem('tw_docs_go',JSON.stringify({view:view||'sup',key:key||'',cur:cur||''})); }catch(e){} try{ window.top.postMessage({tw:'go',id:'indocs'},'*'); }catch(e){} if(window.top===window) location.href='docs.html'+(location.search||''); }
+/* расчёты по документам — те же цифры, что в ведомости «Расчёты с поставщиками» (один расчёт на сервере) */
+function settleHtml(r){
+  var st=r.settle, rows=(st&&st.rows)||[]; if(!rows.length) return r.docsNote?'<div class="note warn">'+esc(r.docsNote)+'</div>':'';
+  return '<div class="sect">Расчёты по документам <small>накладные и акты против оплат'+(st.startIso?', с '+dmy(st.startIso):'')+'</small></div><table class="reg"><thead><tr><th>Валюта</th><th class="num">Получено по документам</th><th class="num">Оплачено</th><th class="num">Итог</th></tr></thead><tbody>'
+    +rows.map(function(x){ return '<tr><td>'+esc(x.cur)+'</td><td class="num">'+money(x.docs)+'</td><td class="num">'+money(x.paid)+'</td><td class="num">'+(x.owed>0.004?'<span style="color:var(--red)">должны '+money(x.owed)+'</span>':'')+(x.owed>0.004&&x.advance>0.004?' · ':'')+(x.advance>0.004?'оплачено без документов '+money(x.advance):'')+(x.owed<=0.004&&x.advance<=0.004?'закрыто':'')+'</td></tr>'; }).join('')
+    +'</tbody></table><div class="mut"><a href="#" onclick="goSettle(\'sup\',\''+esc(st.key)+'\',\''+esc(rows[0].cur)+'\');return false">Ведомость и документы поставщика →</a></div>';
 }
 
 /* ═══════════ КОНТРАГЕНТЫ ═══════════ */
@@ -1125,8 +1122,8 @@ function anLoad(){
       +'<h3 style="margin:var(--s-4) 0 var(--s-2);font:var(--t-heading)">По месяцам</h3><table class="reg"><thead><tr><th>Месяц</th><th class="num">Приход</th><th class="num">Расход</th></tr></thead><tbody>'+r.months.map(function(m){ return '<tr><td class="n">'+m.ym+'</td><td class="num">'+money(m.inc)+'</td><td class="num">'+money(m.exp)+'</td></tr>'; }).join('')+'</tbody></table></div></div>'
       +'<div class="bd" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr);margin-top:var(--s-4)"><div class="card" style="margin-top:0"><h3 style="margin:0 0 var(--s-2);font:var(--t-heading)">Расходы по кошелькам</h3><table class="reg"><tbody>'+r.wallets.map(function(w){ return '<tr><td>'+esc(w.wallet)+'</td><td class="num">'+money(w.sum)+'</td></tr>'; }).join('')+'</tbody></table></div>'
       +'<div class="card" style="margin-top:0"><h3 style="margin:0 0 var(--s-2);font:var(--t-heading)">Кому платили больше всего</h3>'+r.contractors.slice(0,15).map(function(c){ return '<details><summary>'+(c.contr&&c.contr!=='—'?'<a href="#" onclick="contrOpen(CN['+cn(c.contr)+']);return false">'+esc(c.contr)+'</a>':'без контрагента')+' <span class="n" style="float:right">'+money(c.sum)+'</span></summary><table class="reg">'+c.statyi.map(function(x){ return '<tr><td class="mut">'+esc(x.statya)+'</td><td class="num">'+money(x.sum)+'</td></tr>'; }).join('')+'</table></details>'; }).join('')+'</div></div>'
-      +(r.closure.valid?'<div class="sect">Оплачено без закрывающих документов <small>оплаты с '+dmy(r.closure.startIso)+', в BYN</small></div>'+(r.closure.items.length?'<div class="tbl-wrap"><table class="reg"><thead><tr><th>Контрагент</th><th class="num">Оплачено</th><th class="num">По документам</th><th class="num">Не закрыто</th></tr></thead><tbody>'
-        +r.closure.items.map(function(x){ return '<tr><td><a href="#" onclick="contrOpen(CN['+cn(x.contr)+']);return false">'+esc(x.contr)+'</a></td><td class="num">'+money(x.paid)+'</td><td class="num">'+money(x.doced)+'</td><td class="num" style="color:var(--red)">'+money(x.diff)+'</td></tr>'; }).join('')+'</tbody></table></div>':'<div class="empty">Все оплаты закрыты документами.</div>')
+      +(r.closure.valid?'<div class="sect">Оплачено без закрывающих документов <small>оплаты поставщикам с '+dmy(r.closure.startIso)+' — тот же расчёт, что во «Входящих документах»</small></div>'+(r.closure.items.length?'<div class="tbl-wrap"><table class="reg"><thead><tr><th>Контрагент</th><th class="num">Оплачено</th><th class="num">Закрыто документами</th><th class="num">Нет документа</th></tr></thead><tbody>'
+        +r.closure.items.map(function(x){ return '<tr><td><a href="#" onclick="contrOpen(CN['+cn(x.contr)+']);return false">'+esc(x.contr)+'</a>'+(x.cur&&x.cur!=='BYN'?' <span class="mut">'+esc(x.cur)+'</span>':'')+'</td><td class="num">'+money(x.paid)+'</td><td class="num">'+money(x.doced)+'</td><td class="num" style="color:var(--red)">'+money(x.diff)+'</td></tr>'; }).join('')+'</tbody></table></div>':'<div class="empty">Все оплаты закрыты документами.</div>')
         :'<div class="mut" style="margin-top:var(--s-3)">'+esc(r.closure.note||'')+'</div>'); });
 }
 /* ── инструменты доски: наличный расход, график, акт сверки, задвоенные ── */

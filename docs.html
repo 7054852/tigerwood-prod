@@ -1455,8 +1455,10 @@ document.addEventListener('drop',function(e){ document.body.classList.remove('dr
 
 load();
 (function(){ var d=qp('doc'); if(d){ $('from').value=''; openDoc(d); } })();   // ссылка из журнала закупок материала — сразу карточка документа
-window.addEventListener('message',function(e){ if(e&&e.data&&e.data.tw==='refresh') 
-load(); });
+// переход из «Финансов» и «Контрагентов»: открыть расчёты с поставщиком или «Все ли документы»
+function docsGo(){ var g=null; try{ g=JSON.parse(localStorage.getItem('tw_docs_go')||'null'); localStorage.removeItem('tw_docs_go'); }catch(e){} if(!g) return; if(g.view==='cov') covGo('miss'); else { setView('sup'); if(g.key) openSup(g.key,g.cur||''); } }
+docsGo();
+window.addEventListener('message',function(e){ if(e&&e.data&&e.data.tw==='refresh'){ load(); SUP=null; COV=null; if(VIEW_NOW==='sup') loadSup(); if(VIEW_NOW==='cov') loadCov(); docsGo(); } });
 </script>
 </body>
 </html>

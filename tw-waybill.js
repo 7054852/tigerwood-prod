@@ -140,8 +140,10 @@ function twWaybillBlock(dealKey, box, onDone){
 function twWbRefresh(){ twWaybillBlock(TWWBB.deal, TWWBB.box, TWWBB.done); if(TWWBB.done) TWWBB.done(); }
 function twWbRender(){
   var r=TWWBB.r, h='', docs=r.docs||[], live=docs.filter(function(d){ return d.status==='formed'; });
-  if(r.issued>0) h+='<div class="row" style="margin-bottom:var(--s-2);align-items:center"><span class="sm">Выписано на <b>'+twWbMoney(r.issued)+'</b> · оплачено ЕРИП <b>'+twWbMoney(r.paid)+'</b></span>'
-    +(r.closed?'<span class="pill ok">✅ оплачено полностью</span>':'<span class="pill warn">⏳ ждём оплату '+twWbMoney(Math.max(0,r.issued-r.paid))+'</span>')+'</div>';
+  // накладная создаёт долг, платят по счёту или договору: показываем оплачено и долг по сделке — те же цифры, что в списке сделок
+  var debt=r.debt==null?Math.max(0,r.issued-r.paid):r.debt;
+  if(r.issued>0) h+='<div class="row" style="margin-bottom:var(--s-2);align-items:center"><span class="sm">Выписано на <b>'+twWbMoney(r.issued)+'</b> · оплачено по сделке <b>'+twWbMoney(r.paid)+'</b></span>'
+    +(debt<=0.01?'<span class="pill ok">✅ долга по сделке нет</span>':'<span class="pill warn" title="сумма сделки или обязательство по договору минус все оплаты: по выписке, ЕРИП и ссылкам">⏳ долг по сделке '+twWbMoney(debt)+'</span>')+'</div>';
   h+=docs.map(function(d){
     var chk=d.docType==='receipt', bad=d.status!=='formed', ttl=chk?'Товарный чек':d.type;
     var pills=bad?'<span class="pill bad">ошибка формирования</span>':d.signedAt?'<span class="pill ok">подписана '+esc(d.signedAt)+'</span>':'<span class="pill warn">выписана — ждёт подписи</span>';
