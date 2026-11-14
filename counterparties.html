@@ -468,7 +468,9 @@ function renderClient(){
   h+=similarHtml(r.similar||[]);
   h+='<div class="chips" style="margin:var(--s-4) 0 var(--s-3)">'
     +'<span class="chip'+(CC_TAB==='sales'?' on':'')+'" role="button" tabindex="0" onclick="setTab(\'sales\')">Продажи</span>'
-    +'<span class="chip'+(CC_TAB==='fin'?' on':'')+'" role="button" tabindex="0" onclick="setTab(\'fin\')">Деньги</span></div>';
+    +'<span class="chip'+(CC_TAB==='fin'?' on':'')+'" role="button" tabindex="0" onclick="setTab(\'fin\')">Деньги</span>'
+    +'<span class="chip'+(CC_TAB==='act'?' on':'')+'" role="button" tabindex="0" onclick="setTab(\'act\')" title="история расчётов за период и акт сверки — с покупателем и с поставщиком">Акт сверки</span></div>';
+  if(CC_TAB==='act'){ el('ccBody').innerHTML=h+'<div id="actBody"><div class="center">Загрузка…</div></div>'; actLoad(); return; }
   if(CC_TAB==='fin'){ el('ccBody').innerHTML=h+'<div id="finBody"><div class="center">Загрузка…</div></div>'; loadFin(); return; }
   h+='<div class="tiles">'
     +tile('Сделок', tot.deals, tot.inquiries?('из них заявок: '+esc(tot.inquiries)):'')
@@ -539,6 +541,51 @@ function mergeAsk(cid, name){
       if(r.sheetNote) info('Объединено', '<div>'+esc(r.sheetNote)+'</div>'); openClient(); }); }, 'Объединить');
 }
 /* ── вкладка «Деньги»: поступления от клиента (14.10.2026) и, у поставщика, долг, неоплаченные счета, сверка с документами, оплаты (fincontrcard) ── */
+/* ── история расчётов и акт сверки (14.11.2026): покупатель — «как в бухгалтерии» (отгрузки против оплат), поставщик — ведомость «Расчётов с поставщиками» ── */
+var ACTS={ role:'', cur:'', from:'', to:'', r:null, key:'' };
+var ORIGIN=(function(){ try{ return new URL(BASE).origin; }catch(e){ return ''; } })();
+function actRoles(){ var b=(CC&&CC.buyer)||{}, c=['client','с покупателем'], p=['supplier','с поставщиком']; return (b.supplier||b.sub)&&!b.client?[p,c]:[c,p]; }   // обе стороны всегда: роль в карточке могла не отметиться, а сделки и оплаты есть
+function actLoad(reset){
+  var b=(CC&&CC.buyer)||{}, roles=actRoles();
+  if(!CAN.finance){ el('actBody').innerHTML='<div class="note"><div>История расчётов и акт сверки видны тем, у кого открыт раздел «Финансы».</div></div>'; return; }
+  if(ACTS.key!==b.cid){ ACTS={ role:'', cur:'', from:'', to:'', r:null, key:b.cid }; }
+  if(!ACTS.role||!roles.some(function(x){ return x[0]===ACTS.role; })) ACTS.role=roles[0][0];
+  if(reset) ACTS.cur='';
+  el('actBody').innerHTML='<div class="center">Считаю…</div>';
+  get({vapi:ACTS.role==='client'?'fincliledger':'finsupledger', contr:b.cid, cur:ACTS.cur, from:ACTS.from, to:ACTS.to}).then(function(r){
+    if(!el('actBody')) return;
+    if(!r||!r.ok){ el('actBody').innerHTML='<div class="note bad"><div>⚠️ '+esc(errText(r))+'</div></div>'; return; }
+    ACTS.r=r; ACTS.cur=r.cur; ACTS.from=r.from||''; ACTS.to=r.to||''; actDraw();
+  }).catch(function(e){ if(el('actBody')) el('actBody').innerHTML='<div class="note bad"><div>'+esc(netText(e))+'</div></div>'; });
+}
+function actDraw(){
+  var r=ACTS.r, cl=ACTS.role==='client', c=' '+esc(r.cur), roles=actRoles();
+  // покупатель: + должен нам, − его аванс; поставщик: + мы должны, − наш аванс
+  var balTxt=function(x){ return Math.abs(x)<0.005?'0,00':(x>0?(cl?'должен нам ':'мы должны ')+money(x):(cl?'аванс покупателя ':'наш аванс ')+money(-x))+c; };
+  var inn=function(e){ return cl?e.debit:e.credit; }, out=function(e){ return cl?e.credit:e.debit; };
+  var h='<div class="toolbar">'
+    +(roles.length>1?'<span class="chips" style="margin:0">'+roles.map(function(x){ return '<span class="chip'+(ACTS.role===x[0]?' on':'')+'" role="button" tabindex="0" onclick="ACTS.role=\''+x[0]+'\';actLoad(true)">'+x[1]+'</span>'; }).join('')+'</span>':'')
+    +((r.curs||[]).length>1?'<select onchange="ACTS.cur=this.value;actLoad()">'+r.curs.map(function(x){ return '<option'+(x===r.cur?' selected':'')+'>'+esc(x)+'</option>'; }).join('')+'</select>':'')
+    +'<span class="muted">период с</span><input type="date" value="'+esc(ACTS.from)+'" onchange="ACTS.from=this.value;actLoad()"><span class="muted">по</span><input type="date" value="'+esc(ACTS.to)+'" onchange="ACTS.to=this.value;actLoad()">'
+    +'<button class="sm" id="actBtn" onclick="actMake()" title="документ на бланке ООО «Тигервуд»: наша половина заполнена, половина контрагента пустая; PDF и Word">📄 Сформировать акт сверки</button></div>'
+    +'<div class="sm muted" style="margin:0 0 var(--s-2)">'+(cl?'Долг покупателя — по отгрузочным документам (ТН, ТТН, товарный чек, акт, инвойс); счёт на оплату долгом не считается; оплата до отгрузки — аванс покупателя.'
+      :'Долг перед поставщиком — по его накладным и актам; оплаты его гасят; оплата раньше документа — наш аванс.')+(r.startIso?' Учёт в Прохабе — с '+esc(ruDate(r.startIso))+'.':'')+'</div>'
+    +'<div class="tiles">'+tile('На '+ruDate(r.from||r.startIso||''), balTxt(r.opening))+tile(cl?'Отгружено':'Получено по документам', money(cl?r.debit:r.credit)+c)+tile(cl?'Оплачено покупателем':'Оплачено нами', money(cl?r.credit:r.debit)+c)+tile('На '+ruDate(r.to||todayIso()), balTxt(r.closing))+'</div>'
+    +'<div class="card"><div class="tbl-wrap"><table class="tbl sm mob"><thead><tr><th>Дата</th><th>Операция</th><th class="num">'+(cl?'Отгружено':'Получено')+'</th><th class="num">Оплачено</th><th class="num">Остаток</th></tr></thead><tbody>'
+    +((r.rows||[]).length?r.rows.map(function(e){ return '<tr><td data-l="Дата" class="sm">'+esc(ruDate(e.date))+'</td><td data-l="Операция">'+(e.fileUrl?'<a href="'+esc(e.fileUrl)+'" target="_blank" rel="noopener">'+esc(e.label)+'</a>':esc(e.label))+'</td>'
+      +'<td data-l="'+(cl?'Отгружено':'Получено')+'" class="num">'+(inn(e)?money(inn(e)):'')+'</td><td data-l="Оплачено" class="num">'+(out(e)?money(out(e)):'')+'</td><td data-l="Остаток" class="num sm">'+balTxt(e.balance)+'</td></tr>'; }).join('')
+      :'<tr><td colspan="5" class="sm muted">За период движений нет.</td></tr>')
+    +'</tbody></table></div></div><div class="msg" id="actMsg"></div>';
+  el('actBody').innerHTML=h;
+}
+function actMake(){
+  var r=ACTS.r, b=el('actBtn'); if(!r) return; b.disabled=true; setm('actMsg','','Формирую акт… до минуты');
+  post({vapi:ACTS.role==='client'?'fincliact':'finsupact', contr:ACTS.role==='client'?CC.buyer.cid:r.key, cur:r.cur, from:ACTS.from, to:ACTS.to}).then(function(x){
+    b.disabled=false;
+    if(!x||!x.ok){ setm('actMsg','err',esc(errText(x))||'акт не сформировался'); return; }
+    setm('actMsg','ok','✓ Акт за '+esc(ruDate(x.from))+'–'+esc(ruDate(x.to))+': <a href="'+esc(ORIGIN+x.pdf)+'" target="_blank"><b>скачать PDF</b></a> · <a href="'+esc(ORIGIN+x.docx)+'" target="_blank">Word</a> · <a href="'+esc(x.url)+'" target="_blank">Google Документ</a>');
+  }).catch(function(e){ b.disabled=false; setm('actMsg','err',esc(netText(e))); });
+}
 function loadFin(){
   if(FIN){ renderFin(); return; }
   var b=(CC&&CC.buyer)||{};
