@@ -606,10 +606,14 @@ function stRefresh(){
   el('stWallet').innerHTML=wOpts(el('stWallet').value||REF.defaultWalletId);
   sqChipsRender('st'); if(el('stQ').value.trim()) sqRun('st');
   get({vapi:'finowntransfers'}).then(function(r){ if(r&&r.ok){ OWN=r; renderOwn(); } });   // 20.10.2026: старый сервер без маршрута — блок пустой
-  get({vapi:'finreconpreview'}).then(function(r){ if(!r||!r.ok){ noAccess(r); return; } EXP=r.plan; renderExp(); });
+  get({vapi:'finreconpreview'}).then(function(r){ if(!r||!r.ok){ noAccess(r); return; } EXP=r.plan; EXPX=r; renderExp(); });
   Promise.all([get({vapi:'finincomepreview'}), get({vapi:'finincreconpreview'})]).then(function(a){ if(a[0]&&a[0].ok){ INC=a[0]; IREC=(a[1]&&a[1].plan)||[]; renderInc(); } });
   get({vapi:'finstmtlist', limit:400}).then(function(r){ if(r&&r.items) renderDone(r.items.filter(function(x){ return x.posting; }).slice(0,60)); });
 }
+var EXPX={};
+// «за сотрудника» (ОПИ и т. п.): по статье «ОПИ и другие выплаты за сотрудников» выбирается человек — оплата считается его выплаченной зарплатой
+function forEmpSel(i, pid){ return '<select id="ex_p'+i+'" title="за кого платим: оплата посчитается выплаченной ему зарплатой"><option value="">— за кого? —</option>'+(EXPX.people||[]).map(function(x){ return '<option value="'+esc(x.id)+'"'+(x.id===pid?' selected':'')+'>'+esc(x.name)+'</option>'; }).join('')+'</select>'; }
+function forEmpToggle(i){ var s=el('ex_s'+i), w=el('ex_pw'+i); if(s&&w) w.style.display=(EXPX.forEmpCategoryId&&s.value===EXPX.forEmpCategoryId)?'':'none'; }
 var ACT={ match:'закрыть карточку', partial:'частичная оплата', recognize:'новый расход', create:'новый расход', ambiguous:'выбрать карточку', multi:'закрыть несколько карточек' };
 function renderExp(){
   el('expCnt').textContent=EXP.length?EXP.length+' строк':'';
@@ -631,9 +635,10 @@ function renderExp(){
     if(sp) what='<span class="pill info">разбито</span> '+sp.map(function(x){ return money(x.sum)+' · '+esc(catName(x.categoryId)||'без статьи'); }).join(' + ')
       +'<div><a href="#" onclick="spOpen('+i+');return false;">изменить</a> · <a href="#" onclick="spClear('+i+');return false;">без разбивки</a></div>';
     else if(canSplit) what+=' <button class="sec sm" onclick="spOpen('+i+')" title="разделить платёж на несколько статей">Разбить</button>';
-    var cat=p.categoryId||p.hintCategoryId||'';
+    var fe=('forPersonId' in p)&&(p.action==='create'||p.action==='recognize'), cat=p.categoryId||p.hintCategoryId||(fe?EXPX.forEmpCategoryId:'')||'';
     h+='<tr><td><input type="checkbox" id="ex_k'+i+'"'+(auto?' checked':'')+'></td><td class="n">'+dm(p.dateIso)+'</td><td>'+esc(p.contr)+'</td><td class="num">'+stSum(p.sum, p.walletId)+'</td><td>'+what+'</td>'
-      +'<td>'+(p.hoz?'<span class="mut">перевод</span>':sp?'<span class="mut">по частям</span>':'<select id="ex_s'+i+'">'+catOpts(cat,'expense')+'</select>')+'</td><td class="purp">'+esc(p.purpose)+'</td></tr>';
+      +'<td>'+(p.hoz?'<span class="mut">перевод</span>':sp?'<span class="mut">по частям</span>':'<select id="ex_s'+i+'" onchange="forEmpToggle('+i+')">'+catOpts(cat,'expense')+'</select>'
+        +((p.action==='create'||p.action==='recognize')?'<div id="ex_pw'+i+'" style="margin-top:4px;'+(EXPX.forEmpCategoryId&&cat===EXPX.forEmpCategoryId?'':'display:none')+'">'+forEmpSel(i, p.forPersonId||'')+'</div>':''))+'</td><td class="purp">'+esc(p.purpose)+'</td></tr>';
   });
   el('expBox').innerHTML=h+'</tbody></table></div>'; el('expGo').className='primary'; el('expHint').className='mut';
 }
@@ -667,6 +672,7 @@ function expApply(){
     var d={ lineId:p.lineId, action:p.action, expId:p.expId||undefined, categoryId:(el('ex_s'+i)&&el('ex_s'+i).value)||undefined };
     if(SPLIT[p.lineId] && (p.action==='create'||p.action==='recognize')){ d.action='create'; d.parts=SPLIT[p.lineId]; d.categoryId=undefined; }
     if(p.action==='multi') d.expIds=p.cards.map(function(c){ return c.expId; });
+    if(EXPX.forEmpCategoryId&&d.categoryId===EXPX.forEmpCategoryId&&(d.action==='create'||d.action==='recognize')){ var pp=el('ex_p'+i); d.personId=pp?pp.value:''; if(!d.personId){ bad='В строке «'+p.contr+' '+money(p.sum)+'» выберите сотрудника, за которого платим.'; return; } }
     if(p.action==='ambiguous'){ var v=el('ex_c'+i).value; if(!v){ bad='В строке «'+p.contr+' '+money(p.sum)+'» выберите карточку или «новый расход».'; return; } if(v==='new'){ d.action='create'; } else { d.action='match'; d.expId=v; } }
     dec.push(d);
   });
