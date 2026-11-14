@@ -858,17 +858,26 @@ function pickMat(i,name){
   var cls=POS[i].cls; if(cls!=='материал'&&cls!=='расходник') cls='материал';
   savePos(i,{cls:cls, mat:name},function(){ delete FIND[i]; delete NEWM[i]; });
 }
+// подсказка нового материала по строке накладной: листовой материал → «Фанера 3мм 1525x1525», единица «лист», толщина и размер
+function guessMat(name){
+  var n=String(name||''), th=/(\d+(?:[.,]\d+)?)\s*мм/i.exec(n), sz=/([1-9]\d{2,3})(?:[.,]0)?\s*[*xх×\/]\s*([1-9]\d{2,3})(?:[.,]0)?(?:\s*[*xх×]\s*(\d{1,2}(?:[.,]\d+)?))?/i.exec(n);
+  var sheet=/фанер|мдф|мфд|дсп|двп|хдф|оргстекл|поликарбонат|пмма|картон/i.test(n)&&!!sz;
+  if(!sheet) return {name:n.replace(/(\d)\s*[хХ×*]\s*(\d)/g,'$1x$2'), unit:'шт'};
+  var t=th?th[1].replace(',','.'):sz[3]?String(Number(sz[3].replace(',','.'))):'', base=(/мфд|мдф/i.test(n)?'МДФ':/фанер/i.test(n)?'Фанера':n.split(/[\s,]+/)[0]);
+  return {name:base+(t?' '+t.replace('.',',')+'мм':'')+' '+sz[1]+'x'+sz[2], unit:'лист', thick:t, size:sz[1]+'x'+sz[2]};
+}
 function newMatHtml(p,i){
-  var units=['шт','лист','кг','м','м²','л','упак'].map(function(u){ return '<option>'+u+'</option>'; }).join('');
+  var g=guessMat(p.name), U=[['лист','лист (плиты, фанера, МДФ)'],['шт','шт'],['кг','кг'],['л','л — литры'],['м','м — погонные метры'],['м²','м²'],['упак','упак']];
+  var units=U.map(function(u){ return '<option value="'+u[0]+'"'+(u[0]===g.unit?' selected':'')+'>'+u[1]+'</option>'; }).join('');
   return '<div class="newmat"><div class="prow"><span class="plbl">Новый материал</span>'
-      +'<input id="nmn'+i+'" value="'+esc(p.name)+'" style="flex:1;min-width:240px" title="наше название — короткое и понятное; название поставщика запомнится само"></div>'
+      +'<input id="nmn'+i+'" value="'+esc(g.name)+'" style="flex:1;min-width:240px" title="наше название — коротко: что, толщина, размер; название поставщика запомнится само"></div>'
     +'<div class="prow"><span class="plbl">Учитываем в</span><select id="nmu'+i+'" onchange="$(\'nms'+i+'\').style.display=this.value===\'лист\'?\'\':\'none\'">'+units+'</select>'
-      +'<span id="nms'+i+'" style="display:none"><span class="plbl">Толщина, мм</span> <input class="xs" id="nmt'+i+'" inputmode="decimal"> <span class="plbl">Лист, мм</span> <input class="s" id="nmz'+i+'" placeholder="1525x1525"></span>'
+      +'<span id="nms'+i+'" style="display:'+(g.unit==='лист'?'':'none')+'"><span class="plbl">Толщина, мм</span> <input class="xs" id="nmt'+i+'" inputmode="decimal" value="'+esc(g.thick||'')+'"> <span class="plbl">Лист, мм</span> <input class="s" id="nmz'+i+'" placeholder="1525x1525" value="'+esc(g.size||'')+'"></span>'
       +'<button class="sm" onclick="saveNewMat('+i+')">Создать и выбрать</button><button class="sec sm" onclick="delete NEWM['+i+'];renderDoc()">Отмена</button></div>'
     +'<div class="pnote">Сначала проверьте поиском, нет ли такого материала под другим названием — дубли потом придётся объединять.</div></div>';
 }
 function saveNewMat(i){
-  var name=$('nmn'+i).value.trim(), unit=$('nmu'+i).value, d={name:name, unit:unit};
+  var name=$('nmn'+i).value.trim().replace(/(\d)\s*[хХ×*]\s*(\d)/g,'$1x$2'), unit=$('nmu'+i).value, d={name:name, unit:unit, role:unit==='лист'?'перерабатываемый':''};   // размер — латинской x, как у всех материалов
   if(!name){ rowMsg(i,'впишите название',1); return; }
   if(matByName(name)){ pickMat(i,matByName(name).name); return; }
   if(unit==='лист'){ d.thick=$('nmt'+i).value; d.size=$('nmz'+i).value;
