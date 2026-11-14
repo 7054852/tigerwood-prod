@@ -688,6 +688,7 @@ function renderInc(){
   INC.cashback.forEach(function(x, i){ row(x,'<span class="pill mute">возврат наличных</span>',x.sum,esc(x.contr),'<button class="sec" onclick="cbOpen('+i+')">Провести возврат</button>'); });
   INC.other.forEach(function(x, i){
     var p=recBy[x.id], hint=esc(x.contr)+(x.clientHint?'<div class="mut">'+esc(x.clientHint)+'</div>':''), btn='<button class="sec" onclick="byContrOpen('+i+')" title="один платёж по одному или нескольким договорам: сколько на какой — указываете вы">По договорам</button> <button class="sec" onclick="othOpen('+i+')">Новое поступление</button>';
+    if(x.refund){ hint='<span class="pill info" title="'+esc(x.refund.why)+'">возврат от поставщика</span> '+hint; btn='<button class="primary" onclick="othOpen('+i+',INC.other['+i+'].refund.categoryId)" title="статья «Возврат от поставщика»: уменьшит наш аванс у него в расчётах с поставщиками">Провести возврат</button> '+btn; }
     if(p&&(p.action==='match'||p.action==='suggest'||p.action==='partial')){
       hint='<span class="pill '+(p.action==='match'?'ok':'info')+'">'+(p.action==='partial'?'часть заявки':'заявка')+' '+esc(p.cand.zakaz)+'</span> '+esc(p.cand.client)+' · '+money(p.cand.sum)+'<div class="mut">'+esc(p.basis)+(p.action==='partial'?', останется '+money(p.rest):'')+'</div>';
       btn='<button class="primary" onclick="recApply(\''+x.id+'\',\''+p.cand.incId+'\')">Закрыть план</button> '+btn;
@@ -777,11 +778,11 @@ function eripGo(force){
   });
 }
 var OT=null;
-function othOpen(i){
+function othOpen(i,cat){
   OT=INC.other[i];
   dlgOpen('<h3>Поступление '+money(OT.sum)+' от '+dmy(OT.dateIso)+'</h3><div class="mut">'+esc(OT.purpose)+'</div><div class="form">'
     +'<div><label>Клиент</label><input id="otClient" value="'+esc(OT.clientHint||OT.contr)+'"></div><div><label>№ заказа</label><input id="otZakaz"></div>'
-    +'<div><label>Статья</label><select id="otCat">'+catOpts('','income')+'</select></div>'
+    +'<div><label>Статья</label><select id="otCat">'+catOpts(cat||'','income')+'</select></div>'
     +'<div><label>Тип оплаты</label><select id="otType"><option value="">—</option>'+REF.paymentTypes.map(function(t){ return '<option value="'+t.id+'">'+esc(t.name)+'</option>'; }).join('')+'</select></div>'
     +'<div><label>Комиссия банка, если удержана</label><input id="otComm" inputmode="decimal" placeholder="0"></div></div>'
     +'<div class="mut">С комиссией клиент заплатил больше, чем пришло: поступление запишется на полную сумму, комиссия — расходом.</div>'+dlgFoot('othGo()','Провести'));
