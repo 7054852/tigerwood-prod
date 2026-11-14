@@ -11,6 +11,7 @@
   .kpis b{ color:var(--fg); font:var(--t-heading); display:block; }
   #sTb tr{ cursor:pointer; }
   .owe{ color:var(--red); font-weight:600; } .adv{ color:var(--green); font-weight:600; }
+  .settle .muted b{ color:var(--fg); }
   .settle{ border:1px solid var(--line); border-radius:var(--r-ctl); padding:var(--s-2) var(--s-3); margin-top:var(--s-2); font:var(--t-small); display:flex; gap:var(--s-2); flex-wrap:wrap; align-items:center; }
   html.emb .toph .hi{ display:none; }   /* в оболочке заголовок уже есть в её шапке */
   .toph{ display:flex; align-items:center; gap:var(--s-3); flex-wrap:wrap; margin:0 0 var(--s-2); } .toph .end{ margin-left:auto; display:flex; gap:var(--s-2); align-items:center; } .toph .hi{ margin:0; } .toph .chips{ margin:0; }
@@ -354,7 +355,8 @@ function recNext(i){
   if(!u.fileId){ recNext(i+1); return; }
   u.state='распознаётся'; drawUpl();
   api({vapi:'docrecognize', file:u.fileId}).then(function(r){
-    if(r&&r.ok){ u.state='готово'; u.note='позиций: '+(r.positions||0)+(r.dup?' · ⚠ возможно дубль ('+((r.dupOf||{}).docNo||'')+')':''); }
+    if(r&&r.ok&&r.movedToInvoice){ u.state='готово'; u.note=r.movedToInvoice==='existed'?'это счёт — такой уже есть в «Счетах на оплату» Снаба':'это счёт — перенесён в «Счета на оплату» Снаба, ждёт одобрения'; }
+    else if(r&&r.ok){ u.state='готово'; u.note='позиций: '+(r.positions||0)+(r.dup?' · ⚠ возможно дубль ('+((r.dupOf||{}).docNo||'')+')':''); }
     else { u.state='ошибка'; u.note=(r&&r.error)||'не распозналось'; }
     drawUpl(); recNext(i+1);
   }).catch(function(){ u.state='ошибка'; u.note='распознавание не ответило — добьёт фоном'; drawUpl(); recNext(i+1); });
@@ -559,7 +561,7 @@ function openDoc(fileId, keep){
     $('modal').innerHTML='<div class="fview" id="fview"></div><div class="fbody" id="dbody"><div class="center muted">Загрузка документа…</div></div>'; keep=false; }
   api({vapi:'docpositions', file:fileId}).then(function(r){
     if(!r||!r.ok){ $('dbody').innerHTML='<button class="x ic" onclick="closeOv()">✕</button><div class="err">'+esc((r&&r.error)||'ошибка')+'</div>'; return; }
-    DOC=r.header||{fileId:fileId}; DOC.fileId=fileId; SETL=r.settlement||null; RETS=r.returns||[]; POS=r.positions||[]; MATS=r.mats||[]; EDIT={}; NEWM={}; FIND={}; SPLIT={}; ALERT=r.alertPct||ALERT;
+    DOC=r.header||{fileId:fileId}; DOC.fileId=fileId; SETL=r.settlement||null; INVL=r.invoice||null; RETS=r.returns||[]; POS=r.positions||[]; MATS=r.mats||[]; EDIT={}; NEWM={}; FIND={}; SPLIT={}; ALERT=r.alertPct||ALERT;
     CLASSES=r.classes||CLASSES; CLASSMAP=r.classMap||CLASSMAP;
     SERVICES=r.services||SERVICES; TYPES=r.types||TYPES;
     REJ=false; if(!keep) renderView();
@@ -612,6 +614,7 @@ function typeSelect(cur){
 function setType(t){
   DMSG={cls:'',html:'Сохраняю тип…'}; renderDoc();
   apiPost({vapi:'docsethead', file:DOC.fileId, patch:JSON.stringify({type:t})}).then(function(r){
+    if(r&&r.ok&&r.movedToInvoice){ closeOv(); load(); $('smsg').className='msg ok'; $('smsg').textContent='Счёт перенесён в «Счета на оплату» Снаба'+(r.movedToInvoice==='existed'?' (такой там уже был)':' — ждёт одобрения'); return; }
     if(r&&r.ok){ DMSG={cls:'ok',html:'✓ тип: '+esc(t)}; load(1); openDoc(DOC.fileId,true); } else { DMSG={cls:'err',html:esc((r&&r.error)||'не сохранилось')}; renderDoc(); }
   }).catch(function(){ DMSG={cls:'err',html:'связь оборвалась'}; renderDoc(); });
 }
@@ -638,6 +641,7 @@ function renderDoc(){
         ? '<div class="note bad" style="margin-top:var(--s-2)"><div><b>Расходится с 1С:</b> в 1С документ на '+money(h.onec.sum)+', у нас на '+money(h.sumGross)+' '+esc(h.cur||'BYN')+' (выгрузка 1С от '+esc(h.onec.at)+'). Сверьте со сканом: ошибка либо в распознавании, либо в 1С.</div></div>'
         : '<div class="muted" style="font:var(--t-small);margin-top:var(--s-1)">✓ Есть в 1С, сумма совпадает (выгрузка от '+esc(h.onec.at)+'). Обратно в 1С этот документ не выгружается.</div>') : '')
     +settleHtml()
+    +invoiceHtml()
     +returnsHtml()
     +sumCheckHtml()
     +(up?'<div class="note warn" style="margin-top:var(--s-2)"><div><b>⚠ Цена выросла у '+up+' '+(up===1?'строки':'строк')+'</b> больше чем на '+qf(ALERT)+' % против прошлой закупки — проверьте, согласовано ли это с директором.</div></div>':'')
@@ -682,6 +686,26 @@ function sumCheckHtml(){
     +'или сумма документа в реестре не та — поправьте «✎ изменить шапку».</div></div>';
 }
 // расчёт с поставщиком по этому документу и отметка «не принят»
+// счёт Снаба, по которому эта накладная / акт: оплачено / получено по накладным / разница (14.11.2026); не привязан — открытые счета поставщика одним кликом
+var INVL=null;
+function invLine(x){ return 'счёт № '+esc(x.docNo||'—')+(x.date?' от '+esc(x.date):'')+' на '+money(x.sum); }
+function invoiceHtml(){
+  var v=INVL; if(!v||DOC.rejected) return '';
+  if(v.linked){ var x=v.linked;
+    return '<div class="settle"><b>По счёту</b><span>'+invLine(x)+'</span><span class="muted">оплачено <b>'+money(x.paid)+'</b> · получено по накладным <b>'+money(x.received)+'</b>'+(x.docs>1?' ('+x.docs+')':'')+'</span>'
+      +(x.wait?'<span class="pill warn" title="оплачено больше, чем получено по накладным этого счёта">ждём поставку на '+money(x.wait)+'</span>':x.extra?'<span class="pill bad" title="по накладным этого счёта остаток долга в расчётах с поставщиком">не оплачено '+money(x.extra)+'</span>':x.received>0||x.paid>0?'<span class="pill ok">закрыт</span>':'<span class="pill mute">не оплачен</span>')
+      +'<a href="javascript:void(0)" onclick="linkInv(\'\')" title="эта накладная не по этому счёту">отвязать</a></div>'; }
+  if(!v.cands||!v.cands.length) return '';
+  return '<div class="settle"><b>Счёт не привязан</b><span class="muted">открытые счета поставщика:</span>'
+    +v.cands.map(function(c,i){ return '<button class="sec sm" onclick="linkInv(INVL.cands['+i+'].id)" title="оплачено '+money(c.paid)+', получено по накладным '+money(c.received)+'">'+invLine(c)+(c.wait?' · ждём '+money(c.wait):c.paid?'':' · не оплачен')+'</button>'; }).join('')+'</div>';
+}
+function linkInv(id){
+  DMSG={cls:'',html:'Сохраняю…'}; renderDoc();
+  apiPost({vapi:'docinvoicelink', file:DOC.fileId, invoice:id||''}).then(function(r){
+    if(!r||!r.ok){ DMSG={cls:'err',html:esc((r&&r.error)||'не вышло')}; renderDoc(); return; }
+    INVL=r.info||null; DMSG={cls:'ok',html:id?'✓ накладная привязана к счёту':'✓ отвязана от счёта'}; renderDoc(); load(1);
+  }).catch(function(){ DMSG={cls:'err',html:'связь оборвалась'}; renderDoc(); });
+}
 function settleHtml(){
   var h=DOC||{}, s=SETL, out='';
   if(h.rejected) out+='<div class="note warn" style="margin-top:var(--s-2)"><div><b>🚫 Документ не принят</b>'+(h.rejectReason?' — '+esc(h.rejectReason):'')+'. В расчётах с поставщиком не участвует. <a href="javascript:void(0)" onclick="rejectDoc(1)">Вернуть в работу</a></div></div>';
@@ -1150,6 +1174,9 @@ function renderLed(){
       +(rows||'<tr><td colspan=5 class="center muted">за период движений нет</td></tr>')+'</tbody></table></div>'
     +'<div class="lbl">Документы <span class="muted" style="font-weight:normal;text-transform:none;letter-spacing:0">— оплаты закрывают их по номеру счёта из «основания», остальное по порядку дат</span></div><div class="box tbl-wrap"><table class="tbl"><thead><tr><th>Дата</th><th>Документ</th><th class="num">Сумма</th><th class="num">Возвращено</th><th class="num">Оплачено</th><th class="num">Осталось</th><th></th></tr></thead><tbody>'
       +(docs||'<tr><td colspan=7 class="center muted">документов нет</td></tr>')+'</tbody></table></div>'
+    +((r.invoices||[]).length?'<div class="lbl">Счета поставщика</div><div class="box tbl-wrap"><table class="tbl sm"><thead><tr><th>Счёт</th><th class="num">Сумма</th><th class="num">Оплачено</th><th class="num">Получено по накладным</th><th>Итог</th></tr></thead><tbody>'
+        +r.invoices.map(function(x){ return '<tr><td>'+(x.file?'<a href="'+esc(x.file)+'" target="_blank">':'')+'№ '+esc(x.docNo||'—')+(x.file?'</a>':'')+' <span class="muted">от '+esc(x.date)+'</span></td><td class="num">'+money(x.sum)+'</td><td class="num">'+money(x.paid)+'</td><td class="num">'+money(x.received)+(x.docs?' <span class="muted">· '+x.docs+'</span>':'')+'</td>'
+          +'<td>'+(x.wait?'<span class="pill warn">ждём поставку на '+money(x.wait)+'</span>':x.extra?'<span class="pill bad">не оплачено '+money(x.extra)+'</span>':!x.tracked?'<span class="muted" title="счёт до 14.11.2026: накладные к счетам тогда не привязывались">—</span>':x.paid>0?'<span class="pill ok">закрыт</span>':x.status==='pending'?'<span class="pill mute">на одобрении</span>':'<span class="pill mute">не оплачен</span>')+'</td></tr>'; }).join('')+'</tbody></table></div>':'')
     +(free?'<div class="lbl">Оплаты без документа</div><div class="box tbl-wrap"><table class="tbl"><thead><tr><th>Дата</th><th>Оплата</th><th class="num">Сумма</th><th class="num">Свободно</th><th></th></tr></thead><tbody>'+free+'</tbody></table></div>':'')
     +(r.mismatch?'<div class="note warn" style="margin-top:var(--s-2)"><div>Оплат в другой валюте, чем документ, к которому они привязаны: '+r.mismatch+'. Они учтены в своей валюте.</div></div>':'')
     +'<div class="lbl">Остаток на начало учёта'+(r.startIso?' ('+esc(fmtD(r.startIso))+')':'')+'</div>'
