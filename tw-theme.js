@@ -211,5 +211,20 @@
   // суммы — один вид на всех экранах (14.11.2026): «1 234,56», тысячи — неразрывным пробелом, копейки через запятую
   root.twMoney=function(n){ n=Number(n)||0; var p=Math.abs(n).toFixed(2).split('.'); return (n<0?'-':'')+p[0].replace(/\B(?=(\d{3})+(?!\d))/g,'\u00a0')+','+p[1]; };
 
+  // клик мимо окна — закрыть окно (владелец 15.11.2026): нажатие и отпускание на подложке (не выделение текста, начатое в окне);
+  // закрываем тем же путём, что кнопка окна — ✕, «Закрыть», «Отмена», «Понятно»; окно без такой кнопки (ждёт решения) не трогаем
+  if(root.document && !root.__twBgClose){ root.__twBgClose=true;
+    var down=null, isBg=function(t){ return !!(t&&t.classList&&(t.classList.contains('scrim')||t.classList.contains('dlg-bg')||t.classList.contains('modal-bg'))); };
+    root.document.addEventListener('mousedown', function(e){ down=e.target; }, true);
+    root.document.addEventListener('touchstart', function(e){ down=e.target; }, { capture:true, passive:true });
+    root.document.addEventListener('click', function(e){
+      var t=e.target; if(!isBg(t)||t!==down) return;
+      if(t.getAttribute('onclick')||t.onclick) return;   // страница закрывает по подложке сама
+      var x=t.querySelector('.x, [data-close], button.close');
+      if(!x){ var bs=t.querySelectorAll('button, a.btn'); for(var i=bs.length-1;i>=0;i--){ if(/^(✕|×|Закрыть|Отмена|Понятно)$/.test((bs[i].textContent||'').trim())){ x=bs[i]; break; } } }
+      if(x) x.click();
+    });
+  }
+
   root.twTheme={ get:function(){ return MODE; }, set:set, now:current, sun:sun, text:nowText, icon:icon };
 })(typeof window!=='undefined'?window:this);
