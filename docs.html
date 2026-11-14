@@ -51,7 +51,9 @@
   .pnote.warn{ color:var(--amber); font-weight:600; }
   .pcard input.need{ border-color:var(--amber); background:var(--amber-bg); }
   .cand{ text-align:left; white-space:normal; }
-  .mres{ border:1px solid var(--line); border-radius:var(--r-ctl); margin:calc(-1 * var(--s-1)) 0 var(--s-2); max-height:260px; overflow:auto; }
+  .mres{ border:1px solid var(--line); border-radius:var(--r-ctl); margin:0; max-height:240px; overflow:auto; box-shadow:var(--shadow-card); }
+  .mfind{ display:flex; gap:var(--s-2); flex-basis:100%; flex-wrap:wrap; } .mfind input{ flex:1; min-width:200px; }
+  .mcands{ flex-basis:100%; display:flex; gap:var(--s-1) var(--s-2); flex-wrap:wrap; align-items:center; font:var(--t-small); }
   .mres:empty{ display:none; }
   /* окно «Загрузка из 1С»: прокручивается середина, кнопки всегда видны */
   #modal.imp{ display:flex; flex-direction:column; }
@@ -101,10 +103,10 @@
   .pc-bot .stat{ flex-basis:100%; font:var(--t-small); color:var(--muted); }
   .pc-bot .ln-acts{ margin:0; grid-column:auto; }
   .ln-form{ border-top:1px solid var(--line); padding:0 var(--s-3) var(--s-2) calc(var(--s-3) + 24px + var(--s-3)); }
-  .pc-row{ display:grid; grid-template-columns:120px minmax(0,1fr); gap:var(--s-2) var(--s-3); align-items:center; padding:var(--s-2) 0; border-bottom:1px solid var(--line); }
+  .pc-row{ display:grid; grid-template-columns:120px minmax(0,1fr); gap:var(--s-2) var(--s-3); align-items:start; padding:var(--s-2) 0; border-bottom:1px solid var(--line); }
   .pc-row:last-of-type{ border-bottom:0; }
-  .pc-row > .k{ font:var(--t-small); color:var(--muted); }
-  .pc-row > .v{ display:flex; flex-wrap:wrap; gap:var(--s-2); align-items:center; min-width:0; }
+  .pc-row > .k{ font:var(--t-small); color:var(--muted); line-height:var(--h-sm); }
+  .pc-row > .v{ display:flex; flex-wrap:wrap; gap:var(--s-2); align-items:center; min-width:0; min-height:var(--h-sm); }
   .pc-row .pnote, .pc-row .mres, .pc-row .newmat{ flex-basis:100%; margin:0; }
   .pc-panel{ border-top:1px solid var(--line); padding:var(--s-3); }
   .pc-panel .prow{ margin-bottom:var(--s-2); }
@@ -834,19 +836,22 @@ function matBlock(p,i){
       +'<a href="javascript:void(0)" onclick="FIND['+i+']=1;renderDoc()">сменить</a>');
   }
   var chips=(p.cands||[]).map(function(c,k){ return '<button class="sec sm cand" onclick="pickMat('+i+',POS['+i+'].cands['+k+'].name)">'+esc(c.name)+' <span class="muted">· '+esc(WHY[c.why]||'')+'</span></button>'; }).join('');
-  return pcRow('Наш материал',(chips||'<span class="muted">подсказок нет — найдите материал в реестре или заведите новый</span>')
-    +'<input type="search" id="pm'+i+'" placeholder="поиск по реестру: слово или размер…" oninput="findMat('+i+')" autocomplete="off" style="min-width:220px;flex:1">'
-    +'<button class="sec sm" onclick="NEWM['+i+']=1;renderDoc()">＋ новый материал</button>'
-    +(p.mat?'<a href="javascript:void(0)" onclick="delete FIND['+i+'];renderDoc()">отмена</a>':'')
-    +'<div class="mres" id="pmr'+i+'"></div>');
+  return pcRow('Наш материал',
+    (chips?'<div class="mcands"><span class="muted">похоже на:</span>'+chips+'</div>':'')
+    +'<div class="mfind"><input type="search" id="pm'+i+'" placeholder="найти в реестре: слово или размер, например «фанера 3»" oninput="findMat('+i+')" autocomplete="off">'
+      +'<button class="sec sm" onclick="NEWM['+i+']=1;renderDoc()">＋ новый материал</button>'
+      +(p.mat?'<button class="sec sm" onclick="delete FIND['+i+'];renderDoc()">отмена</button>':'')+'</div>'
+    +'<div class="mres" id="pmr'+i+'"></div>'
+    +(chips?'':'<div class="pnote">подсказок нет — найдите поиском или заведите новый материал</div>'));
 }
 function findMat(i){
-  var q=String(($('pm'+i)||{}).value||'').toLowerCase().replace(/[х×*]/g,'x').split(/\s+/).filter(Boolean), out=$('pmr'+i); if(!out) return;
+  var raw=String(($('pm'+i)||{}).value||'').toLowerCase().replace(/[х×*]/g,'x').trim(), q=raw.split(/\s+/).filter(Boolean), out=$('pmr'+i); if(!out) return;
   if(!q.length){ out.innerHTML=''; return; }
-  // число в запросе — целым словом: «15» находит «15мм», но не «1525x1525»
-  var hit=[]; for(var k=0;k<MATS.length&&hit.length<8;k++){ var n=MATS[k].name.toLowerCase().replace(/[х×*]/g,'x'), tk=n.replace(/(\d)\s*(мм|см|м|л|кг|шт)(?![а-яa-z])/g,'$1').split(/[^a-zа-я0-9x.,]+/);
-    if(q.every(function(w){ return /^[\d.,]+$/.test(w) ? tk.indexOf(w)>=0 : n.indexOf(w)>=0; })) hit.push(k); }
-  out.innerHTML=hit.map(function(k){ var m=MATS[k]; return '<div class="mrow" onclick="pickMat('+i+',MATS['+k+'].name)"><b>'+esc(m.name)+'</b> <span class="muted">'+esc(m.unit||'')+(m.price?(' · последняя цена '+pf(m.price)):'')+'</span></div>'; }).join('')
+  // число — целым словом («15» находит «15мм», но не «1525x1525»); слово — по началу слова («фа» — «фанера», но не «целлофан»)
+  var hit=[]; for(var k=0;k<MATS.length;k++){ var n=MATS[k].name.toLowerCase().replace(/[х×*]/g,'x'), tk=n.replace(/(\d)\s*(мм|см|м|л|кг|шт)(?![а-яa-z])/g,'$1').split(/[^a-zа-яё0-9.,]+/);
+    if(q.every(function(w){ return /^[\d.,]+$/.test(w) ? tk.indexOf(w)>=0 : tk.some(function(t){ return t.indexOf(w)===0; }); })) hit.push({k:k, first:n.indexOf(q[0])===0?0:1}); }
+  hit.sort(function(a,b){ return a.first-b.first || MATS[a.k].name.localeCompare(MATS[b.k].name,'ru',{numeric:true}); });
+  out.innerHTML=hit.slice(0,12).map(function(h){ var m=MATS[h.k]; return '<div class="mrow" onclick="pickMat('+i+',MATS['+h.k+'].name)"><b>'+esc(m.name)+'</b> <span class="muted">'+esc(m.unit||'')+(m.price?(' · последняя цена '+pf(m.price)):'')+'</span></div>'; }).join('')
     || '<div class="muted" style="padding:var(--s-2)">в реестре не найдено — проверьте слово или заведите «＋ новый материал»</div>';
 }
 function pickMat(i,name){
