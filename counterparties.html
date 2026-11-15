@@ -7,6 +7,7 @@
 <script src="tw-config.js"></script>
 <script src="tw-money.js"></script>
 <script src="tw-newsale.js?v=20261105b"></script>
+<script src="tw-waybill.js?v=20261115a"></script>
 <title>Тигервуд — Контрагенты</title>
 <!-- С 13.10.2026 — единый раздел «Контрагенты» (бывший clients.html): одна карточка на компанию, роли галочками (клиент / поставщик / подрядчик),
      вкладки «Продажи» и «Закупки и финансы», объединение записей одной компании. Сервер: core/counterpartyRoutes.ts (counterparties, counterparty,
@@ -472,6 +473,7 @@ function renderClient(){
     +'<span class="chip'+(CC_TAB==='act'?' on':'')+'" role="button" tabindex="0" onclick="setTab(\'act\')" title="история расчётов за период и акт сверки — с покупателем и с поставщиком">Акт сверки</span></div>';
   if(CC_TAB==='act'){ el('ccBody').innerHTML=h+'<div id="actBody"><div class="center">Загрузка…</div></div>'; actLoad(); return; }
   if(CC_TAB==='fin'){ el('ccBody').innerHTML=h+'<div id="finBody"><div class="center">Загрузка…</div></div>'; loadFin(); return; }
+  if(b.client) h+='<div id="ccShip"></div>';
   h+='<div class="tiles">'
     +tile('Сделок', tot.deals, tot.inquiries?('из них заявок: '+esc(tot.inquiries)):'')
     +tile('Заказов', tot.orders, curSum(tot.ordersSum))
@@ -506,6 +508,25 @@ function renderClient(){
     +'</tbody></table></div></div>';
   el('ccBody').innerHTML=h;
   renderClientDeals();
+  if(b.client) shipLoad();
+}
+/* «Что ещё отгрузить» (владелец 15.11.2026): по всем заказам клиента — заказано / уехало / осталось по товарам; накладная — на клиента,
+   по заказам раскладывается сама (старые первыми). Тот же расчёт, что окно накладной (wbclient). */
+function shipLoad(){
+  var box=el('ccShip'); if(!box) return; box.innerHTML='<div class="sect">🚚 Что ещё отгрузить</div><div class="card"><div class="sm muted">Считаю…</div></div>';
+  get({vapi:'wbclient', cp:CC.key||CKEY}).then(function(r){ if(!el('ccShip')) return;
+    if(!r||!r.ok){ box.innerHTML='<div class="sect">🚚 Что ещё отгрузить</div><div class="card"><div class="sm err">'+esc(errText(r))+'</div></div>'; return; }
+    var m=(CC.buyer||{}).market||'by', local=m==='by', pr=(r.products||[]).filter(function(x){ return x.left>0; }), open=(r.deals||[]).filter(function(d){ return d.left>0; });
+    var head='<div class="sect">🚚 Что ещё отгрузить'+(r.left>0?' <span class="n">'+esc(r.left)+' шт.</span>':'')+'</div>';
+    if(!(r.left>0)){ box.innerHTML=head+'<div class="card"><div class="sm">✅ Всё, что заказано, уехало по накладным.'+((r.deals||[]).length?'':' Открытых заказов нет.')+'</div></div>'; return; }
+    var rows=pr.map(function(x){ return '<tr><td data-l="Товар">'+esc(x.name)+(x.sku?'<div class="sm muted">'+esc(x.sku)+'</div>':'')+'</td><td data-l="Заказано" class="num">'+esc(x.ordered)+'</td><td data-l="Уехало" class="num">'+esc(x.shipped)+'</td>'
+      +'<td data-l="Осталось" class="num"><b>'+esc(x.left)+'</b></td><td data-l="По заказам" class="sm">'+x.deals.map(function(d){ return dealLink(d.dealId, d.num)+' — '+esc(d.left); }).join('<br>')+'</td></tr>'; }).join('');
+    box.innerHTML=head+'<div class="card">'
+      +'<div class="row" style="align-items:center;margin-bottom:var(--s-2)">'+(local?'<button onclick="twWaybillClient(CC.key||CKEY, shipLoad)">🚚 Выписать накладную</button><span class="sm muted">впишете, сколько везёте, — по заказам разложится само, сначала старые</span>'
+        :'<span class="sm muted">Клиент РФ / Европы: отгрузка — в сделке, окно «Отгрузочные документы» (ТН, CMR, инвойс).</span>')+'</div>'
+      +'<div class="tbl-wrap"><table class="tbl sm mob"><thead><tr><th>Товар</th><th class="num">Заказано</th><th class="num">Уехало</th><th class="num">Осталось</th><th>По заказам</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+      +'<div class="sm muted" style="margin-top:var(--s-2)">Считаются заказы (не заявки), которые не отменены и не отмечены «отгружено»: '+open.map(function(d){ return dealLink(d.dealId, d.num)+' от '+esc(d.date)+(d.inProd?' (в производстве)':''); }).join(', ')+'.</div></div>';
+  }).catch(function(e){ box.innerHTML='<div class="sect">🚚 Что ещё отгрузить</div><div class="card"><div class="sm err">'+esc(netText(e))+'</div></div>'; });
 }
 function setTab(t){ CC_TAB=t; renderClient(); }
 /* ── похожие записи: одна компания, заведённая дважды (клиентом в продажах и поставщиком из выписки) ── */

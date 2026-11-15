@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="tw-theme.js"></script>
 <script src="tw-config.js"></script>
-<script src="tw-waybill.js?v=20261114a"></script>
+<script src="tw-waybill.js?v=20261115a"></script>
 <script src="tw-tolling.js?v=20261028b"></script>
 <script src="tw-newsale.js?v=20261105b"></script>
 <title>Тигервуд — Договоры, счета, накладные</title>
@@ -105,10 +105,12 @@
   </div>
 
   <div id="wbPanel" class="card hide">
-    <div class="note"><div>Выберите сделку — появятся документы, которые выписываются по её договору (ТН / ТТН / товарный чек), резерв бланка и уже выписанные накладные.
-      Обычно накладную выписывают прямо из карточки сделки.</div></div>
-    <select id="wbDeal" onchange="pickWbDeal()"><option value="">— загрузка сделок… —</option></select>
-    <div id="wbDealBlock" style="margin-top:var(--s-3)"></div>
+    <div class="sm" style="margin-bottom:var(--s-2)"><b>Кому везём?</b> Выберите клиента и впишите, сколько везёте, — по его заказам разложится само, сначала старые.</div>
+    <input id="wbcF" placeholder="🔎 клиент" oninput="wbcDraw()" autocomplete="off" style="max-width:320px">
+    <div id="wbClients" style="margin-top:var(--s-2)"><div class="sm muted">Загружаю, кому есть что отгрузить…</div></div>
+    <details style="margin-top:var(--s-3)"><summary class="sm">По конкретной сделке (товарный чек, переформировать, резерв бланка)</summary>
+    <select id="wbDeal" onchange="pickWbDeal()" style="margin-top:var(--s-2)"><option value="">— загрузка сделок… —</option></select>
+    <div id="wbDealBlock" style="margin-top:var(--s-3)"></div></details>
     <div class="msg" id="wbMsg"></div>
     <details style="margin-top:var(--s-4)"><summary class="sm">Прочие документы по сделке (чек / счёт / договор)</summary>
       <div class="row" style="margin-top:var(--s-2)"><div style="flex:3;min-width:200px"><input id="leadInp" placeholder="Поиск: ссылка на сделку amoCRM или ID"></div>
@@ -552,7 +554,18 @@ function eripCsv(){
     EP_ROWS.map(function(x){ var w=x.waybill||{}; return [x.date, x.order, String(x.amount).replace('.',','), x.client, w.date||'', w.seria||'', w.num||'', x.contract, x.pay||x.info, x.cancelled?'да':'']; })); }
 
 // выписка накладной
-function toggleWb(){ var p=el('wbPanel'), open=p.className.indexOf('hide')<0; p.className=open?'card hide':'card'; el('wbico').textContent=open?'✍️':'▲'; }
+function toggleWb(){ var p=el('wbPanel'), open=p.className.indexOf('hide')<0; p.className=open?'card hide':'card'; el('wbico').textContent=open?'✍️':'▲'; if(!open) wbcLoad(); }
+/* накладная на клиента (15.11.2026): список клиентов с остатком к отгрузке → окно с товарами, раскладка по заказам — старые первыми */
+var WBC=[];
+function wbcLoad(){ get({vapi:'wbclients'}).then(function(r){ if(!r||!r.ok){ el('wbClients').innerHTML='<div class="sm err">'+esc(errText(r))+'</div>'; return; } WBC=r.clients||[]; wbcDraw(); })
+  .catch(function(e){ el('wbClients').innerHTML='<div class="sm err">'+esc(netText(e))+'</div>'; }); }
+function wbcDraw(){ var f=val('wbcF').trim().toLowerCase(), xs=WBC.filter(function(c){ return !f||c.name.toLowerCase().indexOf(f)>=0; });
+  var btn=function(c){ return '<button class="sec" onclick="twWaybillClient(\''+esc(c.id)+'\',function(){ loadRegistry(); loadBlanksStatus(); wbcLoad(); })">'+esc(c.name)+' <span class="sm muted">— осталось '+esc(c.left)+' шт.'+(c.deals>1?' по '+c.deals+' заказам':'')+'</span></button>'; };
+  var ul=xs.filter(function(c){ return c.legal; }), fl=xs.filter(function(c){ return !c.legal; }), row=function(a){ return '<div class="row" style="gap:var(--s-2);flex-wrap:wrap">'+a.map(btn).join('')+'</div>'; };
+  // физлица (15.11.2026): у многих розничных заказов с лета нет документа отгрузки в Прохабе — они ниже, свёрнуты, чтобы не мешать
+  el('wbClients').innerHTML=xs.length?(ul.length?row(ul):'<div class="sm muted">Юрлицам отгружать нечего.</div>')
+    +(fl.length?'<details style="margin-top:var(--s-2)"'+(f?' open':'')+'><summary class="sm">Физлица — '+fl.length+' (заказы без накладной или товарного чека в Прохабе)</summary><div style="margin-top:var(--s-2)">'+row(fl)+'</div></details>':'')
+    :'<div class="sm muted">'+(WBC.length?'Никого не нашлось.':'Всё заказанное уже уехало — отгружать некому.')+'</div>'; }
 var SALES=[];
 function loadSalesList(){
   get({vapi:'saleslist'}).then(function(res){
