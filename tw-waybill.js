@@ -153,15 +153,15 @@ function twWaybillClient(cpKey, onDone){
 function twWbGroupRows(items){
   var G=[], at={};
   items.forEach(function(it,i){ var k=it.sku||it.model||it.name; if(at[k]==null){ at[k]=G.length; G.push({ name:it.model||it.name, idx:[], ship:0, places:0, mass:0, pm:0 }); } G[at[k]].idx.push(i); });
-  TWWB.groups=G; var tn=!!TWWB.tn;
+  TWWB.groups=G; var tn=!!TWWB.tn, W='width:6.5em';   // поля «Везём / Мест / Масса» — одной ширины, «все» рядом с полем
   return G.map(function(g,j){
     var left=0, wait={}; g.idx.forEach(function(i){ var it=items[i]; left+=it.left; if(it.left>0) wait[it.dealNum]=(wait[it.dealNum]||0)+it.left; }); g.left=Math.round(left*1000)/1000;
     var w=Object.keys(wait).map(function(n){ return esc(n)+' — '+wait[n]; }).join(', ');
     return '<tr id="wbg'+j+'"'+(g.left>0?'':' class="muted"')+'><td data-l="Товар"><b>'+esc(g.name)+'</b>'+(w?'<div class="sm muted">ждут: '+w+'</div>':'<div class="sm muted">всё уехало</div>')+'<div class="sm" id="wbgs'+j+'"></div></td>'
       +'<td data-l="Осталось" class="num">'+esc(g.left)+'</td>'
-      +'<td data-l="Везём">'+(g.left>0?'<input type="number" min="0" max="'+esc(g.left)+'" step="1" id="wbgq'+j+'" value="0" oninput="twWbGroup('+j+',this.value)" autocomplete="off" style="width:5.5em"> <a href="#" class="sm" onclick="el(\'wbgq'+j+'\').value='+g.left+';twWbGroup('+j+','+g.left+');return false;">все</a>':'—')+'</td>'
-      +(tn?'':'<td data-l="Мест"><input type="number" min="0" id="wbgp'+j+'" value="0" oninput="twWbGroupPM('+j+')" autocomplete="off"'+(g.left>0?'':' disabled')+'></td>'
-        +'<td data-l="Масса, кг"><input type="number" min="0" step="0.01" id="wbgm'+j+'" value="0" oninput="twWbGroupPM('+j+')" autocomplete="off"'+(g.left>0?'':' disabled')+'></td>')+'</tr>';
+      +'<td data-l="Везём" style="white-space:nowrap">'+(g.left>0?'<span><input type="number" min="0" max="'+esc(g.left)+'" step="1" id="wbgq'+j+'" value="0" oninput="twWbGroup('+j+',this.value)" autocomplete="off" style="'+W+'"> <a href="#" class="sm" onclick="el(\'wbgq'+j+'\').value='+g.left+';twWbGroup('+j+','+g.left+');return false;">все</a></span>':'—')+'</td>'
+      +(tn?'':'<td data-l="Мест"><input type="number" min="0" id="wbgp'+j+'" value="0" oninput="twWbGroupPM('+j+')" autocomplete="off" style="'+W+'"'+(g.left>0?'':' disabled')+'></td>'
+        +'<td data-l="Масса, кг"><input type="number" min="0" step="0.01" id="wbgm'+j+'" value="0" oninput="twWbGroupPM('+j+')" autocomplete="off" style="'+W+'"'+(g.left>0?'':' disabled')+'></td>')+'</tr>';
   }).join('');
 }
 /* сколько везём товара → по строкам заказов, старые первыми; места/масса — пропорционально, пока не вписали руками */
