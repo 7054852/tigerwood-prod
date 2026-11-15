@@ -304,7 +304,7 @@ function docCard(r){
         +'<span class="sup">'+esc(r.sup||'без поставщика')+'</span>'
         +statePill(r)+diff
         +(r.rejected?'<span class="pill mute" title="'+esc(r.rejectReason||'')+'">🚫 не принят</span>':typeGroup(r.type)==='chek'?'<span class="pill ok" title="чек оплачен в момент покупки — долгом перед продавцом не считается">оплачен при покупке</span>':payPill(r.pay))
-        +(r.priceUp>=ALERT?'<span class="pill bad" title="цена за нашу единицу выросла против прошлой закупки">⚠ цена +'+qf(r.priceUp)+' %</span>':'')
+        +(r.priceUp>0?'<span class="pill bad" title="поставщик поднял цену против прошлой закупки у него же похожим объёмом">⚠ цена +'+qf(r.priceUp)+' %</span>':'')
         +(r.recognizing?'<span class="pill mute">🔍 распознаётся…</span>':'')
         +(r.dup?'<span class="pill bad" title="такой контрагент и номер уже есть">✕ возможно дубль</span>':'')
         +(r.exported?'<span class="pill ok" title="выгружен в 1С '+esc(r.exported)+'">1С ✓</span>':'')
@@ -651,7 +651,7 @@ function renderDoc(){
   var box=$('dbody'); if(!box) return;
   var h=DOC||{}, act=POS.filter(function(p){return p.status!=='пропущена';});
   var done=act.filter(function(p){return p.status==='разнесена';}).length, skipped=POS.length-act.length, top=box.scrollTop;
-  var up=POS.filter(function(p){ return p.status!=='пропущена'&&p.price&&p.price.pct>=ALERT; }).length;
+  var up=POS.filter(function(p){ return p.status!=='пропущена'&&p.price&&p.price.alert; }).length;
   var pct=act.length?Math.round(done*100/act.length):0;
   box.innerHTML='<button class="x ic" onclick="closeOv()">✕</button>'+backBtn()
     +'<div class="dhead"><div><h3>'+esc(h.sup||'без поставщика')+'</h3>'
@@ -674,7 +674,7 @@ function renderDoc(){
     +reconHtml()
     +returnsHtml()
     +sumCheckHtml()
-    +(up?'<div class="note warn" style="margin-top:var(--s-2)"><div><b>⚠ Цена выросла у '+up+' '+(up===1?'строки':'строк')+'</b> больше чем на '+qf(ALERT)+' % против прошлой закупки — проверьте, согласовано ли это с директором.</div></div>':'')
+    +(up?'<div class="note warn" style="margin-top:var(--s-2)"><div><b>⚠ Цена выросла у '+up+' '+(up===1?'строки':'строк')+'</b> против прошлой закупки у этого же поставщика похожим объёмом (или за полгода набежало заметно) — проверьте, согласовано ли это с директором.</div></div>':'')
     +(h.noFile&&!POS.length?'':'<div class="lbl">Строки документа — '+act.length+(skipped?(' · убрано '+skipped):'')+'</div>')
     +POS.map(function(p,i){ return posCard(p,i); }).join('')
     +'<div class="dfoot">'
@@ -888,7 +888,7 @@ function posCard(p,i){
   var edit=EDIT[i]?'<div class="pc-panel">'+numEditHtml(p,i,posted)+'</div>':'';
   var tags=function(){ if(!(isMat&&p.mat&&p.qtyW>0)) return ''; var pr=p.sumGross*(Number(DOC.rate)||1)/p.qtyW, c=p.price;
       return '<span class="tag"><b>'+qf(p.qtyW)+'</b> '+esc(plural(p.qtyW,u))+'</span><span class="tag">'+pf(pr)+' за 1 '+esc(u||'ед')+'</span>'
-        +(c&&c.prev>0&&Math.abs(c.pct)>=0.5?'<span class="tag go '+(c.pct>=ALERT?'up':c.pct<0?'dn':'')+'" title="прошлая закупка — '+pf(c.prev)+', '+esc(c.prevDate)+'. Нажмите — история закупок" onclick="histOpen('+i+')">'+(c.pct>0?'▲ +':'▼ ')+qf(c.pct)+' %</span>':''); };
+        +(c&&c.prev>0&&(c.alert||Math.abs(c.pct)>=0.5)?'<span class="tag go '+(c.alert?'up':c.pct<0?'dn':'')+'" title="'+esc(priceWhy(c))+'. Нажмите — история закупок" onclick="histOpen('+i+')">'+(c.pct>0?'▲ +':c.pct<0?'▼ ':'= ')+qf(Math.abs(c.pct))+' %'+(c.lot==='small'?' · малая партия':'')+'</span>':''); };
   if(skipped) return '<div class="pcard skip" id="pc'+i+'">'+top+'<div class="pc-bot"><span></span><div class="what ln-sub">строка убрана — не приходуется</div></div></div>';
   // снизу — во что приходуем; проведено — зелёным
   if(posted) return '<div class="pcard done" id="pc'+i+'">'+top+edit+(HIST[i]?histHtml(i):'')
@@ -1058,13 +1058,23 @@ function saveSheets(i){
   if(!isInt(v)){ rowMsg(i,'листы — только целые',1); return; }
   savePos(i,{qtyW:v});
 }
+// с чем сравнили цену строки — словами (сервер: тот же поставщик похожим объёмом, в его цене)
+function priceWhy(c){
+  var cur=c.cur&&c.cur!=='BYN'?' '+c.cur:'', per=c.mode==='unit'?(c.supUnit||'ед.'):'нашу ед.';
+  var t=c.sameSup?'у этого же поставщика '+pf(c.supPrev)+cur+' → '+pf(c.supNow)+cur+' за '+per+', '+c.prevDate:'прошлая закупка у '+(c.prevSup||'другого поставщика')+' — '+pf(c.prev)+', '+c.prevDate+' (другой поставщик — только справка)';
+  if(c.lot==='small') t+='; сейчас партия меньше половины прошлой — мелкая срочная закупка обычно дороже опта, тревогу не поднимаем';
+  else if(c.lot==='big') t+='; тогда брали меньше — похожей по объёму закупки не было';
+  if(c.sameSup&&c.mode!=='byn'&&Math.abs(c.pctWork-c.pct)>=0.5) t+='; за наш лист/ед. в BYN '+(c.pctWork>0?'+':'')+qf(c.pctWork)+' %';
+  if(c.cum!=null&&c.cumN>1) t+='; за полгода (с '+c.cumFrom+') '+(c.cum>0?'+':'')+qf(c.cum)+' %, подъёмов: '+c.cumN;
+  return t;
+}
 // цена за нашу единицу против прошлой закупки (с НДС, в BYN — как в журнале закупок)
 function priceBlock(p,m){
   if(!(p.qtyW>0)||!(p.sumGross>0)) return '';
   var u=esc(m?m.unit:'ед'), now=p.sumGross*(Number(DOC.rate)||1)/p.qtyW, c=p.price;
   var h='<span><b>'+pf(now)+'</b> за 1 '+u+' <span class="muted">с НДС'+(DOC.cur&&DOC.cur!=='BYN'?', в BYN по курсу документа':'')+'</span></span>';
-  if(c&&c.prev>0) h+='<span class="pill '+(c.pct>=ALERT?'bad':c.pct>0?'warn':'mute')+'">'+(c.pct>0?'▲ +':c.pct<0?'▼ ':'= ')+qf(c.pct)+' %</span>'
-    +'<span class="muted">прошлая закупка — '+pf(c.prev)+', '+esc(c.prevDate)+(c.sameSup?', тот же поставщик':(', '+esc(c.prevSup||'другой поставщик')))+'</span>';
+  if(c&&c.prev>0) h+='<span class="pill '+(c.alert?'bad':c.pct>0?'warn':'mute')+'">'+(c.pct>0?'▲ +':c.pct<0?'▼ ':'= ')+qf(Math.abs(c.pct))+' %</span>'
+    +'<span class="muted">'+esc(priceWhy(c))+'</span>';
   else h+='<span class="muted">первая закупка этого материала — сравнить не с чем</span>';
   return pcRow('Цена',h);
 }

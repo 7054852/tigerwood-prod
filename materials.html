@@ -673,9 +673,13 @@ function priceHtml(r){
   buys.forEach(function(b){ var k=b.supplier||'(без поставщика)', x=bs[k]; if(!x){ x=bs[k]={n:0,sum:0,qty:0,min:b.priceNet,max:b.priceNet,vat:{}}; order.push(k); }
     x.n++; x.sum+=b.priceNet*b.qtyW; x.qty+=b.qtyW; x.min=Math.min(x.min,b.priceNet); x.max=Math.max(x.max,b.priceNet); x.last=b.priceNet; x.lastDate=b.date; x.lastB=b; });
   order.sort(function(a,b){ return bs[b].n-bs[a].n; });
-  var by=order.map(function(k){ var x=bs[k]; return '<tr><td>'+esc(k)+'</td><td>'+vatTag(x.lastB,r)+'</td><td class="num">'+x.n+'</td><td class="num"><b>'+pf(x.last)+'</b></td><td class="muted">'+esc(x.lastDate)+'</td><td class="num">'+pf(x.qty>0?x.sum/x.qty:0)+'</td><td class="num">'+pf(x.min)+' – '+pf(x.max)+'</td></tr>'; }).join('');
+  // рост за полгода у поставщика — с сервера: в его валюте, без мелких срочных партий (они дороже опта)
+  var tr={}; (r.bySupplier||[]).forEach(function(x){ tr[x.supplier]=x.trend; });
+  var trTd=function(t){ if(!t) return '<td class="muted" title="за полгода меньше двух сопоставимых закупок">—</td>';
+    return '<td class="num" title="с '+esc(t.from)+', закупок '+t.n+(t.skipped?', без '+t.skipped+' мелких срочных':'')+(t.cur!=='BYN'?', в '+esc(t.cur):'')+'">'+pill(t.pct)+(t.ups?'<div class="sub2 muted">подъёмов: '+t.ups+'</div>':'')+'</td>'; };
+  var by=order.map(function(k){ var x=bs[k]; return '<tr><td>'+esc(k)+'</td><td>'+vatTag(x.lastB,r)+'</td><td class="num">'+x.n+'</td><td class="num"><b>'+pf(x.last)+'</b></td><td class="muted">'+esc(x.lastDate)+'</td><td class="num">'+pf(x.qty>0?x.sum/x.qty:0)+'</td><td class="num">'+pf(x.min)+' – '+pf(x.max)+'</td>'+trTd(tr[k])+'</tr>'; }).join('');
   return head+'<div class="box">'+sum+(buys.length>1?chartSvg(buys,u):'')
-    +(by?'<div class="tbl-wrap" style="margin-top:var(--s-2)"><table class="tbl"><thead><tr><th>Поставщик</th><th>НДС</th><th class="num">Закупок</th><th class="num">Последняя цена</th><th>Когда</th><th class="num" title="сумма ÷ количество по всем закупкам у поставщика">Средняя</th><th class="num">От – до</th></tr></thead><tbody>'+by+'</tbody></table></div>':'')
+    +(by?'<div class="tbl-wrap" style="margin-top:var(--s-2)"><table class="tbl"><thead><tr><th>Поставщик</th><th>НДС</th><th class="num">Закупок</th><th class="num">Последняя цена</th><th>Когда</th><th class="num" title="сумма ÷ количество по всем закупкам у поставщика">Средняя</th><th class="num">От – до</th><th class="num" title="как изменилась цена у этого поставщика за 6 месяцев: от первой закупки к последней, в его валюте с НДС, мелкие срочные партии не учитываются">За полгода</th></tr></thead><tbody>'+by+'</tbody></table></div>':'')
     +(all.length>buys.length?'<div class="muted" style="font:var(--t-tiny);margin-top:var(--s-1)">Ещё '+(all.length-buys.length)+' закуп. без данных о НДС — на график и в сводку не попали.</div>':'')+'</div>';
 }
 // график цены: линия по закупкам, пунктир — цена первой закупки (от неё видно, выросла цена или упала), кружок без заливки — поставщик без НДС
