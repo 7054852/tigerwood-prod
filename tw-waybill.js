@@ -207,10 +207,12 @@ function twWbRender(){
   h+=docs.map(function(d){
     var chk=d.docType==='receipt', bad=d.status!=='formed', ttl=chk?'Товарный чек':d.type;
     var pills=bad?'<span class="pill bad">ошибка формирования</span>':d.signedAt?'<span class="pill ok">подписана '+esc(d.signedAt)+'</span>':'<span class="pill warn">выписана — ждёт подписи</span>';
-    var pdf=(!bad&&!chk)?'<a href="#" onclick="twWbPdf(\''+esc(d.id)+'\');return false;" title="одна страница A4, без сетки — для печати на бланке">🖨 PDF для печати</a>':'';
+    var ex=(d.extra||[]).length?'<span class="pill info" title="уехало сверх заказа — сделка не менялась">сверх заказа: '+esc(d.extra.map(function(e){ return e.name+' × '+e.qty; }).join('; '))+'</span>':'';
+    pills+=ex;
+    var pdf=(!bad&&!chk&&!d.paper)?'<a href="#" onclick="twWbPdf(\''+esc(d.id)+'\');return false;" title="одна страница A4, без сетки — для печати на бланке">🖨 PDF для печати</a>':'';
     var acts=bad?'':pdf+(d.signedAt?('<a href="'+esc(d.signedUrl)+'" target="_blank" rel="noopener">скан ↗</a><a href="#" onclick="twWbUnsign(\''+esc(d.id)+'\');return false;">убрать скан</a>')
       :'<button class="sec sm" onclick="twWbSignDlg(\''+esc(d.id)+'\')">⬆ Подписанный скан</button>');
-    return twFileCard({ href:d.url, tab:1, tag:chk?'ЧЕК':d.type, title:ttl+' '+(d.blank||''), meta:[d.date, twWbMoney(d.sum)+' '+(d.currency||'BYN'), d.qty!=null?(d.qty+' шт.'):'', d.error].filter(Boolean).join(' · '),
+    return twFileCard({ href:d.url, tab:1, tag:chk?'ЧЕК':d.type, title:ttl+' '+(d.blank||''), meta:[d.date, twWbMoney(d.sum)+' '+(d.currency||'BYN'), d.qty!=null?(d.qty+' шт.'):'', d.paper?'с бумаги':'', d.error].filter(Boolean).join(' · '),
       pills:pills, acts:acts, del:"twWbCancel('"+(d.cancelType||ttl)+"','"+esc(d.id)+"')", delTitle:'Отменить '+(chk?'чек':'накладную') });
   }).join('');
   var btns='', resv='', kinds={};

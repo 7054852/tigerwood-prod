@@ -1,11 +1,12 @@
 /* Накладная с бумаги (владелец 15.11.2026): бухгалтер загружает скан НАШЕЙ уже выписанной ТН/ТТН — система распознаёт бланк, получателя
    и строки, показывает, куда запишет (заказы клиента / передача переработчику / возврат клиенту / возврат поставщику), и после проверки
    записывает накладную под тем же бланком: долг клиента — по сумме с бумаги, отгрузка по заказам, книга бланков. Сервер: wbpaperscan → wbpaperctx → wbpapersave.
+   Кнопка «⬆ Загрузить накладную» в реестре накладных. Сверх заказа (больше или другой товар) — не запрет: пишется в накладной (payload.extra), сделка не меняется.
    Ждёт от страницы: get, post, run, ask, hide, info, oops, errText, el, val, esc, setm, money. twWbPaper(onDone). */
 var TWP=null;
 var TWP_PURP=[['sale','Продажа клиенту'],['give','Передача переработчику (ДП)'],['return','Возврат клиенту (ДВ)'],['supplier_return','Возврат поставщику (ВП)']];
 function twWbPaper(onDone){
-  ask('📄 Накладная с бумаги', '<div class="sm">Скан или фото нашей выписанной ТН / ТТН. Система прочитает бланк, получателя и строки и покажет, куда запишет накладную. '
+  ask('⬆ Загрузить выписанную накладную', '<div class="sm">Накладная уже выписана от руки или вне Прохаба — загрузите её скан или фото (ТН / ТТН). Система прочитает бланк, получателя и строки и покажет, куда запишет накладную. '
     +'Ничего не сохранится, пока вы не нажмёте «Записать».</div>'
     +'<label style="display:block;margin-top:var(--s-3)"><span class="sm">Файл (PDF или фото, до 15 МБ)</span><input type="file" id="twpf" accept="application/pdf,image/*" style="width:100%"></label><div class="msg" id="twpm"></div>',
     function(){
@@ -55,11 +56,11 @@ function twpDraw(){
     +'<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:var(--s-3)">'+TWP_PURP.map(function(p){ return '<button class="chip'+(p[0]===pu?' on':'')+'" onclick="twpPurpose(\''+p[0]+'\');return false">'+p[1]+'</button>'; }).join('')+'</div>';
   var body=(TWP.blank||{}).state==='used'?'':!cp?'<div class="note warn"><div>Получатель не найден в справочнике — впишите его УНП или название и нажмите «Найти».</div></div>'
     : pu==='sale'?twpSale(ctx): pu==='give'?twpGive(): pu==='return'?twpReturn(ctx): twpSupRet(ctx);
-  ask('📄 '+esc(h.kind||'ТН')+' '+esc((h.series||'')+' '+(h.number||''))+' — с бумаги', top+'<div id="twpbody" style="margin-top:var(--s-3)">'+body+'</div><div class="msg" id="twpm2"></div>', twpSave, 'Записать накладную');
+  ask('⬆ '+esc(h.kind||'ТН')+' '+esc((h.series||'')+' '+(h.number||''))+' — загрузка выписанной накладной', top+'<div id="twpbody" style="margin-top:var(--s-3)">'+body+'</div><div class="msg" id="twpm2"></div>', twpSave, 'Записать накладную');
   var d=el('askmodal').querySelector('.dlg'); if(d) d.className='dlg lg';
   twpSaveState();
 }
-function twpSaveState(){ var b=el('askOk'), bad=(TWP.blank&&(TWP.blank.state==='used'||TWP.blank.state==='spoiled'))||!TWP.cp||(TWP.purpose==='sale'&&twpShort()>0);
+function twpSaveState(){ var b=el('askOk'), bad=(TWP.blank&&(TWP.blank.state==='used'||TWP.blank.state==='spoiled'))||!TWP.cp||(TWP.purpose==='sale'&&!twpHost());
   if(b){ b.disabled=!!bad; b.title=bad?'Сначала устраните то, что подсвечено':''; } }
 /* сменили вид / бланк / получателя — пересчитать на сервере */
 function twpCtx(cpKey){
@@ -74,24 +75,30 @@ function twpPurpose(p){ TWP.purpose=p; twpCtx(); }
 
 /* ── продажа: строки бумаги → строки заказов клиента ── */
 function twpOpen(){ var o=[]; ((TWP.ctx||{}).deals||[]).forEach(function(d){ (d.lines||[]).forEach(function(l){ o.push({id:l.id, deal:d.dealId, num:d.num, date:d.date, name:l.name, sku:l.sku, price:l.price, left:l.left}); }); }); return o; }
-function twpShort(){ var s=0; ((TWP.ctx||{}).alloc||[]).forEach(function(a,i){ var p=TWP.lines[i]||{}, got=0; (a.take||[]).forEach(function(t){ got+=twpN(t.qty); }); s+=Math.max(0, Math.round((twpN(p.qty)-got)*1000)/1000); }); return s; }
+/* сделка накладной: где нашлись строки, иначе открытый заказ, иначе последняя сделка клиента (сделку не меняем) */
+function twpHost(){ var c=TWP.ctx||{}, hs=c.hosts||[]; if(TWP.host&&hs.some(function(x){ return x.dealId===TWP.host; })) return TWP.host;
+  var f=null; (c.alloc||[]).forEach(function(a){ (a.take||[]).forEach(function(t){ if(!f&&t.deal) f=t.deal; }); }); return f||(hs[0]&&hs[0].dealId)||''; }
 function twpSale(ctx){
-  var open=twpOpen(), alloc=ctx.alloc||[], ours=0, paper=0, short=[];
+  var open=twpOpen(), alloc=ctx.alloc||[], ours=0, paper=0, over=0, hs=ctx.hosts||[];
+  if(!hs.length) return '<div class="note warn"><div>У клиента нет ни одного заказа — накладную не к чему записать. Сначала оформите продажу'
+    +(typeof twNewSale==='function'&&TWP.cp?' <button class="sec sm" onclick="hide(\'askmodal\');twNewSale('+esc(JSON.stringify(TWP.cp.id))+')">＋ Продажа</button>':'')+', затем загрузите накладную снова.</div></div>';
   var opt=function(sel){ return '<option value="">— не из заказа —</option>'+open.map(function(o){ return '<option value="'+esc(o.id)+'"'+(o.id===sel?' selected':'')+'>'+esc(o.num+' от '+o.date+' · '+(o.sku?o.sku+' ':'')+o.name+' · осталось '+twpQ(o.left)+' · '+money(o.price))+'</option>'; }).join(''); };
   var rows=TWP.lines.map(function(p,i){
     var a=alloc[i]||{take:[]}; if(!a.take) a.take=[]; paper+=twpN(p.sum);
     var got=0; a.take.forEach(function(t){ got+=twpN(t.qty); ours+=twpN(t.qty)*twpN(t.price); });
-    var sh=Math.max(0, Math.round((twpN(p.qty)-got)*1000)/1000); if(sh>0) short.push(p.name+' — '+twpQ(sh)+' шт');
-    var unit=twpN(p.qty)?twpN(p.sum)/twpN(p.qty):0, diff=a.take.length&&Math.abs(unit-twpN(a.take[0].price))>0.01;
-    return '<tr><td data-l="С бумаги"><b>'+esc(p.name)+'</b><div class="sub2">'+twpQ(p.qty)+' '+esc(p.unit||'шт.')+' × '+money(unit)+' = '+money(p.sum)+(diff?' · <span style="color:var(--amber)">в заказе '+money(a.take[0].price)+' за шт.</span>':'')+'</div></td>'
+    var sh=Math.max(0, Math.round((twpN(p.qty)-got)*1000)/1000); if(sh>0) over+=sh*p.up;
+    var diff=a.take.length&&Math.abs(p.up-twpN(a.take[0].price))>0.01;
+    return '<tr><td data-l="С бумаги"><b>'+esc(p.name)+'</b><div class="sub2">'+twpQ(p.qty)+' '+esc(p.unit||'шт.')+' × '+money(p.up)+' = '+money(p.sum)+(diff?' · <span style="color:var(--amber)">в заказе '+money(a.take[0].price)+' за шт.</span>':'')+'</div></td>'
       +'<td data-l="В заказ">'+a.take.map(function(t,k){ return '<div style="display:flex;gap:6px;margin-bottom:4px"><select style="flex:1;min-width:0" onchange="twpTake('+i+','+k+',this.value)">'+opt(t.id)+'</select><input type="number" min="0" step="any" value="'+twpN(t.qty)+'" style="width:5.5em" onchange="twpTakeQ('+i+','+k+',this.value)"></div>'; }).join('')
-      +(sh>0?'<div class="sm" style="color:var(--red)">не нашлось в заказах: '+twpQ(sh)+' шт. · <a href="#" onclick="twpAdd('+i+');return false">выбрать заказ</a></div>':'')+'</td></tr>';
+      +(sh>0?'<div class="sm"><span class="pill info">сверх заказа: '+twpQ(sh)+' '+esc(p.unit||'шт.')+'</span> '+(a.skuName?'в каталоге: <b>'+esc(a.skuName)+'</b>':'<span class="muted">в каталоге не нашлось</span>')+(open.length?' · <a href="#" onclick="twpAdd('+i+');return false">записать в заказ</a>':'')+'</div>':'')+'</td></tr>';
   }).join('');
-  var warn=short.length?'<div class="note warn"><div>⚠ Этого нет в открытых заказах клиента: '+esc(short.join('; '))+'. Накладную как продажу записать нельзя — сначала оформите продажу на недостающее'
-    +(typeof twNewSale==='function'&&TWP.cp?' <button class="sec sm" onclick="hide(\'askmodal\');twNewSale('+esc(JSON.stringify(TWP.cp.id))+')">＋ Продажа</button>':'')+', затем загрузите накладную снова. Если это возврат или передача материала — выберите вид выше.</div></div>':'';
+  var host=twpHost();
+  var hsel='<label style="display:block;margin-bottom:var(--s-2)"><span class="sm">Сделка накладной</span><select onchange="TWP.host=this.value;twpSaveState()">'+hs.map(function(x){ return '<option value="'+esc(x.dealId)+'"'+(x.dealId===host?' selected':'')+'>'+esc(x.num+' от '+x.date+(x.open?'':' · уже отгружена'))+'</option>'; }).join('')+'</select></label>';
   var dif=Math.round((paper-ours)*100)/100;
-  return warn+'<div class="tbl-wrap"><table class="tbl sm mob"><thead><tr><th>Строка накладной</th><th>Заказ клиента · сколько</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
-    +'<div class="sm" style="margin-top:var(--s-2)">Долг клиента запишется <b>по бумаге: '+money(TWP.head.total||paper)+' руб.</b>'+(ours&&Math.abs(dif)>0.01?' · по ценам заказов '+money(ours)+' — разница <b style="color:var(--amber)">'+money(dif)+'</b>.':'')+' Заказ, который уедет целиком, станет «отгружен».</div>';
+  return hsel+'<div class="tbl-wrap"><table class="tbl sm mob"><thead><tr><th>Строка накладной</th><th>Заказ клиента · сколько</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+    +'<div class="sm" style="margin-top:var(--s-2)">Долг клиента запишется <b>по бумаге: '+money(TWP.head.total||paper)+' руб.</b>'+(ours&&Math.abs(dif)>0.01?' · по ценам заказов '+money(ours)+' — разница <b style="color:var(--amber)">'+money(dif)+'</b>.':'')
+    +(over>0?' Сверх заказа уехало на '+money(over)+' руб. — сделку не меняем, в её карточке будет видно, что отгрузили больше или другой товар.':'')
+    +' Что не догрузили — останется в «Что ещё отгрузить».</div>';
 }
 function twpTake(i,k,id){ var a=TWP.ctx.alloc[i], o=twpOpen().filter(function(x){ return x.id===id; })[0];
   if(!o){ a.take.splice(k,1); } else { var t=a.take[k]; t.id=o.id; t.deal=o.deal; t.num=o.num; t.price=o.price; } twpRedraw(); }
@@ -131,16 +138,18 @@ function twpSupRet(ctx){
 /* ── запись ── */
 function twpSave(){
   var h=TWP.head, pu=TWP.purpose, lines;
-  if(pu==='sale'){ lines=[]; (TWP.ctx.alloc||[]).forEach(function(a){ (a.take||[]).forEach(function(t){ if(t.id&&twpN(t.qty)>0) lines.push({id:t.id, qty:twpN(t.qty)}); }); }); }
+  var extra=[], host='';
+  if(pu==='sale'){ lines=[]; host=twpHost(); (TWP.ctx.alloc||[]).forEach(function(a,i){ var got=0, p=TWP.lines[i]||{}; (a.take||[]).forEach(function(t){ if(t.id&&twpN(t.qty)>0){ lines.push({id:t.id, qty:twpN(t.qty)}); got+=twpN(t.qty); } });
+    var sh=Math.round((twpN(p.qty)-got)*1000)/1000; if(sh>0) extra.push({name:p.name, sku:a.sku||'', unit:p.unit, qty:sh, price:p.up, sum:Math.round(sh*p.up*100)/100}); }); }
   else if(pu==='supplier_return') lines=TWP.lines.map(function(p){ return {lineId:p.lineId||'', qty:twpN(p.qty)}; });
   else lines=TWP.lines.map(function(p){ return {name:p.name, unit:p.unit, qty:twpN(p.qty), price:p.up, places:p.places, mass:p.mass, srcLine:pu==='return'?p.srcLine:undefined}; });
   var data={purpose:pu, kind:val('twpk'), series:val('twps'), number:val('twpn'), date:val('twpd'), cp:TWP.cp?TWP.cp.id:'', basis:val('twpb'), address:val('twpa'), signed:!!el('twpsg').checked,
     total:h.total, transport:{car:h.car||'', driver:h.driver||'', waybillDoc:h.waybillDoc||''}, recognized:{head:h, lines:TWP.lines}, lines:lines,
-    intakeId:TWP.intake||'', dealId:val('twpdeal'), doc:TWP.doc||''};
+    intakeId:TWP.intake||'', dealId:val('twpdeal'), doc:TWP.doc||'', host:host, extra:extra};
   run({vapi:'wbpapersave', data:JSON.stringify(data), b64:TWP.file.b64, name:TWP.file.name, mime:TWP.file.mime}, 'Записываю накладную…', 'twpm2').then(function(r){
     if(!r) return; hide('askmodal');
     info('✅ Накладная записана', '<div><b>'+esc(data.kind+' '+(r.blank||''))+'</b>'+(r.number?' · '+esc(r.number):'')+' от '+esc(data.date)+'.</div>'
-      +'<div class="sm" style="margin-top:var(--s-2)">'+(pu==='sale'?'Отгрузка по заказам и долг клиента учтены, бланк — в книге.':'Запись и бланк — в реестре накладных.')+(r.url?' <a href="'+esc(r.url)+'" target="_blank" rel="noopener">Скан ↗</a>':'')+'</div>');
+      +'<div class="sm" style="margin-top:var(--s-2)">'+(pu==='sale'?'Отгрузка по заказам и долг клиента учтены'+(extra.length?', сверх заказа — отмечено в сделке':'')+', бланк — в книге.':'Запись и бланк — в реестре накладных.')+(r.url?' <a href="'+esc(r.url)+'" target="_blank" rel="noopener">Скан ↗</a>':'')+'</div>');
     if(TWP.onDone) TWP.onDone(r);
   });
   return false;
