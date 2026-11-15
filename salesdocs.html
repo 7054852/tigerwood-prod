@@ -560,7 +560,8 @@ var WBC=[];
 function wbcLoad(){ get({vapi:'wbclients'}).then(function(r){ if(!r||!r.ok){ el('wbClients').innerHTML='<div class="sm err">'+esc(errText(r))+'</div>'; return; } WBC=r.clients||[]; wbcDraw(); })
   .catch(function(e){ el('wbClients').innerHTML='<div class="sm err">'+esc(netText(e))+'</div>'; }); }
 function wbcDraw(){ var f=val('wbcF').trim().toLowerCase(), xs=WBC.filter(function(c){ return !f||c.name.toLowerCase().indexOf(f)>=0; });
-  var btn=function(c){ return '<button class="sec" onclick="twWaybillClient(\''+esc(c.id)+'\',function(){ loadRegistry(); loadBlanksStatus(); wbcLoad(); })">'+esc(c.name)+' <span class="sm muted">— осталось '+esc(c.left)+' шт.'+(c.deals>1?' по '+c.deals+' заказам':'')+'</span></button>'; };
+  var btn=function(c){ if(c.market&&c.market!=='by') return '<a class="btn sec" href="'+esc(pageUrl('counterparties.html','client',c.id))+'" title="РФ / Европа: ТН, CMR и инвойс — в сделке, окно «Отгрузочные документы»">'+esc(c.name)+' <span class="sm muted">— осталось '+esc(c.left)+' шт. · экспорт →</span></a>';
+    return '<button class="sec" onclick="twWaybillClient(\''+esc(c.id)+'\',function(){ loadRegistry(); loadBlanksStatus(); wbcLoad(); })">'+esc(c.name)+' <span class="sm muted">— осталось '+esc(c.left)+' шт.'+(c.deals>1?' по '+c.deals+' заказам':'')+'</span></button>'; };
   var ul=xs.filter(function(c){ return c.legal; }), fl=xs.filter(function(c){ return !c.legal; }), row=function(a){ return '<div class="row" style="gap:var(--s-2);flex-wrap:wrap">'+a.map(btn).join('')+'</div>'; };
   // физлица (15.11.2026): у многих розничных заказов с лета нет документа отгрузки в Прохабе — они ниже, свёрнуты, чтобы не мешать
   el('wbClients').innerHTML=xs.length?(ul.length?row(ul):'<div class="sm muted">Юрлицам отгружать нечего.</div>')
