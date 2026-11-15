@@ -75,6 +75,16 @@ function twpPurpose(p){ TWP.purpose=p; twpCtx(); }
 
 /* ── продажа: строки бумаги → строки заказов клиента ── */
 function twpOpen(){ var o=[]; ((TWP.ctx||{}).deals||[]).forEach(function(d){ (d.lines||[]).forEach(function(l){ o.push({id:l.id, deal:d.dealId, num:d.num, date:d.date, name:l.name, sku:l.sku, price:l.price, left:l.left}); }); }); return o; }
+/* новый заказ по рамочному (15.11.2026): все строки накладной — в заказ «со склада», счёт на сумму с бумаги */
+function twpNew(hx){
+  var alloc=(TWP.ctx||{}).alloc||[], tot=0;
+  var rows=TWP.lines.map(function(p,i){ var a=alloc[i]||{}; tot+=twpN(p.sum);
+    return '<tr><td data-l="Строка"><b>'+esc(p.name)+'</b><div class="sub2">'+(a.skuName?'в каталоге: '+esc(a.skuName):'<span class="muted">в каталоге не нашлось — позиция запишется текстом</span>')+'</div></td>'
+      +'<td data-l="Кол-во">'+twpQ(p.qty)+' '+esc(p.unit||'шт.')+'</td><td data-l="Цена">'+money(p.up)+'</td><td data-l="Сумма">'+money(p.sum)+'</td></tr>'; }).join('');
+  return '<div class="note"><div>Заказа у клиента под эту накладную нет, но действует <b>рамочный договор № '+esc(hx.framework||'')+'</b>. При записи будет создан '
+    +'<b>заказ «со склада»</b> (товар уже уехал, в производство не попадёт) и <b>счёт на '+money(TWP.head.total||tot)+' руб.</b> по ценам накладной с отсрочкой от даты отгрузки. Накладная запишется к этому заказу.</div></div>'
+    +'<div class="tbl-wrap"><table class="tbl sm mob"><thead><tr><th>Строка накладной</th><th>Кол-во</th><th>Цена</th><th>Сумма</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+}
 /* сделка накладной: где нашлись строки, иначе открытый заказ, иначе последняя сделка клиента (сделку не меняем) */
 function twpHost(){ var c=TWP.ctx||{}, hs=c.hosts||[]; if(TWP.host&&hs.some(function(x){ return x.dealId===TWP.host; })) return TWP.host;
   var f=null; (c.alloc||[]).forEach(function(a){ (a.take||[]).forEach(function(t){ if(!f&&t.deal) f=t.deal; }); }); return f||(hs[0]&&hs[0].dealId)||''; }
@@ -92,8 +102,9 @@ function twpSale(ctx){
       +'<td data-l="В заказ">'+a.take.map(function(t,k){ return '<div style="display:flex;gap:6px;margin-bottom:4px"><select style="flex:1;min-width:0" onchange="twpTake('+i+','+k+',this.value)">'+opt(t.id)+'</select><input type="number" min="0" step="any" value="'+twpN(t.qty)+'" style="width:5.5em" onchange="twpTakeQ('+i+','+k+',this.value)"></div>'; }).join('')
       +(sh>0?'<div class="sm"><span class="pill info">сверх заказа: '+twpQ(sh)+' '+esc(p.unit||'шт.')+'</span> '+(a.skuName?'в каталоге: <b>'+esc(a.skuName)+'</b>':'<span class="muted">в каталоге не нашлось</span>')+(open.length?' · <a href="#" onclick="twpAdd('+i+');return false">записать в заказ</a>':'')+'</div>':'')+'</td></tr>';
   }).join('');
-  var host=twpHost();
-  var hsel='<label style="display:block;margin-bottom:var(--s-2)"><span class="sm">Сделка накладной</span><select onchange="TWP.host=this.value;twpSaveState()">'+hs.map(function(x){ return '<option value="'+esc(x.dealId)+'"'+(x.dealId===host?' selected':'')+'>'+esc(x.num+' от '+x.date+(x.open?'':' · уже отгружена'))+'</option>'; }).join('')+'</select></label>';
+  var host=twpHost(), hx=hs.filter(function(x){ return x.dealId===host; })[0]||{};
+  var hsel='<label style="display:block;margin-bottom:var(--s-2)"><span class="sm">Сделка накладной</span><select onchange="TWP.host=this.value;twpRedraw()">'+hs.map(function(x){ return '<option value="'+esc(x.dealId)+'"'+(x.dealId===host?' selected':'')+'>'+esc(x.framework?x.num:(x.num+' от '+x.date+(x.open?'':' · уже отгружена')))+'</option>'; }).join('')+'</select></label>';
+  if(host==='new') return hsel+twpNew(hx);
   var dif=Math.round((paper-ours)*100)/100;
   return hsel+'<div class="tbl-wrap"><table class="tbl sm mob"><thead><tr><th>Строка накладной</th><th>Заказ клиента · сколько</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
     +'<div class="sm" style="margin-top:var(--s-2)">Долг клиента запишется <b>по бумаге: '+money(TWP.head.total||paper)+' руб.</b>'+(ours&&Math.abs(dif)>0.01?' · по ценам заказов '+money(ours)+' — разница <b style="color:var(--amber)">'+money(dif)+'</b>.':'')
@@ -139,7 +150,8 @@ function twpSupRet(ctx){
 function twpSave(){
   var h=TWP.head, pu=TWP.purpose, lines;
   var extra=[], host='';
-  if(pu==='sale'){ lines=[]; host=twpHost(); (TWP.ctx.alloc||[]).forEach(function(a,i){ var got=0, p=TWP.lines[i]||{}; (a.take||[]).forEach(function(t){ if(t.id&&twpN(t.qty)>0){ lines.push({id:t.id, qty:twpN(t.qty)}); got+=twpN(t.qty); } });
+  if(pu==='sale'&&twpHost()==='new'){ lines=[]; host='new'; TWP.lines.forEach(function(p,i){ var a=(TWP.ctx.alloc||[])[i]||{}; extra.push({name:p.name, sku:a.sku||'', unit:p.unit, qty:twpN(p.qty), price:p.up, sum:twpN(p.sum)}); }); }
+  else if(pu==='sale'){ lines=[]; host=twpHost(); (TWP.ctx.alloc||[]).forEach(function(a,i){ var got=0, p=TWP.lines[i]||{}; (a.take||[]).forEach(function(t){ if(t.id&&twpN(t.qty)>0){ lines.push({id:t.id, qty:twpN(t.qty)}); got+=twpN(t.qty); } });
     var sh=Math.round((twpN(p.qty)-got)*1000)/1000; if(sh>0) extra.push({name:p.name, sku:a.sku||'', unit:p.unit, qty:sh, price:p.up, sum:Math.round(sh*p.up*100)/100}); }); }
   else if(pu==='supplier_return') lines=TWP.lines.map(function(p){ return {lineId:p.lineId||'', qty:twpN(p.qty)}; });
   else lines=TWP.lines.map(function(p){ return {name:p.name, unit:p.unit, qty:twpN(p.qty), price:p.up, places:p.places, mass:p.mass, srcLine:pu==='return'?p.srcLine:undefined}; });
@@ -148,7 +160,9 @@ function twpSave(){
     intakeId:TWP.intake||'', dealId:val('twpdeal'), doc:TWP.doc||'', host:host, extra:extra};
   run({vapi:'wbpapersave', data:JSON.stringify(data), b64:TWP.file.b64, name:TWP.file.name, mime:TWP.file.mime}, 'Записываю накладную…', 'twpm2').then(function(r){
     if(!r) return; hide('askmodal');
+    var no=r.newOrder;
     info('✅ Накладная записана', '<div><b>'+esc(data.kind+' '+(r.blank||''))+'</b>'+(r.number?' · '+esc(r.number):'')+' от '+esc(data.date)+'.</div>'
+      +(no?'<div style="margin-top:var(--s-2)">Создан заказ <b>'+esc(no.num)+'</b> «со склада» и счёт <b>№ '+esc(no.invoice)+'</b>'+(no.invoiceUrl?' <a href="'+esc(no.invoiceUrl)+'" target="_blank" rel="noopener">счёт ↗</a>':'')+'.</div>':'')
       +'<div class="sm" style="margin-top:var(--s-2)">'+(pu==='sale'?'Отгрузка по заказам и долг клиента учтены'+(extra.length?', сверх заказа — отмечено в сделке':'')+', бланк — в книге.':'Запись и бланк — в реестре накладных.')+(r.url?' <a href="'+esc(r.url)+'" target="_blank" rel="noopener">Скан ↗</a>':'')+'</div>');
     if(TWP.onDone) TWP.onDone(r);
   });

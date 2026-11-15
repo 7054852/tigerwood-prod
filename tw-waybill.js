@@ -215,6 +215,7 @@ function twWbRender(){
     return twFileCard({ href:d.url, tab:1, tag:chk?'ЧЕК':d.type, title:ttl+' '+(d.blank||''), meta:[d.date, twWbMoney(d.sum)+' '+(d.currency||'BYN'), d.qty!=null?(d.qty+' шт.'):'', d.paper?'с бумаги':'', d.error].filter(Boolean).join(' · '),
       pills:pills, acts:acts, del:"twWbCancel('"+(d.cancelType||ttl)+"','"+esc(d.id)+"')", delTitle:'Отменить '+(chk?'чек':'накладную') });
   }).join('');
+  h+=twWbLeft(r, live);
   var btns='', resv='', kinds={};
   (r.options||[]).forEach(function(o){
     btns+='<button class="sec sm" onclick="twWaybill(TWWBB.deal,\''+esc(o.kind)+'\',twWbRefresh)" title="'+esc(o.note||'')+'">✍️ '+esc(o.label)+'</button>';
@@ -230,6 +231,42 @@ function twWbRender(){
   if(r.cp&&(r.options||[]).some(function(o){ return o.blank; })) btns='<button class="sm" onclick="twWaybillClient(\''+esc(r.cp)+'\',twWbRefresh)" title="везём товар по нескольким заказам клиента — впишите количество, по заказам разложится само (старые первыми)">🚚 Накладная клиенту — по всем заказам</button>'+btns;
   h+='<div class="row" style="margin-top:var(--s-2);align-items:center">'+btns+resv+note+'</div><div class="msg" id="twwbmsg"></div>';
   TWWBB.box.innerHTML=h;
+}
+/* недогруз (владелец 15.11.2026): что не уехало по заказу — «довезём к дате», «заменили другим товаром», «не повезём»; закрытое можно вернуть в ожидание.
+   Позиции и сумма сделки не меняются. Сервер: wbshipclose (clientShip.ts shipClose). */
+function twWbLeft(r, live){
+  var ln=(r.lines||[]).filter(function(l){ return l.left>0||l.closed>0; }); if(!ln.length||!live.length) return '';
+  var today=new Date(Date.now()+3*3600e3).toISOString().slice(0,10), iso=function(d){ return d?d.split('.').reverse().join('-'):''; };
+  return '<div class="card" style="margin-top:var(--s-2);padding:var(--s-3)"><div class="sm" style="margin-bottom:var(--s-2)"><b>Не отгружено по заказу</b> — решите, что с остатком</div>'
+    +ln.map(function(l){
+      var late=l.shipBy&&iso(l.shipBy)<today, nm=(l.doc||l.name), id=esc(l.id);
+      var a=l.left>0?'<div class="row" style="align-items:center;gap:6px;flex-wrap:wrap"><span><b>'+esc(nm)+'</b> — осталось <b>'+l.left+'</b> из '+l.qty+' шт.</span>'
+        +(l.shipBy?'<span class="pill '+(late?'bad':'info')+'">довезём к '+esc(l.shipBy)+(late?' — срок прошёл':'')+'</span>':'')
+        +'<span class="end" style="display:flex;gap:6px;flex-wrap:wrap"><button class="sec sm" onclick="twWbLater(\''+id+'\',\''+esc(l.shipBy||'')+'\')">📅 Довезём к…</button>'
+        +'<button class="sec sm" onclick="twWbClose(\''+id+'\',\'replace\','+l.left+')">🔁 Заменили</button><button class="sec sm" onclick="twWbClose(\''+id+'\',\'cancel\','+l.left+')">✖ Не повезём</button></span></div>':'';
+      var c=l.closed>0?'<div class="sm muted" style="margin-top:4px">'+(l.left>0?'':'<b>'+esc(nm)+'</b>: ')+'закрыто без отгрузки '+l.closed+' шт. — '+esc(l.closeNote||'')+' · <a href="#" onclick="twWbReopen(\''+id+'\');return false">вернуть в ожидание</a></div>':'';
+      return '<div style="padding:6px 0;border-top:1px solid var(--line)">'+a+c+'</div>';
+    }).join('')+'</div>';
+}
+function twWbLater(id, cur){
+  var v=cur?cur.split('.').reverse().join('-'):'';
+  ask('📅 Довезём к дате', '<div class="sm">Остаток ждёт следующей накладной. После этой даты он подсветится красным.</div><input type="date" id="twlb" value="'+esc(v)+'" style="width:100%;margin-top:var(--s-2)"><div class="msg" id="twlm"></div>', function(){
+    var d=val('twlb'); run({vapi:'wbshipclose', item:id, kind:'later', date:d?d.split('-').reverse().join('.'):''}, 'Сохраняю…', 'twlm').then(function(x){ if(x){ hide('askmodal'); twWbRefresh(); } }); return false; }, 'Сохранить');
+}
+function twWbClose(id, kind, left){
+  var ex=(TWWBB.r&&TWWBB.r.extras)||[], rep=kind==='replace';
+  var pick=rep&&ex.length?'<label style="display:block;margin-top:var(--s-2)"><span class="sm">Что уехало вместо (сверх заказа в накладных клиента)</span><select id="twcx" onchange="if(this.value) el(\'twcn\').value=this.value"><option value="">— выбрать —</option>'
+    +ex.map(function(e){ var t=e.name+' × '+e.qty+' ('+e.doc+')'; return '<option value="'+esc(t)+'">'+esc(t)+'</option>'; }).join('')+'</select></label>':'';
+  ask(rep?'🔁 Заменили другим товаром':'✖ Не повезём', '<div class="sm">'+(rep?'Остаток закроется: вместо него клиент получил другой товар.':'Остаток закроется и не будет ждать отгрузки.')
+    +' Позиции и сумма сделки не меняются. Если клиент заплатил больше, чем уехало, переплата видна как его аванс — вернуть деньги или зачесть в следующий счёт. По разовому договору сумма зафиксирована договором — для неё нужно доп. соглашение.</div>'
+    +'<label style="display:block;margin-top:var(--s-2)"><span class="sm">Сколько штук закрыть (осталось '+left+')</span><input type="number" id="twcq" min="0" step="any" value="'+left+'" style="width:8em"></label>'+pick
+    +'<label style="display:block;margin-top:var(--s-2)"><span class="sm">'+(rep?'На что заменили':'Почему не повезём')+'</span><input id="twcn" style="width:100%" placeholder="'+(rep?'например: стенка Б вместо стенки А':'например: клиент отказался')+'"></label><div class="msg" id="twcm"></div>', function(){
+      run({vapi:'wbshipclose', item:id, kind:kind, qty:val('twcq'), note:val('twcn')}, 'Сохраняю…', 'twcm').then(function(x){ if(!x) return; hide('askmodal'); twWbRefresh();
+        if(x.dealShipped) info('Заказ отгружен', '<div>Всё уехало или закрыто — заказ отмечен «отгружен».</div>'); }); return false; }, rep?'Закрыть — заменили':'Закрыть — не повезём');
+}
+function twWbReopen(id){
+  ask('Вернуть в ожидание?', '<div>Закрытый остаток снова будет ждать отгрузки. Если заказ стал «отгружен» только из-за закрытия, статус вернётся прежний.</div><div class="msg" id="twrm"></div>', function(){
+    run({vapi:'wbshipclose', item:id, kind:'undo'}, 'Сохраняю…', 'twrm').then(function(x){ if(x){ hide('askmodal'); twWbRefresh(); } }); return false; }, 'Вернуть');
 }
 /** PDF накладной для печати (07.10.2026): сервер выгружает лист на одну страницу A4 без сетки — открываем в новой вкладке */
 function twWbPdf(id){
