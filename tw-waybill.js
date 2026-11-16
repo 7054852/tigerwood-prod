@@ -234,7 +234,11 @@ function twWbRender(){
 }
 /* недогруз (владелец 15.11.2026): что не уехало по заказу — «довезём к дате», «заменили другим товаром», «не повезём»; закрытое можно вернуть в ожидание.
    Позиции и сумма сделки не меняются. Сервер: wbshipclose (clientShip.ts shipClose). */
+/* кто открыл окно недогруза: карточка сделки или «Что ещё отгрузить» клиента (16.11.2026) — что обновить после записи и какие «сверх заказа» предложить */
+var TWWB_CTX={};
+function twWbAfter(){ (TWWB_CTX.refresh||twWbRefresh)(); }
 function twWbLeft(r, live){
+  TWWB_CTX={ refresh:twWbRefresh, extras:r.extras||[] };
   var ln=(r.lines||[]).filter(function(l){ return l.left>0||l.closed>0; }); if(!ln.length||!live.length) return '';
   var today=new Date(Date.now()+3*3600e3).toISOString().slice(0,10), iso=function(d){ return d?d.split('.').reverse().join('-'):''; };
   return '<div class="card" style="margin-top:var(--s-2);padding:var(--s-3)"><div class="sm" style="margin-bottom:var(--s-2)"><b>Не отгружено по заказу</b> — решите, что с остатком</div>'
@@ -251,22 +255,22 @@ function twWbLeft(r, live){
 function twWbLater(id, cur){
   var v=cur?cur.split('.').reverse().join('-'):'';
   ask('📅 Довезём к дате', '<div class="sm">Остаток ждёт следующей накладной. После этой даты он подсветится красным.</div><input type="date" id="twlb" value="'+esc(v)+'" style="width:100%;margin-top:var(--s-2)"><div class="msg" id="twlm"></div>', function(){
-    var d=val('twlb'); run({vapi:'wbshipclose', item:id, kind:'later', date:d?d.split('-').reverse().join('.'):''}, 'Сохраняю…', 'twlm').then(function(x){ if(x){ hide('askmodal'); twWbRefresh(); } }); return false; }, 'Сохранить');
+    var d=val('twlb'); run({vapi:'wbshipclose', item:id, kind:'later', date:d?d.split('-').reverse().join('.'):''}, 'Сохраняю…', 'twlm').then(function(x){ if(x){ hide('askmodal'); twWbAfter(); } }); return false; }, 'Сохранить');
 }
 function twWbClose(id, kind, left){
-  var ex=(TWWBB.r&&TWWBB.r.extras)||[], rep=kind==='replace';
+  var ex=TWWB_CTX.extras||[], rep=kind==='replace';
   var pick=rep&&ex.length?'<label style="display:block;margin-top:var(--s-2)"><span class="sm">Что уехало вместо (сверх заказа в накладных клиента)</span><select id="twcx" onchange="if(this.value) el(\'twcn\').value=this.value"><option value="">— выбрать —</option>'
     +ex.map(function(e){ var t=e.name+' × '+e.qty+' ('+e.doc+')'; return '<option value="'+esc(t)+'">'+esc(t)+'</option>'; }).join('')+'</select></label>':'';
   ask(rep?'🔁 Заменили другим товаром':'✖ Не повезём', '<div class="sm">'+(rep?'Остаток закроется: вместо него клиент получил другой товар.':'Остаток закроется и не будет ждать отгрузки.')
     +' Позиции и сумма сделки не меняются. Если клиент заплатил больше, чем уехало, переплата видна как его аванс — вернуть деньги или зачесть в следующий счёт. По разовому договору сумма зафиксирована договором — для неё нужно доп. соглашение.</div>'
     +'<label style="display:block;margin-top:var(--s-2)"><span class="sm">Сколько штук закрыть (осталось '+left+')</span><input type="number" id="twcq" min="0" step="any" value="'+left+'" style="width:8em"></label>'+pick
     +'<label style="display:block;margin-top:var(--s-2)"><span class="sm">'+(rep?'На что заменили':'Почему не повезём')+'</span><input id="twcn" style="width:100%" placeholder="'+(rep?'например: стенка Б вместо стенки А':'например: клиент отказался')+'"></label><div class="msg" id="twcm"></div>', function(){
-      run({vapi:'wbshipclose', item:id, kind:kind, qty:val('twcq'), note:val('twcn')}, 'Сохраняю…', 'twcm').then(function(x){ if(!x) return; hide('askmodal'); twWbRefresh();
+      run({vapi:'wbshipclose', item:id, kind:kind, qty:val('twcq'), note:val('twcn')}, 'Сохраняю…', 'twcm').then(function(x){ if(!x) return; hide('askmodal'); twWbAfter();
         if(x.dealShipped) info('Заказ отгружен', '<div>Всё уехало или закрыто — заказ отмечен «отгружен».</div>'); }); return false; }, rep?'Закрыть — заменили':'Закрыть — не повезём');
 }
 function twWbReopen(id){
   ask('Вернуть в ожидание?', '<div>Закрытый остаток снова будет ждать отгрузки. Если заказ стал «отгружен» только из-за закрытия, статус вернётся прежний.</div><div class="msg" id="twrm"></div>', function(){
-    run({vapi:'wbshipclose', item:id, kind:'undo'}, 'Сохраняю…', 'twrm').then(function(x){ if(x){ hide('askmodal'); twWbRefresh(); } }); return false; }, 'Вернуть');
+    run({vapi:'wbshipclose', item:id, kind:'undo'}, 'Сохраняю…', 'twrm').then(function(x){ if(x){ hide('askmodal'); twWbAfter(); } }); return false; }, 'Вернуть');
 }
 /** PDF накладной для печати (07.10.2026): сервер выгружает лист на одну страницу A4 без сетки — открываем в новой вкладке */
 function twWbPdf(id){
