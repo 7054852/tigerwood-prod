@@ -14,6 +14,11 @@
      Ввод в таблицу не перерисовывает строку (курсор остаётся в поле); суммы считаются на месте, сервер проверяет всё ещё раз. -->
 <style>
   .hide{ display:none !important; }
+  .pick{ position:relative; } .pick input{ width:100%; }
+  .pickbox{ position:absolute; left:0; right:0; top:calc(100% + 4px); z-index:30; background:var(--card); border:1px solid var(--line); border-radius:var(--r-ctl); box-shadow:var(--shadow-pop); max-height:320px; overflow:auto; }
+  .pickbox div{ padding:var(--s-2) var(--s-3); cursor:pointer; display:flex; gap:var(--s-2); align-items:baseline; }
+  .pickbox div.on, .pickbox div:hover{ background:var(--accent-bg); }
+  .pickbox .sk{ font:var(--t-mono); color:var(--muted); flex:none; } .pickbox .pr{ margin-left:auto; color:var(--muted); flex:none; }
   .blk{ background:var(--card); border:1px solid var(--line); border-radius:var(--r-card); padding:20px; margin-bottom:var(--s-4); box-shadow:var(--shadow-card); }
   .h{ font:var(--t-heading); margin-bottom:var(--s-3); display:flex; align-items:center; gap:var(--s-2); flex-wrap:wrap; }
   .h .sp{ margin-left:auto; font:var(--t-body); display:flex; gap:var(--s-2); flex-wrap:wrap; align-items:center; }
@@ -78,8 +83,8 @@
   <div class="blk" id="s_items">
     <div class="h">Позиции <span class="sp"><input id="f_filter" type="search" class="search" placeholder="🔎 найти в счёте: артикул, название" oninput="filterRows()" autocomplete="off"></span></div>
     <div class="toolbar" id="addBar">
-      <input id="f_pick" list="prodList" class="grow" placeholder="+ из каталога: начните вводить артикул или название" onchange="pickProd(this.value)" autocomplete="off">
-      <datalist id="prodList"></datalist>
+      <div class="pick grow"><input id="f_pick" placeholder="+ из каталога: начните вводить артикул или название" oninput="sugShow()" onfocus="sugShow()" onkeydown="sugKey(event)" onblur="setTimeout(sugHide,150)" autocomplete="off">
+        <div id="pickBox" class="pickbox hide"></div></div>
       <button class="sec" onclick="addRow()">+ свободная строка</button>
     </div>
     <div class="tbl-wrap"><table class="tbl mob">
@@ -203,7 +208,6 @@ function fill(){
   EDIT=!!(D.can&&D.can.edit);
   ROWS=(D.items||[]).map(function(it){ return { id:it.id, sku:it.sku||'', name:it.name||'', en:it.en||'', ru:it.ru||'', hs:it.hs||'', art:it.art||'', qty:it.qty, price:it.price }; });
   PRODS=D.products||[];
-  el('prodList').innerHTML=PRODS.map(function(p,i){ return '<option value="'+esc(p.sku+' · '+(p.en||p.name))+'">'+esc(p.name)+(p.eur?(' — '+money(p.eur)+' EUR'):' — нет цены EUR')+'</option>'; }).join('');
   el('f_ref').value=t.buyerRef||''; el('f_ship').value=isoDate(t.shipDate); el('f_date').value=D.invoiceDate||'при формировании';
   INC=t.incoterm||'FCA'; el('f_place').value=t.place||''; el('f_place').placeholder=(D.client&&D.client.address)||'адрес покупателя';
   PRE=t.prepayMode||'pct'; el('f_pct').value=t.prepayPct==null?'':t.prepayPct; el('f_sum').value=t.prepaySum?t.prepaySum:''; el('f_pdays').value=t.prepayDays||''; el('f_bdays').value=t.balanceDays||'';
@@ -254,6 +258,26 @@ function addRow(p){
   renderRows();
   var tr=el('r'+(ROWS.length-1)); if(tr){ var x=tr.querySelectorAll('input'); var f=p?(p.eur?x[4]:x[5]):x[2]; if(f){ f.focus(); try{ f.select(); }catch(e){} } }
   setm('itemsMsg', p&&!p.eur?'warn':'', p&&!p.eur?('⚠️ У «'+esc(p.name)+'» нет цены EUR в прайсе — впишите цену'):'');
+}
+/* подсказка каталога (17.11.2026): свой список вместо <datalist> — тот у владельца не показывал вариантов; ищет по словам в артикуле, имени, EN и RU */
+var SUG=[], SUGI=0;
+function sugShow(){
+  var q=val('f_pick').toLowerCase().trim(), box=el('pickBox');
+  if(!PRODS.length){ box.innerHTML='<div class="sm">Каталог не загрузился — обновите страницу</div>'; box.className='pickbox'; SUG=[]; return; }
+  var w=q.split(/\s+/).filter(Boolean);
+  SUG=PRODS.filter(function(p){ var t=(p.sku+' '+p.name+' '+(p.en||'')+' '+(p.ru||'')).toLowerCase(); return w.every(function(x){ return t.indexOf(x)>=0; }); }).slice(0,30); SUGI=0;
+  box.innerHTML=SUG.length?SUG.map(function(p,i){ return '<div class="'+(i?'':'on')+'" onmousedown="event.preventDefault();sugPick('+i+')"><span class="sk">'+esc(p.sku)+'</span><span>'+esc(p.name)+(p.en&&p.en!==p.name?' <span class="sm">· '+esc(p.en)+'</span>':'')+'</span><span class="pr">'+(p.eur?money(p.eur)+' EUR':'нет цены EUR')+'</span></div>'; }).join('')
+    :'<div class="sm">Ничего не найдено — добавьте свободной строкой</div>';
+  box.className='pickbox';
+}
+function sugHide(){ el('pickBox').className='pickbox hide'; }
+function sugPick(i){ var p=SUG[i]; if(!p) return; el('f_pick').value=''; sugHide(); setm('itemsMsg','',''); addRow(p); }
+function sugKey(e){
+  var box=el('pickBox'); if(box.className.indexOf('hide')>=0 && e.key!=='Enter') return;
+  if(e.key==='ArrowDown'||e.key==='ArrowUp'){ e.preventDefault(); SUGI=Math.max(0,Math.min(SUG.length-1,SUGI+(e.key==='ArrowDown'?1:-1)));
+    var d=box.children; for(var i=0;i<d.length;i++) d[i].className=i===SUGI?'on':''; if(d[SUGI]) d[SUGI].scrollIntoView({block:'nearest'}); }
+  else if(e.key==='Enter'){ e.preventDefault(); if(SUG[SUGI]) sugPick(SUGI); else pickProd(val('f_pick')); }
+  else if(e.key==='Escape') sugHide();
 }
 function pickProd(v){
   v=String(v||'').trim(); if(!v) return;
