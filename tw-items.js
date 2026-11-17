@@ -44,6 +44,33 @@ function posFromItems(items){
 /** товар по введённому имени: точное совпадение из datalist, иначе без учёта регистра и пробелов (владелец 04.11.2026: выбрал товар — цена не подтянулась) */
 function findProd(v){ if(PRODBYNAME[v]) return PRODBYNAME[v]; var k=String(v||'').trim().toLowerCase(); if(!k) return null; for(var n in PRODBYNAME) if(n.trim().toLowerCase()===k) return PRODBYNAME[n]; return null; }
 function pickProd(i,v){ var p=findProd(v); if(p){ POS[i].name=p.name; POS[i].sku=p.sku; POS[i].opt=p.opt||null; POS[i].crossbar=prodCb(p); POS[i].options={}; if(!(Number(POS[i].price)>0)) POS[i].price=prodPrice(p)||''; renderPos(); posTot(); } }
+/* подсказка каталога (17.11.2026): свой список вместо <datalist> — у владельца тот не показывал вариантов; поиск по словам в названии и артикуле, ↑↓ Enter */
+var TWS={i:-1,list:[],k:0};
+function twSugBox(){
+  var b=el('twSug'); if(b) return b;
+  var st=document.createElement('style'); st.textContent='#twSug{position:absolute;z-index:60;background:var(--card);border:1px solid var(--line);border-radius:var(--r-ctl);box-shadow:var(--shadow-pop);max-height:320px;overflow:auto;display:none}'
+    +'#twSug div{padding:var(--s-2) var(--s-3);cursor:pointer;display:flex;gap:var(--s-2);align-items:baseline}#twSug div.on,#twSug div:hover{background:var(--accent-bg)}'
+    +'#twSug .sk{font:var(--t-mono);color:var(--muted);flex:none}#twSug .pr2{margin-left:auto;color:var(--muted);flex:none}#twSug .em{color:var(--muted);cursor:default}';
+  document.head.appendChild(st);
+  b=document.createElement('div'); b.id='twSug'; document.body.appendChild(b); return b;
+}
+function twSug(inp,i){
+  var b=twSugBox(), w=String(inp.value||'').toLowerCase().split(/\s+/).filter(Boolean);
+  TWS={i:i,k:0,list:PRODS.filter(function(p){ var t=(p.sku+' '+p.name).toLowerCase(); return w.every(function(x){ return t.indexOf(x)>=0; }); }).slice(0,30)};
+  if(!TWS.list.length && !PRODS.length){ b.style.display='none'; return; }
+  b.innerHTML=TWS.list.length?TWS.list.map(function(p,k){ var v=prodPrice(p); return '<div class="'+(k?'':'on')+'" onmousedown="event.preventDefault();twSugPick('+k+')"><span class="sk">'+esc(p.sku||'')+'</span><span>'+esc(p.name)+'</span><span class="pr2">'+(v?money(v)+' '+curSign():(curCode()==='BYN'?'':'нет цены '+curSign()))+'</span></div>'; }).join('')
+    :'<div class="em">В каталоге не найдено — останется своей строкой</div>';
+  var r=inp.getBoundingClientRect(); b.style.left=(r.left+window.scrollX)+'px'; b.style.top=(r.bottom+window.scrollY+4)+'px'; b.style.width=Math.max(r.width,360)+'px'; b.style.display='block';
+}
+function twSugHide(){ var b=el('twSug'); if(b) b.style.display='none'; }
+function twSugPick(k){ var p=TWS.list[k]; if(!p||!POS[TWS.i]) return; twSugHide(); POS[TWS.i].name=p.name; pickProd(TWS.i,p.name); }
+function twSugKey(e,i){
+  var b=el('twSug'); if(!b||b.style.display==='none'||TWS.i!==i) return;
+  if(e.key==='ArrowDown'||e.key==='ArrowUp'){ e.preventDefault(); TWS.k=Math.max(0,Math.min(TWS.list.length-1,TWS.k+(e.key==='ArrowDown'?1:-1)));
+    var d=b.children; for(var j=0;j<d.length;j++) d[j].className=j===TWS.k?'on':''; if(d[TWS.k]) d[TWS.k].scrollIntoView({block:'nearest'}); }
+  else if(e.key==='Enter'&&TWS.list[TWS.k]){ e.preventDefault(); twSugPick(TWS.k); }
+  else if(e.key==='Escape') twSugHide();
+}
 function optOf(p){ return p.opt || ((PRODBYSKU[p.sku]||{}).opt) || null; }
 /** надбавка за комплект перемычек у товара каталога — в валюте сделки: ₽ — crossbarRub (штука по курсу сайта, 02.10.2026) */
 function prodCb(p){ return p?(curCode()==='RUB'?(Number(p.crossbarRub)||0):(Number(p.crossbar)||0)):0; }
@@ -85,7 +112,7 @@ function renderPos(){
   var h='<div class="pr ph"><div>Наименование</div><div>Кол-во</div><div>Цена</div><div style="text-align:right">Сумма</div><div></div></div>', tot=0;
   posOrder(POS).forEach(function(p){ var i=POS.indexOf(p), s=lineSum(p), kid=!!p.par, kids=POS.some(function(k){ return k.par===p; }); tot+=s;
     h+='<div class="pr'+(kid?' kid':'')+'">'
-      +'<input list="prodlist" value="'+esc(p.name||'')+'" oninput="POS['+i+'].name=this.value" onchange="pickProd('+i+',this.value)" placeholder="'+(kid?'↳ ':'')+'товар из каталога или свой" title="'+(kid?'↳ в комплекте с комплексом':'')+'" autocomplete="off">'
+      +'<input value="'+esc(p.name||'')+'" oninput="POS['+i+'].name=this.value;twSug(this,'+i+')" onfocus="twSug(this,'+i+')" onkeydown="twSugKey(event,'+i+')" onblur="setTimeout(twSugHide,150)" onchange="pickProd('+i+',this.value)" placeholder="'+(kid?'↳ ':'')+'товар из каталога или свой" title="'+(kid?'↳ в комплекте с комплексом':'')+'" autocomplete="off">'
       +'<input type="number" inputmode="decimal" value="'+esc(p.qty||'')+'" oninput="POS['+i+'].qty=this.value;posTot()" autocomplete="off">'
       +'<input type="number" inputmode="decimal" value="'+esc(p.price||'')+'" oninput="POS['+i+'].price=this.value;posTot()" autocomplete="off">'
       +'<div class="lt" id="lt'+i+'">'+money(s)+'</div>'
