@@ -10,7 +10,7 @@
 <script src="tw-shipping.js?v=20261108b"></script>
 <script src="tw-pay.js?v=20261114b"></script>
 <script src="tw-deliv.js"></script>
-<script src="tw-intake.js?v=20261104"></script>
+<script src="tw-intake.js?v=20261117a"></script>
 <script src="tw-newsale.js?v=20261105b"></script>
 <title>Тигервуд — Сделки</title>
 <!-- Замена GAS-панелей хаба DealsPanel (?page=deals) и Card (?page=card): список сделок + карточка сделки на одной странице.
@@ -484,11 +484,14 @@ function render(){
   var exportDeal=(d.market==='ru'||d.market==='eu'||d.market==='other')&&d.clientType!=='физлицо';
   // контракт на услуги (19.10.2026): «отгрузка» — акт выполненных работ, выписывается на странице счёта
   var svcInv=(d.invoices||[]).filter(function(v){ return v.services && !/аннул/.test(v.status||''); });
-  if(svcInv.length){ el('s_ship').querySelector('.h').textContent='📝 Акт выполненных работ';
+  // что показывать — ТОЛЬКО по договору-основанию сделки (17.11.2026): переработка → акт и сырьё клиента, накладных нет; услуги → акт по счёту
+  var bk=(d.dealBasis&&d.dealBasis.kind)||'';
+  el('s_ship').style.display=bk==='processing'?'none':'';
+  if(bk==='services_eu'||svcInv.length){ el('s_ship').querySelector('.h').textContent='📝 Акт выполненных работ';
     el('wbBlock').innerHTML='<div class="sm">Услуги: вместо накладной — двуязычный акт по счёту. Выписывается на странице счёта: '+svcInv.map(function(v){ return '<a href="'+esc(pageUrl('invoice.html',{invoice:v.number}))+'">№ '+esc(v.number)+'</a>'; }).join(', ')+'</div>'; }
   else { el('s_ship').querySelector('.h').textContent=exportDeal?'🚚 Отгрузка — экспорт ('+(d.market==='ru'?'Россия':'Европа')+')':'🚚 Отгрузка — накладные';
   if(exportDeal) twShippingBlock(KEY, 'wbBlock'); else twWaybillBlock(KEY, 'wbBlock', null); }
-  if(window.twActBlock && d.clientType!=='физлицо') twActBlock('procBox', KEY);   // по договору на переработку: акт вместо накладной, возврат сырья клиента
+  if(window.twActBlock && bk==='processing') twActBlock('procBox', KEY); else { el('procBox').style.display='none'; el('procBox').innerHTML=''; }   // по договору на переработку: акт вместо накладной, возврат сырья клиента
 }
 function billUrl(){ return (DEAL&&DEAL.invoiceDraft)?euInvoiceUrl():pageUrl('bill.html','deal',KEY); }   // черновик счёта Европы живёт на invoice.html
 function euInvoiceUrl(){ var sp=new URLSearchParams(location.search); ['deal','lead','client','contract','framework'].forEach(function(x){ sp.delete(x); }); sp.set('invoice', (DEAL&&DEAL.invoiceDraft&&DEAL.invoiceDraft.key)||KEY); return 'invoice.html?'+sp.toString(); }
@@ -599,8 +602,18 @@ function attachSelected(){
 }
 
 /* ── документы сделки ── */
+/* договор-основание сделки (17.11.2026): одно место «по какому договору сделка» — от него накладные/акт, основание документов, долг. Менять — явно. */
+function basisRow(d){
+  var b=d.dealBasis; if(!b) return '';
+  var opts=b.options||[], cur=b.contract?b.contract.id:'';
+  var sel=opts.length?'<select id="basisSel" style="width:auto;max-width:min(100%,32em);flex:0 1 auto" onchange="basisSet(this.value)" title="по какому договору идёт сделка: от него — накладные или акт, основание в документах, долг">'
+    +'<option value="">'+(cur?'— без договора —':'— выберите договор —')+'</option>'+opts.map(function(o){ return '<option value="'+esc(o.id)+'"'+(o.id===cur?' selected':'')+'>'+esc(o.label+(o.via?' · '+o.via:''))+'</option>'; }).join('')+'</select>':'';
+  return '<div class="row" style="align-items:center;gap:var(--s-2);flex-wrap:wrap;margin-bottom:var(--s-2)"><span class="sm muted">Договор-основание:</span>'
+    +(cur?'<b>'+esc(b.label)+'</b>':opts.length?'<span class="pill warn">не выбран</span>':'<span class="sm">без договора (розница)</span>')+sel+'<span class="msg" id="basisMsg"></span></div>';
+}
+function basisSet(id){ run({vapi:'dealbasisset', deal:KEY, contract:id, why:'выбор в карточке сделки'}, 'Меняю договор-основание…', 'basisMsg').then(function(r){ if(r) reload(); else reload(); }); }
 function renderDealDocs(){
-  var d=DEAL, h='';
+  var d=DEAL, h='', hb=basisRow(d);
   if(d.basis){ var b=d.basis;   // рамочный договор клиента — основание счёта; подпись/отмена — в его карточке
     h+=twFileCard({ href:contractUrl(b), tag:twDocTag(b.type), title:b.type+' № '+b.number, meta:[b.date, 'договор клиента — основание счёта', b.validUntil?'до '+b.validUntil:''].filter(Boolean).join(' · '),
       pills:b.status?'<span class="pill">'+esc(b.status)+'</span>':'', acts:b.url?'<a href="'+esc(b.url)+'" target="_blank" rel="noopener">файл ↗</a>':'' }); }
@@ -624,7 +637,7 @@ function renderDealDocs(){
       acts:(!ci&&v.market!=='eu'&&v.market!=='other'?'<a href="'+esc(pageUrl('bill.html','invoice',v.number))+'" title="условия, позиции, переформировать">страница счёта</a>':'')+((live&&!ci)?'<a href="#" onclick="editInvoice('+n+');return false;">изменить</a>':''),
       del:live?'delDoc(\'invoice\','+JSON.stringify(String(v.number||''))+')':'', delTitle:'Отменить счёт' });
   });
-  el('deldocs').innerHTML=h||'<div class="sm">Пока нет договоров и счетов по сделке.</div>';
+  el('deldocs').innerHTML=hb+(h||'<div class="sm">Пока нет договоров и счетов по сделке.</div>');
   // прочие сформированные документы (чек / ТН / ТТН / счёт …); договоры — выше, из реестра договоров
   el('otherdocs').innerHTML='';
   get({vapi:'dealdocs', deal:KEY}).then(function(r){
