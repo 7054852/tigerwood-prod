@@ -64,8 +64,8 @@ function head(){
 }
 function props(){
   var rf=C.refs, links=[];
-  if(rf.deal) links.push('<a href="sales.html?deal='+encodeURIComponent(rf.deal.id)+'" target="_top">сделка '+esc(rf.deal.num)+'</a>');
-  if(rf.incoming) links.push('<a href="docs.html?file='+encodeURIComponent(rf.incoming.file)+'" target="_top">накладная поставщика № '+esc(rf.incoming.docNo)+' от '+esc(rf.incoming.date)+'</a>');
+  if(rf.deal) links.push('<a href="sales.html?deal='+encodeURIComponent(rf.deal.id)+'" target="_blank" rel="noopener">сделка '+esc(rf.deal.num)+'</a>');
+  if(rf.incoming) links.push('<a href="docs.html?doc='+encodeURIComponent(rf.incoming.file)+'" target="_blank" rel="noopener">накладная поставщика № '+esc(rf.incoming.docNo)+' от '+esc(rf.incoming.date)+'</a>');
   return '<div class="wbp"><div><div class="k">Получатель</div><div class="pv"><b>'+esc(C.recipient.name)+'</b>'+(C.recipient.unp?' · УНП '+esc(C.recipient.unp):'')+'</div></div>'
     +(C.recipient.address?'<div><div class="k">Адрес</div><div class="pv">'+esc(C.recipient.address)+'</div></div>':'')
     +'<div><div class="k">Основание</div><div class="pv">'+esc(C.basis||'—')+'</div></div>'
