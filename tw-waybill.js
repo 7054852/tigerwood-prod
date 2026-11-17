@@ -134,8 +134,8 @@ function twWbSend(dealKey, kind, payload, onDone){
    Сервер (wbclient) даёт остатки по всем открытым заказам клиента; окно раскладывает количество по строкам заказов — старые первыми;
    накладная оформляется от самого старого заказа, в который что-то едет, строки других заказов идут в ней же (payload.ship[].deal). */
 var TWWBC={};
-function twWaybillClient(cpKey, onDone){
-  get({vapi:'wbclient', cp:cpKey}).then(function(r){
+function twWaybillClient(cpKey, onDone, dealKey){   // dealKey — заказ, из которого открыли: накладная от него (17.11.2026)
+  get({vapi:'wbclient', cp:cpKey, deal:dealKey||''}).then(function(r){
     if(!r||!r.ok){ oops(errText(r)); return; }
     if(!r.host){ info('Отгружать нечего', '<div>По заказам <b>'+esc(r.name)+'</b> всё уже уехало по накладным.</div><div class="sm" style="margin-top:var(--s-2)">Заявки (ещё не заказ) сюда не входят — их сначала подтверждают.</div>'); return; }
     TWWBC={ r:r, done:onDone };
@@ -228,7 +228,7 @@ function twWbRender(){
   });
   var note=(r.options||[]).length===1&&r.options[0].note?'<span class="sm">'+esc(r.options[0].note)+'</span>':'';
   if(!(r.options||[]).length&&r.hint) note='<span class="sm warn">'+esc(r.hint)+'</span>';
-  if(r.cp&&(r.options||[]).some(function(o){ return o.blank; })) btns='<button class="sm" onclick="twWaybillClient(\''+esc(r.cp)+'\',twWbRefresh)" title="везём товар по нескольким заказам клиента — впишите количество, по заказам разложится само (старые первыми)">🚚 Накладная клиенту — по всем заказам</button>'+btns;
+  if(r.cp&&(r.options||[]).some(function(o){ return o.blank; })) btns='<button class="sm" onclick="twWaybillClient(\''+esc(r.cp)+'\',twWbRefresh,TWWBB.deal)" title="везём товар по нескольким заказам клиента — впишите количество, по заказам разложится само (старые первыми)">🚚 Накладная клиенту — по всем заказам</button>'+btns;
   h+='<div class="row" style="margin-top:var(--s-2);align-items:center">'+btns+resv+note+'</div><div class="msg" id="twwbmsg"></div>';
   TWWBB.box.innerHTML=h;
 }
