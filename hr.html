@@ -501,8 +501,11 @@ function actFill(){ var ym=$('f_aym').value; if(!ym){ alert('Выберите м
   api({vapi:'hractfill',emp:CARD.emp.id,ym:ym}).then(function(r){ if(!r||!r.ok){ alert((r&&r.error)||'ошибка'); return; }
     $('f_asum').value=r.sum.toFixed(2); var p=$('f_apay'); p.value=r.pay.toFixed(2); delete p.dataset.man;
     if(!val('date')) $('f_date').value=r.date;
-    $('f_ainfo').textContent='нарядов: '+r.lines+(r.outside?' · вне договора подряда: '+r.outside:'')+' · к выплате = сумма × 0,86'; }); }
-function actAutoPay(){ var p=$('f_apay'); if(p&&!p.dataset.man){ var s=pnum($('f_asum').value); p.value=s?(Math.round(s*86)/100).toFixed(2):''; } }
+    CARD._actK=r.k;
+    $('f_ainfo').textContent='нарядов: '+r.lines+(r.outside?' · вне договора подряда: '+r.outside:'')+' · к выплате = сумма × '+(r.k===1?'1 (НПД — налог платит сам)':'0,86'); }); }
+// доля «к выплате»: из сервера (вид договора на дату — одно правило kindOn), до заполнения — по типу сотрудника: НПД 1, подряд 0,86
+function actK(){ return (CARD&&CARD._actK)||(CARD&&CARD.emp&&CARD.emp.type==='нпд'?1:0.86); }
+function actAutoPay(){ var p=$('f_apay'); if(p&&!p.dataset.man){ var s=pnum($('f_asum').value); p.value=s?(Math.round(s*actK()*100)/100).toFixed(2):''; } }
 // сменили тип на «акт» — перерисовать карточку, чтобы появились поля суммы и оплаты
 function edocTypeChange(){ var v=val('type'); if(v==='__new__') return;
   var d=JSON.parse(JSON.stringify(EDOCDRAFT||{})); d.type=v; d.con=val('con'); d.num=val('num'); d.date=val('date'); d.note=val('note'); edocForm(d); }
