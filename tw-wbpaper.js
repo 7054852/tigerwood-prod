@@ -163,7 +163,7 @@ function twpSave(){
     var no=r.newOrder;
     info('✅ Накладная записана', '<div><b>'+esc(data.kind+' '+(r.blank||''))+'</b>'+(r.number?' · '+esc(r.number):'')+' от '+esc(data.date)+'.</div>'
       +(no?'<div style="margin-top:var(--s-2)">Создан заказ <b>'+esc(no.num)+'</b> «со склада» и счёт <b>№ '+esc(no.invoice)+'</b>'+(no.invoiceUrl?' <a href="'+esc(no.invoiceUrl)+'" target="_blank" rel="noopener">счёт ↗</a>':'')+'.</div>':'')
-      +'<div class="sm" style="margin-top:var(--s-2)">'+(pu==='sale'?'Отгрузка по заказам и долг клиента учтены'+(extra.length?', сверх заказа — отмечено в сделке':'')+', бланк — в книге.':'Запись и бланк — в реестре накладных.')+(r.url?' <a href="'+esc(r.url)+'" target="_blank" rel="noopener">Скан ↗</a>':'')+'</div>');
+      +'<div class="sm" style="margin-top:var(--s-2)">'+(pu==='sale'?'Отгрузка по заказам и долг клиента учтены'+(extra.length?', сверх заказа — отмечено в сделке':'')+', бланк — в книге.':pu==='supplier_return'?'Долг поставщику уменьшен на '+money(r.amount)+', количество материала — на возвращённое. Запись и бланк — в реестре накладных.':'Запись и бланк — в реестре накладных.')+(r.url?' <a href="'+esc(r.url)+'" target="_blank" rel="noopener">Скан ↗</a>':'')+'</div>'+(r.warn?'<div class="note warn" style="margin-top:var(--s-2)"><div>⚠ '+esc(r.warn)+'</div></div>':''));
     if(TWP.onDone) TWP.onDone(r);
   });
   return false;
