@@ -167,9 +167,9 @@ function twpSave(){
   var h=TWP.head, pu=TWP.purpose, lines;
   var extra=[], host='';
   if(pu==='sale'&&twpHost()==='new'){ lines=[]; host='new'; TWP.lines.forEach(function(p,i){ var a=(TWP.ctx.alloc||[])[i]||{}; extra.push({name:p.name, sku:a.sku||'', unit:p.unit, qty:twpN(p.qty), price:p.up, sum:twpN(p.sum)}); }); }
-  else if(pu==='sale'){ lines=[]; host=twpHost(); (TWP.ctx.alloc||[]).forEach(function(a,i){ var got=0, p=TWP.lines[i]||{}; (a.take||[]).forEach(function(t){ if(t.id&&twpN(t.qty)>0){ lines.push({id:t.id, qty:twpN(t.qty)}); got+=twpN(t.qty); } });
+  else if(pu==='sale'){ lines=[]; host=twpHost(); (TWP.ctx.alloc||[]).forEach(function(a,i){ var got=0, p=TWP.lines[i]||{}; (a.take||[]).forEach(function(t){ if(t.id&&twpN(t.qty)>0){ lines.push({id:t.id, qty:twpN(t.qty), price:p.up}); got+=twpN(t.qty); } });
     var sh=Math.round((twpN(p.qty)-got)*1000)/1000; if(sh>0) extra.push({name:p.name, sku:a.sku||'', unit:p.unit, qty:sh, price:p.up, sum:Math.round(sh*p.up*100)/100}); }); }
-  else if(pu==='supplier_return') lines=TWP.lines.map(function(p){ return {lineId:p.lineId||'', qty:twpN(p.qty)}; });
+  else if(pu==='supplier_return') lines=TWP.lines.map(function(p){ return {lineId:p.lineId||'', qty:twpN(p.qty), price:p.up, name:p.name}; });
   else lines=TWP.lines.map(function(p){ return {name:p.name, unit:p.unit, qty:twpN(p.qty), price:p.up, places:p.places, mass:p.mass, srcLine:pu==='return'?p.srcLine:undefined}; });
   if(pu==='return'){ var ins=((TWP.ctx||{}).intakes||[]).filter(function(x){ return x.id===TWP.intake; })[0];
     var uv=ins?twpUsedVals(ins).used:{};

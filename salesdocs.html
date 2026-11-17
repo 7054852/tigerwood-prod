@@ -6,7 +6,8 @@
 <script src="tw-theme.js"></script>
 <script src="tw-config.js"></script>
 <script src="tw-waybill.js?v=20261116a"></script>
-<script src="tw-wbpaper.js?v=20261117b"></script>
+<script src="tw-wbpaper.js?v=20261117c"></script>
+<script src="tw-wbcard.js?v=20261117a"></script>
 <script src="tw-tolling.js?v=20261028b"></script>
 <script src="tw-newsale.js?v=20261105b"></script>
 <title>Тигервуд — Договоры, счета, накладные</title>
@@ -501,7 +502,8 @@ function loadRegistry(){
           +(x.status==='reserved'?'<button onclick="regUnreserve('+i+')">снять резерв</button>':'')
           +((x.status==='issued'||x.status==='signed')?'<button class="danger" onclick="regCancel('+i+')" title="Отменить накладную">✕</button>':'');
         if(x.status==='free') act='<span class="sm muted">выберите в окне накладной</span>';
-        return '<tr'+(x.status==='spoiled'?' class="sp"':'')+'>'
+        var go=x.docId&&(x.status==='issued'||x.status==='signed')&&x.kind!=='ЧЕК';
+        return '<tr'+(x.status==='spoiled'?' class="sp"':go?' class="go" onclick="regOpen(event,'+i+')" title="открыть карточку накладной: строки с НДС, документ и скан, изменить"':'')+'>'
           +'<td data-l="Бланк" style="white-space:nowrap"><b>'+esc((x.seria?x.seria+' ':'')+x.num)+'</b><span class="sub2">'+esc([x.kind, x.date].filter(Boolean).join(' · '))+'</span></td>'
           +'<td data-l="Клиент">'+esc(x.contra)+'</td><td data-l="Заказ">'+(x.dealId&&hasSec('deals')?'<a href="sales.html?deal='+encodeURIComponent(x.dealId)+'">'+esc(x.order||'сделка')+'</a>':esc(x.order))+'</td>'
           +'<td data-l="Договор" class="sm" title="'+esc(x.dogovor)+'"><span style="display:block;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(x.dogovor)+'</span></td><td data-l="Сумма" class="num">'+sum+'</td><td data-l="Оплата ЕРИП">'+eripPill(x.erip)+'</td>'
@@ -510,6 +512,9 @@ function loadRegistry(){
       }).join('')+'</tbody></table></div>';
   }).catch(function(e){ box.innerHTML='<span class="err">'+esc(netText(e))+'</span>'; });
 }
+// карточка накладной (17.11.2026): строки с НДС, наш документ и скан, «Изменить» под тем же бланком
+function regOpen(e,i){ var t=e&&e.target; while(t&&t.tagName!=='TR'){ if(t.tagName==='A'||t.tagName==='BUTTON'||t.tagName==='INPUT'||t.tagName==='SELECT') return; t=t.parentNode; }
+  twWbCard.open(REG_ROWS[i].docId, {get:get, post:post, onChange:function(){ loadRegistry(); }}); }
 // по Р-7 бланк не «освобождается»: отменённая накладная оставляет бланк испорченным, номер занят навсегда
 function regCancel(i){ var x=REG_ROWS[i], chk=x.kind==='ЧЕК';
   ask('Отменить '+(chk?'товарный чек':x.kind+' '+x.seria+' '+x.num)+'?', '<div>Документ уйдёт в корзину.'+(chk?'':' Бланк строгой отчётности станет испорченным и повторно не выдаётся.')+'</div>',
