@@ -1,4 +1,4 @@
-/* Оплата онлайн (05.10.2026): ссылки «Экспресс Платежей» ЕРИП / картой к договору физлица и «оплачено / остаток».
+/* Оплата (05.10.2026; 18.11.2026 — один блок для всех клиентов, оплаты с датами, срок отгрузки): ссылки «Экспресс Платежей» ЕРИП / картой к договору физлица и «оплачено / остаток».
    Один блок на карточку договора (contract.html — можно создавать ссылки) и карточку сделки (sales.html — смотреть, копировать, проверять).
    Ждёт от страницы: run, ask, info, esc, money, el, setm. twPay(boxId, pay, {contract, canCreate, onDone, noSummary}).
    pay.total / paid / rest — единый расчёт денег сделки (как «Деньги по договору»); pay.payable — сколько можно внести онлайн. */
@@ -8,13 +8,21 @@ function twPay(boxId, pay, opts){
   var box = el(boxId); if(!box) return;
   if(!pay){ box.innerHTML = ''; box.style.display = 'none'; return; }
   box.style.display = '';
-  var links = pay.links || [], o = TWPAY.opts, h = '<div class="h">💳 Оплата онлайн (ЕРИП / карта)</div>';
+  // 18.11.2026: один блок «Оплата» для всех; ссылки ЕРИП / карта — только физлицу; оплаты с датами и срок отгрузки — всем
+  var links = pay.links || [], o = TWPAY.opts, person = pay.person !== false, h = '<div class="h">💰 Оплата</div>';
   var payable = pay.payable == null ? pay.rest : pay.payable;
   if(pay.total > 0 && !o.noSummary){
     var inst = pay.dueByToday !== pay.total;
     h += '<div class="note ' + (pay.rest <= 0 ? 'ok' : (pay.overdue > 0 && inst ? 'warn' : '')) + '"><div>Оплачено <b>' + money(pay.paid) + '</b> из ' + money(pay.total) + ' руб. · остаток <b>' + money(pay.rest) + '</b>'
       + (inst ? ' · по графику на сегодня ' + money(pay.dueByToday) + (pay.overdue > 0 ? ' — <b>просрочено ' + money(pay.overdue) + '</b>' : '') : '') + '</div></div>';
   }
+  var pm = pay.payments || [];
+  if(pm.length) h += '<div class="sm" style="margin:var(--s-1) 0">' + pm.map(function(p){ return esc(p.date || 'без даты') + ' — <b>' + money(p.amount) + '</b>' + (p.how ? ' · ' + esc(p.how) : '') + (p.pending ? ' <span class="muted">(ещё не зачислено)</span>' : ''); }).join('<br>') + '</div>';
+  else if(pay.total > 0) h += '<div class="sm muted">Оплат пока нет.</div>';
+  var sh = pay.ship;
+  if(sh) h += '<div class="sm">🚚 Отгрузка: ' + (sh.delivery ? 'доставка клиенту <b>' + esc(sh.delivery) + '</b>' : sh.pickup ? 'забор со склада <b>' + esc(sh.pickup) + '</b>'
+    : sh.transferDays ? 'дата не назначена · срок передачи по договору — ' + esc(sh.transferDays) + ' раб. дн.' : '<span class="warn">дата не назначена</span>') + '</div>';
+  if(!person){ h += '<div class="msg" id="twpaymsg"></div>'; box.innerHTML = h; return; }   // юрлицо: платит по счёту, ссылок ЕРИП / карты нет
   if(pay.rest > 0 && payable < pay.rest) h += '<div class="sm">Онлайн — только предоплата: ' + (payable > 0 ? 'осталось внести <b>' + money(payable) + '</b> руб.' : 'внесена') + '; остаток клиент платит при получении.</div>';
   h += links.length ? links.map(function(l){
     var cls = l.status === 'paid' ? 'ok' : l.status === 'partial' ? 'info' : (l.status === 'expired' || l.status === 'cancelled') ? 'muted' : 'warn';
@@ -24,7 +32,7 @@ function twPay(boxId, pay, opts){
       + '<span class="pill ' + cls + '">' + esc(l.statusRu) + '</span>'
       + '<span class="sp">' + (live && l.url ? '<button class="sec sm" onclick="twPayCopy(\'' + esc(l.url) + '\')">📋 Скопировать ссылку</button> <a href="' + esc(l.url) + '" target="_blank" rel="noopener">открыть ↗</a>' : '')
       + (o.canCreate && l.status === 'active' && !l.paid ? ' <button class="gho sm" onclick="twPayCancel(\'' + esc(l.id) + '\')">отменить</button>' : '') + '</span></div>';
-  }).join('') : '<div class="sm">Ссылок на оплату нет.</div>';
+  }).join('') : '';
   h += '<div class="row" style="margin-top:var(--s-2)">';
   if(o.canCreate && payable > 0){
     h += '<button class="sec sm" onclick="twPayNew(\'erip\')">＋ Ссылка ЕРИП</button><button class="sec sm" onclick="twPayNew(\'card\')">＋ Ссылка на оплату картой</button>';
