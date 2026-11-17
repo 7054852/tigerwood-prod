@@ -27,7 +27,12 @@ function css(){
     +'#twwbc .lbl{ font:var(--t-label); color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin:var(--s-4) 0 var(--s-2); }'
     +'#twwbc table.tbl td.num, #twwbc table.tbl th.num{ text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }'
     +'#twwbc table.tbl tfoot td{ font-weight:600; border-top:1px solid var(--line); }'
-    +'#twwbc input.q{ width:6.5em; } #twwbc input.p{ width:7.5em; } #twwbc input.w{ width:100%; min-width:12em; }'
+    +'#twwbc .ef{ display:grid; grid-template-columns:11em minmax(0,1fr); gap:var(--s-3); margin-bottom:var(--s-3); } #twwbc .ef.one{ grid-template-columns:11em; }'
+    +'#twwbc label.f{ display:flex; flex-direction:column; gap:var(--s-1); min-width:0; } #twwbc label.f > span{ font:var(--t-small); color:var(--muted); } #twwbc label.f.wide{ margin-bottom:var(--s-3); }'
+    +'#twwbc label.f input, #twwbc label.f select{ width:100%; box-sizing:border-box; }'
+    +'#twwbc table.et td{ vertical-align:middle; } #twwbc table.et input, #twwbc table.et select{ width:100%; box-sizing:border-box; margin:0; }'
+    +'#twwbc table.et td.num input{ text-align:right; font-variant-numeric:tabular-nums; -moz-appearance:textfield; appearance:textfield; } #twwbc table.et td.num input::-webkit-inner-spin-button, #twwbc table.et td.num input::-webkit-outer-spin-button{ -webkit-appearance:none; margin:0; } #twwbc table.et .a{ width:3.6em; text-align:right; } #twwbc table.et th, #twwbc table.et th.num{ white-space:normal; vertical-align:bottom; } #twwbc table.et .a button{ margin:0; }'
+    +'@media (min-width:641px){ #twwbc table.et{ table-layout:fixed; width:100%; } #twwbc table.et .num{ width:9.5em; } #twwbc table.et .u{ width:6em; } #twwbc table.et .k{ width:13em; } #twwbc table.et td.num .sm{ display:block; } }'
     +'#twwbc .ft{ position:sticky; bottom:0; background:var(--card); padding:var(--s-3) 0 0; margin-top:var(--s-4); border-top:1px solid var(--line); display:flex; gap:var(--s-2); flex-wrap:wrap; align-items:center; }'
     +'#twwbc .ft .sp{ flex:1; }'
     +'@media (max-width:900px){ #twwbc .dlg.wbc{ grid-template-columns:minmax(0,1fr); grid-template-rows:34vh minmax(0,1fr); height:96vh; max-height:96vh; } #twwbc .wbc.one{ grid-template-rows:minmax(0,1fr); } #twwbc .ft{ position:static; } }';
@@ -100,40 +105,40 @@ function set(path, v){ var p=path.split('.'), o=EDIT; for(var i=0;i<p.length-1;i
 function del(list, i){ EDIT[list].splice(i,1); draw(); }
 function editForm(){
   var e=EDIT, h='<div class="lbl">Изменить накладную — тот же бланк '+esc(C.blank)+'</div>'
-    +'<div style="display:flex;gap:var(--s-3);flex-wrap:wrap;margin-bottom:var(--s-3)"><label><span class="sm">Дата</span>'+inp('date', e.date, 'p')+'</label>'
-    +(e.mode!=='sale'?'<label style="flex:1;min-width:16em"><span class="sm">Основание</span>'+inp('basis', e.basis, 'w')+'</label>':'')+'</div>';
+    +'<div class="ef'+(e.mode==='sale'?' one':'')+'"><label class="f"><span>Дата</span>'+inp('date', e.date, 'd')+'</label>'
+    +(e.mode!=='sale'?'<label class="f"><span>Основание</span>'+inp('basis', e.basis, 'w')+'</label>':'')+'</div>';
   if(e.mode==='sale'){
-    h+='<div class="tbl-wrap"><table class="tbl sm mob"><thead><tr><th>Строка заказа</th><th class="num">Везём</th><th class="num">Цена с НДС за ед.</th><th></th></tr></thead><tbody>'
+    h+='<div class="tbl-wrap"><table class="tbl sm mob et"><thead><tr><th>Строка заказа</th><th class="num">Везём</th><th class="num">Цена с НДС за ед.</th><th class="a"></th></tr></thead><tbody>'
       +e.lines.map(function(l,i){ return '<tr><td data-l="Строка">'+esc(l.name)+(l.num?' <span class="sm muted">'+esc(l.num)+'</span>':'')+'</td><td data-l="Везём" class="num">'+inp('lines.'+i+'.qty', l.qty, 'q', 'number')+' <span class="sm muted">из '+q3(l.max)+'</span></td>'
-        +'<td data-l="Цена" class="num">'+inp('lines.'+i+'.price', l.price, 'p', 'number')+'</td><td><button class="sec sm" onclick="twWbCard.del(\'lines\','+i+')" title="убрать строку">✕</button></td></tr>'; }).join('')
+        +'<td data-l="Цена" class="num">'+inp('lines.'+i+'.price', l.price, 'p', 'number')+'</td><td class="a"><button class="sec sm ic" onclick="twWbCard.del(\'lines\','+i+')" title="убрать строку">✕</button></td></tr>'; }).join('')
       +'</tbody></table></div>'
       +((e.open||[]).length?'<div style="margin-top:var(--s-2)"><select onchange="twWbCard.addOpen(this.value);this.value=\'\'"><option value="">＋ добавить строку заказа…</option>'+e.open.map(function(o,i){ return '<option value="'+i+'">'+esc(o.num+' · '+o.name+' (осталось '+q3(o.max)+')')+'</option>'; }).join('')+'</select></div>':'')
       +'<div class="lbl">Сверх заказа</div>'+extraTable();
   } else if(e.mode==='supplier_return'){
     var cur=(e.docs||[]).filter(function(d){ return d.id===e.doc; })[0]||(e.docs||[])[0]||{lines:[]};
     if(!e.doc&&cur.id) e.doc=cur.id;
-    h+='<label><span class="sm">Входящая накладная поставщика, по которой возвращаем</span><select onchange="twWbCard.set(\'doc\',this.value)">'+(e.docs||[]).map(function(d){ return '<option value="'+esc(d.id)+'"'+(d.id===e.doc?' selected':'')+'>'+esc('№ '+d.docNo+' от '+d.date+' · '+m2(d.sum))+'</option>'; }).join('')+'</select></label>'
-      +'<div class="tbl-wrap" style="margin-top:var(--s-2)"><table class="tbl sm mob"><thead><tr><th>Строка его накладной</th><th class="num">Кол-во</th><th class="num">Цена с НДС за ед.</th><th></th></tr></thead><tbody>'
+    h+='<label class="f wide"><span>Входящая накладная поставщика, по которой возвращаем</span><select onchange="twWbCard.set(\'doc\',this.value)">'+(e.docs||[]).map(function(d){ return '<option value="'+esc(d.id)+'"'+(d.id===e.doc?' selected':'')+'>'+esc('№ '+d.docNo+' от '+d.date+' · '+m2(d.sum))+'</option>'; }).join('')+'</select></label>'
+      +'<div class="tbl-wrap" style="margin-top:var(--s-2)"><table class="tbl sm mob et"><thead><tr><th>Строка его накладной</th><th class="num">Кол-во</th><th class="num">Цена с НДС за ед.</th><th class="a"></th></tr></thead><tbody>'
       +e.lines.map(function(l,i){ return '<tr><td data-l="Строка"><select onchange="twWbCard.set(\'lines.'+i+'.lineId\',this.value)"><option value="">— выберите —</option>'
         +cur.lines.map(function(x){ return '<option value="'+esc(x.id)+'"'+(x.id===l.lineId?' selected':'')+'>'+esc(x.name+' · можно '+q3(x.left)+' '+x.unit+' · '+m2(x.price))+'</option>'; }).join('')+'</select></td>'
-        +'<td data-l="Кол-во" class="num">'+inp('lines.'+i+'.qty', l.qty, 'q', 'number')+'</td><td data-l="Цена" class="num">'+inp('lines.'+i+'.price', l.price, 'p', 'number')+'</td><td><button class="sec sm" onclick="twWbCard.del(\'lines\','+i+')">✕</button></td></tr>'; }).join('')
+        +'<td data-l="Кол-во" class="num">'+inp('lines.'+i+'.qty', l.qty, 'q', 'number')+'</td><td data-l="Цена" class="num">'+inp('lines.'+i+'.price', l.price, 'p', 'number')+'</td><td class="a"><button class="sec sm ic" onclick="twWbCard.del(\'lines\','+i+')">✕</button></td></tr>'; }).join('')
       +'</tbody></table></div><button class="sec sm" style="margin-top:var(--s-2)" onclick="twWbCard.add()">＋ строка</button>'
       +'<div class="sm muted" style="margin-top:var(--s-2)">Цена пустая — возьмётся из накладной поставщика. Долг поставщику и количество материала пересчитаются.</div>';
   } else {
-    h+='<div class="tbl-wrap"><table class="tbl sm mob"><thead><tr><th>Наименование</th><th>Ед.</th><th class="num">Кол-во</th><th class="num">Цена за ед.</th>'+(e.mode==='return'?'<th>Что это</th>':'')+'<th></th></tr></thead><tbody>'
+    h+='<div class="tbl-wrap"><table class="tbl sm mob et"><thead><tr><th>Наименование</th><th class="u">Ед.</th><th class="num">Кол-во</th><th class="num">Цена за ед.</th>'+(e.mode==='return'?'<th class="k">Что это</th>':'')+'<th class="a"></th></tr></thead><tbody>'
       +e.lines.map(function(l,i){ var used=l.kind==='used';
-        return '<tr><td data-l="Наименование">'+inp('lines.'+i+'.name', l.name, 'w')+'</td><td data-l="Ед.">'+inp('lines.'+i+'.unit', l.unit, 'q')+'</td><td data-l="Кол-во" class="num">'+inp('lines.'+i+'.qty', l.qty, 'q', 'number')+'</td>'
+        return '<tr><td data-l="Наименование">'+inp('lines.'+i+'.name', l.name, 'w')+'</td><td data-l="Ед." class="u">'+inp('lines.'+i+'.unit', l.unit, 'q')+'</td><td data-l="Кол-во" class="num">'+inp('lines.'+i+'.qty', l.qty, 'q', 'number')+'</td>'
           +'<td data-l="Цена" class="num">'+(used?'<span class="sm muted">не печатается</span>':inp('lines.'+i+'.price', l.price, 'p', 'number'))+'</td>'
-          +(e.mode==='return'?'<td data-l="Что это"><select onchange="twWbCard.kind('+i+',this.value)">'+'<option value="p"'+(!used&&l.srcLine==null?' selected':'')+'>продукция</option>'
+          +(e.mode==='return'?'<td data-l="Что это" class="k"><select onchange="twWbCard.kind('+i+',this.value)">'+'<option value="p"'+(!used&&l.srcLine==null?' selected':'')+'>продукция</option>'
             +(e.intake||[]).map(function(x){ return '<option value="r'+x.k+'"'+(!used&&l.srcLine===x.k?' selected':'')+'>остаток сырья: '+esc(x.name)+'</option><option value="u'+x.k+'"'+(used&&l.srcLine===x.k?' selected':'')+'>израсходовано: '+esc(x.name)+'</option>'; }).join('')+'</select></td>':'')
-          +'<td><button class="sec sm" onclick="twWbCard.del(\'lines\','+i+')">✕</button></td></tr>'; }).join('')
+          +'<td class="a"><button class="sec sm ic" onclick="twWbCard.del(\'lines\','+i+')">✕</button></td></tr>'; }).join('')
       +'</tbody></table></div><button class="sec sm" style="margin-top:var(--s-2)" onclick="twWbCard.add()">＋ строка</button>';
   }
   return h;
 }
 function extraTable(){
-  return '<div class="tbl-wrap"><table class="tbl sm mob"><thead><tr><th>Наименование</th><th>Ед.</th><th class="num">Кол-во</th><th class="num">Цена с НДС за ед.</th><th></th></tr></thead><tbody>'
-    +EDIT.extra.map(function(x,i){ return '<tr><td data-l="Наименование">'+inp('extra.'+i+'.name', x.name, 'w')+'</td><td data-l="Ед.">'+inp('extra.'+i+'.unit', x.unit, 'q')+'</td><td data-l="Кол-во" class="num">'+inp('extra.'+i+'.qty', x.qty, 'q', 'number')+'</td><td data-l="Цена" class="num">'+inp('extra.'+i+'.price', x.price, 'p', 'number')+'</td><td><button class="sec sm" onclick="twWbCard.del(\'extra\','+i+')">✕</button></td></tr>'; }).join('')
+  return '<div class="tbl-wrap"><table class="tbl sm mob et"><thead><tr><th>Наименование</th><th class="u">Ед.</th><th class="num">Кол-во</th><th class="num">Цена с НДС за ед.</th><th class="a"></th></tr></thead><tbody>'
+    +EDIT.extra.map(function(x,i){ return '<tr><td data-l="Наименование">'+inp('extra.'+i+'.name', x.name, 'w')+'</td><td data-l="Ед." class="u">'+inp('extra.'+i+'.unit', x.unit, 'q')+'</td><td data-l="Кол-во" class="num">'+inp('extra.'+i+'.qty', x.qty, 'q', 'number')+'</td><td data-l="Цена" class="num">'+inp('extra.'+i+'.price', x.price, 'p', 'number')+'</td><td class="a"><button class="sec sm ic" onclick="twWbCard.del(\'extra\','+i+')">✕</button></td></tr>'; }).join('')
     +'</tbody></table></div><button class="sec sm" style="margin-top:var(--s-2)" onclick="twWbCard.addX()">＋ строка сверх заказа</button>';
 }
 function addX(){ EDIT.extra.push({name:'', unit:'шт.', qty:1, price:0}); draw(); }
