@@ -134,7 +134,23 @@ function twpReturn(ctx){
   return '<div style="display:flex;gap:var(--s-3);flex-wrap:wrap;margin-bottom:var(--s-2)"><label><span class="sm">Приём сырья</span><select onchange="TWP.intake=this.value;TWP.lines.forEach(function(l){ l.srcLine=-1; });twpRedraw()">'+ins.map(function(x){ return '<option value="'+esc(x.id)+'"'+(x.id===cur.id?' selected':'')+'>'+esc(x.number+' · накладная '+x.docNo+' от '+x.date)+'</option>'; }).join('')+'</select></label>'
     +'<label><span class="sm">Сделка (работы)</span><select id="twpdeal"><option value="">—</option>'+(ctx.deals||[]).map(function(d){ return '<option value="'+esc(d.id)+'">'+esc(d.num)+'</option>'; }).join('')+'</select></label></div>'
     +'<div class="tbl-wrap"><table class="tbl sm mob"><thead><tr><th>Строка</th><th>Кол-во</th><th>Цена</th><th>Что это</th></tr></thead><tbody>'
-    +TWP.lines.map(function(p,i){ var k=p.srcLine!=null?p.srcLine:(map[i]!=null?map[i]:-1); p.srcLine=k; return twpLineInputs(i,p,'<td data-l="Что это"><select onchange="TWP.lines['+i+'].srcLine=Number(this.value)">'+opts(k)+'</select></td>'); }).join('')+'</tbody></table></div>';
+    +TWP.lines.map(function(p,i){ var k=p.srcLine!=null?p.srcLine:(map[i]!=null?map[i]:-1); p.srcLine=k; return twpLineInputs(i,p,'<td data-l="Что это"><select onchange="TWP.lines['+i+'].srcLine=Number(this.value);twpRedraw()">'+opts(k)+'</select></td>'); }).join('')+'</tbody></table></div>'
+    +twpUsed(cur);
+}
+function twpUsedVals(cur){   // ручная правка «израсходовано» живёт, пока не сменили приём; иначе — на руках − вернули остатком
+  if(TWP.usedFor!==cur.id){ TWP.usedEdit={}; TWP.usedFor=cur.id; }
+  var back={}, used={}; cur.lines.forEach(function(l){ var b=0; TWP.lines.forEach(function(p){ if(p.srcLine===l.k) b+=twpN(p.qty); }); back[l.k]=b;
+    used[l.k]=TWP.usedEdit[l.k]!=null?TWP.usedEdit[l.k]:Math.max(0, Math.round((l.left-b)*1000)/1000); });
+  return {back:back, used:used};
+}
+/* ДВ: сырьё, ушедшее в продукцию, в накладной не печатается — но закрывает остаток приёма. По умолчанию: на руках − вернули остатком. */
+function twpUsed(cur){
+  var u=twpUsedVals(cur);
+  var rows=cur.lines.map(function(l){ var back=u.back[l.k], v=u.used[l.k];
+    return '<tr><td data-l="Сырьё">'+esc(l.name)+'</td><td data-l="На руках">'+twpQ(l.left)+' '+esc(l.unit||'')+'</td><td data-l="Вернули остатком">'+twpQ(back)+'</td>'
+      +'<td data-l="Израсходовано"><input type="number" step="any" min="0" value="'+v+'" style="width:6em" onchange="TWP.usedEdit['+l.k+']=twpN(this.value)"> '+esc(l.unit||'')+'</td></tr>'; }).join('');
+  return '<div class="sm muted" style="margin:var(--s-3) 0 var(--s-1)">Сырьё приёма: израсходованное на продукцию в накладной не печатается, но снимается с остатка на руках. Всё на руках = вернули + израсходовали — приём закроется.</div>'
+    +'<div class="tbl-wrap"><table class="tbl sm mob"><thead><tr><th>Сырьё</th><th>На руках</th><th>Вернули остатком</th><th>Израсходовано</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
 }
 function twpSupRet(ctx){
   var docs=ctx.docs||[]; if(!docs.length) return '<div class="note warn"><div>У поставщика нет разнесённых входящих накладных, по которым есть что вернуть.</div></div>';
@@ -155,6 +171,9 @@ function twpSave(){
     var sh=Math.round((twpN(p.qty)-got)*1000)/1000; if(sh>0) extra.push({name:p.name, sku:a.sku||'', unit:p.unit, qty:sh, price:p.up, sum:Math.round(sh*p.up*100)/100}); }); }
   else if(pu==='supplier_return') lines=TWP.lines.map(function(p){ return {lineId:p.lineId||'', qty:twpN(p.qty)}; });
   else lines=TWP.lines.map(function(p){ return {name:p.name, unit:p.unit, qty:twpN(p.qty), price:p.up, places:p.places, mass:p.mass, srcLine:pu==='return'?p.srcLine:undefined}; });
+  if(pu==='return'){ var ins=((TWP.ctx||{}).intakes||[]).filter(function(x){ return x.id===TWP.intake; })[0];
+    var uv=ins?twpUsedVals(ins).used:{};
+    if(ins) ins.lines.forEach(function(l){ var u=twpN(uv[l.k]); if(u>0) lines.push({kind:'used', srcLine:l.k, name:l.name, unit:l.unit, qty:u, price:0}); }); }
   var data={purpose:pu, kind:val('twpk'), series:val('twps'), number:val('twpn'), date:val('twpd'), cp:TWP.cp?TWP.cp.id:'', basis:val('twpb'), address:val('twpa'), signed:!!el('twpsg').checked,
     total:h.total, transport:{car:h.car||'', driver:h.driver||'', waybillDoc:h.waybillDoc||''}, recognized:{head:h, lines:TWP.lines}, lines:lines,
     intakeId:TWP.intake||'', dealId:val('twpdeal'), doc:TWP.doc||'', host:host, extra:extra};
