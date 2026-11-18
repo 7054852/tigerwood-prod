@@ -10,10 +10,11 @@ function twPay(boxId, pay, opts){
   box.style.display = '';
   // 18.11.2026: один блок «Оплата» для всех; ссылки ЕРИП / карта — только физлицу; оплаты с датами и срок отгрузки — всем
   var links = pay.links || [], o = TWPAY.opts, person = pay.person !== false, h = '<div class="h">💰 Оплата</div>';
+  var cur = ({ BYN: 'руб.', RUB: 'рос. руб.', EUR: 'евро', USD: 'долл.' })[pay.currency || 'BYN'] || esc(pay.currency);   // валюта сделки: у юрлиц РФ и Европы — не «руб.»
   var payable = pay.payable == null ? pay.rest : pay.payable;
   if(pay.total > 0 && !o.noSummary){
     var inst = pay.dueByToday !== pay.total;
-    h += '<div class="note ' + (pay.rest <= 0 ? 'ok' : (pay.overdue > 0 && inst ? 'warn' : '')) + '"><div>Оплачено <b>' + money(pay.paid) + '</b> из ' + money(pay.total) + ' руб. · остаток <b>' + money(pay.rest) + '</b>'
+    h += '<div class="note ' + (pay.rest <= 0 ? 'ok' : (pay.overdue > 0 && inst ? 'warn' : '')) + '"><div>Оплачено <b>' + money(pay.paid) + '</b> из ' + money(pay.total) + ' ' + cur + ' · остаток <b>' + money(pay.rest) + '</b>'
       + (inst ? ' · по графику на сегодня ' + money(pay.dueByToday) + (pay.overdue > 0 ? ' — <b>просрочено ' + money(pay.overdue) + '</b>' : '') : '') + '</div></div>';
   }
   var pm = pay.payments || [];
