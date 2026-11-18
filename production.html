@@ -1001,6 +1001,10 @@ function renderList(){
     if(b.overflow) flags.push('<span class="pill bad" title="есть операции, сделанные сверх плана">⚠ перевыполнено</span>');
     if(b.outRub) flags.push('<span class="pill mute" title="'+OUT_T+'">у подрядчика '+money(b.outRub)+' р</span>');
     if((b.pendRub||0)+(b.qcRub||0)>0) flags.push('<span class="pill mute" title="подано, но ещё не принято мастером / ОТК">на проверке '+money((b.pendRub||0)+(b.qcRub||0))+' р</span>');
+    // отгружен, но наряды ещё доезжают (18.11.2026): принимается работа, сделанная до дня отгрузки; «осталось труда» = ждём нарядов
+    if(b.late) flags.push('<span class="pill info" title="заказ отгружен, но наряды за работу до дня отгрузки ещё принимаются; после срока приём закроется сам">📥 наряды за работу до '+esc(b.late.ship)+' — приём до '+esc(b.late.until)+'</span>'
+      +(b.leftRub>0?'<span class="pill mute" title="отгрузили, а наряды на эту работу ещё не поданы или не приняты">ждём нарядов на '+money(b.leftRub)+' р</span>':'')
+      +' <a href="#" class="small" onclick="event.stopPropagation();lateClose(\''+b.id+'\',\''+esc(b.num)+'\');return false">закрыть приём</a>');
     if(b.opsCount&&b.modelsTotal&&!its.length) flags.push('<span class="pill warn">позиций нет</span>');
     return '<div class="bcard click" onclick="openOrder(\''+b.id+'\')">'
       +'<div class="bhead">'
@@ -2499,6 +2503,11 @@ function saveDone(id,sku,mod,v){
   });
 }
 /* окно вместо prompt/confirm (05.11.2026: в Telegram на части телефонов они не показываются): .dlg-bg/.dlg темы, Enter = OK */
+function lateClose(id, num){
+  askDlg('Закрыть приём нарядов по '+num+'?', '<div class="small">После этого работу на этот заказ подать будет нельзя — только на текущий заказ или «вне заказа». Готовность заказа зафиксируется по принятым нарядам.</div>', function(ov, close){
+    api({vapi:'latework', batch:id, close:1}).then(function(r){ if(!r||!r.ok){ var m=document.getElementById('pdaskM'); if(m) m.textContent=(r&&r.error)||'сервер не ответил'; return; } close(); load(true); });
+    return false; }, 'Закрыть приём');
+}
 function askDlg(title, body, onOk, okText){
   var old=document.getElementById('pdask'); if(old) old.parentNode.removeChild(old);
   var ov=document.createElement('div'); ov.className='mvov dlg-bg'; ov.id='pdask'; ov.setAttribute('role','dialog'); ov.setAttribute('aria-modal','true');
