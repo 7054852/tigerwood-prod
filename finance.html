@@ -348,9 +348,15 @@ function dueBadge(w, mode){
   if(mode==='wait'){ var k=dDiff(w, B.today); return '<span class="due w">'+(k<=0?'сегодня':k===1?'завтра':'через '+dWord(k))+'</span>'; }
   return '';
 }
+/* «ждём» = долг (18.11.2026): сумму ожидаемой строки сделки сервер берёт из долга сделки; plan — сколько записано в графике,
+   transit — клиент уже оплатил (ЕРИП / по ссылке), банк ещё не зачислил */
+function debtNote(r){ var o=[];
+  if(r.plan!=null&&Math.abs(r.plan-r.sum)>0.004) o.push('<span title="сумма строки берётся из долга по заказу, а не из графика">в графике '+money(r.plan)+' — долг по заказу '+money(r.sum)+'</span>');
+  if(r.transit>0.004) o.push('<span title="клиент оплатил, деньги ещё не на счёте">'+money(r.transit)+' уже оплачено — банк ещё не зачислил</span>');
+  return o.length?'<div class="meta shipn">'+o.join(' · ')+'</div>':''; }
 function incItem(r){
   return '<div class="wi" onclick="incOpen(\''+r.id+'\')"><div class="who" title="'+esc(r.client)+'">'+esc(r.client||'—')+'</div><div class="sum">'+money(r.sum)+curSfx(r)+'</div>'
-    +'<div class="meta">'+walletChip(r.wallet)+'<span class="tx">'+[fxNote(r), r.zakaz?'<b>'+esc(r.zakaz)+'</b>':'', invOf(r), r.ptype&&r.ptype!=='Безналичный'?esc(r.ptype):''].filter(Boolean).join(' · ')+'</span></div>'+shipNote(r)+'</div>';
+    +'<div class="meta">'+walletChip(r.wallet)+'<span class="tx">'+[fxNote(r), r.zakaz?'<b>'+esc(r.zakaz)+'</b>':'', invOf(r), r.ptype&&r.ptype!=='Безналичный'?esc(r.ptype):''].filter(Boolean).join(' · ')+'</span></div>'+shipNote(r)+debtNote(r)+'</div>';
 }
 /* остаток после отгрузки: товар ещё не уехал — срок считается от плана отгрузки производственного заказа */
 function shipNote(r){ var x=r.ship; if(!x) return ''; return '<div class="meta shipn">после отгрузки'+(x.plan?' · план '+dmy(x.plan)+(x.order?' ('+esc(x.order)+')':''):' · дата отгрузки не назначена')+' + '+dWord(x.days)+'</div>'; }
