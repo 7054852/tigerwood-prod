@@ -20,7 +20,7 @@ function twPay(boxId, pay, opts){
   if(pm.length) h += '<div class="sm" style="margin:var(--s-1) 0">' + pm.map(function(p){ return esc(p.date || 'без даты') + ' — <b>' + money(p.amount) + '</b>' + (p.how ? ' · ' + esc(p.how) : '') + (p.pending ? ' <span class="muted">(ещё не зачислено)</span>' : ''); }).join('<br>') + '</div>';
   else if(pay.total > 0) h += '<div class="sm muted">Оплат пока нет.</div>';
   var sh = pay.ship;
-  if(sh) h += '<div class="sm">🚚 Отгрузка: ' + (sh.delivery ? 'доставка клиенту <b>' + esc(sh.delivery) + '</b>' : sh.pickup ? 'забор со склада <b>' + esc(sh.pickup) + '</b>'
+  if(sh) h += '<div class="sm" style="margin-bottom:var(--s-2)">🚚 Отгрузка: ' + (sh.shipped ? '<span class="ok">✅ отгружено</span>' + (sh.delivery || sh.pickup ? ' · ' + esc(sh.delivery || sh.pickup) : '') : sh.delivery ? 'доставка клиенту <b>' + esc(sh.delivery) + '</b>' : sh.pickup ? 'забор со склада <b>' + esc(sh.pickup) + '</b>'
     : sh.transferDays ? 'дата не назначена · срок передачи по договору — ' + esc(sh.transferDays) + ' раб. дн.' : '<span class="warn">дата не назначена</span>') + '</div>';
   if(!person){ h += '<div class="msg" id="twpaymsg"></div>'; box.innerHTML = h; return; }   // юрлицо: платит по счёту, ссылок ЕРИП / карты нет
   if(pay.rest > 0 && payable < pay.rest) h += '<div class="sm">Онлайн — только предоплата: ' + (payable > 0 ? 'осталось внести <b>' + money(payable) + '</b> руб.' : 'внесена') + '; остаток клиент платит при получении.</div>';
