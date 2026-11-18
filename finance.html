@@ -73,6 +73,28 @@
   .wc{ display:inline-flex; align-items:center; gap:5px; font:var(--t-small); color:var(--muted); white-space:nowrap; padding:1px 7px; border:1px solid var(--line); border-radius:999px; background:var(--card); }
   .wc i{ width:7px; height:7px; border-radius:50%; display:inline-block; }
   .bd-exp{ min-width:0; }
+  /* «Должны поставщикам, оплата не запланирована» (18.11.2026): одна строка над колонками — сумма и кто; подробности в окне */
+  .unpl{ display:flex; justify-content:flex-start; align-items:baseline; gap:var(--s-2) var(--s-3); width:100%; min-height:0; margin:0 0 var(--s-3); padding:var(--s-2) var(--s-3); text-align:left; font:var(--t-small); color:var(--muted);
+    background:var(--card); border:1px solid var(--line); border-radius:var(--r-card); cursor:pointer; }
+  .unpl:hover{ border-color:var(--accent); }
+  .unpl .dot{ align-self:center; }
+  .unpl .lb{ color:var(--fg2); white-space:nowrap; }
+  .unpl .v{ font:var(--t-body); font-weight:700; color:var(--fg); font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .unpl .v small{ font:var(--t-small); font-weight:400; color:var(--muted); }
+  .unpl .who{ flex:1 1 0; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .unpl .go{ color:var(--fg2); white-space:nowrap; }
+  .unpl-sum{ display:flex; flex-wrap:wrap; align-items:baseline; gap:var(--s-1) var(--s-4); margin:var(--s-3) 0; }
+  .unpl-sum b{ font:var(--t-title); font-variant-numeric:tabular-nums; }
+  .unpl-sum b small{ font:var(--t-small); font-weight:400; color:var(--muted); }
+  #unplT td.num{ font-variant-numeric:tabular-nums; white-space:nowrap; }
+  #unplT td.gap{ font-weight:700; color:var(--fg); }
+  #unplT td.q{ color:var(--muted); }
+  #unplT td.act{ text-align:right; white-space:nowrap; }
+  #unplT td.act button{ min-height:28px; padding:0 var(--s-3); font:var(--t-small); }
+  #unplT .sub2 span{ white-space:nowrap; }
+  @media (max-width:640px){ .unpl{ flex-wrap:wrap; } .unpl .lb{ flex:1 1 calc(100% - 28px); min-width:0; white-space:normal; } .unpl .v{ flex:1 1 auto; order:2; } .unpl .go{ order:2; } .unpl .who{ flex:1 1 100%; order:3; }
+    #unplT td[data-l="Поставщик"]{ display:block; text-align:left; font-weight:600; } #unplT td[data-l="Поставщик"]::before{ display:none; } #unplT td[data-l="Поставщик"] .sub2{ font-weight:400; }
+    #unplT .sub2 span{ white-space:normal; } #unplT td.act{ justify-content:flex-end; } }
   .cols{ display:flex; gap:var(--s-3); overflow-x:auto; padding-bottom:var(--s-2); align-items:flex-start; overscroll-behavior-x:contain; }
   .col{ flex:0 0 250px; background:var(--bg2); border:1px solid var(--line); border-radius:var(--r-card); padding:var(--s-3); }
   .col.past{ border-color:var(--red); }
@@ -151,7 +173,7 @@
   <div class="seg mtabs" id="mtabs"><button class="on" onclick="mPane('wait')">Ждём денег</button><button onclick="mPane('exp')">Расходы</button></div>
   <div class="bd m-wait" id="bd">
     <div class="bd-wait"><h3>Ждём денег</h3><div class="mut" id="waitHead"></div><div class="bd-acts" style="margin-top:var(--s-2)"><button class="sec" onclick="incOpen('')">+ Поступление</button><button class="sec" onclick="spreadOpen()">Разнести оплату по графику</button></div><div id="waitList"></div></div>
-    <div class="bd-exp"><h3>Расходы по датам</h3><div class="bd-acts"><button class="primary" onclick="expOpen('')">+ Расход</button><button class="sec" onclick="cashOpen()">Наличный расход</button><button class="sec" onclick="schedOpen()">Графики платежей</button><button class="sec" onclick="xferOpen()">Обмен / перевод</button><button class="sec" onclick="periodAdd()">+ Контрольная дата</button><button class="sec" onclick="dupOpen()">Задвоенные строки</button><button class="sec" onclick="nocatOpen()">Проставить статьи</button><span class="mut">Карточку можно перетащить на другую дату.</span></div><div class="cols" id="cols"></div></div>
+    <div class="bd-exp"><h3>Расходы по датам</h3><div class="bd-acts"><button class="primary" onclick="expOpen('')">+ Расход</button><button class="sec" onclick="cashOpen()">Наличный расход</button><button class="sec" onclick="schedOpen()">Графики платежей</button><button class="sec" onclick="xferOpen()">Обмен / перевод</button><button class="sec" onclick="periodAdd()">+ Контрольная дата</button><button class="sec" onclick="dupOpen()">Задвоенные строки</button><button class="sec" onclick="nocatOpen()">Проставить статьи</button><span class="mut">Карточку можно перетащить на другую дату.</span></div><div id="unpl"></div><div class="cols" id="cols"></div></div>
   </div>
 </div>
 
@@ -320,7 +342,7 @@ function catOpts(sel, kind){ return '<option value="">— статья —</opti
 
 /* ═══════════ ДОСКА ═══════════ */
 var B=null;
-function loadBoard(){ get({vapi:'finboard'}).then(function(r){ if(!r||!r.ok){ noAccess(r); return; } B=r; renderBoard(); }, function(e){ setm('noacc','warn','⚠️ '+esc(String(e&&e.message||e))); el('noacc').className='note warn'; }); }
+function loadBoard(){ get({vapi:'finboard'}).then(function(r){ if(!r||!r.ok){ noAccess(r); return; } B=r; renderBoard(); loadUnpl(); }, function(e){ setm('noacc','warn','⚠️ '+esc(String(e&&e.message||e))); el('noacc').className='note warn'; }); }
 function noAccess(r){ el('noacc').className='note warn'; el('noacc').textContent=errText(r); }
 function tile(t, v, sub, cls){ return '<div class="kp"><div class="t">'+t+'</div><div class="v'+(cls?' '+cls:'')+'">'+v+'</div>'+(sub?'<div class="s">'+sub+'</div>':'')+'</div>'; }
 function mPane(p){ el('bd').className='bd m-'+p; var b=el('mtabs').querySelectorAll('button'); b[0].className=p==='wait'?'on':''; b[1].className=p==='exp'?'on':''; }
@@ -1096,6 +1118,38 @@ function contrOpen(name){
       +(r.history.length?'<div class="sect">Последние оплаты</div><table class="reg"><tbody>'+r.history.map(function(x){ return '<tr><td class="n">'+dmy(x.paidDateIso)+'</td><td>'+esc(x.name)+' <span class="mut">'+esc(x.cat)+'</span></td><td class="mut">'+esc(x.wallet)+'</td><td class="num">'+money(x.sum)+'</td></tr>'; }).join('')+'</tbody></table>':'')
       +'<div class="dlg-btns"><button class="sec" style="margin-right:auto" onclick="dlgClose()">Закрыть</button><button class="sec" onclick="cardEdit(\''+esc(r.id||'')+'\')">Реквизиты</button><button class="sec" onclick="cardExp(CN['+cn(r.name)+'])">+ Расход</button>'+'</div>'); });
 }
+/* ── должны поставщикам, оплата не запланирована (18.11.2026): долг по документам и остаткам на начало учёта, под который на доске нет карточки.
+   Считает сервер (finunplanned) тем же расчётом, что «Расчёты с поставщиками»; здесь — строка над колонками и окно по поставщикам. ── */
+var UNPL=null;
+function loadUnpl(){ get({vapi:'finunplanned'}).then(function(r){ UNPL=r&&r.ok?r:null; renderUnpl(); }, function(){ UNPL=null; renderUnpl(); }); }
+function unplShort(n){ return String(n||'').replace(/^(ООО|ОАО|ЗАО|ОДО|ТОО|УП|ИП|ЧУП|ЧТУП|ЧПУП|ЧТПУП|ЧПТУП|ПТЧУП)\s+/,'').replace(/["«»]/g,''); }
+function unplCur(c){ return c==='BYN'?'':' '+c; }
+function unplTotals(){ var t=UNPL.totals||{}; return Object.keys(t).sort(function(a,b){ return a==='BYN'?-1:b==='BYN'?1:a<b?-1:1; }).map(function(c){ return money(t[c])+' <small>'+c+'</small>'; }); }
+function renderUnpl(){
+  var box=el('unpl'); if(!box) return; var rows=(UNPL&&UNPL.rows)||[]; if(!rows.length){ box.innerHTML=''; return; }
+  var who=rows.slice(0,3).map(function(x){ return esc(unplShort(x.contr)); }).join(', ')+(rows.length>3?' и ещё '+(rows.length-3):'');
+  box.innerHTML='<button type="button" class="unpl" onclick="unplOpen()" title="Долг по накладным, актам и остаткам на начало учёта, под который на доске нет карточки оплаты"><span class="dot warn"></span><span class="lb">Должны поставщикам, оплата не запланирована</span>'
+    +'<span class="v">'+unplTotals().join(' · ')+'</span><span class="who">'+rows.length+' '+plural(rows.length,'поставщик','поставщика','поставщиков')+': '+who+'</span><span class="go">показать ›</span></button>';
+}
+/* из чего сложился долг — словами: остаток на начало учёта, документы, оплаты */
+function unplWhy(x){ var p=[];
+  if(Math.abs(x.opening)>0.004) p.push((x.opening>0?'на начало учёта должны ':'на начало учёта наш аванс ')+money(Math.abs(x.opening))+(x.openingNote?' ('+esc(x.openingNote)+')':''));
+  p.push(x.docsN?x.docsN+' '+plural(x.docsN,'документ','документа','документов')+' на '+money(x.docs):'документов нет');
+  if(x.paid>0.004) p.push('оплачено '+money(x.paid)); if(x.returns>0.004) p.push('возвращено '+money(x.returns));
+  return p.map(function(t){ return '<span>'+t+'</span>'; }).join(' · '); }
+function unplOpen(){
+  var rows=(UNPL&&UNPL.rows)||[];
+  dlgOpen('<h3>Должны поставщикам, оплата не запланирована</h3><div class="mut">Долг по накладным, актам и остаткам на начало учёта'+(UNPL.startIso?' (с '+dmy(UNPL.startIso)+')':'')+', под который на доске нет карточки оплаты. Цифры те же, что в «Расчётах с поставщиками».</div>'
+    +'<div class="unpl-sum"><b>'+unplTotals().join(' · ')+'</b><span class="mut">'+rows.length+' '+plural(rows.length,'поставщик','поставщика','поставщиков')+'</span></div>'
+    +'<div class="tbl-wrap" style="max-height:60vh"><table class="tbl sm mob" id="unplT"><thead><tr><th>Поставщик</th><th class="num">Должны</th><th class="num">В плане</th><th class="num">Не запланировано</th><th></th></tr></thead><tbody>'
+    +rows.map(function(x,i){ return '<tr class="go" onclick="goSettle(\'sup\',UNPL.rows['+i+'].key,UNPL.rows['+i+'].cur)" title="Открыть ведомость и документы поставщика"><td data-l="Поставщик">'+esc(x.contr)+'<span class="sub2">'+unplWhy(x)+'</span></td>'
+      +'<td class="num q" data-l="Должны">'+money(x.owed)+unplCur(x.cur)+'</td><td class="num q" data-l="В плане">'+(x.plan>0.004?money(x.plan):'—')+'</td><td class="num gap" data-l="Не запланировано">'+money(x.gap)+unplCur(x.cur)+'</td>'
+      +'<td class="act"><button class="sec" onclick="event.stopPropagation(); unplPlan('+i+')">В план</button></td></tr>'; }).join('')
+    +'</tbody></table></div><div class="mut" style="margin-top:var(--s-2)">Строка открывает ведомость поставщика. «В план» заводит карточку оплаты на эту сумму — дату и кошелёк выберете в форме.</div>'
+    +'<div class="dlg-btns"><button class="sec" onclick="dlgClose()">Закрыть</button></div>');
+}
+function unplPlan(i){ var x=UNPL.rows[i]; dlgClose(); expOpen(''); el('exContr').value=x.contr; el('exSum').value=String(x.gap).replace('.',','); el('exName').value='Оплата долга по документам';
+  if(x.cur!=='BYN'){ var w=(REF.wallets||[]).filter(function(w){ return w.currency===x.cur; })[0]; if(w) el('exWallet').value=w.id; } }
 function cardExp(name){ dlgClose(); needBoard(function(){ expOpen(''); el('exContr').value=name; }); }
 function goSettle(view,key,cur){ try{ localStorage.setItem('tw_docs_go',JSON.stringify({view:view||'sup',key:key||'',cur:cur||''})); }catch(e){} try{ window.top.postMessage({tw:'go',id:'indocs'},'*'); }catch(e){} if(window.top===window) location.href='docs.html'+(location.search||''); }
 /* расчёты по документам — те же цифры, что в ведомости «Расчёты с поставщиками» (один расчёт на сервере) */
