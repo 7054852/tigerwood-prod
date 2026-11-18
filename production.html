@@ -2553,14 +2553,43 @@ function itemRowHtml(it,batchId){
     +'<td class="c-nm" title="'+esc([it.equip,it.sku,(it.unitCost?(it.unitCost.toFixed(2).replace('.',',')+' р/шт'):'')].filter(Boolean).join(' · '))+'">'
       // оборудование + модель (22.10.2026: «Hill» есть у колец, упоров и стойки — по одной модели строки не различить)
       +'<div class="inm">'+asmBadge+'<b>'+esc(it.equip||it.model||it.sku||'—')+'</b>'+(it.equip&&it.model&&it.model!==it.equip?(' <span>'+esc(it.model)+'</span>'):'')
-      +(it.sku?('<span class="sku">'+esc(it.sku)+'</span>'):'')+'</div>'+(it.optionsText?('<div class="iopt">'+esc(it.optionsText)+'</div>'):'')+'</td>'
+      +(it.sku?('<span class="sku">'+esc(it.sku)+'</span>'):'')+'</div>'+(it.optionsText?('<div class="iopt">'+esc(it.optionsText)+'</div>'):'')+subItemHtml(it)+'</td>'
     +'<td class="num"><input class="q" value="'+it.qty+'" onchange="updItem(\''+it.id+'\',this.value)"></td>'
     +'<td class="num">'+packedCellHtml(it)+'</td>'
     +'<td class="num"><input class="q" value="'+(it.done||0)+'" onchange="saveDone(\''+batchId+'\',\''+esc(it.sku)+'\',\''+esc(it.model)+'\',this.value)"></td>'
     +'<td class="num">'+shipCellHtml(it)+'</td>'
     +'<td class="c-x"><span class="grip" title="перетащите строку, чтобы поменять порядок">☰</span><span class="imv"><button class="ic" title="выше" onclick="moveItem(\''+batchId+'\',\''+it.id+'\',-1)">▲</button><button class="ic" title="ниже" onclick="moveItem(\''+batchId+'\',\''+it.id+'\',1)">▼</button></span>'
+      +(it.contractor?'':'<button class="ic" title="отдать позицию подрядчику целиком (с упаковкой)" onclick="subItemDlg(\''+it.id+'\')">🤝</button>')
       +'<button class="ic" title="убрать" onclick="rmItem(\''+it.id+'\')">🗑</button></td></tr>';
 }
+/* позиция целиком у подрядчика (18.11.2026): деталей и операций у неё нет — «привезли N из M», приёмка одной строкой, долг — в реестре подрядчиков */
+function subItemHtml(it){ var c=it.contractor; if(!c) return '';
+  var left=Math.max(0,(Number(it.qty)||0)-(c.received||0));
+  return '<div class="iopt">🤝 целиком у подрядчика: <b>'+esc(c.name)+'</b> · '+money(c.price)+' ₽/шт · привезли <b>'+c.received+'</b> из '+it.qty+(c.sum?(' · на '+money(c.sum)+' ₽'):'')
+    +(left>0?' <a href="#" onclick="subSupplyDlg(\''+it.id+'\');return false">📥 принять</a>':' <span class="ok">✓ всё привезли</span>')
+    +' · <a href="#" onclick="subItemDlg(\''+it.id+'\');return false">изменить</a>'
+    +((c.supplies||[]).length?('<br><span class="muted">'+c.supplies.map(function(x){ return esc(x.date)+' — '+x.qty+' шт'+(x.note?(' ('+esc(x.note)+')'):'')+' <a href="#" title="отменить приёмку" onclick="subSupplyCancel(\''+x.id+'\');return false">✕</a>'; }).join(' · ')+'</span>'):'')+'</div>'; }
+function subItemOf(id){ var b=DETAIL, l=(b&&b.items)||[]; for(var i=0;i<l.length;i++) if(l[i].id===id) return l[i]; return null; }
+function subErr(r){ var m=document.getElementById('pdaskM'); if(m) m.textContent=(r&&r.error)||'сервер не ответил'; }
+function subItemDlg(id){ var it=subItemOf(id); if(!it) return; var c=it.contractor;
+  askDlg('Позиция целиком у подрядчика', '<div class="small" style="margin-bottom:8px">'+esc((it.equip||'')+' '+(it.model||''))+': подрядчик делает изделие полностью и сам упаковывает. Деталей и операций по этой позиции в заказе не будет — только «привезли N из M».</div>'
+    +'<label class="small">Подрядчик<br><select id="subWho" style="width:100%"><option value="">загружаю…</option></select></label>'
+    +'<label class="small" style="display:block;margin-top:8px">Цена за штуку, ₽<br><input id="subPrice" type="number" inputmode="decimal" min="0" step="0.01" style="width:100%" value="'+(c?c.price:'')+'" autocomplete="off"></label>'
+    +(c?'<div class="small" style="margin-top:8px"><a href="#" onclick="subItemBack(\''+id+'\');return false">↩ вернуть в своё производство</a></div>':''),
+    function(ov, close){ api({vapi:'itemcontractor', item:id, contractor:ov.querySelector('#subWho').value, price:ov.querySelector('#subPrice').value}).then(function(r){ if(!r||!r.ok){ subErr(r); return; } close(); reloadDetail(); }); return false; }, 'Сохранить');
+  api({vapi:'contractors'}).then(function(r){ var sel=document.getElementById('subWho'); if(!sel) return; var l=((r&&r.list)||[]).map(function(x){ return x.name; });
+    if(c&&l.indexOf(c.name)<0) l.unshift(c.name);
+    sel.innerHTML=l.length?l.map(function(n){ return '<option'+(c&&c.name===n?' selected':'')+'>'+esc(n)+'</option>'; }).join(''):'<option value="">подрядчиков нет — отметьте контрагента как подрядчика в «Подрядчиках»</option>'; }); }
+function subItemBack(id){ api({vapi:'itemcontractor', item:id, contractor:''}).then(function(r){ if(!r||!r.ok){ subErr(r); return; } var o=document.getElementById('pdask'); if(o) o.parentNode.removeChild(o); reloadDetail(); }); }
+function subSupplyDlg(id){ var it=subItemOf(id); if(!it||!it.contractor) return; var c=it.contractor, left=Math.max(0,(Number(it.qty)||0)-(c.received||0));
+  askDlg('Принять от подрядчика', '<div class="small" style="margin-bottom:8px">'+esc(c.name)+' · '+esc((it.equip||'')+' '+(it.model||''))+' · осталось привезти '+left+' шт · '+money(c.price)+' ₽/шт</div>'
+    +'<label class="small">Привезли, шт<br><input id="supQty" type="number" inputmode="numeric" min="1" max="'+left+'" step="1" style="width:100%" value="'+left+'" autocomplete="off"></label>'
+    +'<label class="small" style="display:block;margin-top:8px">Дата (пусто — сегодня)<br><input id="supDate" placeholder="дд.мм.гггг" style="width:100%" autocomplete="off"></label>'
+    +'<label class="small" style="display:block;margin-top:8px">Примечание<br><input id="supNote" style="width:100%" autocomplete="off"></label>',
+    function(ov, close){ api({vapi:'itemsupply', item:id, qty:ov.querySelector('#supQty').value, date:ov.querySelector('#supDate').value, note:ov.querySelector('#supNote').value}).then(function(r){ if(!r||!r.ok){ subErr(r); return; } close(); reloadDetail(); }); return false; }, 'Принять');
+}
+function subSupplyCancel(sid){ askDlg('Отменить приёмку?', '<div class="small">Привезённые штуки уйдут из «Готово» позиции, долг подрядчику уменьшится.</div>',
+  function(ov, close){ api({vapi:'itemsupplycancel', id:sid}).then(function(r){ if(!r||!r.ok){ subErr(r); return; } close(); reloadDetail(); }); return false; }, 'Отменить приёмку'); }
 /* порядок позиций (владелец 27.10.2026): ▲▼ — в этом порядке идут товары во всех вкладках и в ведомости; от него же зависит,
    какому изделию достаётся выработка без варианта (FIFO) */
 function moveItem(batchId,itemId,dir){
