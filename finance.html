@@ -326,7 +326,15 @@ function tile(t, v, sub, cls){ return '<div class="kp"><div class="t">'+t+'</div
 function mPane(p){ el('bd').className='bd m-'+p; var b=el('mtabs').querySelectorAll('button'); b[0].className=p==='wait'?'on':''; b[1].className=p==='exp'?'on':''; }
 /* ── приходы на доске (20.10.2026): блоки по состоянию, каждый приход — карточка с отметкой «просрочено N дн.» / «через N дн.» ── */
 function incWhen(r){ return r.factIso||r.planIso||''; }
-function incSum(l){ return l.reduce(function(s,r){ return s+r.sum; },0); }
+/* Валюта (18.11.2026): сумма строки — в валюте её кошелька (cur), рядом сервер отдаёт её же в BYN по текущему курсу (byn).
+   Складывать строки можно только через bynOf — иначе 300 000 RUB читаются как 300 000 BYN. Старый сервер без byn — как было. */
+function bynOf(r){ return r.byn!=null?r.byn:r.sum; }
+function isFx(r){ return !!r.cur&&r.cur!=='BYN'; }
+function curSfx(r){ return isFx(r)?' '+esc(r.cur):''; }
+function fxNote(r){ return isFx(r)?'<span title="по курсу на сегодня">≈ '+money(r.byn)+' BYN</span>':''; }
+/* «300 000,00 RUB, 77 113,00 EUR» — сколько ждём / платим в самой валюте */
+function fxTotals(l){ var t={}, o=[]; l.forEach(function(r){ if(isFx(r)){ if(t[r.cur]==null){ t[r.cur]=0; o.push(r.cur); } t[r.cur]+=r.sum; } }); return o.map(function(c){ return money(t[c])+' '+esc(c); }).join(', '); }
+function incSum(l){ return l.reduce(function(s,r){ return s+bynOf(r); },0); }
 function dDiff(a, b){ return Math.round((Date.parse(a+'T00:00:00Z')-Date.parse(b+'T00:00:00Z'))/864e5); }
 function dWord(n){ var m=n%10, h=n%100; return n+' '+(m===1&&h!==11?'день':m>=2&&m<=4&&(h<10||h>=20)?'дня':'дней'); }
 var DOW=['вс','пн','вт','ср','чт','пт','сб'];
@@ -341,8 +349,8 @@ function dueBadge(w, mode){
   return '';
 }
 function incItem(r){
-  return '<div class="wi" onclick="incOpen(\''+r.id+'\')"><div class="who" title="'+esc(r.client)+'">'+esc(r.client||'—')+'</div><div class="sum">'+money(r.sum)+'</div>'
-    +'<div class="meta">'+walletChip(r.wallet)+'<span class="tx">'+[r.zakaz?'<b>'+esc(r.zakaz)+'</b>':'', invOf(r), r.ptype&&r.ptype!=='Безналичный'?esc(r.ptype):''].filter(Boolean).join(' · ')+'</span></div>'+shipNote(r)+'</div>';
+  return '<div class="wi" onclick="incOpen(\''+r.id+'\')"><div class="who" title="'+esc(r.client)+'">'+esc(r.client||'—')+'</div><div class="sum">'+money(r.sum)+curSfx(r)+'</div>'
+    +'<div class="meta">'+walletChip(r.wallet)+'<span class="tx">'+[fxNote(r), r.zakaz?'<b>'+esc(r.zakaz)+'</b>':'', invOf(r), r.ptype&&r.ptype!=='Безналичный'?esc(r.ptype):''].filter(Boolean).join(' · ')+'</span></div>'+shipNote(r)+'</div>';
 }
 /* остаток после отгрузки: товар ещё не уехал — срок считается от плана отгрузки производственного заказа */
 function shipNote(r){ var x=r.ship; if(!x) return ''; return '<div class="meta shipn">после отгрузки'+(x.plan?' · план '+dmy(x.plan)+(x.order?' ('+esc(x.order)+')':''):' · дата отгрузки не назначена')+' + '+dWord(x.days)+'</div>'; }
@@ -381,10 +389,11 @@ function renderBoard(){
   // просрочку решает сервер (late): предоплата по счёту без срока, остаток — после отгрузки; старый сервер без late — по дате
   var isLate=function(r){ var w=when(r); return r.late!=null?r.late:!!(w&&w<B.today); };
   var late=pend.filter(isLate), wait=pend.filter(function(r){ return !isLate(r)&&(when(r)||r.ship); }), nod=pend.filter(function(r){ return !when(r)&&!r.ship; });
-  var srt=function(a,b){ return when(a)<when(b)?-1:1; }, sum=function(l){ return l.reduce(function(s,r){ return s+r.sum; },0); };
+  var srt=function(a,b){ return when(a)<when(b)?-1:1; }, sum=function(l){ return l.reduce(function(s,r){ return s+bynOf(r); },0); };
   // строки счетов, чей срок ещё не наступил (предоплата без срока, остаток до отгрузки), — своим блоком, не вперемешку с датами
   var byInv=wait.filter(function(r){ return r.ship||(r.late===false&&when(r)<B.today); }), due=wait.filter(function(r){ return byInv.indexOf(r)<0; });
-  el('waitHead').textContent=pend.length?pend.length+' платежей на '+money(sum(pend))+(late.length?' · просрочено '+late.length+' на '+money(sum(late)):''):'Ожидаемых поступлений нет.';
+  var fxWait=fxTotals(pend);
+  el('waitHead').innerHTML=pend.length?pend.length+' платежей на '+money(sum(pend))+' BYN'+(fxWait?' <span title="пересчитано в BYN по курсу на сегодня">· из них в валюте '+fxWait+'</span>':'')+(late.length?' · просрочено '+late.length+' на '+money(sum(late)):''):'Ожидаемых поступлений нет.';
   el('waitList').innerHTML=incBlock('Просрочено', 'срок прошёл, денег нет', late.sort(srt), 'late', when)
     +incBlock('Ждём', 'срок впереди', due.sort(srt), 'wait', when)
     +incBlock('По счетам — срок не наступил', 'предоплата без срока; остаток — после отгрузки', byInv.sort(srt), 'inv', null)
@@ -393,8 +402,8 @@ function renderBoard(){
   if(GOTOPEN) gotRender();
   // ── справа: расходы по контрольным датам
   var unpaid=B.expenses.filter(function(e){ return !e.paid; }), nodate=unpaid.filter(function(e){ return !e.planIso; });
-  var card=function(e){ var meta=[e.contr!==e.name?e.contr:'', e.cat||'без статьи', e.paid?'оплачено '+dm(e.paidDateIso):''].filter(Boolean).join(' · ');
-    return '<div class="ec'+(e.paid?' paid':'')+'" onclick="expOpen(\''+e.id+'\')"'+(e.paid?'':' draggable="true" ondragstart="dragExp(event,\''+e.id+'\')"')+' title="'+esc((e.name||'')+' — '+meta)+'"><div class="t"><span>'+esc(e.name||e.contr||'—')+'</span>'+(e.dogovor?'<i class="cal" title="график договора '+esc(e.dogovor)+'" onclick="event.stopPropagation(); schedView(CN['+cn(e.dogovor)+'])">📅</i>':'')+'<b>'+money(e.sum)+'</b></div><div class="b">'+esc(meta)+'</div>'+docLinks(e)+'</div>'; };
+  var card=function(e){ var meta=[isFx(e)?'≈ '+money(e.byn)+' BYN':'', e.contr!==e.name?e.contr:'', e.cat||'без статьи', e.paid?'оплачено '+dm(e.paidDateIso):''].filter(Boolean).join(' · ');
+    return '<div class="ec'+(e.paid?' paid':'')+'" onclick="expOpen(\''+e.id+'\')"'+(e.paid?'':' draggable="true" ondragstart="dragExp(event,\''+e.id+'\')"')+' title="'+esc((e.name||'')+' — '+meta)+'"><div class="t"><span>'+esc(e.name||e.contr||'—')+'</span>'+(e.dogovor?'<i class="cal" title="график договора '+esc(e.dogovor)+'" onclick="event.stopPropagation(); schedView(CN['+cn(e.dogovor)+'])">📅</i>':'')+'<b>'+money(e.sum)+curSfx(e)+'</b></div><div class="b">'+esc(meta)+'</div>'+docLinks(e)+'</div>'; };
   // неоплаченные — сверху, оплаченные — вниз (20.10.2026); в шапке колонки — «перенести неоплаченные» на другую дату
   var col=function(title, sub, list, cls, iso){ list=list.filter(function(e){ return !e.paid; }).concat(list.filter(function(e){ return e.paid; })); var un=list.filter(function(e){ return !e.paid; }).length;
     return '<div class="col '+(cls||'')+'" ondragover="event.preventDefault(); this.classList.add(\'drop\')" ondragleave="this.classList.remove(\'drop\')" ondrop="dropExp(event,\''+(iso||'')+'\')"><div class="ch"><b>'+title+'</b><span class="n">'+money(sum(list))+'</span></div>'+sub
@@ -424,7 +433,7 @@ function moveTargets(fromIso){ var base=fromIso&&fromIso>B.today?fromIso:B.today
 function moveChips(fromIso, ids){ return '<div class="mv-chips">'+moveTargets(fromIso).map(function(t){ return '<button class="sec" onclick="'+(ids?'moveGo(MV.ids,\''+t[1]+'\')':'moveGo([EX.id],\''+t[1]+'\')')+'">'+t[0]+' <span class="mut">'+dm(t[1])+'</span></button>'; }).join('')+'</div>'; }
 var MV=null;
 function moveOpen(_id, iso){ var ids=B.expenses.filter(function(e){ return !e.paid&&(e.planIso||'')===iso; }).map(function(e){ return e.id; }); if(!ids.length) return;
-  MV={ ids:ids, iso:iso }; var s=B.expenses.filter(function(e){ return ids.indexOf(e.id)>=0; }).reduce(function(a,e){ return a+e.sum; },0);
+  MV={ ids:ids, iso:iso }; var s=B.expenses.filter(function(e){ return ids.indexOf(e.id)>=0; }).reduce(function(a,e){ return a+bynOf(e); },0);
   dlgOpen('<h3>Перенести неоплаченные с '+(iso?dmy(iso):'«без даты»')+'</h3><div class="mut">'+ids.length+' платеж(а) на '+money(s)+'. Оплаченные остаются на месте.</div>'+moveChips(iso, true)
     +'<div class="dl-acts"><div><label>На дату</label>'+inp('mvDate', '', 'd')+'</div><button class="primary" onclick="moveGo(MV.ids, v(\'mvDate\'))">Перенести</button></div><div id="dlgMsg" class="msg"></div><div class="dlg-btns"><button class="sec" onclick="dlgClose()">Отмена</button></div>'); }
 function moveGo(ids, iso){
