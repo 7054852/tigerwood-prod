@@ -1133,7 +1133,7 @@ function renderUnpl(){
 }
 /* из чего сложился долг — словами: остаток на начало учёта, документы, оплаты */
 function unplWhy(x){ var p=[];
-  if(Math.abs(x.opening)>0.004) p.push((x.opening>0?'на начало учёта должны ':'на начало учёта наш аванс ')+money(Math.abs(x.opening))+(x.openingNote?' ('+esc(x.openingNote)+')':''));
+  if(Math.abs(x.opening)>0.004) p.push((x.opening>0?'на начало учёта должны ':'на начало учёта наш аванс ')+money(Math.abs(x.opening))+(/1С/.test(x.openingNote||'')?' по 1С':''));
   p.push(x.docsN?x.docsN+' '+plural(x.docsN,'документ','документа','документов')+' на '+money(x.docs):'документов нет');
   if(x.paid>0.004) p.push('оплачено '+money(x.paid)); if(x.returns>0.004) p.push('возвращено '+money(x.returns));
   return p.map(function(t){ return '<span>'+t+'</span>'; }).join(' · '); }
@@ -1142,7 +1142,7 @@ function unplOpen(){
   dlgOpen('<h3>Должны поставщикам, оплата не запланирована</h3><div class="mut">Долг по накладным, актам и остаткам на начало учёта'+(UNPL.startIso?' (с '+dmy(UNPL.startIso)+')':'')+', под который на доске нет карточки оплаты. Цифры те же, что в «Расчётах с поставщиками».</div>'
     +'<div class="unpl-sum"><b>'+unplTotals().join(' · ')+'</b><span class="mut">'+rows.length+' '+plural(rows.length,'поставщик','поставщика','поставщиков')+'</span></div>'
     +'<div class="tbl-wrap" style="max-height:60vh"><table class="tbl sm mob" id="unplT"><thead><tr><th>Поставщик</th><th class="num">Должны</th><th class="num">В плане</th><th class="num">Не запланировано</th><th></th></tr></thead><tbody>'
-    +rows.map(function(x,i){ return '<tr class="go" onclick="goSettle(\'sup\',UNPL.rows['+i+'].key,UNPL.rows['+i+'].cur)" title="Открыть ведомость и документы поставщика"><td data-l="Поставщик">'+esc(x.contr)+'<span class="sub2">'+unplWhy(x)+'</span></td>'
+    +rows.map(function(x,i){ return '<tr class="go" onclick="goSettle(\'sup\',UNPL.rows['+i+'].key,UNPL.rows['+i+'].cur)" title="Открыть ведомость и документы поставщика"><td data-l="Поставщик">'+esc(x.contr)+'<span class="sub2"'+(x.openingNote?' title="Остаток на начало: '+esc(x.openingNote)+'"':'')+'>'+unplWhy(x)+'</span></td>'
       +'<td class="num q" data-l="Должны">'+money(x.owed)+unplCur(x.cur)+'</td><td class="num q" data-l="В плане">'+(x.plan>0.004?money(x.plan):'—')+'</td><td class="num gap" data-l="Не запланировано">'+money(x.gap)+unplCur(x.cur)+'</td>'
       +'<td class="act"><button class="sec" onclick="event.stopPropagation(); unplPlan('+i+')">В план</button></td></tr>'; }).join('')
     +'</tbody></table></div><div class="mut" style="margin-top:var(--s-2)">Строка открывает ведомость поставщика. «В план» заводит карточку оплаты на эту сумму — дату и кошелёк выберете в форме.</div>'
