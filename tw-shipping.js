@@ -281,9 +281,12 @@ function twPalletSheetsHtml(list, order){
   var n=list.length, today=new Date(), dd=function(x){ return (x<10?'0':'')+x; }, date=dd(today.getDate())+'.'+dd(today.getMonth()+1)+'.'+today.getFullYear();
   var pages=list.map(function(p,i){
     // лист на паллету — только по-английски (владелец 16.10.2026), имя как в инвойсе / пэкинг-листе / ТН (enDoc с сервера: без модели в скобках, цвет — 08.11.2026)
-    var total=0, lines=p.lines.map(function(l){ var nm=String(l.enDoc||twPkEn(l.productId)||l.nameEn||l.name||'').trim(), q=Number(l.qty)||0; total+=q;
-      return '<div class="ln"><div class="l"><div class="sku">'+esc(twSkuDoc(l.sku))+'</div><div class="nm">'+esc(nm)+' <span class="parts">Parts -</span></div></div>'
-        +'<div class="r"><span class="q">'+esc(l.qty)+'</span><span class="u">pcs</span></div></div>'; }).join('');
+    // товар и его UV-двойник на одной паллете — одна строка, как в упаковочном листе (19.11.2026: артикул и имя на печати у них одинаковые)
+    var total=0, mg=[]; p.lines.forEach(function(l){ var nm=String(l.enDoc||twPkEn(l.productId)||l.nameEn||l.name||'').trim(), sku=twSkuDoc(l.sku), q=Number(l.qty)||0; total+=q;
+      var same=mg.filter(function(x){ return x.sku===sku&&x.nm===nm; })[0]; if(same) same.q+=q; else mg.push({ sku:sku, nm:nm, q:q }); });
+    var lines=mg.map(function(l){
+      return '<div class="ln"><div class="l"><div class="sku">'+esc(l.sku)+'</div><div class="nm">'+esc(l.nm)+' <span class="parts">Parts -</span></div></div>'
+        +'<div class="r"><span class="q">'+esc(l.q)+'</span><span class="u">pcs</span></div></div>'; }).join('');
     return '<div class="pg" style="--k:1"><div class="hd"><div><div class="lbl">Order</div><div class="val">'+esc(order)+'</div></div><div class="pill">'+(i+1)+' / '+n+'</div></div>'
       +'<div class="pal">Palet <span class="no">#'+(i+1)+'</span></div>'
       +'<div class="lines">'+lines+'</div>'
