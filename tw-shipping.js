@@ -77,14 +77,18 @@ function twShipDlg(){
   var noPack0=noPack;
   // таблица «что отгружаем»: переформирование — переформируемая ТН из «уже уехало» вычитается (её количество снова свободно)
   TWSH.renderLines=function(){ var box=el('shlines'); if(!box) return; var nb=TWSH.newBlank, prev=prevTn[0], ps={}; if(prev&&!nb) (prev.ship||[]).forEach(function(l){ ps[l.id]=Number(l.qty)||0; });
-    var over=0, under=0, h='<div class="tbl-wrap" style="margin-top:var(--s-2)"><table class="tbl sm mob"><thead><tr><th>Товар</th><th class="num">Заказано</th><th class="num">Уже уехало</th><th class="num">На паллетах — отгружаем</th></tr></thead><tbody>'
-      +lines.map(function(l){ if(l.extra) return '<tr><td data-l="Товар">'+esc(l.name)+'</td><td data-l="Заказано" class="num">—</td><td data-l="Уже уехало" class="num">—</td><td data-l="На паллетах" class="num"><b>'+esc(l.onPallets)+'</b></td></tr>';   // сверх сделки (16.10.2026): в ТН и инвойс по цене каталога
-        var sh=nb?l.shipped:(prev?(prev.ship?Math.max(0,l.shipped-(ps[l.id]||0)):Math.max(0,l.shipped-l.qty)):l.shipped), left=Math.max(0,l.qty-sh); if(l.onPallets>left) over++; if(l.onPallets<left) under++;
-        return '<tr><td data-l="Товар">'+esc(l.name)+'</td><td data-l="Заказано" class="num">'+esc(l.qty)+'</td><td data-l="Уже уехало" class="num">'+esc(sh)+'</td><td data-l="На паллетах" class="num"><b>'+esc(l.onPallets)+'</b>'+(l.onPallets>left?' <span class="sm muted">+'+(l.onPallets-left)+'</span>':'')+'</td></tr>'; }).join('')
+    // цена отгрузки (19.11.2026, №2538): по умолчанию цена счёта; вписали другую — она идёт в инвойс и ТН, счёт на оплату не меняется
+    var cur=TWSH.r.currency||'', sum=0, over=0, under=0, h='<div class="tbl-wrap" style="margin-top:var(--s-2)"><table class="tbl sm mob"><thead><tr><th>Товар</th><th class="num" title="заказано по счёту">Счёт</th><th class="num" title="уже уехало прошлыми отгрузками">Уехало</th><th class="num" title="на паллетах — отгружаем сейчас">Везём</th><th class="num">Цена'+(cur?', '+esc(cur):'')+'</th></tr></thead><tbody>'
+      +lines.map(function(l,i){ sum+=(Number(l.onPallets)||0)*(Number(l.price)||0);
+        if(l.extra) return '<tr><td data-l="Товар">'+esc(l.name)+'</td><td data-l="Счёт" class="num">—</td><td data-l="Уехало" class="num">—</td><td data-l="Везём" class="num"><b>'+esc(l.onPallets)+'</b></td><td data-l="Цена" class="num">'+money(l.price)+'</td></tr>';   // сверх сделки (16.10.2026): в ТН и инвойс по цене каталога
+        var sh=nb?l.shipped:(prev?(prev.ship?Math.max(0,l.shipped-(ps[l.id]||0)):Math.max(0,l.shipped-l.qty)):l.shipped), left=Math.max(0,l.qty-sh), own=Math.abs((Number(l.price)||0)-(Number(l.invPrice)||0))>0.004; if(l.onPallets>left) over++; if(l.onPallets<left) under++;
+        return '<tr><td data-l="Товар">'+esc(l.name)+'</td><td data-l="Счёт" class="num">'+esc(l.qty)+'</td><td data-l="Уехало" class="num">'+esc(sh)+'</td><td data-l="Везём" class="num"><b>'+esc(l.onPallets)+'</b>'+(l.onPallets>left?' <span class="sm muted">+'+(l.onPallets-left)+'</span>':'')+'</td>'
+          +'<td data-l="Цена" class="num">'+(l.id?'<input type="number" min="0" step="0.01" value="'+esc(l.price)+'" style="width:72px;text-align:right;padding-left:4px;padding-right:4px" title="цена отгрузки — в инвойс и ТН; счёт на оплату не меняется" onchange="twShPrice('+i+',this.value)">':money(l.price))+(own?'<div class="sm muted">в счёте '+money(l.invPrice)+'</div>':'')+'</td></tr>'; }).join('')
       +'</tbody></table></div>'
+      +'<div class="sm" style="margin-top:var(--s-1)">Сумма отгрузки: <b>'+money(sum)+(cur?' '+esc(cur):'')+'</b> <span class="muted">— количество с паллет × цена</span></div>'
       +(TWSH.r.extraError?'<div class="note warn"><div>⚠ '+esc(TWSH.r.extraError)+'</div></div>':'')
       +(noPack0?'<div class="sm muted">Паллетовки нет — документы будут на все позиции сделки.</div>':'')
-      +(over?'<div class="sm muted">«+N» — на паллетах больше, чем осталось по счёту: в документах будет количество с паллет, по цене счёта.</div>':'')
+      +(over?'<div class="sm muted">«+N» — на паллетах больше, чем осталось по счёту: в документах будет количество с паллет.</div>':'')
       +(under&&!noPack0?'<div class="sm muted">Частичная отгрузка: остаток уйдёт следующей отгрузкой (ещё одна ТН и CMR).</div>':'');
     box.innerHTML=h; };
   ask('🚚 Отгрузочные документы — '+esc(r.eu?'Европа':'Россия'), body, function(){
@@ -100,6 +104,9 @@ function twShipDlg(){
   }, 'Выписать');
   TWSH.renderLines();
 }
+/* цена отгрузки строки: сохраняется сразу (vapi shipprice); пусто или цена счёта — отгрузка по цене счёта */
+function twShPrice(i, v){ var l=TWSH.r&&TWSH.r.lines&&TWSH.r.lines[i]; if(!l||!l.id) return;
+  run({vapi:'shipprice', deal:TWSH.deal, item:l.id, price:String(v||'').replace(',','.')}, 'Сохраняю цену…', 'shmsg').then(function(x){ if(!x) return; l.price=x.price; l.invPrice=x.invPrice; setm('shmsg','',''); if(TWSH.renderLines) TWSH.renderLines(); }); }
 function twShMode(nb){ TWSH.newBlank=!!nb; if(TWSH.renderLines) TWSH.renderLines(); }
 
 /* ── декларация ── */
