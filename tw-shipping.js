@@ -85,10 +85,10 @@ function twShipDlg(){
       if(!l.extra){ if(q>left) over++; if(q<left) under++; }
       if(!q&&!noPack0){ idle++; if(!TWSH.showIdle) return; }
       var nm=l.internal||l.doc||l.name, doc=l.extra?(l.doc||''):l.name;
-      rows+='<tr'+(q?'':' class="muted"')+'><td data-l="Товар"><div><div>'+esc(nm)+(l.internal?twPkFinish(l.internal):'')+'</div><div class="sm muted">'+esc(twSkuDoc(l.sku||''))+(doc&&doc!==nm?' · '+esc(doc):'')+(l.extra?' · <b>нет в счёте</b>, цена каталога':'')+'</div></div></td>'
+      rows+='<tr'+(q?'':' class="muted"')+'><td data-l="Товар"><div><div>'+esc(nm)+(l.internal?twPkFinish(l.internal):'')+'</div><div class="sm muted">'+esc(twSkuDoc(l.sku||''))+(doc&&doc!==nm?' · '+esc(doc):'')+(l.extra?' · <b>нет в счёте</b>, '+(pr?'цена каталога':'<b class="err">нет цены в «Товарах»</b>'):'')+'</div></div></td>'
         +'<td data-l="В счёте" class="num">'+(l.extra?'—':esc(l.qty))+'</td><td data-l="Уехало" class="num">'+(l.extra?'—':esc(sh))+'</td>'
         +'<td data-l="Везём" class="num"><b>'+esc(q)+'</b>'+(!l.extra&&q>left?'<div class="sm muted">+'+(q-left)+' сверх счёта</div>':'')+(l.uv?'<div class="sm muted" title="произведено как UV, отгружается артикулом и ценой этой строки счёта">из них UV '+esc(l.uv)+'</div>':'')+'</td>'
-        +'<td data-l="Цена" class="num">'+(l.id?'<input type="number" min="0" step="0.01" value="'+esc(l.price)+'" style="width:84px;text-align:right" title="цена отгрузки — в инвойс и ТН; счёт на оплату не меняется" onchange="twShPrice('+i+',this.value)">':money(pr))+(own?'<div class="sm muted">в счёте '+money(l.invPrice)+'</div>':'')+'</td>'
+        +'<td data-l="Цена" class="num">'+(l.id?'<input type="number" min="0" step="0.01" value="'+esc(l.price)+'" style="width:84px;text-align:right" title="цена отгрузки — в инвойс и ТН; счёт на оплату не меняется" onchange="twShPrice('+i+',this.value)">':(pr?money(pr):'<b class="err">нет цены</b>'))+(own?'<div class="sm muted">в счёте '+money(l.invPrice)+'</div>':'')+'</td>'
         +'<td data-l="Сумма" class="num">'+(q?money(ls):'—')+'</td></tr>'; });
     var pk=TWSH.r.packing||{};
     var h='<div class="row" style="align-items:baseline;margin-top:var(--s-2)"><b>Что отгружаем</b><span class="sm muted">'+(noPack0?'паллетовки нет — все позиции сделки':esc(pk.pallets||0)+' паллет · '+esc(pk.boxes||0)+' коробок · нетто '+money(pk.net)+' · брутто '+money(pk.gross)+' кг')+'</span></div>'
