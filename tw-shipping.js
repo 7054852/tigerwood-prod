@@ -80,11 +80,11 @@ function twShipDlg(){
     var over=0, under=0, h='<div class="tbl-wrap" style="margin-top:var(--s-2)"><table class="tbl sm mob"><thead><tr><th>Товар</th><th class="num">Заказано</th><th class="num">Уже уехало</th><th class="num">На паллетах — отгружаем</th></tr></thead><tbody>'
       +lines.map(function(l){ if(l.extra) return '<tr><td data-l="Товар">'+esc(l.name)+'</td><td data-l="Заказано" class="num">—</td><td data-l="Уже уехало" class="num">—</td><td data-l="На паллетах" class="num"><b>'+esc(l.onPallets)+'</b></td></tr>';   // сверх сделки (16.10.2026): в ТН и инвойс по цене каталога
         var sh=nb?l.shipped:(prev?(prev.ship?Math.max(0,l.shipped-(ps[l.id]||0)):Math.max(0,l.shipped-l.qty)):l.shipped), left=Math.max(0,l.qty-sh); if(l.onPallets>left) over++; if(l.onPallets<left) under++;
-        return '<tr><td data-l="Товар">'+esc(l.name)+'</td><td data-l="Заказано" class="num">'+esc(l.qty)+'</td><td data-l="Уже уехало" class="num">'+esc(sh)+'</td><td data-l="На паллетах" class="num"><b'+(l.onPallets>left?' class="err"':'')+'>'+esc(l.onPallets)+'</b></td></tr>'; }).join('')
+        return '<tr><td data-l="Товар">'+esc(l.name)+'</td><td data-l="Заказано" class="num">'+esc(l.qty)+'</td><td data-l="Уже уехало" class="num">'+esc(sh)+'</td><td data-l="На паллетах" class="num"><b>'+esc(l.onPallets)+'</b>'+(l.onPallets>left?' <span class="sm muted">+'+(l.onPallets-left)+'</span>':'')+'</td></tr>'; }).join('')
       +'</tbody></table></div>'
       +(TWSH.r.extraError?'<div class="note warn"><div>⚠ '+esc(TWSH.r.extraError)+'</div></div>':'')
       +(noPack0?'<div class="sm muted">Паллетовки нет — документы будут на все позиции сделки.</div>':'')
-      +(over?'<div class="note warn"><div>⚠ На паллетах больше, чем осталось по сделке — проверьте паллетовку.</div></div>':'')
+      +(over?'<div class="sm muted">«+N» — на паллетах больше, чем осталось по счёту: в документах будет количество с паллет, по цене счёта.</div>':'')
       +(under&&!noPack0?'<div class="sm muted">Частичная отгрузка: остаток уйдёт следующей отгрузкой (ещё одна ТН и CMR).</div>':'');
     box.innerHTML=h; };
   ask('🚚 Отгрузочные документы — '+esc(r.eu?'Европа':'Россия'), body, function(){
@@ -185,11 +185,12 @@ function twPkRender(){
   }).join('');
   var left='<div><div class="row" style="align-items:center"><b>Паллеты</b><span class="sm muted">'+TWPK.pallets.length+' шт</span><span class="sp"></span><button class="gho sm" onclick="twPkSync();twPalletSheets(TWPK.pallets)" title="листы на паллеты по тому, что сейчас в окне">🏷 Листы</button><button class="sec sm" onclick="twPkNew()">＋ Паллета</button></div>'+pals+'</div>';
   // ── что везём (справа): товары заказа сделки (нет заказа — позиции сделки), остаток, количество и кнопка на выбранную паллету ──
+  // больше, чем в заказе, класть можно (владелец 19.11.2026, №2538: «отгружаем больше, чем в счёте, — это нормально»): поле и кнопка есть у каждой строки
   var prow=pool.map(function(it,i){
-    var over=it.left<0, done=it.left===0;
-    return '<tr'+(over?' style="color:var(--red)"':done?' class="muted"':'')+'><td>'+esc(it.internal||it.name)+twPkFinish(it.internal)+'<div class="muted sm">'+esc(it.sku)+' · '+it.qty+' шт'+(it.placed?' · разложено '+it.placed:'')+'</div></td>'
-      +'<td class="num">'+(over?'<b>лишнее '+(-it.left)+'</b>':done?'✓':('<input type="number" min="1" max="'+it.left+'" step="1" id="pkq'+i+'" value="'+it.left+'" style="width:64px">'))+'</td>'
-      +'<td>'+(it.left>0?'<button class="sm" onclick="twPkAdd(\''+esc(it.productId)+'\','+i+')">→ Паллета '+selNo+'</button>':'')+'</td></tr>'; }).join('');
+    var over=it.left<0, done=it.left<=0;
+    return '<tr'+(done?' class="muted"':'')+'><td>'+esc(it.internal||it.name)+twPkFinish(it.internal)+'<div class="muted sm">'+esc(it.sku)+' · '+it.qty+' шт'+(it.placed?' · разложено '+it.placed:'')+(over?' · <b>сверх заказа +'+(-it.left)+'</b>':done?' ✓':'')+'</div></td>'
+      +'<td class="num"><input type="number" min="1" step="1" id="pkq'+i+'" value="'+(done?'':it.left)+'"'+(done?' placeholder="ещё"':'')+' style="width:64px"></td>'
+      +'<td><button class="sm'+(done?' gho':'')+'" onclick="twPkAdd(\''+esc(it.productId)+'\','+i+')">→ Паллета '+selNo+'</button></td></tr>'; }).join('');
   var right='<div class="pk-pool"><div class="row" style="align-items:center"><b>Что везём</b><span class="sm muted">'+(r.order?esc(r.order.num):'позиции сделки')+' · осталось <b>'+leftAll+'</b> шт</span></div>'
     +'<div class="row" style="align-items:center;margin:var(--s-1) 0"><span class="sm">Кладём на:</span><select id="pktarget" onchange="twPkSelect(Number(this.value))">'+TWPK.pallets.map(function(p,i){ return '<option value="'+i+'"'+(i===TWPK.sel?' selected':'')+'>Паллета '+(i+1)+(p.lines.length?'':' (пустая)')+'</option>'; }).join('')+'</select></div>'
     +'<div class="tbl-wrap"><table class="tbl sm"><thead><tr><th>Товар</th><th class="num">Штук</th><th></th></tr></thead><tbody>'+(prow||'<tr><td colspan="3" class="sm muted">нет товаров каталога</td></tr>')+'</tbody></table></div>'
@@ -211,7 +212,6 @@ function twPkPut(p, it, n){ var ex=p.lines.filter(function(l){ return l.productI
 function twPkAdd(productId, i){ twPkSync(); var it=twPkPool().filter(function(x){ return x.productId===productId; })[0]; if(!it) return;
   var inp=el('pkq'+i), n=Math.round(Number(inp&&inp.value)||0);
   if(!(n>0)){ setm('pkmsg','err','Впишите, сколько штук положить'); return; }
-  if(n>it.left){ setm('pkmsg','err','«'+it.name+'»: осталось разложить '+it.left+' шт, а вписано '+n); return; }
   setm('pkmsg','',''); twPkPut(TWPK.pallets[TWPK.sel], it, n); twPkRender(); }
 function twPkAll(){ twPkSync(); var left=twPkPool().filter(function(x){ return x.left>0; }); if(!left.length) return; var p=TWPK.pallets[TWPK.sel]; left.forEach(function(it){ twPkPut(p, it, it.left); }); twPkRender(); }
 function twPkAddCatalog(inp){ twPkSync(); var v=String((inp&&inp.value)||'').trim(); if(!v) return; var p=(TWPK.products||[]).filter(function(x){ return x.sku.toLowerCase()===v.toLowerCase()||x.name.toLowerCase()===v.toLowerCase(); })[0];
