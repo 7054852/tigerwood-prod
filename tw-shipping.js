@@ -296,26 +296,28 @@ function twPalletSheets(pallets){
   Promise.all([ref,pk]).then(function(a){
     var order=a[0]||(TWSH&&TWSH.r&&TWSH.r.deal&&TWSH.r.deal.num)||'', list=(a[1]||[]).filter(function(p){ return (p.lines||[]).length; });
     if(!list.length){ w.document.body.innerHTML='Паллет с товаром нет — сначала разложите товары в «Паллетовке».'; return; }
-    w.document.open(); w.document.write(twPalletSheetsHtml(list, order)); w.document.close();
+    var mk=(TWSH&&TWSH.r&&TWSH.r.market)||(TWPK&&TWPK.r&&TWPK.r.deal&&TWPK.r.deal.market)||'';
+    w.document.open(); w.document.write(twPalletSheetsHtml(list, order, mk==='ru'||mk==='by')); w.document.close();
   });
 }
 /** HTML окна печати: страницы .pg по паллетам + подгонка размера под одну страницу (отдельно — чтобы проверять без всплывающего окна) */
-function twPalletSheetsHtml(list, order){
+function twPalletSheetsHtml(list, order, ru){
   var n=list.length, today=new Date(), dd=function(x){ return (x<10?'0':'')+x; }, date=dd(today.getDate())+'.'+dd(today.getMonth()+1)+'.'+today.getFullYear();
   var pages=list.map(function(p,i){
-    // лист на паллету — только по-английски (владелец 16.10.2026), имя как в инвойсе / пэкинг-листе / ТН (enDoc с сервера: без модели в скобках, цвет — 08.11.2026)
+    // Европа — по-английски (владелец 16.10.2026), имя как в инвойсе / пэкинг-листе / ТН (enDoc с сервера: без модели в скобках, цвет — 08.11.2026);
+    // Россия и Беларусь — по-русски (владелец 20.11.2026): документное имя, «шт», без «Parts -»
     // товар и его UV-двойник на одной паллете — одна строка, как в упаковочном листе (19.11.2026: артикул и имя на печати у них одинаковые)
-    var total=0, mg=[]; p.lines.forEach(function(l){ var nm=String(l.enDoc||twPkEn(l.productId)||l.nameEn||l.name||'').trim(), sku=twSkuDoc(l.sku), q=Number(l.qty)||0; total+=q;
+    var total=0, mg=[]; p.lines.forEach(function(l){ var nm=String(ru?(l.name||''):(l.enDoc||twPkEn(l.productId)||l.nameEn||l.name||'')).trim(), sku=twSkuDoc(l.sku), q=Number(l.qty)||0; total+=q;
       var same=mg.filter(function(x){ return x.sku===sku&&x.nm===nm; })[0]; if(same) same.q+=q; else mg.push({ sku:sku, nm:nm, q:q }); });
     var lines=mg.map(function(l){
-      return '<div class="ln"><div class="l"><div class="sku">'+esc(l.sku)+'</div><div class="nm">'+esc(l.nm)+' <span class="parts">Parts -</span></div></div>'
-        +'<div class="r"><span class="q">'+esc(l.q)+'</span><span class="u">pcs</span></div></div>'; }).join('');
-    return '<div class="pg" style="--k:1"><div class="hd"><div><div class="lbl">Order</div><div class="val">'+esc(order)+'</div></div><div class="pill">'+(i+1)+' / '+n+'</div></div>'
-      +'<div class="pal">Palet <span class="no">#'+(i+1)+'</span></div>'
+      return '<div class="ln"><div class="l"><div class="sku">'+esc(l.sku)+'</div><div class="nm">'+esc(l.nm)+(ru?'':' <span class="parts">Parts -</span>')+'</div></div>'
+        +'<div class="r"><span class="q">'+esc(l.q)+'</span><span class="u">'+(ru?'шт':'pcs')+'</span></div></div>'; }).join('');
+    return '<div class="pg" style="--k:1"><div class="hd"><div><div class="lbl">'+(ru?'Заказ':'Order')+'</div><div class="val">'+esc(order)+'</div></div><div class="pill">'+(i+1)+' / '+n+'</div></div>'
+      +'<div class="pal">'+(ru?'Паллета':'Palet')+' <span class="no">'+(ru?'№':'#')+(i+1)+'</span></div>'
       +'<div class="lines">'+lines+'</div>'
-      +'<div class="ft"><span>Total on pallet: <b>'+total+' pcs</b></span><span>'+esc(date)+'</span></div></div>';
+      +'<div class="ft"><span>'+(ru?'Всего на паллете':'Total on pallet')+': <b>'+total+(ru?' шт':' pcs')+'</b></span><span>'+esc(date)+'</span></div></div>';
   }).join('');
-  return '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Листы на паллеты — '+esc(order||'')+'</title>'
+  return '<!doctype html><html lang="'+(ru?'ru':'en')+'"><head><meta charset="utf-8"><title>Листы на паллеты — '+esc(order||'')+'</title>'
     +'<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
     +'<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&display=swap"><style>'
     +'@page{size:A4 portrait;margin:0}html,body{margin:0;background:#EEF1F5;color:#151A24;font-family:Onest,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}'
