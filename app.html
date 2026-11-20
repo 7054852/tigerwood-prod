@@ -351,6 +351,11 @@ function shell(){
   // хеш ставим без события hashchange (оно приходило не всегда — раздел не открывался) и сразу route(); ?lead убираем, чтобы обновление страницы не открывало новый договор снова
   var lead=twQp('lead'); if(/^\d{4,18}$/.test(lead) && ITEMS.contracts){ FOCUS={ id:'contracts', params:{ lead:lead } };
     try{ var sp=new URLSearchParams(location.search); sp.delete('lead'); var qs=sp.toString(); history.replaceState(null,'',location.pathname+(qs?'?'+qs:'')+'#/contracts'); }catch(e){ location.hash='#/contracts'; } }
+  // ссылка из сообщения помощника в Telegram (20.11.2026): app.html?indoc=<id> или t.me/<бот>?startapp=indoc_<id> → «Входящие», сразу карточка документа
+  var sp0=''; try{ sp0=String((Telegram.WebApp.initDataUnsafe||{}).start_param||''); }catch(e){}
+  var indoc=twQp('indoc')||(/^indoc_/.test(sp0)?sp0.slice(6):'');
+  if(/^[A-Za-z0-9_-]{6,80}$/.test(indoc) && ITEMS.indocs){ FOCUS={ id:'indocs', params:{ doc:indoc } };
+    try{ var sp2=new URLSearchParams(location.search); sp2.delete('indoc'); var qs2=sp2.toString(); history.replaceState(null,'',location.pathname+(qs2?'?'+qs2:'')+'#/indocs'); }catch(e){ location.hash='#/indocs'; } }
   route();
 }
 // роль приходит с эмодзи в начале («🗂 Диспетчер производства») — в шапке меню показываем без него
