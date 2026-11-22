@@ -108,12 +108,13 @@
     var free=!t.op, h=hintOf(t), col=free?'':colorOf(t.group);
     var l=(t.start-sc.from)/sc.span*100, w=t.dur/sc.span*100;
     var pct=(!free&&t.qty>0&&t.done>0)?Math.min(100,Math.round(t.done/t.qty*100)):0;
-    return '<div class="cb-blk'+col+(free?' free':'')+(h&&h.warn?' warn':'')+(pct>=100?' done':'')+'" data-id="'+esc(t.id)+'" data-k="'+esc(lc(t.order+'|'+t.detail))+'"'
+    var noted=!free&&!!t.title;
+    return '<div class="cb-blk'+col+(free?' free':'')+(h&&h.warn?' warn':'')+(noted?' noted':'')+(pct>=100?' done':'')+'" data-id="'+esc(t.id)+'" data-k="'+esc(lc(t.order+'|'+t.detail))+'"'
       +' style="left:'+l.toFixed(3)+'%;width:'+w.toFixed(3)+'%">'
       +(free?('<span class="cb-t cb-t2">'+esc(t.title)+'</span>')
         :('<span class="cb-t"><b>'+esc(t.op)+'</b>'+((t.model||t.detail)?'<i class="cb-sep"> · </i><span class="cb-d">'+esc(t.model||t.detail)+'</span>':'')+'</span>'
-          +'<span class="cb-s">'+qtyS(t.qty)+' шт'+(t.order?' · '+esc(t.order):'')+(t.done>0?' · сдано '+qtyS(t.done):'')+(t.title?' <i class="cb-note1">✎</i>':'')+'</span>'
-          +(t.title?'<span class="cb-s cb-note">✎ '+esc(t.title)+'</span>':'')))
+          +'<span class="cb-s">'+qtyS(t.qty)+' шт'+(t.order?' · '+esc(t.order):'')+(t.done>0?' · сдано '+qtyS(t.done):'')+'</span>'
+          +(t.title?'<span class="cb-note"><i>✎</i>'+esc(t.title)+'</span><i class="cb-nb" title="есть примечание">✎</i>':'')))
       +(pct?'<i class="cb-fill" style="width:'+pct+'%"></i>':'')+'<span class="cb-rv" title="потяните вниз или вверх — разделить работу с соседями"></span><span class="cb-rz"></span></div>';
   }
   function rowHtml(p,sc){
