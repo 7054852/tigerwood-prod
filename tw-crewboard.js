@@ -75,17 +75,20 @@
     var prevQty=0, who=[];
     if(r.prev) people().forEach(function(p){ p.tasks.forEach(function(x){
       if(x.id!==t.id&&x.order===t.order&&lc(x.detail)===lc(t.detail)&&lc(x.op)===lc(r.prev)){ prevQty+=x.qty; who.push(shortName(p.name)+' с '+hm(x.start)+(x.qty?' ('+qtyS(x.qty)+' шт)':'')); } }); });
-    return { ref:r, who:who, warn:t.qty>0&&t.qty>r.avail+prevQty+0.001, over:t.qty>r.left+0.001 };
+    // у первой операции детали (упаковка фурнитуры, раскрой) перед ней ничего не «лежит»: ⚠ не ставим, сверх заказа — просто пометка
+    return { ref:r, who:who, first:!r.prev, warn:!!r.prev&&t.qty>0&&t.qty>r.avail+prevQty+0.001, over:t.qty>r.left+0.001 };
   }
   function hintText(t,h){
     if(!h) return '';
     var a=[];
     if(h.warn) a.push('⚠ перед операцией лежит '+qtyS(h.ref.avail)+' из '+qtyS(t.qty)+' шт');
-    else if(t.qty>h.ref.avail+0.001) a.push('лежит '+qtyS(h.ref.avail)+' шт, остальное даст предыдущая операция');
+    else if(!h.first&&t.qty>h.ref.avail+0.001) a.push('лежит '+qtyS(h.ref.avail)+' шт, остальное даст предыдущая операция');
     if(h.ref.prev) a.push('предыдущая — «'+h.ref.prev+'»: '+(h.who.length?h.who.join(', '):'сегодня ни у кого не стоит'));
-    if(h.over) a.push('по заказу осталось сделать '+qtyS(h.ref.left)+' шт');
+    if(h.over) a.push('по заказу осталось '+qtyS(h.ref.left)+' шт'+(h.first?' — остальное сверх заказа, впрок':''));
     return a.join(' · ');
   }
+  // «откуда время»: сумма работы по расценке и темп, которым она делится
+  function durWhy(qty,rate){ var c=cfg(); if(!(qty>0&&rate>0)) return ''; return ' · '+(Math.round(qty*rate*100)/100).toLocaleString('ru-RU')+' ₽ по расценке при '+(Math.round(c.hourRate*c.efficiency*100)/100).toLocaleString('ru-RU')+' ₽/час'; }
   function calcDur(qty,rate){ var c=cfg(); if(!(qty>0&&rate>0)) return 60; return Math.max(c.snap,Math.round(qty*rate/(c.hourRate*c.efficiency)*60/c.snap)*c.snap); }
 
   /* ── отрисовка ── */
@@ -300,7 +303,7 @@
       :(d.list.length?d.list.map(function(r,i){
         return '<div class="cb-li'+(i===d.sel?' sel':'')+'" data-i="'+i+'"><span class="cb-dot'+colorOf(r.group)+'"></span>'
           +'<span class="cb-lt"><b>'+esc(r.op)+'</b> · '+esc(r.level==='изделие'?(r.model||r.eq):r.detail)+'<i>'+esc(r.order)+(r.name?' · '+esc(r.name):'')+'</i></span>'
-          +'<span class="cb-ln">можно '+qtyS(r.avail)+'<i>осталось '+qtyS(r.left)+'</i></span></div>'; }).join('')
+          +'<span class="cb-ln">'+(r.prev?('можно '+qtyS(r.avail)+'<i>осталось '+qtyS(r.left)+'</i>'):('по заказу '+qtyS(r.left)+'<i>первая операция</i>'))+'</span></div>'; }).join('')
         :'<div class="muted cb-li0">'+($('cbQ').value.trim()?'в открытых заказах такого нет — Enter запишет как текст':'сейчас нет работ, которые можно брать сразу, — начните писать')+'</div>');
     var li=$('cbList').querySelectorAll('.cb-li'); for(var i=0;i<li.length;i++) li[i].addEventListener('mousedown',function(e){ e.preventDefault(); pick(+this.getAttribute('data-i')); });
   }
@@ -313,11 +316,11 @@
     $('cbList').innerHTML='';
     $('cbTip').innerHTML='';
     $('cbPick').innerHTML='<div class="cb-picked"><span class="cb-dot'+colorOf(r.group)+'"></span><span><b>'+esc(r.op)+'</b> · '+esc(r.level==='изделие'?(r.model||r.eq):r.detail)
-      +'<i>'+esc(r.order)+' · '+esc(r.group)+' · '+String(r.rate).replace('.',',')+' ₽/шт · можно '+qtyS(r.avail)+', осталось '+qtyS(r.left)+'</i></span></div>'
+      +'<i>'+esc(r.order)+' · '+esc(r.group)+' · '+String(r.rate).replace('.',',')+' ₽/шт · '+(r.prev?('можно '+qtyS(r.avail)+', осталось '+qtyS(r.left)):('по заказу осталось '+qtyS(r.left)))+'</i></span></div>'
       +'<div class="cb-f"><label>Количество, шт</label><input id="cbQty" inputmode="decimal" value="'+String(q0).replace('.',',')+'"><span id="cbDur" class="cb-dur"></span></div>'
       +(fit>0&&fit<have?'<div class="cb-hint">до '+hm(end)+' помещается '+qtyS(fit)+' шт</div>':'')
       +'<div class="dlg-btns"><button class="sec" onclick="twCrewBoard._back()">← другая работа</button><button onclick="twCrewBoard._addPicked()">Поставить</button></div>';
-    var qi=$('cbQty'), upd=function(){ $('cbDur').textContent='≈ '+durS(calcDur(num(qi.value),r.rate)); };
+    var qi=$('cbQty'), upd=function(){ $('cbDur').textContent='≈ '+durS(calcDur(num(qi.value),r.rate))+durWhy(num(qi.value),r.rate); };
     qi.addEventListener('input',upd); qi.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); addPicked(); } }); upd(); qi.focus(); qi.select();
   }
   function back(){ var d=S.dlg; if(!d) return; d.pick=null; $('cbPick').innerHTML=''; $('cbTip').innerHTML='Enter — записать текстом · ↓ и Enter — выбрать работу из списка'; dlgList(); $('cbQ').focus(); }
@@ -344,8 +347,8 @@
       +'<div id="cbErr"></div><div class="dlg-btns"><button class="sec danger" onclick="twCrewBoard._del()">Удалить</button><span class="cb-sp"></span>'
       +'<button class="sec" onclick="twCrewBoard._close()">Отмена</button><button onclick="twCrewBoard._save()">Сохранить</button></div>',{ id:id, auto:false });
     var qi=$('cbQty');
-    if(qi){ var upd=function(){ var m=calcDur(num(qi.value),t.rate); $('cbDur').textContent='по расчёту '+durS(m); if(S.dlg.auto||!t.manual) setEnd(m); };
-      qi.addEventListener('input',upd); $('cbDur').textContent='по расчёту '+durS(t.calc);
+    if(qi){ var upd=function(){ var m=calcDur(num(qi.value),t.rate); $('cbDur').textContent='по расчёту '+durS(m)+durWhy(num(qi.value),t.rate); if(S.dlg.auto||!t.manual) setEnd(m); };
+      qi.addEventListener('input',upd); $('cbDur').textContent='по расчёту '+durS(t.calc)+durWhy(t.qty,t.rate);
       $('cbAuto').addEventListener('click',function(){ S.dlg.auto=true; setEnd(calcDur(num(qi.value),t.rate)); }); }
     $('cbTo').addEventListener('input',function(){ S.dlg.auto=false; S.dlg.touched=true; });
     S.dlg.bg.addEventListener('keydown',function(e){ if(e.key==='Enter'&&e.target.tagName!=='BUTTON'){ e.preventDefault(); saveEdit(); } });
