@@ -137,7 +137,7 @@
     S.el.innerHTML='<div class="cb-msg" id="cbMsg">'+S.msg+'</div>'
       +'<div class="note hint'+(S.help?' show':'')+'" data-hb="1">Щёлкните по пустому месту в строке — добавить работу: начните писать (деталь, операция, заказ) и выберите из списка, или просто впишите текст и нажмите Enter. '
       +'Блок тянется мышью — по времени и на другого человека; за правый край растягивается. Потяните нижний край блока на соседние строки — работа разделится между этими людьми, количество и время поровну. Людей переставляют за ⋮⋮. Длина блока считается из количества и расценки при темпе '
-      +String(Math.round(c.efficiency*100))+' % от '+String(c.hourRate).replace('.',',')+' ₽/час; растянутый вручную блок помнит свою длину. ⚠ — перед операцией сейчас лежит меньше, чем задано (это подсказка, а не запрет). Наведите на блок — название задачи целиком; кнопка «Компактно / Подробно» переносит текст задач в блоках целиком. Зелёная полоска — сколько уже сдано нарядами. Сумма в ₽ у человека — сколько он заработает по расценкам, если сделает весь план (до налогов, без премий).</div>'
+      +String(Math.round(c.efficiency*100))+' % от '+String(c.hourRate).replace('.',',')+' ₽/час; растянутый вручную блок помнит свою длину. ⚠ — перед операцией сейчас лежит меньше, чем задано (это подсказка, а не запрет). Если текст в блок не помещается, наведите на него — блок раскроется и покажет текст целиком; кнопка «Компактно / Подробно» переносит текст задач в блоках целиком. Зелёная полоска — сколько уже сдано нарядами. Сумма в ₽ у человека — сколько он заработает по расценкам, если сделает весь план (до налогов, без премий).</div>'
       +(ps.length?'':'<div class="empty">На '+dmy(S.d.date)+' в табеле никого нет — добавьте людей кнопкой «＋ Человек».</div>')
       +'<div class="cb-wrap tbl-wrap fill" id="cbWrap"><div class="cb'+(isDet()?' det':'')+'" style="--cb-hours:'+sc.hours+(S.nameW?';--cb-name:'+S.nameW+'px':'')+'">'
       +'<div class="cb-head"><div class="cb-name cb-corner"><b>'+ps.length+' чел</b>'+(rubAll>0?'<span class="cb-rub" title="работы в плане по расценкам на всех: '+money(rubAll)+' ₽">'+Math.round(rubAll).toLocaleString('ru-RU')+' ₽</span>':'')+'<span class="cb-ld">'+n1(tot/60)+'<i>/'+n1(ps.length*cap)+' ч</i></span></div>'
@@ -165,22 +165,25 @@
       for(j=0;j<bl.length;j++) h=Math.max(h,bl[j].scrollHeight+8);
       if(h>rows[i].offsetHeight) rows[i].style.height=Math.min(h,116)+'px'; }
   }
-  // карточка блока при наведении: полный текст сразу, без ожидания системной подсказки
-  function tipHtml(t){
-    // только название задачи (владелец 22.11.2026): количество, время и заказ и так видны в блоке, подсказка по цепочке — в окне блока
-    // у операции изделия деталь названа как само изделие — показываем вариант товара
-    var what=t.model?((t.detail&&lc(t.detail)!==lc(t.eq)?t.detail+' · ':'')+t.model):t.detail;
-    return t.op?('<b>'+esc(t.op)+'</b>'+(what?'<div class="cb-tip-d">'+esc(what)+'</div>':'')):('<b>'+esc(t.title)+'</b>');
+  // наведение (владелец 22.11.2026): текст помещается — ничего не происходит; не помещается — блок «раскрывается» на месте,
+  // в своём цвете, и показывает текст целиком. Раскрытая копия мышь не перехватывает: блок под ней по-прежнему тянется и щёлкается.
+  function clipped(blk){
+    if(blk.scrollHeight>blk.clientHeight+6) return true;   // пара пикселей межстрочного запаса — не «не поместилось»
+    var p=blk.querySelectorAll('.cb-t, .cb-s');
+    for(var i=0;i<p.length;i++) if(p[i].scrollWidth>p[i].clientWidth+1||p[i].scrollHeight>p[i].clientHeight+1) return true;   // обрезано по ширине или по числу строк
+    return false;
   }
   function showTip(blk){
-    var f=taskBy(blk.getAttribute('data-id')); if(!f){ hideTip(); return; }
-    var el=S.tip; if(!el){ el=S.tip=document.createElement('div'); el.className='cb-tip'; document.body.appendChild(el); }
-    el.innerHTML=tipHtml(f.t); el.hidden=false;
-    var r=blk.getBoundingClientRect(), w=el.offsetWidth, hh=el.offsetHeight, x=Math.max(8,Math.min(r.left,window.innerWidth-w-8)), y=r.bottom+6;
-    if(y+hh>window.innerHeight-8) y=Math.max(8,r.top-hh-6);
-    el.style.left=x+'px'; el.style.top=y+'px';
+    hideTip(); if(!clipped(blk)) return;
+    var r=blk.getBoundingClientRect(), el=S.tip=blk.cloneNode(true);
+    el.removeAttribute('data-id'); el.className=blk.className.replace(/\b(rel|drag|saving)\b/g,'')+' pop';
+    el.style.cssText='left:0;top:0;min-width:'+Math.round(r.width)+'px;min-height:'+Math.round(r.height)+'px';
+    document.body.appendChild(el);
+    var w=el.offsetWidth, h=el.offsetHeight;
+    el.style.left=Math.max(8,Math.min(r.left,window.innerWidth-w-8))+'px';
+    el.style.top=Math.max(8,Math.min(r.top,window.innerHeight-h-8))+'px';
   }
-  function hideTip(){ if(S.tip) S.tip.hidden=true; }
+  function hideTip(){ if(S.tip&&S.tip.parentNode) S.tip.parentNode.removeChild(S.tip); S.tip=null; }
   function drawMsg(){ var m=$('cbMsg'); if(m) m.innerHTML=S.msg; }
   function drawActions(){
     var a=S.o.actions; if(!a) return;
