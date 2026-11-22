@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="tw-theme.js"></script>
 <script src="tw-config.js"></script>
+<script src="tw-crewboard.js?v=2026112201"></script>
 <title>Тигервуд — планирование</title>
 <style>
   .box{ margin-bottom:var(--s-3); }
@@ -49,22 +50,8 @@
   .zfoot{ font:var(--t-small); padding:var(--s-2) var(--s-3) var(--s-3); }
   .warnbar{ margin:var(--s-2) var(--s-3) 0; padding:var(--s-2) var(--s-3); border-radius:var(--r-ctl); background:var(--amber-bg); color:var(--amber); font:var(--t-small); font-weight:500; }
   .drophint{ color:var(--muted); font:var(--t-small); }
-  /* ── карточка бойца ── */
-  .crew{ border:1px solid var(--line); border-radius:var(--r-card); background:var(--card); box-shadow:var(--shadow-card); margin-bottom:var(--s-3); overflow:hidden; }
-  .crew.full{ border-color:var(--green); } .crew.low{ border-color:var(--amber); } .crew.empty{ border-style:dashed; border-color:var(--line2); }
-  .ch{ display:flex; align-items:center; gap:var(--s-2); padding:var(--s-3) var(--s-3) var(--s-2); flex-wrap:wrap; }
-  .ch .nm{ font:var(--t-heading); } .ch .stat{ font:var(--t-tiny); color:var(--muted); }
-  .load{ height:8px; background:var(--grid); margin:0 var(--s-3); border-radius:var(--r-pill); overflow:hidden; }
-  .load>i{ display:block; height:100%; background:var(--accent); border-radius:var(--r-pill); } .load>i.ov{ background:var(--red); }
-  .lnums{ font:var(--t-small); padding:var(--s-1) var(--s-3) 0; font-variant-numeric:tabular-nums; }
-  .tasks{ padding:var(--s-1) var(--s-3) var(--s-2); }
-  .task{ display:flex; gap:var(--s-2); align-items:center; flex-wrap:wrap; padding:var(--s-1) 0; border-bottom:1px solid var(--line); font:var(--t-small); }
-  .task:last-child{ border-bottom:0 }
-  .task .tg, .pk .tg{ font:var(--t-label); color:var(--fg2); background:var(--grey-bg); border-radius:var(--r-pill); padding:0 var(--s-2); }
-  .task .tn{ flex:1; min-width:150px; } .task .tq{ font-weight:600; font-variant-numeric:tabular-nums; }
-  .pick{ margin:0 var(--s-3) var(--s-3); border:1px dashed var(--line2); border-radius:var(--r-ctl); padding:var(--s-2); }
-  .pk{ display:flex; gap:var(--s-2); align-items:center; padding:var(--s-1) 0; border-bottom:1px solid var(--line); font:var(--t-small); cursor:pointer; }
-  .pk:last-child{ border-bottom:0 } .pk:hover{ background:var(--card2) }
+  /* вкладка «Люди» — доска tw-crewboard.js (стили в теме); печать — альбомный лист, только доска */
+  @media print{ @page{ size:A4 landscape; margin:8mm; } .hi, .tabs, .toolbar input, .toolbar .end, .toolbar .pnav button, .note{ display:none !important; } }
   /* ── волны ── */
   .wave{ border:1px solid var(--line); border-radius:var(--r-card); background:var(--card); box-shadow:var(--shadow-card); margin-bottom:var(--s-3); padding:var(--s-4); }
   .flow{ display:flex; gap:var(--s-2); align-items:stretch; overflow-x:auto; padding:var(--s-2) 0 var(--s-1); }
@@ -124,6 +111,7 @@ var DATE=(function(){ var d=new Date(); d.setDate(d.getDate()+1); return isoOf(d
 var OID=qp('batch')||'', R=null, SEL='', PICK='', SHIFTF='', PLAN=null;
 
 function load(){
+  if(VIEW==='crew'){ R=R||{orders:[]}; renderHead(); twCrewBoard.mount($('pane'),{ api:api, post:apiPost, date:DATE, actions:$('cbAct') }); return; }
   $('pane').innerHTML='<div class="center muted">Загрузка…</div>';
   api({vapi:'planscreen', view:VIEW, date:ruDate(DATE), batch:OID}).then(function(r){
     if(!r||!r.ok){ $('pane').innerHTML='<div class="center err">'+esc((r&&r.error)||'нет прав')+'</div>'; return; }
@@ -145,13 +133,12 @@ function renderHead(){
     +'<span class="lbl">'+ruDate(DATE)+' ('+dayName(DATE)+')</span>'
     +'<button onclick="setDate(shiftDate(DATE,1))">›</button></div>'
     +'<input type="date" value="'+DATE+'" onchange="setDate(this.value)">'
-    +'<span class="meta">заказ:</span><select onchange="OID=this.value;PLAN=null;load()">'+opts+'</select>'
-    +(VIEW==='crew'?'<div class="end"><button class="sec" onclick="sendAll()">📨 Разослать задания</button></div>':'')
+    +(VIEW==='crew'?'<div class="end" id="cbAct"></div>'   // доска людей — по всем заказам сразу; её кнопки ставит tw-crewboard.js
+      :'<span class="meta">заказ:</span><select onchange="OID=this.value;PLAN=null;load()">'+opts+'</select>')
     +'</div>';
 }
 function render(){
   if(VIEW==='horizon') return renderHorizon();
-  if(VIEW==='crew') return renderCrew();
   renderDay();
 }
 
@@ -302,111 +289,6 @@ function editExpect(i){
   twSay('Сохраняю ожидание…');
   save({vapi:'planset',date:ruDate(DATE),worker:p.name,patch:JSON.stringify({expect:(n>0?n:'')})});
 }
-
-/* ═══════════ ВИД «ЛЮДИ» ═══════════ */
-function renderCrew(){
-  var people=R.people||[], fact=R.fact||{};
-  var totalPlan=0; people.forEach(function(p){ totalPlan+=Number(p.planRub)||0; });
-  // «📨 Разослать задания» — в панели действий (renderHead), справа
-  var kpi='<div class="tiles">'
-    +'<div class="tile"><div class="t">Бойцов</div><div class="v">'+people.length+'</div></div>'
-    +'<div class="tile"><div class="t">Задано работы</div><div class="v ok">'+m0(totalPlan)+' <small>₽</small></div></div>'
-    +'<div class="tile"><div class="t">Работ доступно</div><div class="v">'+((R.catalog||[]).length)+'</div></div></div>';
-  var cards=people.map(function(p,i){
-    var exp=Number(p.expect)||0, plan=Number(p.planRub)||0;
-    var pct=exp>0?Math.min(100,Math.round(plan/exp*100)):0, over=plan>exp*1.05;
-    var cls=!p.tasks.length?'empty':(plan>=exp*0.9?'full':'low');
-    var f=fact[p.name.toLowerCase()]||{byKey:{}};
-    var tasks=p.tasks.map(function(t,ti){
-      var k=t.op+(t.detail?(' › '+t.detail):'');
-      var done=((f.byKey||{})[k]||{}).qty||0;
-      return '<div class="task"><span class="tg">'+esc(t.group||'—')+'</span>'
-        +'<span class="tn">'+esc(t.op)+(t.detail?' <span class="muted">› '+esc(t.detail)+'</span>':'')+'</span>'
-        +'<span class="tq">'+m0(t.qty)+' шт</span><span class="muted">'+m0(t.rub)+' ₽</span>'
-        +(done>0?('<span class="pill ok">✓ сдал '+m0(done)+'</span>'):'')
-        +(t.over?('<span class="pill warn">⏳ есть только '+m0(t.availQty)+'</span>'):'')
-        +'<button class="ic" onclick="editQty('+i+','+ti+')">✏️</button>'
-        +'<button class="ic" onclick="delTask('+i+','+ti+')">🗑</button></div>';
-    }).join('');
-    return '<div class="crew '+cls+'">'
-      +'<div class="ch"><span>'+shIco(p.shift)+'</span><span class="nm">'+esc(p.name)+'</span>'
-        +(p.topGroup?'<span class="stat">⭐ '+esc(p.topGroup)+'</span>':'')
-        +'<span class="stat">⚡ обычно '+m0(exp)+' ₽/смену</span><span style="flex:1"></span>'
-        +'<button class="sec sm" onclick="fillShift('+i+')">⚡ Заполнить смену</button>'
-        +'<button class="sec sm" onclick="togglePick(\''+esc(String(p.name).replace(/'/g,''))+'\')">'+(PICK===p.name?'закрыть':'＋ работа')+'</button></div>'
-      +'<div class="load"><i class="'+(over?'ov':'')+'" style="width:'+pct+'%"></i></div>'
-      +'<div class="lnums"><b>'+m0(plan)+'</b> из ~'+m0(exp)+' ₽'
-        +(plan<exp*0.9?(' · <span style="color:var(--amber)">резерв '+m0(exp-plan)+' ₽</span>'):(over?' · <span class="err">перегруз</span>':' · смена заполнена'))+'</div>'
-      +'<div class="tasks">'+(tasks||'<div class="muted" style="padding:var(--s-2) 0">работ не назначено — «⚡ Заполнить смену» или «＋ работа»</div>')+'</div>'
-      +(PICK===p.name?pickerHtml(p,i):'')
-      +'<div class="row" style="padding:0 var(--s-3) var(--s-3)"><button class="gho" onclick="sendOne('+i+')">📨 отправить задание в Telegram</button></div></div>';
-  }).join('');
-  var empty=people.length?'':'<div class="empty">На эту дату никто не отмечен в табеле — отметьте смены во вкладке «🎯 День».</div>';
-  $('pane').innerHTML=kpi+cards+empty;
-}
-function togglePick(n){ PICK=(PICK===n)?'':n; render(); }
-// каталог = что физически можно делать сейчас (задел с предыдущих операций обеспечен)
-function pickList(p){
-  var cat=(R.catalog||[]).filter(function(c){ return !p.tasks.some(function(t){ return (t.op+' › '+t.detail)===c.key; }); });
-  cat.sort(function(a,b){ var an=(a.group===p.topGroup)?0:1, bn=(b.group===p.topGroup)?0:1; return an-bn || b.availQty-a.availQty; });
-  return cat;
-}
-function pickerHtml(p,i){
-  var cat=pickList(p);
-  return '<div class="pick"><div class="muted" style="margin-bottom:4px">Что можно делать сейчас (сначала родной участок бойца):</div>'
-    +cat.slice(0,25).map(function(c,ci){
-      return '<div class="pk" onclick="addTask('+i+','+ci+')"><span class="tg">'+esc(c.group)+'</span>'
-        +'<span style="flex:1;min-width:140px">'+esc(c.op)+' <span class="muted">› '+esc(c.detail)+'</span></span>'
-        +'<span class="muted">можно '+m0(c.availQty)+' шт · '+money(c.rate)+' ₽/шт</span></div>';
-    }).join('')+(cat.length?'':'<div class="muted">нет доступных работ по этому заказу</div>')+'</div>';
-}
-// сколько дать: чтобы добить смену до ожидания, но не больше, чем реально есть работы
-function autoQty(p,c){
-  var exp=Number(p.expect)||0, plan=Number(p.planRub)||0, left=Math.max(0,exp-plan);
-  var byMoney=(c.rate>0)?Math.floor(left/c.rate):0;
-  var q=Math.min(byMoney||0, c.availQty||0);
-  if(!(q>0)) q=Math.min(c.availQty||0,1);
-  return q;
-}
-function addTask(i,ci){
-  var p=R.people[i], c=pickList(p)[ci]; if(!c) return;
-  var q=autoQty(p,c);
-  p.tasks.push({op:c.op,detail:c.detail,qty:q,group:c.group,rate:c.rate,rub:Math.round(q*c.rate*100)/100,availQty:c.availQty});
-  PICK=''; saveTasks(i);
-}
-function fillShift(i){
-  var p=R.people[i], list=pickList(p), added=0;
-  for(var k=0;k<list.length&&added<3;k++){
-    var exp=Number(p.expect)||0, plan=Number(p.planRub)||0;
-    if(plan>=exp*0.95) break;
-    var q=autoQty(p,list[k]); if(!(q>0)) continue;
-    p.tasks.push({op:list[k].op,detail:list[k].detail,qty:q,group:list[k].group,rate:list[k].rate,
-                  rub:Math.round(q*list[k].rate*100)/100,availQty:list[k].availQty});
-    p.planRub=Math.round((plan+q*list[k].rate)*100)/100;
-    added++;
-  }
-  if(!added){ alert('Нечем догрузить: по этому заказу нет доступных работ.'); return; }
-  saveTasks(i);
-}
-function editQty(i,ti){
-  var t=R.people[i].tasks[ti];
-  var v=prompt('Количество: '+t.op+(t.detail?(' › '+t.detail):'')+(t.availQty!=null?('\nДоступно сейчас: '+m0(t.availQty)+' шт'):''), m0(t.qty));
-  if(v===null) return; var q=num(v); if(!(q>0)){ alert('Количество должно быть больше нуля'); return; }
-  t.qty=q; t.rub=Math.round(q*(t.rate||0)*100)/100; saveTasks(i);
-}
-function delTask(i,ti){ R.people[i].tasks.splice(ti,1); saveTasks(i); }
-function saveTasks(i){
-  var p=R.people[i];
-  var items=p.tasks.map(function(t){ return {op:t.op,detail:t.detail,qty:t.qty,group:t.group,rate:t.rate,eq:t.eq||'',model:t.model||''}; });
-  twSay('Сохраняю задание…');
-  save({vapi:'planset',date:ruDate(DATE),worker:p.name,patch:JSON.stringify({tasks:items})});
-}
-function sendOne(i){ twSay('Отправляю задание…');
-  save({vapi:'plantasks',date:ruDate(DATE),worker:R.people[i].name}, false, function(r){
-    alert(r.sent?('Отправлено бойцу: '+r.sent):'Нечего отправлять — у бойца нет задания или не задан Telegram'); }); }
-function sendAll(){ twSay('Рассылаю задания…');
-  save({vapi:'plantasks',date:ruDate(DATE),worker:''}, false, function(r){
-    alert('Отправлено: '+(r.sent||0)+(r.noTg?(' · без Telegram: '+r.noTg):'')+(r.skipped?(' · без изменений: '+r.skipped):'')); }); }
 
 /* ═══════════ ВИД «ГОРИЗОНТ» ═══════════ */
 function renderHorizon(){
