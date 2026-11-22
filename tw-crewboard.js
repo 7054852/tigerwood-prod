@@ -85,7 +85,7 @@
     if(h.warn) a.push('⚠ перед операцией лежит '+qtyS(h.ref.avail)+' из '+qtyS(t.qty)+' шт');
     else if(!h.first&&t.qty>h.ref.avail+0.001) a.push('лежит '+qtyS(h.ref.avail)+' шт, остальное даст предыдущая операция');
     if(h.ref.prev) a.push('предыдущая — «'+h.ref.prev+'»: '+(h.who.length?h.who.join(', '):'сегодня ни у кого не стоит'));
-    if(h.over) a.push('по заказу осталось '+qtyS(h.ref.left)+' шт'+(h.first?' — остальное сверх заказа, впрок':''));
+    if(h.over) a.push(h.ref.left>0?('по заказу осталось '+qtyS(h.ref.left)+' шт'+(h.first?' — остальное сверх заказа, впрок':'')):('по заказу уже сделано '+qtyS(h.ref.done)+' из '+qtyS(h.ref.need)+' — это сверх заказа'));
     return a.join(' · ');
   }
   // «откуда время»: сумма работы по расценке и темп, которым она делится
@@ -306,7 +306,8 @@
     var out=rows.filter(function(r){ var t=lc([r.order,r.name,r.eq,r.model,r.detail,r.op,r.group].join(' '));
       return words.every(function(w){ return t.indexOf(w)>=0||(w.length>4&&t.indexOf(w.slice(0,Math.max(4,w.length-2)))>=0); }); });
     if(!words.length) out=out.filter(function(r){ return r.avail>0; });
-    out.sort(function(a,b){ return (a.group===home?0:1)-(b.group===home?0:1) || (b.avail>0?1:0)-(a.avail>0?1:0) || b.avail*b.rate-a.avail*a.rate; });
+    // сделанное по заказу полностью — в конце: найти можно (работа сверх заказа), но вперёд не лезет
+    out.sort(function(a,b){ return (a.left>0?0:1)-(b.left>0?0:1) || (a.group===home?0:1)-(b.group===home?0:1) || (b.avail>0?1:0)-(a.avail>0?1:0) || b.avail*b.rate-a.avail*a.rate; });
     return out.slice(0,14);
   }
   function openAdd(name,start){
@@ -331,7 +332,7 @@
       :(d.list.length?d.list.map(function(r,i){
         return '<div class="cb-li'+(i===d.sel?' sel':'')+'" data-i="'+i+'"><span class="cb-dot'+colorOf(r.group)+'"></span>'
           +'<span class="cb-lt"><b>'+esc(r.op)+'</b> · '+esc(r.level==='изделие'?(r.model||r.eq):r.detail)+'<i>'+esc(r.order)+(r.name?' · '+esc(r.name):'')+'</i></span>'
-          +'<span class="cb-ln">'+(r.prev?('можно '+qtyS(r.avail)+'<i>осталось '+qtyS(r.left)+'</i>'):('по заказу '+qtyS(r.left)+'<i>первая операция</i>'))+'</span></div>'; }).join('')
+          +'<span class="cb-ln">'+(!(r.left>0)?('сделано<i>'+qtyS(r.done)+' из '+qtyS(r.need)+'</i>'):r.prev?('можно '+qtyS(r.avail)+'<i>осталось '+qtyS(r.left)+'</i>'):('по заказу '+qtyS(r.left)+'<i>первая операция</i>'))+'</span></div>'; }).join('')
         :'<div class="muted cb-li0">'+($('cbQ').value.trim()?'в открытых заказах такого нет — Enter запишет как текст':'сейчас нет работ, которые можно брать сразу, — начните писать')+'</div>');
     var li=$('cbList').querySelectorAll('.cb-li'); for(var i=0;i<li.length;i++) li[i].addEventListener('mousedown',function(e){ e.preventDefault(); pick(+this.getAttribute('data-i')); });
   }
@@ -340,13 +341,13 @@
     d.pick=r;
     // сколько предложить: что лежит перед операцией, но не больше, чем помещается до следующего блока (или конца дня)
     var c=cfg(), p=person(d.name), end=Math.max(c.to,d.start+60); p.tasks.forEach(function(t){ if(t.start>d.start&&t.start<end) end=t.start; });
-    var fit=r.rate>0?Math.floor((end-d.start)/60*c.hourRate*c.efficiency/r.rate):0, have=r.avail>0?r.avail:r.left, q0=fit>0?Math.min(have,fit):have;
+    var fit=r.rate>0?Math.floor((end-d.start)/60*c.hourRate*c.efficiency/r.rate):0, have=r.avail>0?r.avail:r.left, q0=!(have>0)?'':(fit>0?Math.min(have,fit):have);
     $('cbList').innerHTML='';
     $('cbTip').innerHTML='';
     $('cbPick').innerHTML='<div class="cb-picked"><span class="cb-dot'+colorOf(r.group)+'"></span><span><b>'+esc(r.op)+'</b> · '+esc(r.level==='изделие'?(r.model||r.eq):r.detail)
-      +'<i>'+esc(r.order)+' · '+esc(r.group)+' · '+String(r.rate).replace('.',',')+' ₽/шт · '+(r.prev?('можно '+qtyS(r.avail)+', осталось '+qtyS(r.left)):('по заказу осталось '+qtyS(r.left)))+'</i></span></div>'
+      +'<i>'+esc(r.order)+' · '+esc(r.group)+' · '+String(r.rate).replace('.',',')+' ₽/шт · '+(!(r.left>0)?('по заказу уже сделано '+qtyS(r.done)+' из '+qtyS(r.need)+' — работа пойдёт сверх заказа'):r.prev?('можно '+qtyS(r.avail)+', осталось '+qtyS(r.left)):('по заказу осталось '+qtyS(r.left)))+'</i></span></div>'
       +'<div class="cb-f"><label>Количество, шт</label><input id="cbQty" inputmode="decimal" value="'+String(q0).replace('.',',')+'"><span id="cbDur" class="cb-dur"></span></div>'
-      +(fit>0&&fit<have?'<div class="cb-hint">до '+hm(end)+' помещается '+qtyS(fit)+' шт</div>':'')
+      +(fit>0&&(fit<have||!(have>0))?'<div class="cb-hint">до '+hm(end)+' помещается '+qtyS(fit)+' шт</div>':'')
       +'<div class="dlg-btns"><button class="sec" onclick="twCrewBoard._back()">← другая работа</button><button onclick="twCrewBoard._addPicked()">Поставить</button></div>';
     var qi=$('cbQty'), upd=function(){ $('cbDur').textContent='≈ '+durS(calcDur(num(qi.value),r.rate))+durWhy(num(qi.value),r.rate); };
     qi.addEventListener('input',upd); qi.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); addPicked(); } }); upd(); qi.focus(); qi.select();
