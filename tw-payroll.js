@@ -165,10 +165,12 @@
     var mrows='<tr class="twp-open"><td data-l="Месяц">Долг на 13.09.2026'+(r.openingNote?'<span class="sub2">'+esc(r.openingNote)+'</span>':'')+'</td><td class="num" data-l="Начислено">'+money(r.opening||0)+'</td><td class="num" data-l="Погашено"></td><td class="num" data-l="На руки"></td><td class="num" data-l="Остаток">'+money(rest)+'</td></tr>'
       +ks.map(function(ym){
         var m=r.months[ym], idet=ym===cur, e=r2(m.earned+m.adj);
-        rest=r2(rest+(m.closed?e:0)-m.settled);
-        return '<tr'+(idet?' class="twp-cur"':'')+'><td data-l="Месяц">'+esc(monY(ym))+(idet?'<span class="sub2">идёт — в долг войдёт '+dmy(nextYm(cur)+'-01')+'</span>':'')+(m.salary?'<span class="sub2">'+esc(salaryWords(m))+'</span>':'')+(m.adj?'<span class="sub2">'+(m.salary?'оклад ':'наряды ')+money(m.earned)+', правка '+(m.adj>0?'+':'−')+money(Math.abs(m.adj))+'</span>':'')+'</td>'
+        // окладник: месяцы до начала оклада в долг не входят (оклад за них в системе не начислялся) — показываем справкой, остаток не трогаем
+        var pre=!!(r.debtFrom&&ym<r.debtFrom);
+        if(!pre) rest=r2(rest+(m.closed?e:0)-m.settled);
+        return '<tr'+(idet?' class="twp-cur"':'')+'><td data-l="Месяц">'+esc(monY(ym))+(idet?'<span class="sub2">идёт — в долг войдёт '+dmy(nextYm(cur)+'-01')+'</span>':'')+(pre?'<span class="sub2">до оклада — в долг не входит</span>':'')+(m.salary?'<span class="sub2">'+esc(salaryWords(m))+'</span>':'')+(m.adj?'<span class="sub2">'+(m.salary?'оклад ':'наряды ')+money(m.earned)+', правка '+(m.adj>0?'+':'−')+money(Math.abs(m.adj))+'</span>':'')+'</td>'
           +'<td class="num" data-l="Начислено">'+(e?money(e):'')+'</td><td class="num" data-l="Погашено">'+(m.settled?money(m.settled):'')+'</td><td class="num" data-l="На руки">'+(m.paid?money(m.paid):'')+'</td>'
-          +'<td class="num" data-l="Остаток">'+(rest< -0.004?'<span class="twp-plus">наперёд '+money(-rest)+'</span>':money(rest))+'</td></tr>';
+          +'<td class="num" data-l="Остаток">'+(pre?'<span class="muted">—</span>':rest< -0.004?'<span class="twp-plus">наперёд '+money(-rest)+'</span>':money(rest))+'</td></tr>';
       }).join('');
     var pays=(r.payments||[]).slice().sort(function(a,b){ return b.dateIso.localeCompare(a.dateIso); });
     var byP={}, order=[]; pays.forEach(function(p){ if(!byP[p.period]){ byP[p.period]=[]; order.push(p.period); } byP[p.period].push(p); });
@@ -193,6 +195,7 @@
       +'<div class="kpis twp-k"><span class="k">Должны '+debtHtml(r)+'</span>'
         +(r.debtHands!=null&&r.debt>0.004?'<span class="k" title="долг × 0,86">выдать на руки, чтобы закрыть <b>'+money(r.debtHands)+'</b></span>':'')
         +'<span class="k">'+esc(mon(cur))+' копится <b>'+money((r.current||{}).earned)+'</b></span>'
+        +(r.debtFrom?'<span class="k" title="оклад в системе начисляется с этого месяца; более ранние месяцы и выплаты за них в долг не входят">долг считается с <b>'+esc(monY(r.debtFrom))+'</b></span>':'')
         +(r.payFor&&r.payFor.length?'<span class="k">платим за него: '+esc(r.payFor.join(', '))+'</span>':'')+'</div>'
       +'<div class="tbl-wrap"><table class="tbl sm mob twp-m"><thead><tr><th>Месяц</th><th class="num">Начислено</th><th class="num" title="'+(podr?'выплачено ÷ 0,86':'= выплачено')+'">Погашено</th><th class="num">На руки</th><th class="num">Остаток</th></tr></thead><tbody>'+mrows+'</tbody></table></div>'
       +'<div class="sect">Выплаты с 13.09</div>'+payHtml
