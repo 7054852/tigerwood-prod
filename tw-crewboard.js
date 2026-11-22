@@ -89,7 +89,8 @@
   function calcDur(qty,rate){ var c=cfg(); if(!(qty>0&&rate>0)) return 60; return Math.max(c.snap,Math.round(qty*rate/(c.hourRate*c.efficiency)*60/c.snap)*c.snap); }
 
   /* ── отрисовка ── */
-  function colorOf(g){ var s=(S.d&&S.d.sites)||[]; for(var i=0;i<s.length;i++) if(s[i].name===g) return s[i].color||''; return ''; }
+  // цвет участка — класс палитры темы по порядку участков: в справочнике операций у раскроя и механики цвет один, блоки сливались бы
+  function colorOf(g){ var s=(S.d&&S.d.sites)||[]; for(var i=0;i<s.length;i++) if(s[i].name===g) return g==='Прочее'?'':' cb-c'+(i%7); return ''; }
   function blkHtml(t,sc){
     var free=!t.op, h=hintOf(t), col=free?'':colorOf(t.group);
     var l=(t.start-sc.from)/sc.span*100, w=t.dur/sc.span*100;
@@ -97,8 +98,8 @@
     var tip=(free?t.title:(t.op+(t.detail?' › '+t.detail:'')+(t.order?' · '+t.order:'')))+'\n'+hm(t.start)+'–'+hm(t.start+t.dur)+' ('+durS(t.dur)+')'
       +(free?'':('\n'+qtyS(t.qty)+' шт'+(t.rate?' × '+String(t.rate).replace('.',',')+' ₽':'')+(t.manual?' · длина задана вручную, по расчёту '+durS(t.calc):'')))
       +(t.done>0?'\nсдано нарядами: '+qtyS(t.done)+' шт':'')+(h?('\n'+hintText(t,h)):'');
-    return '<div class="cb-blk'+(free?' free':'')+(h&&h.warn?' warn':'')+(pct>=100?' done':'')+'" data-id="'+esc(t.id)+'" data-k="'+esc(lc(t.order+'|'+t.detail))+'" title="'+esc(tip)+'"'
-      +' style="left:'+l.toFixed(3)+'%;width:'+w.toFixed(3)+'%'+(col?';--gc:'+esc(col):'')+'">'
+    return '<div class="cb-blk'+col+(free?' free':'')+(h&&h.warn?' warn':'')+(pct>=100?' done':'')+'" data-id="'+esc(t.id)+'" data-k="'+esc(lc(t.order+'|'+t.detail))+'" title="'+esc(tip)+'"'
+      +' style="left:'+l.toFixed(3)+'%;width:'+w.toFixed(3)+'%">'
       +(free?('<span class="cb-t cb-t2">'+esc(t.title)+'</span>')
         :('<span class="cb-t"><b>'+esc(t.op)+'</b>'+(t.detail?' · '+esc(t.detail):(t.model?' · '+esc(t.model):''))+'</span>'
           +'<span class="cb-s">'+qtyS(t.qty)+' шт'+(t.order?' · '+esc(t.order):'')+(t.done>0?' · сдано '+qtyS(t.done):'')+'</span>'))
@@ -120,7 +121,7 @@
     var hours=''; for(var h=sc.from;h<sc.to;h+=60) hours+='<span class="cb-h" style="left:'+((h-sc.from)/sc.span*100).toFixed(3)+'%;width:'+(60/sc.span*100).toFixed(3)+'%">'+(Math.floor(h/60)%24)+'</span>';
     var now='';
     if(S.d.date===S.d.today){ var d=new Date(), m=d.getHours()*60+d.getMinutes(); if(m>sc.from&&m<sc.to) now='<i class="cb-now" style="left:calc(var(--cb-name) + (100% - var(--cb-name)) * '+((m-sc.from)/sc.span).toFixed(4)+')"></i>'; }
-    var legend=((S.d.sites)||[]).filter(function(s){ return s.color; }).map(function(s){ return '<span class="cb-lg" style="--gc:'+esc(s.color)+'">'+esc(s.name)+'</span>'; }).join('');
+    var legend=((S.d.sites)||[]).filter(function(s){ return s.name!=='Прочее'; }).map(function(s){ return '<span class="cb-lg'+colorOf(s.name)+'">'+esc(s.name)+'</span>'; }).join('');
     var sc0=$('cbWrap'), keep=sc0?{ x:sc0.scrollLeft, y:sc0.scrollTop }:null;
     S.el.innerHTML='<div class="cb-msg" id="cbMsg">'+S.msg+'</div>'
       +'<div class="note hint'+(S.help?' show':'')+'" data-hb="1">Щёлкните по пустому месту в строке — добавить работу: начните писать (деталь, операция, заказ) и выберите из списка, или просто впишите текст и нажмите Enter. '
@@ -288,7 +289,7 @@
     if(!keep) d.list=matches($('cbQ').value,person(d.name));
     $('cbList').innerHTML=!S.refs?'<div class="muted cb-li0">список работ загружается…</div>'
       :(d.list.length?d.list.map(function(r,i){
-        return '<div class="cb-li'+(i===d.sel?' sel':'')+'" data-i="'+i+'"><span class="cb-dot" style="--gc:'+esc(colorOf(r.group)||'var(--line2)')+'"></span>'
+        return '<div class="cb-li'+(i===d.sel?' sel':'')+'" data-i="'+i+'"><span class="cb-dot'+colorOf(r.group)+'"></span>'
           +'<span class="cb-lt"><b>'+esc(r.op)+'</b> · '+esc(r.level==='изделие'?(r.model||r.eq):r.detail)+'<i>'+esc(r.order)+(r.name?' · '+esc(r.name):'')+'</i></span>'
           +'<span class="cb-ln">можно '+qtyS(r.avail)+'<i>осталось '+qtyS(r.left)+'</i></span></div>'; }).join('')
         :'<div class="muted cb-li0">'+($('cbQ').value.trim()?'в открытых заказах такого нет — Enter запишет как текст':'сейчас нет работ, которые можно брать сразу, — начните писать')+'</div>');
@@ -302,7 +303,7 @@
     var fit=r.rate>0?Math.floor((end-d.start)/60*c.hourRate*c.efficiency/r.rate):0, have=r.avail>0?r.avail:r.left, q0=fit>0?Math.min(have,fit):have;
     $('cbList').innerHTML='';
     $('cbTip').innerHTML='';
-    $('cbPick').innerHTML='<div class="cb-picked"><span class="cb-dot" style="--gc:'+esc(colorOf(r.group)||'var(--line2)')+'"></span><span><b>'+esc(r.op)+'</b> · '+esc(r.level==='изделие'?(r.model||r.eq):r.detail)
+    $('cbPick').innerHTML='<div class="cb-picked"><span class="cb-dot'+colorOf(r.group)+'"></span><span><b>'+esc(r.op)+'</b> · '+esc(r.level==='изделие'?(r.model||r.eq):r.detail)
       +'<i>'+esc(r.order)+' · '+esc(r.group)+' · '+String(r.rate).replace('.',',')+' ₽/шт · можно '+qtyS(r.avail)+', осталось '+qtyS(r.left)+'</i></span></div>'
       +'<div class="cb-f"><label>Количество, шт</label><input id="cbQty" inputmode="decimal" value="'+String(q0).replace('.',',')+'"><span id="cbDur" class="cb-dur"></span></div>'
       +(fit>0&&fit<have?'<div class="cb-hint">до '+hm(end)+' помещается '+qtyS(fit)+' шт</div>':'')
@@ -324,7 +325,7 @@
     var f=taskBy(id); if(!f) return; var t=f.t, free=!t.op, h=hintOf(t);
     var opts=people().map(function(p){ return '<option'+(p.name===f.p.name?' selected':'')+'>'+esc(p.name)+'</option>'; }).join('');
     openDlg('edit',(free?('<div class="cb-f"><label>Что делать</label><input id="cbTitle" value="'+esc(t.title)+'"></div>')
-        :('<div class="cb-picked"><span class="cb-dot" style="--gc:'+esc(colorOf(t.group)||'var(--line2)')+'"></span><span><b>'+esc(t.op)+'</b>'+(t.detail?' · '+esc(t.detail):(t.model?' · '+esc(t.model):''))
+        :('<div class="cb-picked"><span class="cb-dot'+colorOf(t.group)+'"></span><span><b>'+esc(t.op)+'</b>'+(t.detail?' · '+esc(t.detail):(t.model?' · '+esc(t.model):''))
           +'<i>'+esc([t.order,t.group,t.rate?String(t.rate).replace('.',',')+' ₽/шт':''].filter(Boolean).join(' · '))+'</i></span></div>'
           +'<div class="cb-f"><label>Количество, шт</label><input id="cbQty" inputmode="decimal" value="'+String(t.qty).replace('.',',')+'"><span id="cbDur" class="cb-dur"></span></div>'))
       +'<div class="cb-f"><label>Время</label><input type="time" id="cbFrom" step="900" value="'+hm2(t.start)+'"><span>—</span><input type="time" id="cbTo" step="900" value="'+hm2(t.start+t.dur)+'">'
