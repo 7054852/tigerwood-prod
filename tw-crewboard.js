@@ -101,6 +101,14 @@
   }
   function calcDur(qty,rate){ var c=cfg(); if(!(qty>0&&rate>0)) return 60; return Math.max(c.snap,Math.round(qty*rate/(c.hourRate*c.efficiency)*60/c.snap)*c.snap); }
 
+  // короткое название операции для узких блоков (владелец 22.11.2026): слово длиннее семи букв — первые буквы до согласной и точка
+  // («Шпатлевка торцов» → «Шпатл. торцов», «Упаковка фурнитуры» → «Упак. фурн.»). Полное название — в раскрытии при наведении.
+  function shortOp(name){
+    return String(name||'').split(/\s+/).map(function(w){
+      if(w.length<=7||/\d/.test(w)) return w;
+      var c=w.slice(0,5).replace(/[аеёиоуыэюяьй]+$/i,''); return (c.length<3?w.slice(0,4):c)+'.';
+    }).join(' ');
+  }
   /* ── отрисовка ── */
   // цвет участка — класс палитры темы по порядку участков: в справочнике операций у раскроя и механики цвет один, блоки сливались бы
   function colorOf(g){ var s=(S.d&&S.d.sites)||[]; for(var i=0;i<s.length;i++) if(s[i].name===g) return g==='Прочее'?'':' cb-c'+(i%7); return ''; }
@@ -108,11 +116,11 @@
     var free=!t.op, h=hintOf(t), col=free?'':colorOf(t.group);
     var l=(t.start-sc.from)/sc.span*100, w=t.dur/sc.span*100;
     var pct=(!free&&t.qty>0&&t.done>0)?Math.min(100,Math.round(t.done/t.qty*100)):0;
-    var noted=!free&&!!t.title;
+    var noted=!free&&!!t.title, so=free?'':shortOp(t.op);
     return '<div class="cb-blk'+col+(free?' free':'')+(h&&h.warn?' warn':'')+(noted?' noted':'')+(pct>=100?' done':'')+'" data-id="'+esc(t.id)+'" data-k="'+esc(lc(t.order+'|'+t.detail))+'"'
       +' style="left:'+l.toFixed(3)+'%;width:'+w.toFixed(3)+'%">'
       +(free?('<span class="cb-t cb-t2">'+esc(t.title)+'</span>')
-        :('<span class="cb-t"><b>'+esc(t.op)+'</b>'+((t.model||t.detail)?'<i class="cb-sep"> · </i><span class="cb-d">'+esc(t.model||t.detail)+'</span>':'')+'</span>'
+        :('<span class="cb-t"><b>'+(so!==t.op?'<span class="cb-of">'+esc(t.op)+'</span><span class="cb-os">'+esc(so)+'</span>':esc(t.op))+'</b>'+((t.model||t.detail)?'<i class="cb-sep"> · </i><span class="cb-d">'+esc(t.model||t.detail)+'</span>':'')+'</span>'
           // значок примечания — сразу после партии (владелец 22.11.2026: в правом углу блока его плохо видно); строка сжимается, значок — нет
           +'<span class="cb-s"><span class="cb-sx">'+qtyS(t.qty)+' шт'+(t.order?' · '+esc(t.order):'')+'</span>'+(t.title?'<i class="cb-nb" title="есть примечание">✎</i>':'')+(t.done>0?'<span class="cb-sx"> · сдано '+qtyS(t.done)+'</span>':'')+'</span>'
           +(t.title?'<span class="cb-note"><i>✎</i>'+esc(t.title)+'</span>':'')))
@@ -147,7 +155,7 @@
       +'<div class="cb-lane cb-hours"><button class="cb-add l" title="добавить час раньше" data-add="l">＋</button>'+hours+'<button class="cb-add r" title="добавить час позже" data-add="r">＋</button></div></div>'
       +ps.map(function(p){ return rowHtml(p,sc); }).join('')+now+'</div></div>'
       +'<div class="cb-foot"><span class="cb-legend" id="cbLegend">'+legend+'<span class="cb-lg free">текстом</span></span><span class="cb-chain" id="cbChain" hidden></span></div>';
-    S.over=null; fitNames(); fitRows(); hideTip();
+    S.over=null; fitNames(); fitShort(); fitRows(); hideTip();
     if(keep){ var w=$('cbWrap'); w.scrollLeft=keep.x; w.scrollTop=keep.y; }
     drawActions();
     if(window.twFit) try{ twFit(); }catch(e){}
@@ -160,17 +168,27 @@
     if(over<=0) return;
     S.nameW=Math.min(360,cb.querySelector('.cb-row .cb-name').offsetWidth+over+4); cb.style.setProperty('--cb-name',S.nameW+'px');
   }
+  // узкий блок — короткое название операции: в компактном виде — если строка не помещается, в подробном — если блок уже ~1,5 часа,
+  // чтобы длинное слово не рвалось по буквам
+  function fitShort(){
+    var cb=S.el.querySelector('.cb'); if(!cb) return;
+    var det=cb.classList.contains('det'), bl=cb.querySelectorAll('.cb-row .cb-blk'), i;
+    for(i=0;i<bl.length;i++){ var b=bl[i], t=b.querySelector('.cb-t'); if(!t||!b.querySelector('.cb-os')) continue;
+      b.classList.remove('short');
+      if(det?b.clientWidth<150:t.scrollWidth>t.clientWidth+1) b.classList.add('short'); }
+  }
   // подробный вид: строка человека — по самому высокому блоку (текст перенесён), но не выше шести строк текста
   function fitRows(){
     var cb=S.el.querySelector('.cb.det'); if(!cb) return;
     var rows=cb.querySelectorAll('.cb-row'), i, j;
     for(i=0;i<rows.length;i++){ var bl=rows[i].querySelectorAll('.cb-blk'), h=0; rows[i].style.height='';
       for(j=0;j<bl.length;j++) h=Math.max(h,bl[j].scrollHeight+8);
-      if(h>rows[i].offsetHeight) rows[i].style.height=Math.min(h,116)+'px'; }
+      if(h>rows[i].offsetHeight) rows[i].style.height=Math.min(h,140)+'px'; }
   }
   // наведение (владелец 22.11.2026): текст помещается — ничего не происходит; не помещается — блок «раскрывается» на месте,
   // в своём цвете, и показывает текст целиком. Раскрытая копия мышь не перехватывает: блок под ней по-прежнему тянется и щёлкается.
   function clipped(blk){
+    if(blk.classList.contains('short')) return true;   // название сокращено — при наведении показываем полное
     if(blk.scrollHeight>blk.clientHeight+6) return true;   // пара пикселей межстрочного запаса — не «не поместилось»
     var p=blk.querySelectorAll('.cb-t, .cb-sx');
     for(var i=0;i<p.length;i++) if(p[i].scrollWidth>p[i].clientWidth+1||p[i].scrollHeight>p[i].clientHeight+1) return true;   // обрезано по ширине или по числу строк
@@ -179,7 +197,7 @@
   function showTip(blk){
     hideTip(); if(!clipped(blk)) return;
     var r=blk.getBoundingClientRect(), el=S.tip=blk.cloneNode(true);
-    el.removeAttribute('data-id'); el.className=blk.className.replace(/\b(rel|drag|saving|late|before|after)\b/g,'')+' pop';
+    el.removeAttribute('data-id'); el.className=blk.className.replace(/\b(rel|drag|saving|late|before|after|short)\b/g,'')+' pop';
     el.style.cssText='left:0;top:0;min-width:'+Math.round(r.width)+'px;min-height:'+Math.round(r.height)+'px';
     document.body.appendChild(el);
     var w=el.offsetWidth, h=el.offsetHeight;
@@ -547,7 +565,7 @@
         el.addEventListener('mouseleave',function(){ S.over=null; unrelate(); hideTip(); }); el.addEventListener('scroll',hideTip,true); }
       if(!wired){ wired=true; document.addEventListener('keydown',onKey); }
       // шрифт темы догружается после первой отрисовки — имена перемерить ещё раз
-      try{ if(document.fonts&&document.fonts.ready) document.fonts.ready.then(function(){ if(S.d){ fitNames(); fitRows(); } }); }catch(e){}
+      try{ if(document.fonts&&document.fonts.ready) document.fonts.ready.then(function(){ if(S.d){ fitNames(); fitShort(); fitRows(); } }); }catch(e){}
       return load();
     },
     setDate:function(d){ S.date=d; S.undo=[]; return load(); },
