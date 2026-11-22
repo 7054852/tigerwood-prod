@@ -10,6 +10,7 @@
   var lc=function(s){ return String(s==null?'':s).trim().toLowerCase().replace(/ё/g,'е'); };
   var num=function(v){ return Number(String(v==null?'':v).replace(/\s/g,'').replace(',','.'))||0; };
   var n1=function(x){ return (Math.round(x*10)/10).toLocaleString('ru-RU'); };
+  var money=function(x){ return (Math.round(x*100)/100).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2}); };
   var qtyS=function(x){ return (Math.round(x*100)/100).toLocaleString('ru-RU'); };
   var hm=function(m){ m=Math.round(m); return (Math.floor(m/60)%24)+':'+('0'+(m%60)).slice(-2); };
   var hm2=function(m){ return ('0'+(Math.floor(m/60)%24)).slice(-2)+':'+('0'+(m%60)).slice(-2); };
@@ -109,18 +110,19 @@
       +(pct?'<i class="cb-fill" style="width:'+pct+'%"></i>':'')+'<span class="cb-rz"></span></div>';
   }
   function rowHtml(p,sc){
-    var c=cfg(), cap=(c.to-c.from)/60, busy=0; p.tasks.forEach(function(t){ busy+=t.dur; }); busy=busy/60;
+    var c=cfg(), cap=(c.to-c.from)/60, busy=0, rub=0; p.tasks.forEach(function(t){ busy+=t.dur; rub+=t.qty*t.rate; }); busy=busy/60;
     var cls=busy>cap+0.01?' over':(busy>=cap*0.9?' full':'');
     return '<div class="cb-row'+(p.status==='не вышел'?' off':'')+'" data-w="'+esc(p.name)+'">'
       +'<div class="cb-name"><span class="cb-grip" title="перетащите, чтобы переставить человека">⋮⋮</span>'
       +'<span class="cb-nm" title="'+esc(p.name)+(p.home?' · участок: '+esc(p.home):'')+(p.sent?' · задание отправлено':'')+'">'+shIco(p.shift)+esc(p.name)+(p.sent?' <span class="cb-sent">✓</span>':'')+'</span>'
+      +(rub>0?'<span class="cb-rub" title="заработает по расценкам, если сделает всё, что стоит в плане: '+money(rub)+' ₽ (до налогов, без премий)">'+Math.round(rub).toLocaleString('ru-RU')+' ₽</span>':'')
       +'<span class="cb-ld'+cls+'" title="занято часов из '+n1(cap)+'">'+(busy?n1(busy):'—')+'<i>/'+n1(cap)+'</i></span></div>'
       +'<div class="cb-lane" data-w="'+esc(p.name)+'">'+p.tasks.map(function(t){ return blkHtml(t,sc); }).join('')+'</div></div>';
   }
   function draw(){
     if(!S.d) return;
     var sc=scale(), c=cfg(), ps=people(), cap=(c.to-c.from)/60, tot=0;
-    ps.forEach(function(p){ p.tasks.forEach(function(t){ tot+=t.dur; }); });
+    var rubAll=0; ps.forEach(function(p){ p.tasks.forEach(function(t){ tot+=t.dur; rubAll+=t.qty*t.rate; }); });
     var hours=''; for(var h=sc.from;h<sc.to;h+=60) hours+='<span class="cb-h" style="left:'+((h-sc.from)/sc.span*100).toFixed(3)+'%;width:'+(60/sc.span*100).toFixed(3)+'%">'+(Math.floor(h/60)%24)+'</span>';
     var now='';
     if(S.d.date===S.d.today){ var d=new Date(), m=d.getHours()*60+d.getMinutes(); if(m>sc.from&&m<sc.to) now='<i class="cb-now" style="left:calc(var(--cb-name) + (100% - var(--cb-name)) * '+((m-sc.from)/sc.span).toFixed(4)+')"></i>'; }
@@ -129,10 +131,10 @@
     S.el.innerHTML='<div class="cb-msg" id="cbMsg">'+S.msg+'</div>'
       +'<div class="note hint'+(S.help?' show':'')+'" data-hb="1">Щёлкните по пустому месту в строке — добавить работу: начните писать (деталь, операция, заказ) и выберите из списка, или просто впишите текст и нажмите Enter. '
       +'Блок тянется мышью — по времени и на другого человека; за правый край растягивается. Людей переставляют за ⋮⋮. Длина блока считается из количества и расценки при темпе '
-      +String(Math.round(c.efficiency*100))+' % от '+String(c.hourRate).replace('.',',')+' ₽/час; растянутый вручную блок помнит свою длину. ⚠ — перед операцией сейчас лежит меньше, чем задано (это подсказка, а не запрет). Зелёная полоска — сколько уже сдано нарядами.</div>'
+      +String(Math.round(c.efficiency*100))+' % от '+String(c.hourRate).replace('.',',')+' ₽/час; растянутый вручную блок помнит свою длину. ⚠ — перед операцией сейчас лежит меньше, чем задано (это подсказка, а не запрет). Зелёная полоска — сколько уже сдано нарядами. Сумма в ₽ у человека — сколько он заработает по расценкам, если сделает весь план (до налогов, без премий).</div>'
       +(ps.length?'':'<div class="empty">На '+dmy(S.d.date)+' в табеле никого нет — добавьте людей кнопкой «＋ Человек».</div>')
       +'<div class="cb-wrap tbl-wrap fill" id="cbWrap"><div class="cb" style="--cb-hours:'+sc.hours+(S.nameW?';--cb-name:'+S.nameW+'px':'')+';min-width:calc(var(--cb-name) + '+(sc.hours*56)+'px)">'
-      +'<div class="cb-head"><div class="cb-name cb-corner"><b>'+ps.length+' чел</b><span class="cb-ld">'+n1(tot/60)+'<i>/'+n1(ps.length*cap)+' ч</i></span></div>'
+      +'<div class="cb-head"><div class="cb-name cb-corner"><b>'+ps.length+' чел</b>'+(rubAll>0?'<span class="cb-rub" title="работы в плане по расценкам на всех: '+money(rubAll)+' ₽">'+Math.round(rubAll).toLocaleString('ru-RU')+' ₽</span>':'')+'<span class="cb-ld">'+n1(tot/60)+'<i>/'+n1(ps.length*cap)+' ч</i></span></div>'
       +'<div class="cb-lane cb-hours"><button class="cb-add l" title="добавить час раньше" data-add="l">＋</button>'+hours+'<button class="cb-add r" title="добавить час позже" data-add="r">＋</button></div></div>'
       +ps.map(function(p){ return rowHtml(p,sc); }).join('')+now+'</div></div>'
       +'<div class="cb-foot">'+legend+'<span class="cb-lg free">текстом</span></div>';
