@@ -137,7 +137,7 @@
     S.el.innerHTML='<div class="cb-msg" id="cbMsg">'+S.msg+'</div>'
       +'<div class="note hint'+(S.help?' show':'')+'" data-hb="1">Щёлкните по пустому месту в строке — добавить работу: начните писать (деталь, операция, заказ) и выберите из списка, или просто впишите текст и нажмите Enter. '
       +'Блок тянется мышью — по времени и на другого человека; за правый край растягивается. Потяните нижний край блока на соседние строки — работа разделится между этими людьми, количество и время поровну. Людей переставляют за ⋮⋮. Длина блока считается из количества и расценки при темпе '
-      +String(Math.round(c.efficiency*100))+' % от '+String(c.hourRate).replace('.',',')+' ₽/час; растянутый вручную блок помнит свою длину. ⚠ — перед операцией сейчас лежит меньше, чем задано (это подсказка, а не запрет). Наведите на блок — карточка с полным текстом; кнопка «Компактно / Подробно» переносит текст задач в блоках целиком. Зелёная полоска — сколько уже сдано нарядами. Сумма в ₽ у человека — сколько он заработает по расценкам, если сделает весь план (до налогов, без премий).</div>'
+      +String(Math.round(c.efficiency*100))+' % от '+String(c.hourRate).replace('.',',')+' ₽/час; растянутый вручную блок помнит свою длину. ⚠ — перед операцией сейчас лежит меньше, чем задано (это подсказка, а не запрет). Наведите на блок — название задачи целиком; кнопка «Компактно / Подробно» переносит текст задач в блоках целиком. Зелёная полоска — сколько уже сдано нарядами. Сумма в ₽ у человека — сколько он заработает по расценкам, если сделает весь план (до налогов, без премий).</div>'
       +(ps.length?'':'<div class="empty">На '+dmy(S.d.date)+' в табеле никого нет — добавьте людей кнопкой «＋ Человек».</div>')
       +'<div class="cb-wrap tbl-wrap fill" id="cbWrap"><div class="cb'+(isDet()?' det':'')+'" style="--cb-hours:'+sc.hours+(S.nameW?';--cb-name:'+S.nameW+'px':'')+'">'
       +'<div class="cb-head"><div class="cb-name cb-corner"><b>'+ps.length+' чел</b>'+(rubAll>0?'<span class="cb-rub" title="работы в плане по расценкам на всех: '+money(rubAll)+' ₽">'+Math.round(rubAll).toLocaleString('ru-RU')+' ₽</span>':'')+'<span class="cb-ld">'+n1(tot/60)+'<i>/'+n1(ps.length*cap)+' ч</i></span></div>'
@@ -167,15 +167,10 @@
   }
   // карточка блока при наведении: полный текст сразу, без ожидания системной подсказки
   function tipHtml(t){
-    var h=hintOf(t), rub=t.qty*t.rate;
+    // только название задачи (владелец 22.11.2026): количество, время и заказ и так видны в блоке, подсказка по цепочке — в окне блока
     // у операции изделия деталь названа как само изделие — показываем вариант товара
     var what=t.model?((t.detail&&lc(t.detail)!==lc(t.eq)?t.detail+' · ':'')+t.model):t.detail;
-    return (t.op?('<b>'+esc(t.op)+'</b><div class="cb-tip-d">'+esc(what||'')+'</div>')
-        :('<b>'+esc(t.title)+'</b>'))
-      +'<div class="cb-tip-m">'+[t.order, t.op?qtyS(t.qty)+' шт':'', hm(t.start)+'–'+hm(t.start+t.dur)+' ('+durS(t.dur)+')', rub>0?money(rub)+' ₽':''].filter(Boolean).map(esc).join(' · ')+'</div>'
-      +(t.manual&&t.op?'<div class="cb-tip-m">длина задана вручную, по расчёту '+durS(t.calc)+'</div>':'')
-      +(t.done>0?'<div class="cb-tip-m ok">сдано нарядами: '+qtyS(t.done)+' из '+qtyS(t.qty)+' шт</div>':'')
-      +(h&&hintText(t,h)?'<div class="cb-tip-m'+(h.warn?' warn':'')+'">'+esc(hintText(t,h))+'</div>':'');
+    return t.op?('<b>'+esc(t.op)+'</b>'+(what?'<div class="cb-tip-d">'+esc(what)+'</div>':'')):('<b>'+esc(t.title)+'</b>');
   }
   function showTip(blk){
     var f=taskBy(blk.getAttribute('data-id')); if(!f){ hideTip(); return; }
