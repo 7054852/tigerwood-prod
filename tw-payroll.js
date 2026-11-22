@@ -66,9 +66,20 @@
     if(!(m.paid>0.004)) return '';
     return podr&&Math.abs(m.settled-m.paid)>0.004 ? 'погашено '+money(m.settled)+' · на руки '+money(m.paid) : 'выплачено '+money(m.paid);
   }
+  // месяц окладника словами: норма, сколько вышел, как посчитаны выходные (расчёт — prohub src/payroll/salary.ts)
+  function salaryWords(m){
+    var x=m.salary; if(!x) return '';
+    var a=['оклад '+money(x.amount)+' на руки', (x.final?'норма ':'прошло рабочих ')+x.elapsed+(x.final?'':' из '+x.norm)+' дн', 'вышел '+x.worked+(x.off?' + '+x.off+' вых.':'')];
+    if(x.comp) a.push(x.comp+' вых. — в счёт пропусков');
+    if(x.extra) a.push(x.extra+' вых. сверх нормы × '+String(1+x.pct/100).replace('.',','));
+    if(x.missed) a.push('пропущено '+x.missed+' дн');
+    a.push('день '+money(x.rate));
+    if(m.work>0.004) a.push('наряды '+money(m.work)+' в оплату не идут');
+    return a.join(' · ');
+  }
   function cell(m, podr, lbl, cls){
     var e=r2((m.earned||0)+(m.adj||0)), p=paidLine(m, podr);
-    var t=m.adj?' title="наряды '+money(m.earned)+(m.adj>0?' + ':' − ')+'правка '+money(Math.abs(m.adj))+'"':'';
+    var t=m.adj?' title="'+(m.salary?'оклад ':'наряды ')+money(m.earned)+(m.adj>0?' + ':' − ')+'правка '+money(Math.abs(m.adj))+'"':(m.salary?' title="'+esc(salaryWords(m))+'"':'');
     return '<td class="num'+(cls?' '+cls:'')+'" data-l="'+esc(lbl)+'"'+t+'>'+(e?money(e):(p?'<span class="muted">—</span>':''))+(p?'<span class="sub2">'+p+'</span>':'')+'</td>';
   }
   function sumM(list){ var s={ earned:0, adj:0, hands:0, settled:0, paid:0 }; list.forEach(function(m){ for(var k in s) s[k]+=m[k]||0; }); return s; }
@@ -98,6 +109,7 @@
       +'<th class="num twp-cur" title="месяц идёт — в долг не входит до '+dmy(nextYm(cur)+'-01')+'">'+esc(monS(cur))+' · идёт</th><th class="num">Должны</th></tr>';
     var body=rows.map(function(r){
       var podr=isPodr(r), sub=[esc(r.kind==='—'?'вид не указан':r.kind.replace(/ \(нет договора\)$/,''))];
+      if(r.salary) sub.push('оклад '+money(r.salary.amount)+' на руки');
       if(r.payFor&&r.payFor.length) sub.push('платим за него: '+esc(r.payFor.join(', ')));
       return '<tr class="go" onclick="twPayroll.open(\''+r.personId+'\')" tabindex="0" onkeydown="if(event.key===\'Enter\')twPayroll.open(\''+r.personId+'\')">'
         +'<td data-l="Сотрудник"><span class="twp-name">'+esc(r.name)+'</span>'+(noCon(r)?' <span class="pill warn">без договора</span>':'')+(r.openingNote?' <span class="muted" title="'+esc(r.openingNote)+'">✎</span>':'')+'<span class="sub2">'+sub.join(' · ')+'</span></td>'
@@ -154,7 +166,7 @@
       +ks.map(function(ym){
         var m=r.months[ym], idet=ym===cur, e=r2(m.earned+m.adj);
         rest=r2(rest+(m.closed?e:0)-m.settled);
-        return '<tr'+(idet?' class="twp-cur"':'')+'><td data-l="Месяц">'+esc(monY(ym))+(idet?'<span class="sub2">идёт — в долг войдёт '+dmy(nextYm(cur)+'-01')+'</span>':'')+(m.adj?'<span class="sub2">наряды '+money(m.earned)+', правка '+(m.adj>0?'+':'−')+money(Math.abs(m.adj))+'</span>':'')+'</td>'
+        return '<tr'+(idet?' class="twp-cur"':'')+'><td data-l="Месяц">'+esc(monY(ym))+(idet?'<span class="sub2">идёт — в долг войдёт '+dmy(nextYm(cur)+'-01')+'</span>':'')+(m.salary?'<span class="sub2">'+esc(salaryWords(m))+'</span>':'')+(m.adj?'<span class="sub2">'+(m.salary?'оклад ':'наряды ')+money(m.earned)+', правка '+(m.adj>0?'+':'−')+money(Math.abs(m.adj))+'</span>':'')+'</td>'
           +'<td class="num" data-l="Начислено">'+(e?money(e):'')+'</td><td class="num" data-l="Погашено">'+(m.settled?money(m.settled):'')+'</td><td class="num" data-l="На руки">'+(m.paid?money(m.paid):'')+'</td>'
           +'<td class="num" data-l="Остаток">'+(rest< -0.004?'<span class="twp-plus">наперёд '+money(-rest)+'</span>':money(rest))+'</td></tr>';
       }).join('');
@@ -168,7 +180,9 @@
     var wallets=(d.wallets||[]).filter(function(w){ return w.isCash; }), defW=(wallets.filter(function(w){ return /Миронов/.test(w.name); })[0]||wallets[0]||{}).id;
     var cashSum=r.debt>0.004?(r.debtHands!=null?r.debtHands:r.debt):'';
     var ymOpts=function(sel){ var a=ks.slice(); if(a.indexOf(cur)<0) a.push(cur); if(a.indexOf(prev)<0) a.push(prev); a.sort().reverse(); return a.map(function(y){ return '<option value="'+y+'"'+(y===sel?' selected':'')+'>'+esc(monY(y))+'</option>'; }).join(''); };
-    var formula=podr?'Подряд: начислено — наряды до налогов; выплата гасит долг ÷ 0,86 (подоходный 13 % и пенсионный 1 % удерживаем мы), на руки человек получает 86 %.'
+    var sal=r.salary||null;
+    var formula=sal?('Оклад '+money(sal.amount)+' на руки в месяц: день = оклад ÷ рабочие дни месяца по календарю. Оплачивается день, где в табеле стоит «вышел». Выход в выходной сначала закрывает пропущенные рабочие дни, а сверх нормы оплачивается как день + '+sal.pct+' %.'+(podr?' Подряд: до налогов = на руки ÷ 0,86.':''))
+      :podr?'Подряд: начислено — наряды до налогов; выплата гасит долг ÷ 0,86 (подоходный 13 % и пенсионный 1 % удерживаем мы), на руки человек получает 86 %.'
       :/^штат/.test(r.kind)?'Штат: на руки — сумма наряда (налоги сверху платим мы), выплата гасит долг один к одному.'
       :'Вид не указан — считается как штат (один к одному). Укажите вид ниже или заключите договор в «Кадрах».';
     var kindBlk=noCon(r)&&!/^штат$/.test(r.kind)
@@ -195,7 +209,13 @@
         +grid(fld('Сумма до налогов','<input id="twpO" inputmode="decimal" value="'+esc(r.opening?String(r.opening).replace('.',','):'')+'" style="width:100%">')+fld('Примечание','<input id="twpON" value="'+esc(r.openingNote||'')+'" style="width:100%">'))
         +'<div class="dlg-btns" style="justify-content:flex-start;margin-top:var(--s-3)"><button class="sec" onclick="twPayroll._open(false)">Сохранить</button>'+(r.opening||r.openingNote?'<button class="danger sec" onclick="twPayroll._open(true)">Снять отсечку</button>':'')+'</div></details>'
       +'<details class="twp-d"'+(S.open==='kind'?' open':'')+' ontoggle="if(this.open)twPayroll._sec(\'kind\')"><summary>Вид и способ оплаты</summary>'+kindBlk
-        +'<label style="'+L+';margin-top:var(--s-3)"><input type="checkbox"'+(r.salaried?' checked':'')+' onchange="twPayroll._sal(this.checked)"> оплата по окладу — наряды не основа, долг по нарядам не считать</label></details>'
+        +'<div class="sect" style="margin-top:var(--s-3)">Оклад по табелю</div>'
+        +grid(fld('Оклад на руки за месяц, р','<input id="twpSA" inputmode="decimal" value="'+esc(sal?String(sal.amount).replace('.',','):'')+'" placeholder="например 1500" style="width:100%">')
+          +fld('Действует с месяца','<select id="twpSF" style="width:100%">'+ymOpts(sal&&sal.from>=prev?sal.from:cur)+'</select>')
+          +fld('Выходной сверх нормы, + %','<input id="twpSP" inputmode="decimal" value="'+esc(String(sal?sal.pct:20))+'" style="width:100%">'))
+        +'<div class="muted" style="font:var(--t-small);margin-top:var(--s-2)">Считается по табелю: оплачен день с отметкой «вышел»; пропуск рабочего дня отнимается; выход в выходной закрывает пропуск, а сверх нормы рабочих дней месяца идёт с надбавкой. Наряды такого человека в оплату не идут. Месяцы до выбранного не пересчитываются.</div>'
+        +'<div class="dlg-btns" style="justify-content:flex-start;margin-top:var(--s-3)"><button class="sec" onclick="twPayroll._salary(false)">Сохранить оклад</button>'+(sal?'<button class="danger sec" onclick="twPayroll._salary(true)" title="с выбранного месяца снова считать по нарядам">Снять оклад</button>':'')+'</div>'
+        +(sal?'':'<label style="'+L+';margin-top:var(--s-3)"><input type="checkbox"'+(r.salaried?' checked':'')+' onchange="twPayroll._sal(this.checked)"> по окладу без расчёта — наряды не основа, долг не считать вовсе</label>')+'</details>'
       +(S.o.routes.adjust?'<details class="twp-d"'+(S.open==='adj'?' open':'')+' ontoggle="if(this.open)twPayroll._sec(\'adj\')"><summary>Правка итога месяца</summary>'
         +grid(fld('Месяц','<select id="twpAY" style="width:100%" onchange="twPayroll._adjFill()">'+ymOpts(prev)+'</select>')+fld('Итог месяца до налогов','<input id="twpAT" inputmode="decimal" style="width:100%">')+fld('Причина','<input id="twpAN" placeholder="например, доплата за выходной" style="width:100%">'))
         +'<div class="dlg-btns" style="justify-content:flex-start;margin-top:var(--s-3)"><button class="sec" onclick="twPayroll._adj()">Записать правку</button></div></details>':'')
@@ -220,6 +240,8 @@
       post({ vapi:S.o.routes.cash, key:key(), data:JSON.stringify({ personId:S.pid, sum:sum, walletId:$('twpW').value, dateIso:$('twpD').value, period:$('twpY').value, dept:$('twpDep').value, note:$('twpN').value }) }, 'Выдача записана: '+money(sum)+'.'); },
     _open:function(remove){ var q={ vapi:S.o.routes.set, person:S.pid, data:JSON.stringify(remove?{ remove:true }:{ opening:$('twpO').value, note:$('twpON').value }) }; post(q, remove?'Отсечка снята.':'Долг на 13.09 сохранён.'); },
     _kind:function(k){ post({ vapi:S.o.routes.set, person:S.pid, data:JSON.stringify({ kind:k }) }, 'Вид сохранён — он же в карточке «Кадров». Договор, когда появится, главнее.'); },
+    _salary:function(remove){ var a=remove?0:num($('twpSA').value); if(!remove&&!(a>0)){ say('warn','Укажите оклад — сумму на руки за месяц.'); return; }
+      post({ vapi:S.o.routes.set, person:S.pid, data:JSON.stringify({ salary:{ amount:a, from:$('twpSF').value, pct:$('twpSP').value } }) }, remove?'Оклад снят — с этого месяца снова по нарядам.':'Оклад сохранён: '+money(a)+' на руки, считается по табелю.'); },
     _sal:function(on){ post({ vapi:S.o.routes.set, person:S.pid, data:JSON.stringify({ salaried:!!on }) }, on?'Отмечено: оплата по окладу.':'Долг снова считается по нарядам.'); },
     _adj:function(){ var t=$('twpAT').value, n=$('twpAN').value.trim(); if(n.length<3){ say('warn','Напишите причину правки.'); return; }
       post({ vapi:S.o.routes.adjust, data:JSON.stringify({ personId:S.pid, ym:$('twpAY').value, target:t, note:n }) }, 'Правка записана.'); }
