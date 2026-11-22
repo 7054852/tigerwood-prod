@@ -128,14 +128,23 @@
       +'Блок тянется мышью — по времени и на другого человека; за правый край растягивается. Людей переставляют за ⋮⋮. Длина блока считается из количества и расценки при темпе '
       +String(Math.round(c.efficiency*100))+' % от '+String(c.hourRate).replace('.',',')+' ₽/час; растянутый вручную блок помнит свою длину. ⚠ — перед операцией сейчас лежит меньше, чем задано (это подсказка, а не запрет). Зелёная полоска — сколько уже сдано нарядами.</div>'
       +(ps.length?'':'<div class="empty">На '+dmy(S.d.date)+' в табеле никого нет — добавьте людей кнопкой «＋ Человек».</div>')
-      +'<div class="cb-wrap tbl-wrap fill" id="cbWrap"><div class="cb" style="--cb-hours:'+sc.hours+';min-width:calc(var(--cb-name) + '+(sc.hours*56)+'px)">'
+      +'<div class="cb-wrap tbl-wrap fill" id="cbWrap"><div class="cb" style="--cb-hours:'+sc.hours+(S.nameW?';--cb-name:'+S.nameW+'px':'')+';min-width:calc(var(--cb-name) + '+(sc.hours*56)+'px)">'
       +'<div class="cb-head"><div class="cb-name cb-corner"><b>'+ps.length+' чел</b><span class="cb-ld">'+n1(tot/60)+'<i>/'+n1(ps.length*cap)+' ч</i></span></div>'
       +'<div class="cb-lane cb-hours"><button class="cb-add l" title="добавить час раньше" data-add="l">＋</button>'+hours+'<button class="cb-add r" title="добавить час позже" data-add="r">＋</button></div></div>'
       +ps.map(function(p){ return rowHtml(p,sc); }).join('')+now+'</div></div>'
       +'<div class="cb-foot">'+legend+'<span class="cb-lg free">текстом</span></div>';
+    fitNames();
     if(keep){ var w=$('cbWrap'); w.scrollLeft=keep.x; w.scrollTop=keep.y; }
     drawActions();
     if(window.twFit) try{ twFit(); }catch(e){}
+  }
+  // колонка имён — по самому длинному имени: фамилии должны читаться целиком (на телефоне колонка узкая, имя — в подсказке)
+  function fitNames(){
+    var cb=S.el.querySelector('.cb'); if(!cb||window.innerWidth<=640) return;
+    var nm=cb.querySelectorAll('.cb-row .cb-nm'), over=0, i;
+    for(i=0;i<nm.length;i++) over=Math.max(over,nm[i].scrollWidth-nm[i].clientWidth);
+    if(over<=0) return;
+    S.nameW=Math.min(360,cb.querySelector('.cb-row .cb-name').offsetWidth+over+4); cb.style.setProperty('--cb-name',S.nameW+'px');
   }
   function drawMsg(){ var m=$('cbMsg'); if(m) m.innerHTML=S.msg; }
   function drawActions(){
@@ -395,6 +404,8 @@
       el.innerHTML='<div class="center muted">Загрузка…</div>';
       if(!el._cb){ el._cb=1; el.addEventListener('pointerdown',onDown); el.addEventListener('click',onClick); el.addEventListener('mouseover',onOver); }
       if(!wired){ wired=true; document.addEventListener('keydown',onKey); }
+      // шрифт темы догружается после первой отрисовки — имена перемерить ещё раз
+      try{ if(document.fonts&&document.fonts.ready) document.fonts.ready.then(function(){ if(S.d) fitNames(); }); }catch(e){}
       return load();
     },
     setDate:function(d){ S.date=d; S.undo=[]; return load(); },
