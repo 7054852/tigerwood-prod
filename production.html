@@ -927,6 +927,12 @@ function recoLine(){
     +'🎯 <b>Сейчас в приоритете: '+esc(top.num)+' '+esc(top.name)+'</b> — '+why+', осталось <b>'+money(top.leftRub||0)+' ₽</b> труда'+(top.velocity?(' · темп '+money(top.velocity)+' ₽/дн'):'')+' →</div></div>';
 }
 // подано (на проверке / ждёт ОТК), но ещё не принято — сколько % труда это добавит, если примут всё
+// труд заказа в рублях: одно объяснение для списка и карточки
+var LABOR_T='Стоимость работ заказа по расценкам нарядов: количество × расценка, без премий, ночных и недельной надбавки.\nСделано — по принятым нарядам; поданное, но не принятое — отдельно («на проверке»).';
+function laborLine(b){
+  var pend=(Number(b.pendRub)||0)+(Number(b.qcRub)||0);
+  return 'труд <b>'+money(b.needRub||0)+'</b> р · сделано <b>'+money(b.doneRub||0)+'</b> · осталось <b>'+money(b.leftRub||0)+'</b>'+(pend>0?' · на проверке '+money(pend):'');
+}
 function subPct(x){ return Math.max(0, Math.round(((Number(x.pctLaborSub)||0)-(Number(x.pctLabor)||0))*10)/10); }
 function subNote(pend,qc){ pend=Number(pend)||0; qc=Number(qc)||0; if(!pend&&!qc) return '';
   return '<span class="subn" title="подано, ещё не принято: на проверке у мастера / ждёт ОТК">'+(pend?'+'+r1(pend)+' пров.':'')+(pend&&qc?' · ':'')+(qc?'+'+r1(qc)+' ОТК':'')+'</span>'; }
@@ -995,7 +1001,7 @@ function renderList(){
       :b.risk==='tight'?'впритык · запас '+(b.slack!=null?b.slack+' дн':'')+(b.forecast?' · прогноз '+esc(b.forecast):'')
       :b.risk==='ok'?'успеваем'+(b.slack!=null?' · запас '+b.slack+' дн':'')+(b.forecast?' · прогноз '+esc(b.forecast):'')
       :b.risk==='done'?'готово':b.risk==='nodeadline'?'срок не задан'+(b.forecast?' · прогноз '+esc(b.forecast):''):b.risk==='noops'?'операции не собраны':'темп неизвестен';
-    var ready=b.opsCount?(b.leftRub>0?'осталось '+money(b.leftRub)+' р труда':'все операции закрыты'):'операции не собраны';
+    var ready=b.opsCount?(b.leftRub>0?'по принятым нарядам':'все операции закрыты'):'операции не собраны';
     var pace=b.velocity?'темп '+money(b.velocity)+' р/дн · '+b.workDays+' раб. дн':'темпа нет';
     var flags=[];
     if(b.overflow) flags.push('<span class="pill bad" title="есть операции, сделанные сверх плана">⚠ перевыполнено</span>');
@@ -1023,7 +1029,9 @@ function renderList(){
           +' <a href="javascript:void(0)" onclick="event.stopPropagation();setDeadline(\''+b.id+'\',\''+esc(b.deadline||'')+'\')" title="задать/изменить срок">✎</a></span><span class="s">'+dlSub+'</span></div>'
         +'<div class="bf"><span class="t">Готовность по труду</span><span class="v"><span class="bar dual"><i style="width:'+pct+'%'+(pct>=100?';background:var(--green)':'')+'"></i>'+(sub>0?'<i class="sub" style="width:'+sub+'%"></i>':'')+'</span>'+(b.pctLabor||0)+'%</span>'
           +'<span class="s">'+(sub>0?'+'+sub+'% подано, не принято':ready)+'</span></div>'
-        +'<div class="bf"><span class="t">Труд</span><span class="v">'+(b.opsCount?money(b.leftRub||0)+' р осталось':'—')+'</span><span class="s">'+pace+(b.ourRub!=null&&b.outRub?' · нам '+money(b.ourRub)+' р':'')+'</span></div>'
+        // стоимость работ заказа по расценкам нарядов (владелец 22.11.2026): сколько всего, сколько сделано, сколько осталось
+        +'<div class="bf" title="'+LABOR_T+'"><span class="t">Труд по нарядам</span><span class="v">'+(b.opsCount?money(b.doneRub||0)+' из '+money(b.needRub||0)+' р':'—')+'</span>'
+          +'<span class="s">'+(b.opsCount?'осталось '+money(b.leftRub||0)+' р · ':'')+pace+(b.ourRub!=null&&b.outRub?' · нам '+money(b.ourRub)+' р':'')+'</span></div>'
         +'<div class="bf"><span class="t">Изделия</span><span class="v">'+plural(its.length,'позиция','позиции','позиций')+' · '+Math.round(qty)+' шт</span>'
           +'<span class="s">'+(shipped>0?'увезено '+Math.round(shipped)+' из '+Math.round(qty)+(shipped>=qty-0.001?' · всё':''):'ещё не отгружали')+'</span></div>'
       +'</div>'
@@ -1100,6 +1108,7 @@ function renderDetail(){
       +'<span class="meta">срок <b>'+(b.plan?esc(b.plan):'—')+'</b>'
         +' <a href="javascript:void(0)" onclick="setDeadline(\''+b.id+'\',\''+esc(b.plan||'')+'\')" title="изменить срок отгрузки">✎</a>'
         +' <a href="javascript:void(0)" onclick="deadlineLog(\''+b.id+'\')" title="история изменений срока">🕘</a></span>'
+      +(b.opsCount?'<span class="meta" id="olab_'+b.id+'" title="'+LABOR_T+'">'+laborLine(b)+'</span>':'')
       +'<span class="grow"></span>'
       +'<span class="pill '+costCol+'" title="'+esc('состав изделий подтверждён в каталоге: '+costSum+'\nтруд по расценкам: '+money(b.labor||0)+' р')+'">'+(costCol==='ok'?'✓ ':(costCol==='warn'?'⏳ ':'✕ '))+'собрано '+costSum+'</span>'
       +prodPill
@@ -1340,6 +1349,7 @@ function renderOps(id,r){
   var det=$('pan_det_'+id); if(det) det.innerHTML=sc+reb+warn+chk+(prods||'<div class="muted" style="margin-top:var(--s-4)">нет операций — у изделий заказа не задан состав в каталоге</div>');
   OPSR[id]=r; var sum=$('pan_sum_'+id); if(sum) sum.innerHTML=sc+summaryMatrixHtml(id,r);
   var dash=r.dash||{}, nG=(dash.groups||[]).length, nO=(dash.ops||[]).length;
+  var ol=$('olab_'+id); if(ol&&k) ol.innerHTML=laborLine(k);   // шапка — по свежему расчёту карточки, а не по списку заказов
   var site=$('pan_site_'+id); if(site) site.innerHTML=sc+'<div id="opskpi_'+id+'">'+opsKpiHtml(k)+'</div>'
     +trayHtml('Участки работ', nG?plural(nG,'участок','участка','участков'):'', 'сколько труда в участке и сколько осталось; раскрой — операции участка',
               '<div id="opsdash_'+id+'">'+opsDashHtml(id,dash)+'</div>')
