@@ -136,7 +136,7 @@
     var sc0=$('cbWrap'), keep=sc0?{ x:sc0.scrollLeft, y:sc0.scrollTop }:null;
     S.el.innerHTML='<div class="cb-msg" id="cbMsg">'+S.msg+'</div>'
       +'<div class="note hint'+(S.help?' show':'')+'" data-hb="1">Щёлкните по пустому месту в строке — добавить работу: начните писать (деталь, операция, заказ) и выберите из списка, или просто впишите текст и нажмите Enter. '
-      +'Блок тянется мышью — по времени и на другого человека; за правый край растягивается. Потяните нижний край блока на соседние строки — работа разделится между этими людьми, количество и время поровну. Людей переставляют за ⋮⋮. Длина блока считается из количества и расценки при темпе '
+      +'Блок тянется мышью — по времени и на другого человека; за правый край растягивается. Назначили не ту деталь — щёлкните по блоку и нажмите «✎ заменить»: блок, время и человек останутся. Потяните нижний край блока на соседние строки — работа разделится между этими людьми, количество и время поровну. Людей переставляют за ⋮⋮. Длина блока считается из количества и расценки при темпе '
       +String(Math.round(c.efficiency*100))+' % от '+String(c.hourRate).replace('.',',')+' ₽/час; растянутый вручную блок помнит свою длину. ⚠ — перед операцией сейчас лежит меньше, чем задано (это подсказка, а не запрет). Наведите на блок — подсветится цепочка этой детали на день: номера шагов по техпорядку, синим — что делается до, серым — после, красным — шаг, стоящий по времени не на своём месте; внизу та же цепочка словами. Если текст в блок не помещается, наведите на него — блок раскроется и покажет текст целиком; кнопка «Компактно / Подробно» переносит текст задач в блоках целиком. Зелёная полоска — сколько уже сдано нарядами. Сумма в ₽ у человека — сколько он заработает по расценкам, если сделает весь план (до налогов, без премий).</div>'
       +(ps.length?'':'<div class="empty">На '+dmy(S.d.date)+' в табеле никого нет — добавьте людей кнопкой «＋ Человек».</div>')
       +'<div class="cb-wrap tbl-wrap fill" id="cbWrap"><div class="cb'+(isDet()?' det':'')+'" style="--cb-hours:'+sc.hours+(S.nameW?';--cb-name:'+S.nameW+'px':'')+'">'
@@ -213,8 +213,13 @@
       nowIds[t.id]=1; var w=was[t.id];
       if(!w){ jobs.push({ vapi:'crewtaskdel', date:S.date, id:t.id }); return; }
       var o=w.t;
-      if(w.name!==p.name||o.start!==t.start||o.dur!==t.dur||o.qty!==t.qty||o.title!==t.title||o.manual!==t.manual)
-        jobs.push({ vapi:'crewtask', date:S.date, id:t.id, worker:w.name, patch:JSON.stringify({ to:w.name, start:o.start, dur:o.dur, manual:o.manual, qty:o.qty, title:o.title }), layout:JSON.stringify(layout) });
+      // работу блока могли заменить (другая деталь, операция, заказ) — возвращаем и её
+      var swapped=o.op!==t.op||o.detail!==t.detail||o.order!==t.order||o.model!==t.model;
+      if(w.name!==p.name||o.start!==t.start||o.dur!==t.dur||o.qty!==t.qty||o.title!==t.title||o.manual!==t.manual||swapped){
+        var pt={ to:w.name, start:o.start, dur:o.dur, manual:o.manual, qty:o.qty, title:o.title };
+        if(swapped&&o.op){ pt.op=o.op; pt.detail=o.detail; pt.order=o.order; pt.eq=o.eq; pt.model=o.model; pt.rate=o.rate; }
+        jobs.push({ vapi:'crewtask', date:S.date, id:t.id, worker:w.name, patch:JSON.stringify(pt), layout:JSON.stringify(layout) });
+      }
     }); });
     Object.keys(was).forEach(function(id){ if(nowIds[id]) return; var w=was[id], o=w.t;   // удалённый блок возвращается новым (id другой)
       jobs.push({ vapi:'crewtask', date:S.date, worker:w.name, patch:JSON.stringify({ op:o.op, detail:o.detail, order:o.order, eq:o.eq, model:o.model, rate:o.rate, qty:o.qty, title:o.title, start:o.start, dur:o.dur, manual:o.manual }), layout:JSON.stringify(layout) }); });
@@ -367,9 +372,10 @@
 
   // добавить работу: одно поле — поиск по работам всех открытых заказов или текст
   function matches(q,p){
-    var rows=S.refs||[], words=lc(q).split(/[\s,.]+/).filter(function(w){ return w.length>1; }), home=(p&&p.home)||'';
+    // слово из одной буквы — шум, а цифра — нет: «Дом 2» и «Дом 1» разные детали
+    var rows=S.refs||[], words=lc(q).split(/[\s,.]+/).filter(function(w){ return w.length>1||/\d/.test(w); }), home=(p&&p.home)||'';
     var out=rows.filter(function(r){ var t=lc([r.order,r.name,r.eq,r.model,r.detail,r.op,r.group].join(' '));
-      return words.every(function(w){ return t.indexOf(w)>=0||(w.length>4&&t.indexOf(w.slice(0,Math.max(4,w.length-2)))>=0); }); });
+      return words.every(function(w){ return (w.length===1?(' '+t+' ').replace(/[^a-zа-я0-9]+/g,' ').indexOf(' '+w+' ')>=0:t.indexOf(w)>=0)||(w.length>4&&t.indexOf(w.slice(0,Math.max(4,w.length-2)))>=0); }); });
     if(!words.length) out=out.filter(function(r){ return r.avail>0; });
     // сделанное по заказу полностью — в конце: найти можно (работа сверх заказа), но вперёд не лезет
     out.sort(function(a,b){ return (a.left>0?0:1)-(b.left>0?0:1) || (a.group===home?0:1)-(b.group===home?0:1) || (b.avail>0?1:0)-(a.avail>0?1:0) || b.avail*b.rate-a.avail*a.rate; });
@@ -390,14 +396,17 @@
     });
     dlgList();
   }
+  function refRow(r,i,sel){
+    return '<div class="cb-li'+(i===sel?' sel':'')+'" data-i="'+i+'"><span class="cb-dot'+colorOf(r.group)+'"></span>'
+          +'<span class="cb-lt"><b>'+esc(r.op)+'</b> · '+esc(r.level==='изделие'?(r.model||r.eq):r.detail)+'<i>'+esc(r.order)+(r.name?' · '+esc(r.name):'')+'</i></span>'
+          +'<span class="cb-ln">'+(!(r.left>0)?('сделано<i>'+qtyS(r.done)+' из '+qtyS(r.need)+'</i>'):r.prev?('можно '+qtyS(r.avail)+'<i>осталось '+qtyS(r.left)+'</i>'):('по заказу '+qtyS(r.left)+'<i>первая операция</i>'))+'</span></div>';
+  }
   function dlgList(keep){
     var d=S.dlg; if(!d||d.kind!=='add'||d.pick) return;
     if(!keep) d.list=matches($('cbQ').value,person(d.name));
     $('cbList').innerHTML=!S.refs?'<div class="muted cb-li0">список работ загружается…</div>'
       :(d.list.length?d.list.map(function(r,i){
-        return '<div class="cb-li'+(i===d.sel?' sel':'')+'" data-i="'+i+'"><span class="cb-dot'+colorOf(r.group)+'"></span>'
-          +'<span class="cb-lt"><b>'+esc(r.op)+'</b> · '+esc(r.level==='изделие'?(r.model||r.eq):r.detail)+'<i>'+esc(r.order)+(r.name?' · '+esc(r.name):'')+'</i></span>'
-          +'<span class="cb-ln">'+(!(r.left>0)?('сделано<i>'+qtyS(r.done)+' из '+qtyS(r.need)+'</i>'):r.prev?('можно '+qtyS(r.avail)+'<i>осталось '+qtyS(r.left)+'</i>'):('по заказу '+qtyS(r.left)+'<i>первая операция</i>'))+'</span></div>'; }).join('')
+        return refRow(r,i,d.sel); }).join('')
         :'<div class="muted cb-li0">'+($('cbQ').value.trim()?'в открытых заказах такого нет — Enter запишет как текст':'сейчас нет работ, которые можно брать сразу, — начните писать')+'</div>');
     var li=$('cbList').querySelectorAll('.cb-li'); for(var i=0;i<li.length;i++) li[i].addEventListener('mousedown',function(e){ e.preventDefault(); pick(+this.getAttribute('data-i')); });
   }
@@ -431,8 +440,10 @@
     var f=taskBy(id); if(!f) return; var t=f.t, free=!t.op, h=hintOf(t);
     var opts=people().map(function(p){ return '<option'+(p.name===f.p.name?' selected':'')+'>'+esc(p.name)+'</option>'; }).join('');
     openDlg('edit',(free?('<div class="cb-f"><label>Что делать</label><input id="cbTitle" value="'+esc(t.title)+'"></div>')
-        :('<div class="cb-picked"><span class="cb-dot'+colorOf(t.group)+'"></span><span><b>'+esc(t.op)+'</b>'+(t.model?' · '+esc(t.model):(t.detail?' · '+esc(t.detail):''))
-          +'<i>'+esc([t.order,t.group,t.rate?String(t.rate).replace('.',',')+' ₽/шт':''].filter(Boolean).join(' · '))+'</i></span></div>'
+        :('<div class="cb-picked"><span class="cb-dot'+colorOf(t.group)+'" id="cbHeadDot"></span><span id="cbHead"><b>'+esc(t.op)+'</b>'+(t.model?' · '+esc(t.model):(t.detail?' · '+esc(t.detail):''))
+          +'<i>'+esc([t.order,t.group,t.rate?String(t.rate).replace('.',',')+' ₽/шт':''].filter(Boolean).join(' · '))+'</i></span>'
+          +'<span class="cb-sp"></span><button class="gho sm" id="cbSwapBtn" title="назначили не ту деталь или операцию — выбрать другую, не удаляя блок: время, человек и количество останутся">✎ заменить</button></div>'
+          +'<div id="cbSwap" hidden><input id="cbQ2" autocomplete="off" placeholder="деталь, операция, заказ"><div class="cb-list" id="cbList2"></div></div>'
           +'<div class="cb-f"><label>Количество, шт</label><input id="cbQty" inputmode="decimal" value="'+String(t.qty).replace('.',',')+'"><span id="cbDur" class="cb-dur"></span></div>'))
       +'<div class="cb-f"><label>Время</label><input type="time" id="cbFrom" step="900" value="'+hm2(t.start)+'"><span>—</span><input type="time" id="cbTo" step="900" value="'+hm2(t.start+t.dur)+'">'
         +(free?'':'<button class="gho sm" id="cbAuto" title="поставить длину по расчёту из количества и расценки">по расчёту</button>')+'</div>'
@@ -440,11 +451,28 @@
       +(people().length>1?'<div class="cb-f"><label>Вместе с</label><select id="cbWith"><option value="">— делает один —</option>'+people().filter(function(p){ return p.name!==f.p.name; }).map(function(p){ return '<option>'+esc(p.name)+'</option>'; }).join('')+'</select><span class="cb-dur" id="cbWithTip"></span></div>':'')
       +(h?'<div class="cb-hint'+(h.warn?' warn':'')+'">'+esc(hintText(t,h))+'</div>':'')+(t.done>0?'<div class="cb-hint ok">сдано нарядами: '+qtyS(t.done)+' из '+qtyS(t.qty)+' шт</div>':'')
       +'<div id="cbErr"></div><div class="dlg-btns"><button class="sec danger" onclick="twCrewBoard._del()">Удалить</button><span class="cb-sp"></span>'
-      +'<button class="sec" onclick="twCrewBoard._close()">Отмена</button><button onclick="twCrewBoard._save()">Сохранить</button></div>',{ id:id, auto:false });
+      +'<button class="sec" onclick="twCrewBoard._close()">Отмена</button><button onclick="twCrewBoard._save()">Сохранить</button></div>',{ id:id, auto:false, ref:null, list:[], sel:-1 });
     var qi=$('cbQty');
-    if(qi){ var upd=function(){ var m=calcDur(num(qi.value),t.rate); $('cbDur').textContent='по расчёту '+durS(m)+durWhy(num(qi.value),t.rate); if(S.dlg.auto||!t.manual) setEnd(m); };
+    if(qi){
+      // расценка — выбранной на замену работы, если её поменяли
+      var rate=function(){ return S.dlg&&S.dlg.ref?S.dlg.ref.rate:t.rate; };
+      var upd=function(){ var m=calcDur(num(qi.value),rate()); $('cbDur').textContent='по расчёту '+durS(m)+durWhy(num(qi.value),rate()); if(S.dlg.auto||!t.manual) setEnd(m); };
       qi.addEventListener('input',upd); $('cbDur').textContent='по расчёту '+durS(t.calc)+durWhy(t.qty,t.rate);
-      $('cbAuto').addEventListener('click',function(){ S.dlg.auto=true; setEnd(calcDur(num(qi.value),t.rate)); }); }
+      $('cbAuto').addEventListener('click',function(){ S.dlg.auto=true; setEnd(calcDur(num(qi.value),rate())); });
+      // заменить работу: тот же поиск, что при добавлении; в поле сразу стоит операция — дописать деталь
+      var q2=$('cbQ2'), swapList=function(keep){ var d=S.dlg; if(!keep){ d.list=matches(q2.value,f.p); d.sel=-1; }
+        $('cbList2').innerHTML=!S.refs?'<div class="muted cb-li0">список работ загружается…</div>':(d.list.length?d.list.map(function(r,i){ return refRow(r,i,d.sel); }).join(''):'<div class="muted cb-li0">в открытых заказах такого нет</div>');
+        var li=$('cbList2').querySelectorAll('.cb-li'); for(var i=0;i<li.length;i++) li[i].addEventListener('mousedown',function(e){ e.preventDefault(); swapPick(+this.getAttribute('data-i')); }); };
+      var swapPick=function(i){ var d=S.dlg, r=d.list[i]; if(!r) return; d.ref=r; $('cbSwap').hidden=true;
+        $('cbHeadDot').className='cb-dot'+colorOf(r.group);
+        $('cbHead').innerHTML='<b>'+esc(r.op)+'</b> · '+esc(r.level==='изделие'?(r.model||r.eq):r.detail)+'<i>'+esc([r.order,r.group,String(r.rate).replace('.',',')+' ₽/шт'].join(' · '))+'</i><i class="cb-was">было: '+esc(t.op+(t.model||t.detail?' · '+(t.model||t.detail):''))+'</i>';
+        upd(); qi.focus(); qi.select(); };
+      $('cbSwapBtn').addEventListener('click',function(){ var box=$('cbSwap'); box.hidden=!box.hidden; if(!box.hidden){ q2.value=t.op+' '; swapList(); q2.focus(); } });
+      q2.addEventListener('input',function(){ swapList(); });
+      q2.addEventListener('keydown',function(e){ var d=S.dlg;
+        if(e.key==='ArrowDown'||e.key==='ArrowUp'){ e.preventDefault(); if(!d.list.length) return; d.sel=Math.max(0,Math.min(d.list.length-1,d.sel+(e.key==='ArrowDown'?1:-1))); swapList(true); }
+        else if(e.key==='Enter'){ e.preventDefault(); e.stopPropagation(); swapPick(d.sel>=0?d.sel:0); } });
+    }
     $('cbTo').addEventListener('input',function(){ S.dlg.auto=false; S.dlg.touched=true; });
     if($('cbWith')) $('cbWith').addEventListener('change',function(){ var sh=shareOf(t,2); $('cbWithTip').textContent=this.value?(sh.bad?'не делится: всего '+qtyS(t.qty)+' шт':('каждому'+(t.op?' по '+qtyS(sh.qty)+' шт,':'')+' '+durS(sh.dur))):''; });
     S.dlg.bg.addEventListener('keydown',function(e){ if(e.key==='Enter'&&e.target.tagName!=='BUTTON'){ e.preventDefault(); saveEdit(); } });
@@ -459,7 +487,9 @@
     if($('cbTitle')){ var v=$('cbTitle').value.trim(); if(!v){ dlgErr('Напишите, что делать'); return; } if(v!==t.title) patch.title=v; }
     if($('cbQty')){ var q=num($('cbQty').value); if(!(q>0)){ dlgErr('Укажите количество'); return; } if(q!==t.qty) patch.qty=q; }
     if(a!==t.start) patch.start=a;
-    if(d.auto) patch.auto=true; else if(b-a!==t.dur&&(d.touched||patch.qty==null||t.manual)) patch.dur=b-a;
+    // работу заменили: новая деталь, операция, заказ и расценка — блок, время и человек те же; длину пересчитает сервер, если её не задавали руками
+    if(d.ref){ patch.op=d.ref.op; patch.detail=d.ref.detail; patch.order=d.ref.order; patch.eq=d.ref.eq; patch.model=d.ref.model; patch.rate=d.ref.rate; }
+    if(d.auto) patch.auto=true; else if(b-a!==t.dur&&(d.touched||(patch.qty==null&&!d.ref)||t.manual)) patch.dur=b-a;
     var to=$('cbWho').value; if(to!==f.p.name) patch.to=to;
     var withP=$('cbWith')?$('cbWith').value:'', id=t.id; if(withP===to) withP='';
     closeDlg(); if(!Object.keys(patch).length&&!withP) return;
