@@ -90,6 +90,12 @@
   }
   // «откуда время»: сумма работы по расценке и темп, которым она делится
   function durWhy(qty,rate){ var c=cfg(); if(!(qty>0&&rate>0)) return ''; return ' · '+(Math.round(qty*rate*100)/100).toLocaleString('ru-RU')+' ₽ по расценке при '+(Math.round(c.hourRate*c.efficiency*100)/100).toLocaleString('ru-RU')+' ₽/час'; }
+  // работа на n человек: доля первого и её длина — то же правило, что на сервере (crewsplit)
+  function shareOf(t,n){
+    var c=cfg(), free=!t.op, whole=Math.round(t.qty)===t.qty, q=free?0:(whole?Math.floor(t.qty/n)+(t.qty%n>0?1:0):Math.round(t.qty/n*1000)/1000);
+    var dur=(t.manual||free)?Math.max(c.snap,Math.round(t.dur/n/c.snap)*c.snap):calcDur(q,t.rate);
+    return { qty:q, dur:dur, bad:!free&&whole&&t.qty<n };
+  }
   function calcDur(qty,rate){ var c=cfg(); if(!(qty>0&&rate>0)) return 60; return Math.max(c.snap,Math.round(qty*rate/(c.hourRate*c.efficiency)*60/c.snap)*c.snap); }
 
   /* ── отрисовка ── */
@@ -107,7 +113,7 @@
       +(free?('<span class="cb-t cb-t2">'+esc(t.title)+'</span>')
         :('<span class="cb-t"><b>'+esc(t.op)+'</b>'+(t.detail?' · '+esc(t.detail):(t.model?' · '+esc(t.model):''))+'</span>'
           +'<span class="cb-s">'+qtyS(t.qty)+' шт'+(t.order?' · '+esc(t.order):'')+(t.done>0?' · сдано '+qtyS(t.done):'')+'</span>'))
-      +(pct?'<i class="cb-fill" style="width:'+pct+'%"></i>':'')+'<span class="cb-rz"></span></div>';
+      +(pct?'<i class="cb-fill" style="width:'+pct+'%"></i>':'')+'<span class="cb-rv" title="потяните вниз или вверх — разделить работу с соседями"></span><span class="cb-rz"></span></div>';
   }
   function rowHtml(p,sc){
     var c=cfg(), cap=(c.to-c.from)/60, busy=0, rub=0; p.tasks.forEach(function(t){ busy+=t.dur; rub+=t.qty*t.rate; }); busy=busy/60;
@@ -130,7 +136,7 @@
     var sc0=$('cbWrap'), keep=sc0?{ x:sc0.scrollLeft, y:sc0.scrollTop }:null;
     S.el.innerHTML='<div class="cb-msg" id="cbMsg">'+S.msg+'</div>'
       +'<div class="note hint'+(S.help?' show':'')+'" data-hb="1">Щёлкните по пустому месту в строке — добавить работу: начните писать (деталь, операция, заказ) и выберите из списка, или просто впишите текст и нажмите Enter. '
-      +'Блок тянется мышью — по времени и на другого человека; за правый край растягивается. Людей переставляют за ⋮⋮. Длина блока считается из количества и расценки при темпе '
+      +'Блок тянется мышью — по времени и на другого человека; за правый край растягивается. Потяните нижний край блока на соседние строки — работа разделится между этими людьми, количество и время поровну. Людей переставляют за ⋮⋮. Длина блока считается из количества и расценки при темпе '
       +String(Math.round(c.efficiency*100))+' % от '+String(c.hourRate).replace('.',',')+' ₽/час; растянутый вручную блок помнит свою длину. ⚠ — перед операцией сейчас лежит меньше, чем задано (это подсказка, а не запрет). Зелёная полоска — сколько уже сдано нарядами. Сумма в ₽ у человека — сколько он заработает по расценкам, если сделает весь план (до налогов, без премий).</div>'
       +(ps.length?'':'<div class="empty">На '+dmy(S.d.date)+' в табеле никого нет — добавьте людей кнопкой «＋ Человек».</div>')
       +'<div class="cb-wrap tbl-wrap fill" id="cbWrap"><div class="cb" style="--cb-hours:'+sc.hours+(S.nameW?';--cb-name:'+S.nameW+'px':'')+';min-width:calc(var(--cb-name) + '+(sc.hours*56)+'px)">'
@@ -195,7 +201,7 @@
     if(grip){ var row=closest(grip,'cb-row'); S.drag={ mode:'row', el:row, y0:e.clientY, moved:false }; row.classList.add('drag'); }
     else if(blk){
       var f=taskBy(blk.getAttribute('data-id')); if(!f) return;
-      S.drag={ mode:t.classList.contains('cb-rz')?'rz':'mv', el:blk, id:f.t.id, x0:e.clientX, y0:e.clientY, moved:false, start:f.t.start, dur:f.t.dur, s0:f.t.start, d0:f.t.dur,
+      S.drag={ mode:t.classList.contains('cb-rz')?'rz':(t.classList.contains('cb-rv')?'sv':'mv'), el:blk, id:f.t.id, task:f.t, names:[], x0:e.clientX, y0:e.clientY, moved:false, start:f.t.start, dur:f.t.dur, s0:f.t.start, d0:f.t.dur,
         from:f.p.name, to:f.p.name, w:lane.getBoundingClientRect().width, sc:sc };
     } else if(lane&&!lane.classList.contains('cb-hours')) S.drag={ mode:'new', lane:lane, x0:e.clientX, y0:e.clientY, moved:false, sc:sc };
     else return;
@@ -215,6 +221,20 @@
       return;
     }
     if(g.mode==='new') return;
+    if(g.mode==='sv'){
+      // тянем нижний край по вертикали: работа делится между всеми строками от своей до той, где курсор
+      var ls=S.el.querySelectorAll('.cb-row .cb-lane'), at=-1, own=-1, j;
+      for(j=0;j<ls.length;j++){ var b=ls[j].getBoundingClientRect(); if(ls[j]===g.el.parentNode) own=j; if(e.clientY>=b.top&&e.clientY<b.bottom) at=j; }
+      if(at<0) at=(e.clientY<ls[0].getBoundingClientRect().top)?0:ls.length-1;
+      var old=S.el.querySelectorAll('.cb-blk.ghost'); for(j=0;j<old.length;j++) old[j].parentNode.removeChild(old[j]);
+      g.names=[]; for(j=Math.min(own,at);j<=Math.max(own,at);j++) if(j!==own) g.names.push(ls[j].getAttribute('data-w'));
+      var n=g.names.length+1, sh=shareOf(g.task,n), t0=g.task, lbl=g.el.querySelector('.cb-s, .cb-t2');
+      g.bad=sh.bad; g.el.style.width=((n>1?sh.dur:t0.dur)/g.sc.span*100)+'%';
+      if(lbl){ if(g.txt==null) g.txt=lbl.textContent; lbl.textContent=n>1?(sh.bad?(qtyS(t0.qty)+' шт на '+n+' чел. не делится'):('на '+n+' чел.'+(t0.op?' · по '+qtyS(sh.qty)+' шт':'')+' · '+durS(sh.dur))):g.txt; }
+      if(n>1&&!sh.bad) for(j=Math.min(own,at);j<=Math.max(own,at);j++){ if(j===own) continue;
+        var gh=g.el.cloneNode(true); gh.classList.add('ghost'); gh.classList.remove('drag'); gh.removeAttribute('data-id'); ls[j].appendChild(gh); }
+      return;
+    }
     var dm=Math.round(dx/g.w*g.sc.span/c.snap)*c.snap;
     if(g.mode==='rz'){ g.dur=Math.max(c.snap,g.d0+dm); g.el.style.width=(g.dur/g.sc.span*100)+'%'; var s=g.el.querySelector('.cb-s, .cb-t2'); if(s&&!g.lbl) g.lbl=s; if(g.lbl) g.lbl.textContent=hm(g.start)+'–'+hm(g.start+g.dur)+' · '+durS(g.dur); return; }
     g.start=Math.max(g.sc.from,Math.min(g.sc.to-c.snap,g.s0+dm)); g.el.style.left=((g.start-g.sc.from)/g.sc.span*100)+'%';
@@ -236,12 +256,18 @@
       remember(); S.d.people.sort(function(a,b){ return names.indexOf(a.name)-names.indexOf(b.name); });
       send({ vapi:'crewsort', date:S.date, names:JSON.stringify(names) }); return;
     }
+    if(g.mode==='sv'){
+      var gs=S.el.querySelectorAll('.cb-blk.ghost'); for(var q=0;q<gs.length;q++) gs[q].parentNode.removeChild(gs[q]);
+      if(!g.names.length||g.bad){ draw(); if(g.bad) say('Штук меньше, чем людей, — работу не разделить',1); return; }
+      splitWith(g.id,g.names); return;
+    }
     var patch={};
     if(g.mode==='rz'){ if(g.dur===g.d0){ draw(); return; } patch.dur=g.dur; }
     else { if(g.start===g.s0&&g.to===g.from){ draw(); return; } patch.start=g.start; if(g.to!==g.from) patch.to=g.to; }
     remember(); g.el.classList.add('saving');
     send({ vapi:'crewtask', date:S.date, id:g.id, worker:g.from, patch:JSON.stringify(patch) },function(r){ merge(r.rows); });
   }
+  function splitWith(id,names){ remember(); send({ vapi:'crewsplit', date:S.date, id:id, to:JSON.stringify(names) },function(r){ merge(r.rows); say('Работа разделена на '+(names.length+1)+' чел. — количество и время поровну'); }); }
   // телефон: тап по блоку — окно, тап по пустому месту — добавить
   function onClick(e){
     var t=e.target, add=t.getAttribute&&t.getAttribute('data-add'); if(add){ addHour(add); return; }
@@ -345,6 +371,7 @@
       +'<div class="cb-f"><label>Время</label><input type="time" id="cbFrom" step="900" value="'+hm2(t.start)+'"><span>—</span><input type="time" id="cbTo" step="900" value="'+hm2(t.start+t.dur)+'">'
         +(free?'':'<button class="gho sm" id="cbAuto" title="поставить длину по расчёту из количества и расценки">по расчёту</button>')+'</div>'
       +'<div class="cb-f"><label>Кому</label><select id="cbWho">'+opts+'</select></div>'
+      +(people().length>1?'<div class="cb-f"><label>Вместе с</label><select id="cbWith"><option value="">— делает один —</option>'+people().filter(function(p){ return p.name!==f.p.name; }).map(function(p){ return '<option>'+esc(p.name)+'</option>'; }).join('')+'</select><span class="cb-dur" id="cbWithTip"></span></div>':'')
       +(h?'<div class="cb-hint'+(h.warn?' warn':'')+'">'+esc(hintText(t,h))+'</div>':'')+(t.done>0?'<div class="cb-hint ok">сдано нарядами: '+qtyS(t.done)+' из '+qtyS(t.qty)+' шт</div>':'')
       +'<div id="cbErr"></div><div class="dlg-btns"><button class="sec danger" onclick="twCrewBoard._del()">Удалить</button><span class="cb-sp"></span>'
       +'<button class="sec" onclick="twCrewBoard._close()">Отмена</button><button onclick="twCrewBoard._save()">Сохранить</button></div>',{ id:id, auto:false });
@@ -353,6 +380,7 @@
       qi.addEventListener('input',upd); $('cbDur').textContent='по расчёту '+durS(t.calc)+durWhy(t.qty,t.rate);
       $('cbAuto').addEventListener('click',function(){ S.dlg.auto=true; setEnd(calcDur(num(qi.value),t.rate)); }); }
     $('cbTo').addEventListener('input',function(){ S.dlg.auto=false; S.dlg.touched=true; });
+    if($('cbWith')) $('cbWith').addEventListener('change',function(){ var sh=shareOf(t,2); $('cbWithTip').textContent=this.value?(sh.bad?'не делится: всего '+qtyS(t.qty)+' шт':('каждому'+(t.op?' по '+qtyS(sh.qty)+' шт,':'')+' '+durS(sh.dur))):''; });
     S.dlg.bg.addEventListener('keydown',function(e){ if(e.key==='Enter'&&e.target.tagName!=='BUTTON'){ e.preventDefault(); saveEdit(); } });
     (qi||$('cbTitle')).focus();
   }
@@ -367,8 +395,12 @@
     if(a!==t.start) patch.start=a;
     if(d.auto) patch.auto=true; else if(b-a!==t.dur&&(d.touched||patch.qty==null||t.manual)) patch.dur=b-a;
     var to=$('cbWho').value; if(to!==f.p.name) patch.to=to;
-    closeDlg(); if(!Object.keys(patch).length) return;
-    remember(); send({ vapi:'crewtask', date:S.date, id:t.id, worker:f.p.name, patch:JSON.stringify(patch) },function(r){ merge(r.rows); });
+    var withP=$('cbWith')?$('cbWith').value:'', id=t.id; if(withP===to) withP='';
+    closeDlg(); if(!Object.keys(patch).length&&!withP) return;
+    remember();
+    // сначала правка самого блока, потом деление: делится уже исправленное количество
+    var p0=Object.keys(patch).length?send({ vapi:'crewtask', date:S.date, id:id, worker:f.p.name, patch:JSON.stringify(patch) },function(r){ merge(r.rows); }):Promise.resolve({ ok:true });
+    if(withP) p0.then(function(r){ if(r) send({ vapi:'crewsplit', date:S.date, id:id, to:JSON.stringify([withP]) },function(r2){ merge(r2.rows); say('Работа разделена на двоих — количество и время поровну'); }); });
   }
   function delEdit(){ var d=S.dlg; if(!d) return; var id=d.id; closeDlg(); remember(); send({ vapi:'crewtaskdel', date:S.date, id:id },function(r){ merge(r.rows); say('Блок снят — «↶» вернёт'); }); }
 
