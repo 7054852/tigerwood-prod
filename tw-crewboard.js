@@ -137,14 +137,14 @@
     S.el.innerHTML='<div class="cb-msg" id="cbMsg">'+S.msg+'</div>'
       +'<div class="note hint'+(S.help?' show':'')+'" data-hb="1">Щёлкните по пустому месту в строке — добавить работу: начните писать (деталь, операция, заказ) и выберите из списка, или просто впишите текст и нажмите Enter. '
       +'Блок тянется мышью — по времени и на другого человека; за правый край растягивается. Потяните нижний край блока на соседние строки — работа разделится между этими людьми, количество и время поровну. Людей переставляют за ⋮⋮. Длина блока считается из количества и расценки при темпе '
-      +String(Math.round(c.efficiency*100))+' % от '+String(c.hourRate).replace('.',',')+' ₽/час; растянутый вручную блок помнит свою длину. ⚠ — перед операцией сейчас лежит меньше, чем задано (это подсказка, а не запрет). Если текст в блок не помещается, наведите на него — блок раскроется и покажет текст целиком; кнопка «Компактно / Подробно» переносит текст задач в блоках целиком. Зелёная полоска — сколько уже сдано нарядами. Сумма в ₽ у человека — сколько он заработает по расценкам, если сделает весь план (до налогов, без премий).</div>'
+      +String(Math.round(c.efficiency*100))+' % от '+String(c.hourRate).replace('.',',')+' ₽/час; растянутый вручную блок помнит свою длину. ⚠ — перед операцией сейчас лежит меньше, чем задано (это подсказка, а не запрет). Наведите на блок — подсветится цепочка этой детали на день: номера шагов по техпорядку, синим — что делается до, серым — после, красным — шаг, стоящий по времени не на своём месте; внизу та же цепочка словами. Если текст в блок не помещается, наведите на него — блок раскроется и покажет текст целиком; кнопка «Компактно / Подробно» переносит текст задач в блоках целиком. Зелёная полоска — сколько уже сдано нарядами. Сумма в ₽ у человека — сколько он заработает по расценкам, если сделает весь план (до налогов, без премий).</div>'
       +(ps.length?'':'<div class="empty">На '+dmy(S.d.date)+' в табеле никого нет — добавьте людей кнопкой «＋ Человек».</div>')
       +'<div class="cb-wrap tbl-wrap fill" id="cbWrap"><div class="cb'+(isDet()?' det':'')+'" style="--cb-hours:'+sc.hours+(S.nameW?';--cb-name:'+S.nameW+'px':'')+'">'
       +'<div class="cb-head"><div class="cb-name cb-corner"><b>'+ps.length+' чел</b>'+(rubAll>0?'<span class="cb-rub" title="работы в плане по расценкам на всех: '+money(rubAll)+' ₽">'+Math.round(rubAll).toLocaleString('ru-RU')+' ₽</span>':'')+'<span class="cb-ld">'+n1(tot/60)+'<i>/'+n1(ps.length*cap)+' ч</i></span></div>'
       +'<div class="cb-lane cb-hours"><button class="cb-add l" title="добавить час раньше" data-add="l">＋</button>'+hours+'<button class="cb-add r" title="добавить час позже" data-add="r">＋</button></div></div>'
       +ps.map(function(p){ return rowHtml(p,sc); }).join('')+now+'</div></div>'
-      +'<div class="cb-foot">'+legend+'<span class="cb-lg free">текстом</span></div>';
-    fitNames(); fitRows(); hideTip();
+      +'<div class="cb-foot"><span class="cb-legend" id="cbLegend">'+legend+'<span class="cb-lg free">текстом</span></span><span class="cb-chain" id="cbChain" hidden></span></div>';
+    S.over=null; fitNames(); fitRows(); hideTip();
     if(keep){ var w=$('cbWrap'); w.scrollLeft=keep.x; w.scrollTop=keep.y; }
     drawActions();
     if(window.twFit) try{ twFit(); }catch(e){}
@@ -176,12 +176,14 @@
   function showTip(blk){
     hideTip(); if(!clipped(blk)) return;
     var r=blk.getBoundingClientRect(), el=S.tip=blk.cloneNode(true);
-    el.removeAttribute('data-id'); el.className=blk.className.replace(/\b(rel|drag|saving)\b/g,'')+' pop';
+    el.removeAttribute('data-id'); el.className=blk.className.replace(/\b(rel|drag|saving|late|before|after)\b/g,'')+' pop';
     el.style.cssText='left:0;top:0;min-width:'+Math.round(r.width)+'px;min-height:'+Math.round(r.height)+'px';
     document.body.appendChild(el);
     var w=el.offsetWidth, h=el.offsetHeight;
     el.style.left=Math.max(8,Math.min(r.left,window.innerWidth-w-8))+'px';
-    el.style.top=Math.max(8,Math.min(r.top,window.innerHeight-h-8))+'px';
+    // внизу доски раскрываемся вверх: под доской — строка с цепочкой детали, её нельзя закрывать
+    var wb=$('cbWrap'), bottom=wb?wb.getBoundingClientRect().bottom:window.innerHeight, top=r.top+h>bottom?r.bottom-h:r.top;
+    el.style.top=Math.max(8,Math.min(top,window.innerHeight-h-8))+'px';
   }
   function hideTip(){ if(S.tip&&S.tip.parentNode) S.tip.parentNode.removeChild(S.tip); S.tip=null; }
   function drawMsg(){ var m=$('cbMsg'); if(m) m.innerHTML=S.msg; }
@@ -224,7 +226,7 @@
   /* ── мышь: перетаскивание блока, растягивание, перестановка людей; щелчок — окно ── */
   function minAt(lane,x,sc){ var r=lane.getBoundingClientRect(), c=cfg(); return Math.round((sc.from+(x-r.left)/r.width*sc.span)/c.snap)*c.snap; }
   function onDown(e){
-    S.touch=(e.pointerType==='touch'); hideTip();
+    S.touch=(e.pointerType==='touch'); hideTip(); unrelate(); S.over=null;
     if(S.touch||e.button||S.dlg) return;
     var t=e.target, add=t.getAttribute&&t.getAttribute('data-add'); if(add) return;
     var grip=closest(t,'cb-grip'), blk=closest(t,'cb-blk'), lane=closest(t,'cb-lane'), sc=scale();
@@ -307,12 +309,44 @@
     if(blk) openEdit(blk.getAttribute('data-id'));
     else if(lane&&!lane.classList.contains('cb-hours')) openAdd(lane.getAttribute('data-w'),minAt(lane,e.clientX,scale()));
   }
+  // наведение на блок — цепочка этой детали на сегодня (владелец 22.11.2026: «что должно быть сделано до» — понятнее):
+  // блоки той же детали получают номер шага по техпорядку; шаги ДО наведённого — акцентом, ПОСЛЕ — серым, остальные блоки приглушаются;
+  // внизу цепочка словами. Красным — шаг, который по времени стоит не на своём месте (предыдущий начинается позже следующего).
+  function unrelate(){
+    var cb=S.el.querySelector('.cb'); if(cb) cb.classList.remove('focus');
+    var all=S.el.querySelectorAll('.cb-blk.rel, .cb-blk.cur'), i;
+    for(i=0;i<all.length;i++){ all[i].classList.remove('rel','cur','before','after','late'); all[i].removeAttribute('data-step'); }
+    var ch=$('cbChain'), lg=$('cbLegend'); if(ch){ ch.hidden=true; ch.innerHTML=''; } if(lg) lg.hidden=false;
+  }
+  function relate(blk){
+    var f=taskBy(blk.getAttribute('data-id')); if(!f||!f.t.op||!f.t.detail) return;
+    var cur=f.t, list=[], known=true;
+    people().forEach(function(p){ p.tasks.forEach(function(x){
+      if(!x.op||x.order!==cur.order||lc(x.detail)!==lc(cur.detail)) return;
+      var r=refOf(x); if(!r) known=false; list.push({ t:x, p:p, rank:r?r.rank:0 }); }); });
+    if(list.length<2) return;
+    var cb=S.el.querySelector('.cb'), el0=function(id){ return S.el.querySelector('.cb-row .cb-blk[data-id="'+id+'"]'); };
+    cb.classList.add('focus');
+    if(!known){ list.forEach(function(x){ var e=el0(x.t.id); if(e) e.classList.add(x.t.id===cur.id?'cur':'rel'); }); return; }   // справочник работ ещё не загрузился — просто та же деталь
+    list.sort(function(a,b){ return a.rank-b.rank || a.t.start-b.t.start; });
+    var ranks=[]; list.forEach(function(x){ if(ranks.indexOf(x.rank)<0) ranks.push(x.rank); });
+    var myRank=refOf(cur).rank, parts=[];
+    list.forEach(function(x){
+      var e=el0(x.t.id), step=ranks.indexOf(x.rank)+1, me=x.t.id===cur.id, side=x.rank<myRank?'before':(x.rank>myRank?'after':'');
+      // не на своём месте по времени: шаг «до» начинается позже наведённого или шаг «после» — раньше
+      var late=!me&&((side==='before'&&x.t.start>cur.start)||(side==='after'&&x.t.start<cur.start));
+      if(e){ e.classList.add(me?'cur':'rel'); if(side) e.classList.add(side); if(late) e.classList.add('late'); e.setAttribute('data-step',step); }
+      parts.push('<span class="cb-st'+(me?' cur':'')+(side?' '+side:'')+(late?' late':'')+'"><i>'+step+'</i>'+esc(x.t.op)+' — '+esc(shortName(x.p.name))+' '+hm(x.t.start)+(late?' ⚠ не по порядку':'')+'</span>');
+    });
+    var ch=$('cbChain'), lg=$('cbLegend');
+    if(ch){ ch.innerHTML='<b>'+esc(cur.detail)+'</b> · '+esc(cur.order)+': '+parts.join('<span class="cb-arr">→</span>'); ch.hidden=false; if(lg) lg.hidden=true; }
+  }
   function onOver(e){
-    var blk=closest(e.target,'cb-blk'), k=blk&&blk.getAttribute('data-k'), all=S.el.querySelectorAll('.cb-blk.rel'), i;
-    for(i=0;i<all.length;i++) all[i].classList.remove('rel');
-    if(blk&&!S.drag&&!S.touch&&!blk.classList.contains('ghost')) showTip(blk); else hideTip();
-    if(!k||k==='|'||S.drag) return;
-    all=S.el.querySelectorAll('.cb-blk'); for(i=0;i<all.length;i++) if(all[i]!==blk&&all[i].getAttribute('data-k')===k) all[i].classList.add('rel');
+    var blk=closest(e.target,'cb-blk');
+    if(blk&&blk===S.over) return;
+    S.over=blk; unrelate();
+    if(!blk||S.drag||S.touch||blk.classList.contains('ghost')){ hideTip(); return; }
+    relate(blk); showTip(blk);
   }
   function onKey(e){
     if(!S.el||!document.body.contains(S.el)||!S.el.querySelector('.cb')) return;
@@ -472,7 +506,7 @@
       S.el=el; S.o=o; S.date=o.date; S.d=null; S.undo=[]; S.msg='';
       el.innerHTML='<div class="center muted">Загрузка…</div>';
       if(!el._cb){ el._cb=1; el.addEventListener('pointerdown',onDown); el.addEventListener('click',onClick); el.addEventListener('mouseover',onOver);
-        el.addEventListener('mouseleave',hideTip); el.addEventListener('scroll',hideTip,true); }
+        el.addEventListener('mouseleave',function(){ S.over=null; unrelate(); hideTip(); }); el.addEventListener('scroll',hideTip,true); }
       if(!wired){ wired=true; document.addEventListener('keydown',onKey); }
       // шрифт темы догружается после первой отрисовки — имена перемерить ещё раз
       try{ if(document.fonts&&document.fonts.ready) document.fonts.ready.then(function(){ if(S.d){ fitNames(); fitRows(); } }); }catch(e){}
