@@ -105,13 +105,13 @@
     var free=!t.op, h=hintOf(t), col=free?'':colorOf(t.group);
     var l=(t.start-sc.from)/sc.span*100, w=t.dur/sc.span*100;
     var pct=(!free&&t.qty>0&&t.done>0)?Math.min(100,Math.round(t.done/t.qty*100)):0;
-    var tip=(free?t.title:(t.op+(t.detail?' › '+t.detail:'')+(t.order?' · '+t.order:'')))+'\n'+hm(t.start)+'–'+hm(t.start+t.dur)+' ('+durS(t.dur)+')'
+    var tip=(free?t.title:(t.op+(t.detail?' › '+t.detail:'')+(t.model?' · '+t.model:'')+(t.order?' · '+t.order:'')))+'\n'+hm(t.start)+'–'+hm(t.start+t.dur)+' ('+durS(t.dur)+')'
       +(free?'':('\n'+qtyS(t.qty)+' шт'+(t.rate?' × '+String(t.rate).replace('.',',')+' ₽':'')+(t.manual?' · длина задана вручную, по расчёту '+durS(t.calc):'')))
       +(t.done>0?'\nсдано нарядами: '+qtyS(t.done)+' шт':'')+(h?('\n'+hintText(t,h)):'');
     return '<div class="cb-blk'+col+(free?' free':'')+(h&&h.warn?' warn':'')+(pct>=100?' done':'')+'" data-id="'+esc(t.id)+'" data-k="'+esc(lc(t.order+'|'+t.detail))+'" title="'+esc(tip)+'"'
       +' style="left:'+l.toFixed(3)+'%;width:'+w.toFixed(3)+'%">'
       +(free?('<span class="cb-t cb-t2">'+esc(t.title)+'</span>')
-        :('<span class="cb-t"><b>'+esc(t.op)+'</b>'+(t.detail?' · '+esc(t.detail):(t.model?' · '+esc(t.model):''))+'</span>'
+        :('<span class="cb-t"><b>'+esc(t.op)+'</b>'+(t.model?' · '+esc(t.model):(t.detail?' · '+esc(t.detail):''))+'</span>'
           +'<span class="cb-s">'+qtyS(t.qty)+' шт'+(t.order?' · '+esc(t.order):'')+(t.done>0?' · сдано '+qtyS(t.done):'')+'</span>'))
       +(pct?'<i class="cb-fill" style="width:'+pct+'%"></i>':'')+'<span class="cb-rv" title="потяните вниз или вверх — разделить работу с соседями"></span><span class="cb-rz"></span></div>';
   }
@@ -366,7 +366,7 @@
     var f=taskBy(id); if(!f) return; var t=f.t, free=!t.op, h=hintOf(t);
     var opts=people().map(function(p){ return '<option'+(p.name===f.p.name?' selected':'')+'>'+esc(p.name)+'</option>'; }).join('');
     openDlg('edit',(free?('<div class="cb-f"><label>Что делать</label><input id="cbTitle" value="'+esc(t.title)+'"></div>')
-        :('<div class="cb-picked"><span class="cb-dot'+colorOf(t.group)+'"></span><span><b>'+esc(t.op)+'</b>'+(t.detail?' · '+esc(t.detail):(t.model?' · '+esc(t.model):''))
+        :('<div class="cb-picked"><span class="cb-dot'+colorOf(t.group)+'"></span><span><b>'+esc(t.op)+'</b>'+(t.model?' · '+esc(t.model):(t.detail?' · '+esc(t.detail):''))
           +'<i>'+esc([t.order,t.group,t.rate?String(t.rate).replace('.',',')+' ₽/шт':''].filter(Boolean).join(' · '))+'</i></span></div>'
           +'<div class="cb-f"><label>Количество, шт</label><input id="cbQty" inputmode="decimal" value="'+String(t.qty).replace('.',',')+'"><span id="cbDur" class="cb-dur"></span></div>'))
       +'<div class="cb-f"><label>Время</label><input type="time" id="cbFrom" step="900" value="'+hm2(t.start)+'"><span>—</span><input type="time" id="cbTo" step="900" value="'+hm2(t.start+t.dur)+'">'
