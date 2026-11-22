@@ -112,7 +112,8 @@
       +' style="left:'+l.toFixed(3)+'%;width:'+w.toFixed(3)+'%">'
       +(free?('<span class="cb-t cb-t2">'+esc(t.title)+'</span>')
         :('<span class="cb-t"><b>'+esc(t.op)+'</b>'+((t.model||t.detail)?'<i class="cb-sep"> · </i><span class="cb-d">'+esc(t.model||t.detail)+'</span>':'')+'</span>'
-          +'<span class="cb-s">'+qtyS(t.qty)+' шт'+(t.order?' · '+esc(t.order):'')+(t.done>0?' · сдано '+qtyS(t.done):'')+'</span>'))
+          +'<span class="cb-s">'+qtyS(t.qty)+' шт'+(t.order?' · '+esc(t.order):'')+(t.done>0?' · сдано '+qtyS(t.done):'')+(t.title?' <i class="cb-note1">✎</i>':'')+'</span>'
+          +(t.title?'<span class="cb-s cb-note">✎ '+esc(t.title)+'</span>':'')))
       +(pct?'<i class="cb-fill" style="width:'+pct+'%"></i>':'')+'<span class="cb-rv" title="потяните вниз или вверх — разделить работу с соседями"></span><span class="cb-rz"></span></div>';
   }
   function rowHtml(p,sc){
@@ -136,7 +137,7 @@
     var sc0=$('cbWrap'), keep=sc0?{ x:sc0.scrollLeft, y:sc0.scrollTop }:null;
     S.el.innerHTML='<div class="cb-msg" id="cbMsg">'+S.msg+'</div>'
       +'<div class="note hint'+(S.help?' show':'')+'" data-hb="1">Щёлкните по пустому месту в строке — добавить работу: начните писать (деталь, операция, заказ) и выберите из списка, или просто впишите текст и нажмите Enter. '
-      +'Блок тянется мышью — по времени и на другого человека; за правый край растягивается. Назначили не ту деталь — щёлкните по блоку и нажмите «✎ заменить»: блок, время и человек останутся. Потяните нижний край блока на соседние строки — работа разделится между этими людьми, количество и время поровну. Людей переставляют за ⋮⋮. Длина блока считается из количества и расценки при темпе '
+      +'Блок тянется мышью — по времени и на другого человека; за правый край растягивается. К работе можно дописать примечание — оно видно на блоке (✎), в раскрытии при наведении и уходит рабочему вместе с заданием. Назначили не ту деталь — щёлкните по блоку и нажмите «✎ заменить»: блок, время и человек останутся. Потяните нижний край блока на соседние строки — работа разделится между этими людьми, количество и время поровну. Людей переставляют за ⋮⋮. Длина блока считается из количества и расценки при темпе '
       +String(Math.round(c.efficiency*100))+' % от '+String(c.hourRate).replace('.',',')+' ₽/час; растянутый вручную блок помнит свою длину. ⚠ — перед операцией сейчас лежит меньше, чем задано (это подсказка, а не запрет). Наведите на блок — подсветится цепочка этой детали на день: номера шагов по техпорядку, синим — что делается до, серым — после, красным — шаг, стоящий по времени не на своём месте; внизу та же цепочка словами. Если текст в блок не помещается, наведите на него — блок раскроется и покажет текст целиком; кнопка «Компактно / Подробно» переносит текст задач в блоках целиком. Зелёная полоска — сколько уже сдано нарядами. Сумма в ₽ у человека — сколько он заработает по расценкам, если сделает весь план (до налогов, без премий).</div>'
       +(ps.length?'':'<div class="empty">На '+dmy(S.d.date)+' в табеле никого нет — добавьте людей кнопкой «＋ Человек».</div>')
       +'<div class="cb-wrap tbl-wrap fill" id="cbWrap"><div class="cb'+(isDet()?' det':'')+'" style="--cb-hours:'+sc.hours+(S.nameW?';--cb-name:'+S.nameW+'px':'')+'">'
@@ -422,15 +423,18 @@
       +'<i>'+esc(r.order)+' · '+esc(r.group)+' · '+String(r.rate).replace('.',',')+' ₽/шт · '+(!(r.left>0)?('по заказу уже сделано '+qtyS(r.done)+' из '+qtyS(r.need)+' — работа пойдёт сверх заказа'):r.prev?('можно '+qtyS(r.avail)+', осталось '+qtyS(r.left)):('по заказу осталось '+qtyS(r.left)))+'</i></span></div>'
       +'<div class="cb-f"><label>Количество, шт</label><input id="cbQty" inputmode="decimal" value="'+String(q0).replace('.',',')+'"><span id="cbDur" class="cb-dur"></span></div>'
       +(fit>0&&(fit<have||!(have>0))?'<div class="cb-hint">до '+hm(end)+' помещается '+qtyS(fit)+' шт</div>':'')
+      +'<div class="cb-f"><label>Примечание</label><input id="cbNote" autocomplete="off" placeholder="необязательно: что учесть"></div>'
       +'<div class="dlg-btns"><button class="sec" onclick="twCrewBoard._back()">← другая работа</button><button onclick="twCrewBoard._addPicked()">Поставить</button></div>';
     var qi=$('cbQty'), upd=function(){ $('cbDur').textContent='≈ '+durS(calcDur(num(qi.value),r.rate))+durWhy(num(qi.value),r.rate); };
     qi.addEventListener('input',upd); qi.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); addPicked(); } }); upd(); qi.focus(); qi.select();
+    $('cbNote').addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); addPicked(); } });
   }
   function back(){ var d=S.dlg; if(!d) return; d.pick=null; $('cbPick').innerHTML=''; $('cbTip').innerHTML='Enter — записать текстом · ↓ и Enter — выбрать работу из списка'; dlgList(); $('cbQ').focus(); }
   function addPicked(){
     var d=S.dlg, r=d&&d.pick; if(!r) return;
     var q=num($('cbQty').value); if(!(q>0)){ dlgErr('Укажите количество'); return; }
-    create(d.name,{ op:r.op, detail:r.detail, order:r.order, eq:r.eq, model:r.model, rate:r.rate, qty:q, start:d.start });
+    var note=$('cbNote')?$('cbNote').value.trim():'';
+    create(d.name,{ op:r.op, detail:r.detail, order:r.order, eq:r.eq, model:r.model, rate:r.rate, qty:q, start:d.start, title:note });
   }
   function addText(){ var d=S.dlg, v=$('cbQ').value.trim(); if(!v){ dlgErr('Напишите, что делать, или выберите работу'); return; } create(d.name,{ title:v, start:d.start }); }
   function create(name,patch){ closeDlg(); remember(); send({ vapi:'crewtask', date:S.date, worker:name, patch:JSON.stringify(patch) },function(r){ merge(r.rows); }); }
@@ -444,7 +448,8 @@
           +'<i>'+esc([t.order,t.group,t.rate?String(t.rate).replace('.',',')+' ₽/шт':''].filter(Boolean).join(' · '))+'</i></span>'
           +'<span class="cb-sp"></span><button class="gho sm" id="cbSwapBtn" title="назначили не ту деталь или операцию — выбрать другую, не удаляя блок: время, человек и количество останутся">✎ заменить</button></div>'
           +'<div id="cbSwap" hidden><input id="cbQ2" autocomplete="off" placeholder="деталь, операция, заказ"><div class="cb-list" id="cbList2"></div></div>'
-          +'<div class="cb-f"><label>Количество, шт</label><input id="cbQty" inputmode="decimal" value="'+String(t.qty).replace('.',',')+'"><span id="cbDur" class="cb-dur"></span></div>'))
+          +'<div class="cb-f"><label>Количество, шт</label><input id="cbQty" inputmode="decimal" value="'+String(t.qty).replace('.',',')+'"><span id="cbDur" class="cb-dur"></span></div>'
+          +'<div class="cb-f"><label>Примечание</label><input id="cbNote" autocomplete="off" value="'+esc(t.title||'')+'" placeholder="необязательно: что учесть"></div>'))
       +'<div class="cb-f"><label>Время</label><input type="time" id="cbFrom" step="900" value="'+hm2(t.start)+'"><span>—</span><input type="time" id="cbTo" step="900" value="'+hm2(t.start+t.dur)+'">'
         +(free?'':'<button class="gho sm" id="cbAuto" title="поставить длину по расчёту из количества и расценки">по расчёту</button>')+'</div>'
       +'<div class="cb-f"><label>Кому</label><select id="cbWho">'+opts+'</select></div>'
@@ -486,6 +491,7 @@
     if(b<=a) b+=1440;   // конец после полуночи
     if($('cbTitle')){ var v=$('cbTitle').value.trim(); if(!v){ dlgErr('Напишите, что делать'); return; } if(v!==t.title) patch.title=v; }
     if($('cbQty')){ var q=num($('cbQty').value); if(!(q>0)){ dlgErr('Укажите количество'); return; } if(q!==t.qty) patch.qty=q; }
+    if($('cbNote')){ var nt=$('cbNote').value.trim(); if(nt!==(t.title||'')) patch.title=nt; }
     if(a!==t.start) patch.start=a;
     // работу заменили: новая деталь, операция, заказ и расценка — блок, время и человек те же; длину пересчитает сервер, если её не задавали руками
     if(d.ref){ patch.op=d.ref.op; patch.detail=d.ref.detail; patch.order=d.ref.order; patch.eq=d.ref.eq; patch.model=d.ref.model; patch.rate=d.ref.rate; }
