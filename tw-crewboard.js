@@ -113,8 +113,9 @@
       +' style="left:'+l.toFixed(3)+'%;width:'+w.toFixed(3)+'%">'
       +(free?('<span class="cb-t cb-t2">'+esc(t.title)+'</span>')
         :('<span class="cb-t"><b>'+esc(t.op)+'</b>'+((t.model||t.detail)?'<i class="cb-sep"> · </i><span class="cb-d">'+esc(t.model||t.detail)+'</span>':'')+'</span>'
-          +'<span class="cb-s">'+qtyS(t.qty)+' шт'+(t.order?' · '+esc(t.order):'')+(t.done>0?' · сдано '+qtyS(t.done):'')+'</span>'
-          +(t.title?'<span class="cb-note"><i>✎</i>'+esc(t.title)+'</span><i class="cb-nb" title="есть примечание">✎</i>':'')))
+          // значок примечания — сразу после партии (владелец 22.11.2026: в правом углу блока его плохо видно); строка сжимается, значок — нет
+          +'<span class="cb-s"><span class="cb-sx">'+qtyS(t.qty)+' шт'+(t.order?' · '+esc(t.order):'')+'</span>'+(t.title?'<i class="cb-nb" title="есть примечание">✎</i>':'')+(t.done>0?'<span class="cb-sx"> · сдано '+qtyS(t.done)+'</span>':'')+'</span>'
+          +(t.title?'<span class="cb-note"><i>✎</i>'+esc(t.title)+'</span>':'')))
       +(pct?'<i class="cb-fill" style="width:'+pct+'%"></i>':'')+'<span class="cb-rv" title="потяните вниз или вверх — разделить работу с соседями"></span><span class="cb-rz"></span></div>';
   }
   function rowHtml(p,sc){
@@ -171,7 +172,7 @@
   // в своём цвете, и показывает текст целиком. Раскрытая копия мышь не перехватывает: блок под ней по-прежнему тянется и щёлкается.
   function clipped(blk){
     if(blk.scrollHeight>blk.clientHeight+6) return true;   // пара пикселей межстрочного запаса — не «не поместилось»
-    var p=blk.querySelectorAll('.cb-t, .cb-s');
+    var p=blk.querySelectorAll('.cb-t, .cb-sx');
     for(var i=0;i<p.length;i++) if(p[i].scrollWidth>p[i].clientWidth+1||p[i].scrollHeight>p[i].clientHeight+1) return true;   // обрезано по ширине или по числу строк
     return false;
   }
@@ -267,7 +268,7 @@
       if(at<0) at=(e.clientY<ls[0].getBoundingClientRect().top)?0:ls.length-1;
       var old=S.el.querySelectorAll('.cb-blk.ghost'); for(j=0;j<old.length;j++) old[j].parentNode.removeChild(old[j]);
       g.names=[]; for(j=Math.min(own,at);j<=Math.max(own,at);j++) if(j!==own) g.names.push(ls[j].getAttribute('data-w'));
-      var n=g.names.length+1, sh=shareOf(g.task,n), t0=g.task, lbl=g.el.querySelector('.cb-s, .cb-t2');
+      var n=g.names.length+1, sh=shareOf(g.task,n), t0=g.task, lbl=g.el.querySelector('.cb-sx, .cb-t2');
       g.bad=sh.bad; g.el.style.width=((n>1?sh.dur:t0.dur)/g.sc.span*100)+'%';
       if(lbl){ if(g.txt==null) g.txt=lbl.textContent; lbl.textContent=n>1?(sh.bad?(qtyS(t0.qty)+' шт на '+n+' чел. не делится'):('на '+n+' чел.'+(t0.op?' · по '+qtyS(sh.qty)+' шт':'')+' · '+durS(sh.dur))):g.txt; }
       if(n>1&&!sh.bad) for(j=Math.min(own,at);j<=Math.max(own,at);j++){ if(j===own) continue;
@@ -275,7 +276,7 @@
       return;
     }
     var dm=Math.round(dx/g.w*g.sc.span/c.snap)*c.snap;
-    if(g.mode==='rz'){ g.dur=Math.max(c.snap,g.d0+dm); g.el.style.width=(g.dur/g.sc.span*100)+'%'; var s=g.el.querySelector('.cb-s, .cb-t2'); if(s&&!g.lbl) g.lbl=s; if(g.lbl) g.lbl.textContent=hm(g.start)+'–'+hm(g.start+g.dur)+' · '+durS(g.dur); return; }
+    if(g.mode==='rz'){ g.dur=Math.max(c.snap,g.d0+dm); g.el.style.width=(g.dur/g.sc.span*100)+'%'; var s=g.el.querySelector('.cb-sx, .cb-t2'); if(s&&!g.lbl) g.lbl=s; if(g.lbl) g.lbl.textContent=hm(g.start)+'–'+hm(g.start+g.dur)+' · '+durS(g.dur); return; }
     g.start=Math.max(g.sc.from,Math.min(g.sc.to-c.snap,g.s0+dm)); g.el.style.left=((g.start-g.sc.from)/g.sc.span*100)+'%';
     var lanes=S.el.querySelectorAll('.cb-row .cb-lane');
     for(var k=0;k<lanes.length;k++){ var q=lanes[k].getBoundingClientRect(); if(e.clientY>=q.top&&e.clientY<q.bottom){ if(g.el.parentNode!==lanes[k]){ lanes[k].appendChild(g.el); g.to=lanes[k].getAttribute('data-w'); } break; } }
