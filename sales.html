@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="tw-theme.js"></script>
 <script src="tw-config.js"></script>
-<script src="tw-items.js?v=20261117a"></script>
+<script src="tw-items.js?v=20261123a"></script>
 <script src="tw-waybill.js?v=20261117a"></script>
 <script src="tw-shipping.js?v=20261120c"></script>
 <script src="tw-pay.js?v=20261118d"></script>
@@ -163,7 +163,8 @@
 
   <!-- что продано: только просмотр; позиции правятся в договоре (или в карточке счёта, если договора нет) -->
   <div class="blk" id="s_pos">
-    <div class="h">📦 Что продано <span class="sp"><a id="posEditLink" class="sm hide" href="#">изменить в договоре →</a></span></div>
+    <div class="h">📦 Что продано <span class="sp"><a id="posBundleLink" class="sm hide" href="#" onclick="bundleDeal();return false"></a><a id="posEditLink" class="sm hide" href="#">изменить в договоре →</a></span></div>
+    <div class="msg" id="posMsg"></div>
     <div id="posView"></div>
   </div>
 
@@ -238,6 +239,8 @@ function errText(r){
   if(!t && r.missing && r.missing.length) t='Не хватает данных: '+r.missing.join(', ')+'.';
   return t||'Не получилось, сервер не объяснил причину. Повторите; если повторится — сообщите администратору.';
 }
+var BUNDLE_ON=-1;
+function bundleDeal(){ if(BUNDLE_ON<0) return; run({vapi:'dealbundle', deal:KEY, on:BUNDLE_ON}, 'Сохраняю…', 'posMsg').then(function(r){ if(r) reload(); }); }
 function netText(e){ return 'Связь оборвалась: '+((e&&e.message)||e)+'. Проверьте интернет и повторите — если не уверены, сохранилось ли, нажмите «обновить».'; }
 var BUSY=0;
 /** запись: заслонка «не нажимайте», повторный клик не уходит; отказ — окно с текстом сервера + строка m. Promise → ответ или null */
@@ -468,6 +471,12 @@ function render(){
   // что продано — просмотр; правка — в договоре (нет договора — в карточке счёта)
   TWI_CUR=d.currency||'руб';
   el('posView').innerHTML=posViewHtml(d.items, d.currency||'руб');
+  // навесное к единственному комплексу — одной строкой в документах; работает и при подписанном договоре (суммы не меняются)
+  var its=d.items||[], ncx=its.filter(function(x){ return x.complex; }).length, loose=its.filter(function(x){ return !x.complex && !x.parentLine; }).length, kids=its.filter(function(x){ return x.parentLine; }).length, bl=el('posBundleLink');
+  BUNDLE_ON=(ncx===1 && loose>0)?1:(kids?0:-1);
+  bl.className=(closed||BUNDLE_ON<0)?'sm hide':'sm';
+  bl.textContent=BUNDLE_ON?'↳ собрать в комплект':'отдельными строками';
+  bl.title=BUNDLE_ON?'В документах — одной строкой «Комплект гимнастического оборудования» на общую сумму':'В документах каждая позиция — своей строкой';
   var lc=liveContract(), lk=el('posEditLink');
   lk.className=closed?'sm hide':'sm';
   if(lc){ lk.textContent='изменить в договоре →'; lk.href=contractUrl(lc); }

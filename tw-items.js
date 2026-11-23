@@ -43,7 +43,7 @@ function posFromItems(items){
 }
 /** товар по введённому имени: точное совпадение из datalist, иначе без учёта регистра и пробелов (владелец 04.11.2026: выбрал товар — цена не подтянулась) */
 function findProd(v){ if(PRODBYNAME[v]) return PRODBYNAME[v]; var k=String(v||'').trim().toLowerCase(); if(!k) return null; for(var n in PRODBYNAME) if(n.trim().toLowerCase()===k) return PRODBYNAME[n]; return null; }
-function pickProd(i,v){ var p=findProd(v); if(p){ POS[i].name=p.name; POS[i].sku=p.sku; POS[i].opt=p.opt||null; POS[i].crossbar=prodCb(p); POS[i].options={}; if(!(Number(POS[i].price)>0)) POS[i].price=prodPrice(p)||''; renderPos(); posTot(); } }
+function pickProd(i,v){ var p=findProd(v); if(p){ POS[i].name=p.name; POS[i].sku=p.sku; POS[i].opt=p.opt||null; POS[i].crossbar=prodCb(p); POS[i].options={}; if(!(Number(POS[i].price)>0)) POS[i].price=prodPrice(p)||''; autoPar(); renderPos(); posTot(); } }
 /* подсказка каталога (17.11.2026): свой список вместо <datalist> — у владельца тот не показывал вариантов; поиск по словам в названии и артикуле, ↑↓ Enter */
 var TWS={i:-1,list:[],k:0};
 function twSugBox(){
@@ -88,7 +88,14 @@ function setOpt(i,k,v){ var o=POS[i].options||(POS[i].options={}); if(v===''||v=
 function isCx(p){ var s=optOf(p); return !!(p.complex || (s && s.slideHooks)); }
 function cxList(){ return POS.filter(function(p){ return isCx(p) && !p.par; }); }
 function ropeOf(p){ return p.par ? ((p.par.options||{}).ropeColor||'') : ((p.options||{}).ropeColor||''); }
-function setParent(i,v){ var p=POS[i]; p.par=(v==='')?null:POS[Number(v)]; if(p.par && p.options) delete p.options.ropeColor; renderPos(); posTot(); }
+function setParent(i,v){ var p=POS[i]; p.par=(v==='')?null:POS[Number(v)]; p.solo=(v===''); if(p.par && p.options) delete p.options.ropeColor; renderPos(); posTot(); }
+/* умолчание (владелец 23.11.2026: «всё выписывается как комплект»): в списке один комплекс — НОВАЯ строка сразу «в комплекте с» ним
+   (в документах одной строкой); «—» в выборе (solo) — отдельной строкой. Сохранённые строки (с id) не трогаем: там связь уже выбрана. */
+function autoPar(){
+  POS.forEach(function(p){ if(isCx(p)) p.par=null; });
+  var cx=cxList(); if(cx.length!==1) return;
+  POS.forEach(function(p){ if(!isCx(p) && !p.id && !p.par && !p.solo) p.par=cx[0]; });
+}
 function bundleSum(p){ var t=lineSum(p); POS.forEach(function(k){ if(k.par===p) t+=lineSum(k); }); return t; }
 function optHtml(p,i){ var s=optOf(p), cx=cxList(), kid=!!p.par, o=p.options||{};
   if(!s && (isCx(p) || !cx.length)) return '';
@@ -139,10 +146,10 @@ function posViewHtml(items, cur){
 function noPriceHint(p){ var cp=p.sku?PRODBYSKU[p.sku]:null; if(!cp||Number(p.price)>0||prodPrice(cp)>0) return ''; return '<div class="bnote">⚠️ в каталоге нет цены '+esc(curSign())+' для этого товара — впишите цену в строке</div>'; }
 function posTotalValue(){ var tot=0; POS.forEach(function(p){ tot+=lineSum(p); }); return Math.round(tot*100)/100; }
 function posTot(){ POS.forEach(function(p,i){ var e=el('lt'+i); if(e) e.textContent=money(lineSum(p)); }); var t=el('posTotal'); if(t) t.textContent=money(posTotalValue()); if(typeof onPosTotal==='function') onPosTotal(); }
-function addPos(){ POS.push({name:'',qty:1,price:''}); renderPos(); }
+function addPos(){ POS.push({name:'',qty:1,price:''}); autoPar(); renderPos(); }
 // удалили комплекс — его навесное становится самостоятельным и оставляет канат комплекса
 function rmPos(i){ var g=POS[i]; POS.forEach(function(k){ if(k.par===g){ var r=(g.options||{}).ropeColor; k.par=null; k.options=k.options||{}; if(r) k.options.ropeColor=r; } }); POS.splice(i,1); renderPos(); posTot(); }
 function keepPos(p){ return String(p.name||'').trim() || (Number(p.qty)||0)>0; }
 // на сервер: parentLine — номер строки комплекса в этом же списке (с 1); id — ID строки сделки (совпавшая строка сохраняет места/массу)
-function cleanPos(){ var list=POS.filter(keepPos); return list.map(function(p){ var o={}; for(var k in p) if(k!=='par') o[k]=p[k]; o.parentLine=p.par?list.indexOf(p.par)+1:0; return o; }); }
+function cleanPos(){ var list=POS.filter(keepPos); return list.map(function(p){ var o={}; for(var k in p) if(k!=='par'&&k!=='solo') o[k]=p[k]; o.parentLine=p.par?list.indexOf(p.par)+1:0; return o; }); }
 function posKey(list){ var l=list.filter(keepPos); return JSON.stringify(l.map(function(p){ return [String(p.name||'').trim(), Number(p.qty)||0, Number(p.price)||0, optText(p), p.par?l.indexOf(p.par)+1:0]; })); }
