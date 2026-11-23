@@ -130,7 +130,10 @@ function renderPos(){
   });
   h+='<div class="tot">Итого: <span id="posTotal">'+money(tot)+'</span> '+esc(curCode()==='RUB'?'₽':TWI_CUR)+'</div>';
   box.innerHTML=h;
-  var hint=el('posHint'); if(hint) hint.textContent=[POS.length?'':'добавьте товары или услуги', rubHint()].filter(Boolean).join(' · ');
+  // документ закрыт для правки (подписан / аннулирован): перерисовка не должна «оживлять» поля — менять можно, сохранить нечем
+  var ro=!!(box.closest && box.closest('.ro'));
+  if(ro){ var cs=box.querySelectorAll('input,select,button'); for(var j=0;j<cs.length;j++) cs[j].disabled=true; }
+  var hint=el('posHint'); if(hint) hint.textContent=ro?'позиции закрыты для правки · собрать навесное в комплект — в карточке сделки, «Что продано»':[POS.length?'':'добавьте товары или услуги', rubHint()].filter(Boolean).join(' · ');
 }
 /** только просмотр (карточка сделки «Что продано»): таблица с опциями и «↳ в комплекте с» */
 function posViewHtml(items, cur){

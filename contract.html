@@ -6,7 +6,7 @@
 <script src="tw-theme.js"></script>
 <script src="tw-config.js"></script>
 <script src="tw-money.js"></script>
-<script src="tw-items.js?v=20261123a"></script>
+<script src="tw-items.js?v=20261123b"></script>
 <script src="tw-waybill.js?v=20261117a"></script>
 <script src="tw-pay.js?v=20261118d"></script>
 <script src="tw-deliv.js"></script>
@@ -555,12 +555,14 @@ function renderHead(){
   var nc=curOf(); if(EDIT && (nc==='RUB'||nc==='EUR'?nc:'BYN')!==curCode()){ TWI_CUR=nc==='BYN'?'руб':nc; renderPos(); itemsTot(); }   // клиент РФ/Европы — цены каталога в ₽/EUR (tw-items.js prodPrice)
 }
 function setEditable(){
+  // класс «только чтение» — до перерисовки позиций: renderPos по нему гасит поля и пишет подсказку
+  el('main').className=EDIT?'':'ro';
+  if(!EDIT) renderPos();
   var ins=el('main').querySelectorAll('#s_head input, #s_head select, #s_terms input, #s_terms select, #s_items input, #s_items select, #s_deliv input, #s_deliv select, #s_deliv button, #s_sched input, #s_sched select');
   for(var i=0;i<ins.length;i++) ins[i].disabled=!EDIT;
   el('delivAddrBtn').disabled=false;   // смена адреса у подписанного — всегда доступна (правка сделки, не договора)
   ['addItemBtn','addLegBtn','splitBtn','newClientBtn'].forEach(function(id){ el(id).disabled=!EDIT; });
   if(EDIT){ itemsTot(); onBalanceDays(); }
-  el('main').className=EDIT?'':'ro';
   el('saveTop').style.display=(EDIT&&mode())?'':'none';
 }
 function renderBtns(){
@@ -747,7 +749,7 @@ function itemsTot(){
   else if(fw){ a.readOnly=!EDIT; el('amtHint').textContent='рамочный валютный договор — сумма обязательна'; }
   else if(t>0){ a.value=t; a.readOnly=true; el('amtHint').textContent='= итог позиций'; }
   else { a.readOnly=!EDIT; el('amtHint').textContent=POS.length?'':'позиций нет — сумма вручную'; }
-  var hint=el('posHint'); if(hint) hint.textContent=[POS.length?'':'для документа нужны позиции', rubHint()].filter(Boolean).join(' · ');   // РФ: курс сайта (02.10.2026)
+  var hint=el('posHint'); if(hint && EDIT) hint.textContent=[POS.length?'':'для документа нужны позиции', rubHint()].filter(Boolean).join(' · ');   // РФ: курс сайта (02.10.2026)
   checkLegs();
 }
 /* ── передача и доставка (колонки сделки) ── */
