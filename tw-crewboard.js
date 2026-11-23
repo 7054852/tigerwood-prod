@@ -5,7 +5,7 @@
    Запретов нет: «перед операцией нечего брать» — только пометка ⚠. На телефоне блоки не тянут — тап открывает окно с теми же полями.
    twCrewBoard.mount(el, { api, post, date:'гггг-мм-дд', actions:<элемент для кнопок> }); twCrewBoard.setDate(d). */
 (function(){
-  var S={ el:null, o:null, date:'', d:null, refs:null, refsAt:0, undo:[], msg:'', msgT:0, drag:null, dlg:null, touch:false, busy:0, clip:null, pt:null };
+  var S={ el:null, o:null, date:'', d:null, refs:null, refsAt:0, undo:[], msg:'', msgT:0, drag:null, dlg:null, touch:false, busy:0, clip:null, pt:null, rev:0, pollT:0, polling:0 };
   var esc=function(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); };
   var lc=function(s){ return String(s==null?'':s).trim().toLowerCase().replace(/ё/g,'е'); };
   var num=function(v){ return Number(String(v==null?'':v).replace(/\s/g,'').replace(',','.'))||0; };
@@ -33,6 +33,7 @@
   function person(name){ var ps=people(); for(var i=0;i<ps.length;i++) if(ps[i].name===name) return ps[i]; return null; }
   function taskBy(id){ var ps=people(); for(var i=0;i<ps.length;i++) for(var j=0;j<ps[i].tasks.length;j++) if(ps[i].tasks[j].id===id) return { p:ps[i], t:ps[i].tasks[j] }; return null; }
   function load(keepMsg){
+    S.rev++;
     if(!keepMsg) S.msg='';
     return S.o.api({ vapi:'crewboard', date:S.date }).then(function(r){
       if(!r||!r.ok){ S.d=null; S.el.innerHTML='<div class="center err">'+esc((r&&r.error)||'Не загрузилось')+'</div>'; return; }
@@ -47,9 +48,43 @@
     (rows||[]).forEach(function(nr){ var p=person(nr.name); if(p){ p.tasks=nr.tasks; p.sent=nr.sent; p.status=nr.status; p.shift=nr.shift; } });
     draw();
   }
+  /* ── чужие правки: день перечитывается раз в 3 с и перерисовывается, только если на сервере он уже другой ── */
+  var POLL_MS=3000;
+  function dayKey(d){ return JSON.stringify([d.people,d.rest,d.cfg,d.today]); }
+  // не трогаем экран, пока человек тянет блок, держит открытое окно, идёт запись или печать, а также когда доску не видно
+  function idle(){ return !!(S.d&&!S.busy&&!S.drag&&!S.dlg&&!S.pr&&document.visibilityState!=='hidden'&&S.el.offsetWidth>0&&S.el.querySelector('.cb')); }
+  function poll(){
+    clearTimeout(S.pollT); S.pollT=setTimeout(poll,POLL_MS);
+    if(S.polling||!idle()) return;
+    var rev=S.rev, date=S.date; S.polling=1;
+    S.o.api({ vapi:'crewboard', date:date }).then(function(r){
+      S.polling=0;
+      // пока шёл запрос, здесь что-то сделали сами — ответ мог быть снят до нашей записи; возьмём следующий
+      if(!r||!r.ok||rev!==S.rev||date!==S.date||!idle()||dayKey(r)===dayKey(S.d)) return;
+      S.undo=rebase(S.undo,S.date,people(),r.people||[]); S.d=r; draw();
+    }).catch(function(){ S.polling=0; });
+  }
+  // «↶» приводит день к снимку. Чужую правку вносим и в снимки, иначе отмена своего действия откатила бы работу второго человека.
+  // ponytail: чужая правка, приехавшая в ответе на нашу же запись (та же строка, окно до 3 с), в снимки не попадает — нужны версии строк, если станет мешать
+  var UF=['start','dur','qty','title','manual','op','detail','order','model','eq','rate'];
+  function taskKey(name,t){ return name+'|'+UF.map(function(f){ return t[f]; }).join('|'); }
+  function rebase(undo,date,was,now){
+    if(!undo.length) return undo;
+    var o={}, nowIds={}, put={}, nm=function(p){ return p.name; }, names=now.map(nm), order=was.map(nm).join('|')!==names.join('|');
+    was.forEach(function(p){ p.tasks.forEach(function(t){ o[t.id]=taskKey(p.name,t); }); });
+    now.forEach(function(p){ p.tasks.forEach(function(t){ nowIds[t.id]=1; if(o[t.id]!==taskKey(p.name,t)) put[t.id]={ name:p.name, t:t }; }); });
+    return undo.map(function(raw){
+      var b=JSON.parse(raw), by={}; if(b.date!==date) return raw;
+      // убираем из снимка то, что второй человек удалил или изменил; изменённое и добавленное кладём в нынешнем виде
+      b.people.forEach(function(p){ by[p.name]=p; p.tasks=p.tasks.filter(function(t){ return !put[t.id]&&(nowIds[t.id]||!o[t.id]); }); });
+      Object.keys(put).forEach(function(id){ var w=put[id], p=by[w.name]; if(!p){ p=by[w.name]={ name:w.name, tasks:[] }; b.people.push(p); } p.tasks.push(w.t); });
+      if(order) b.people=names.map(function(n){ return by[n]||{ name:n, tasks:[] }; });
+      return JSON.stringify(b);
+    });
+  }
   function say(t,err){ S.msg=t?('<span class="'+(err?'err':'ok')+'">'+t+'</span>'):''; clearTimeout(S.msgT); if(t&&!err) S.msgT=setTimeout(function(){ S.msg=''; drawMsg(); },7000); drawMsg(); }
   function send(p, ok){
-    S.busy++;
+    S.busy++; S.rev++;
     return S.o.post(p).then(function(r){
       S.busy--;
       if(!r||!r.ok){ say(esc((r&&r.error)||'не сохранилось'),1); return load(true).then(function(){ return null; }); }
@@ -320,6 +355,8 @@
   function undo(){
     var raw=S.undo.pop(); drawActions(); if(!raw) return;
     var b=JSON.parse(raw); if(b.date!==S.date) return;
+    // пока идёт отмена, чужие правки не подтягиваем: промежуточное состояние дня приняли бы за чужую правку
+    S.busy++; S.rev++;
     var was={}, layout=[], jobs=[];
     b.people.forEach(function(p){ p.tasks.forEach(function(t){ was[t.id]={ name:p.name, t:t }; if(t.timed) layout.push({ id:t.id, start:t.start, dur:t.dur }); }); });
     var nowIds={};
@@ -339,7 +376,7 @@
       jobs.push({ vapi:'crewtask', date:S.date, worker:w.name, patch:JSON.stringify({ op:o.op, detail:o.detail, order:o.order, eq:o.eq, model:o.model, rate:o.rate, qty:o.qty, title:o.title, start:o.start, dur:o.dur, manual:o.manual }), layout:JSON.stringify(layout) }); });
     var names=b.people.map(function(p){ return p.name; }), cur=people().map(function(p){ return p.name; });
     if(names.join('|')!==cur.join('|')) jobs.push({ vapi:'crewsort', date:S.date, names:JSON.stringify(names) });
-    (function next(){ var j=jobs.shift(); if(!j){ load(true).then(function(){ say('Отменено'); }); return; } S.o.post(j).then(next,next); })();
+    (function next(){ var j=jobs.shift(); if(!j){ load(true).then(function(){ S.busy--; say('Отменено'); }); return; } S.o.post(j).then(next,next); })();
   }
 
   /* ── мышь: перетаскивание блока, растягивание, перестановка людей; щелчок — окно ── */
@@ -665,14 +702,15 @@
       el.innerHTML='<div class="center muted">Загрузка…</div>';
       if(!el._cb){ el._cb=1; el.addEventListener('pointerdown',onDown); el.addEventListener('click',onClick); el.addEventListener('mouseover',onOver); el.addEventListener('mousemove',function(e){ S.pt={ x:e.clientX, y:e.clientY }; });
         el.addEventListener('mouseleave',function(){ S.over=null; unrelate(); hideTip(); }); el.addEventListener('scroll',hideTip,true); }
-      if(!wired){ wired=true; document.addEventListener('keydown',onKey); window.addEventListener('beforeprint',printOn); window.addEventListener('afterprint',printOff); }
+      if(!wired){ wired=true; document.addEventListener('keydown',onKey); document.addEventListener('visibilitychange',poll); window.addEventListener('focus',poll); window.addEventListener('beforeprint',printOn); window.addEventListener('afterprint',printOff); }
       // шрифт темы догружается после первой отрисовки — имена перемерить ещё раз
       try{ if(document.fonts&&document.fonts.ready) document.fonts.ready.then(function(){ if(S.d){ fitNames(); fitShort(); fitRows(); } }); }catch(e){}
+      clearTimeout(S.pollT); S.pollT=setTimeout(poll,POLL_MS);
       return load();
     },
     setDate:function(d){ S.date=d; S.undo=[]; return load(); },
     reload:function(){ return load(true); },
     undo:undo, addPerson:addPerson, carry:carry, sendAll:sendAll, print:print, _printOn:printOn, _printOff:printOff,
-    _help:function(){ S.help=!S.help; draw(); }, _det:function(){ store('tw_cb_det',isDet()?'0':'1'); draw(); }, _back:back, _addPicked:addPicked, _save:saveEdit, _del:delEdit, _copy:function(){ var d=S.dlg; if(!d) return; var id=d.id; closeDlg(); copyBlk(id); }, _clipOff:clipOff, _close:closeDlg, _shift:setShift, _remove:removePerson, _sendOne:sendOne
+    _help:function(){ S.help=!S.help; draw(); }, _det:function(){ store('tw_cb_det',isDet()?'0':'1'); draw(); }, _back:back, _addPicked:addPicked, _save:saveEdit, _del:delEdit, _copy:function(){ var d=S.dlg; if(!d) return; var id=d.id; closeDlg(); copyBlk(id); }, _clipOff:clipOff, _rebase:rebase, _close:closeDlg, _shift:setShift, _remove:removePerson, _sendOne:sendOne
   };
 })();
