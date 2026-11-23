@@ -150,12 +150,14 @@
       +'Блок тянется мышью — по времени и на другого человека; за правый край растягивается. К работе можно дописать примечание — оно видно на блоке (✎), в раскрытии при наведении и уходит рабочему вместе с заданием. Назначили не ту деталь — щёлкните по блоку и нажмите «✎ заменить»: блок, время и человек останутся. Потяните нижний край блока на соседние строки — работа разделится между этими людьми, количество и время поровну. Людей переставляют за ⋮⋮. Длина блока считается из количества и расценки при темпе '
       +String(Math.round(c.efficiency*100))+' % от '+String(c.hourRate).replace('.',',')+' ₽/час; растянутый вручную блок помнит свою длину. ⚠ — перед операцией сейчас лежит меньше, чем задано (это подсказка, а не запрет). Наведите на блок — подсветится цепочка этой детали на день: номера шагов по техпорядку, синим — что делается до, серым — после, красным — шаг, стоящий по времени не на своём месте; внизу та же цепочка словами. Если текст в блок не помещается, наведите на него — блок раскроется и покажет текст целиком; кнопка «Компактно / Подробно» переносит текст задач в блоках целиком. Зелёная полоска — сколько уже сдано нарядами. Сумма в ₽ у человека — сколько он заработает по расценкам, если сделает весь план (до налогов, без премий).</div>'
       +(ps.length?'':'<div class="empty">На '+dmy(S.d.date)+' в табеле никого нет — добавьте людей кнопкой «＋ Человек».</div>')
-      +'<div class="cb-wrap tbl-wrap fill" id="cbWrap"><div class="cb'+(isDet()?' det':'')+'" style="--cb-hours:'+sc.hours+(S.nameW?';--cb-name:'+S.nameW+'px':'')+'">'
+      +(S.pr?'<div class="cb-ph"><b>План на '+ruD(S.d.date)+'</b> ('+WD[new Date(S.d.date+'T00:00:00').getDay()]+') · '+ps.length+' чел · занято '+n1(tot/60)+' из '+n1(ps.length*cap)+' ч</div>':'')
+      +'<div class="cb-wrap'+(S.pr?' pr':' tbl-wrap fill')+'" id="cbWrap"><div class="cb'+(S.pr||isDet()?' det':'')+'" style="--cb-hours:'+sc.hours+(S.nameW?';--cb-name:'+S.nameW+'px':'')+'">'
       +'<div class="cb-head"><div class="cb-name cb-corner"><b>'+ps.length+' чел</b>'+(rubAll>0?'<span class="cb-rub" title="работы в плане по расценкам на всех: '+money(rubAll)+' ₽">'+Math.round(rubAll).toLocaleString('ru-RU')+' ₽</span>':'')+'<span class="cb-ld">'+n1(tot/60)+'<i>/'+n1(ps.length*cap)+' ч</i></span></div>'
       +'<div class="cb-lane cb-hours"><button class="cb-add l" title="добавить час раньше" data-add="l">＋</button>'+hours+'<button class="cb-add r" title="добавить час позже" data-add="r">＋</button></div></div>'
       +ps.map(function(p){ return rowHtml(p,sc); }).join('')+now+'</div></div>'
       +'<div class="cb-foot"><span class="cb-legend" id="cbLegend">'+legend+'<span class="cb-lg free">текстом</span></span><span class="cb-chain" id="cbChain" hidden></span></div>';
-    S.over=null; fitNames(); fitShort(); fitRows(); hideTip();
+    S.over=null; hideTip();
+    if(S.pr) fitPrint(); else { fitNames(); fitShort(); fitRows(); }
     if(keep){ var w=$('cbWrap'); w.scrollLeft=keep.x; w.scrollTop=keep.y; }
     drawActions();
     if(window.twFit) try{ twFit(); }catch(e){}
@@ -173,7 +175,10 @@
   function fitShort(){
     var cb=S.el.querySelector('.cb'); if(!cb) return;
     var det=cb.classList.contains('det'), bl=cb.querySelectorAll('.cb-row .cb-blk'), i;
-    for(i=0;i<bl.length;i++){ var b=bl[i], t=b.querySelector('.cb-t'); if(!t||!b.querySelector('.cb-os')) continue;
+    for(i=0;i<bl.length;i++){ var b=bl[i], t=b.querySelector('.cb-t');
+      // на листе совсем узкий блок (четверть часа) текст не переносит — иначе он встаёт столбиком по букве и раздувает строку на пол-листа
+      if(S.pr){ if(b.clientWidth<70) b.classList.add('nar'); else b.classList.remove('nar'); }
+      if(!t||!b.querySelector('.cb-os')) continue;
       b.classList.remove('short');
       if(det?b.clientWidth<150:t.scrollWidth>t.clientWidth+1) b.classList.add('short'); }
   }
@@ -183,8 +188,49 @@
     var rows=cb.querySelectorAll('.cb-row'), i, j;
     for(i=0;i<rows.length;i++){ var bl=rows[i].querySelectorAll('.cb-blk'), h=0; rows[i].style.height='';
       for(j=0;j<bl.length;j++) h=Math.max(h,bl[j].scrollHeight+8);
-      if(h>rows[i].offsetHeight) rows[i].style.height=Math.min(h,140)+'px'; }
+      if(h>rows[i].offsetHeight) rows[i].style.height=Math.min(h,S.pr?S.prCap:140)+'px'; }
   }
+  /* ── печать (владелец 23.11.2026): подробный вид на один альбомный лист A4, во всю ширину ──
+     Экранная раскладка на лист не годится: высоты строк и колонка имён посчитаны под ширину окна. Перед печатью доска перерисовывается
+     под лист: ширина в пикселях задана явно (на экране и на бумаге раскладка одна и та же), масштаб подбирается так, чтобы всё встало
+     на одну страницу. Лист A4 поперёк с полями 8 мм (@page в planning.html) — 281 × 194 мм ≈ 1062 × 733 px; берём с запасом. */
+  var PAGE_W=1050, PAGE_H=716, WD=['вс','пн','вт','ср','чт','пт','сб'];
+  function fitPrint(){
+    var wrap=$('cbWrap'), cb=wrap&&wrap.querySelector('.cb'); if(!cb) return;
+    var ph=S.el.querySelector('.cb-ph'), ft=S.el.querySelector('.cb-foot'), i, j;
+    // колонка имён — ровно по тексту: сжимаем, чтобы scrollWidth показал настоящую ширину имени, а не растянутую ячейку
+    cb.style.setProperty('--cb-name','40px');
+    var ns=cb.querySelectorAll('.cb-name'), need=0;
+    for(i=0;i<ns.length;i++){ var w=0, ch=ns[i].children; for(j=0;j<ch.length;j++) w+=ch[j].scrollWidth; need=Math.max(need,w); }
+    cb.style.setProperty('--cb-name',(need+34)+'px');
+    var avail=PAGE_H-(ph?ph.offsetHeight:0)-(ft?ft.offsetHeight:0)-12;
+    // Высоты строк меряем на доске чуть уже листа (−3 %), а печатаем во всю ширину: на бумаге буквы ложатся не точь-в-точь как на экране,
+    // и строка, вставшая впритык, переносилась — текст блока обрезался снизу. С запасом перенос на бумаге может только исчезнуть.
+    // раскладка при масштабе z: доска шириной лист ÷ z, строки — по тексту, но не выше cap (девять строк текста: один блок с длинным
+    // примечанием в получасе не должен мельчить весь лист); возвращает высоту на бумаге
+    var lay=function(z,cap){ S.prCap=cap||CAP; cb.style.width=Math.floor(PAGE_W/z*0.97)+'px'; fitShort(); fitRows(); return cb.offsetHeight*z; };
+    // 1) самый крупный масштаб, при котором весь текст на одном листе; мельче Z0 не уменьшаем — шрифт 11 px × 0,66 ≈ 5,5 пт, дальше не прочесть;
+    // 2) не встало и при Z0 — подрезаем самые высокие строки (текст перегруженных блоков), а не мельчим всё;
+    // 3) людей столько, что не встаёт и так, — дожимаем масштабом: лист всё равно один.
+    var Z0=0.66, CAP=120, z=1, cap=CAP, lo, hi, m;
+    if(lay(1)>avail){
+      if(lay(Z0)<=avail){ lo=Z0; hi=1; for(i=0;i<7;i++){ m=(lo+hi)/2; if(lay(m)<=avail) lo=m; else hi=m; } z=lo; }
+      else { z=Z0; lo=30; hi=CAP; for(i=0;i<8;i++){ m=Math.round((lo+hi)/2); if(lay(z,m)<=avail) lo=m; else hi=m; } cap=lo; }
+    }
+    var h=lay(z,cap);
+    if(h>avail){ z=z*avail/h; h=lay(z,cap); }
+    cb.style.width=Math.floor(PAGE_W/z)+'px';
+    cb.style.transformOrigin='0 0'; cb.style.transform='scale('+z+')';
+    wrap.style.width=PAGE_W+'px'; wrap.style.height=Math.ceil(h)+'px';
+  }
+  function printOn(){
+    if(S.pr||!S.d||!S.el||!S.el.querySelector('.cb')) return;
+    closeDlg(); unrelate(); S.pr=1; document.documentElement.classList.add('cb-printing'); draw();
+  }
+  function printOff(){ if(!S.pr) return; S.pr=0; document.documentElement.classList.remove('cb-printing'); draw(); }
+  // кнопка 🖨 и Ctrl+P ведут в одно место: раскладка под лист ставится до печати и снимается после
+  function print(){ printOn(); window.print(); }
+
   // наведение (владелец 22.11.2026): текст помещается — ничего не происходит; не помещается — блок «раскрывается» на месте,
   // в своём цвете, и показывает текст целиком. Раскрытая копия мышь не перехватывает: блок под ней по-прежнему тянется и щёлкается.
   function clipped(blk){
@@ -216,7 +262,7 @@
       +'<button class="sec sm" onclick="twCrewBoard.addPerson()" title="добавить человека на этот день">'+(n?'＋ Чел.':'＋ Человек')+'</button>'
       +'<button class="sec sm" onclick="twCrewBoard.carry()" title="перенести на этот день работу, которую вчера не доделали">'+(n?'↪':'↪ Недоделанное')+'</button>'
       +'<button class="sec sm" onclick="twCrewBoard.sendAll()" title="разослать задания в Telegram">'+(n?'📨':'📨 Разослать')+'</button>'
-      +(n?'':'<button class="sec sm" onclick="window.print()" title="печать на альбомный лист">🖨</button>')
+      +(n?'':'<button class="sec sm" onclick="twCrewBoard.print()" title="печать: подробный вид на один альбомный лист A4">🖨</button>')
       +'<button class="sec sm" onclick="twCrewBoard.undo()"'+(S.undo.length?'':' disabled')+' title="отменить последнее действие (Ctrl+Z)">↶</button>'
       +(n?'':'<button class="sec sm" onclick="twCrewBoard._help()" title="как пользоваться доской">?</button>');
   }
@@ -563,14 +609,14 @@
       el.innerHTML='<div class="center muted">Загрузка…</div>';
       if(!el._cb){ el._cb=1; el.addEventListener('pointerdown',onDown); el.addEventListener('click',onClick); el.addEventListener('mouseover',onOver);
         el.addEventListener('mouseleave',function(){ S.over=null; unrelate(); hideTip(); }); el.addEventListener('scroll',hideTip,true); }
-      if(!wired){ wired=true; document.addEventListener('keydown',onKey); }
+      if(!wired){ wired=true; document.addEventListener('keydown',onKey); window.addEventListener('beforeprint',printOn); window.addEventListener('afterprint',printOff); }
       // шрифт темы догружается после первой отрисовки — имена перемерить ещё раз
       try{ if(document.fonts&&document.fonts.ready) document.fonts.ready.then(function(){ if(S.d){ fitNames(); fitShort(); fitRows(); } }); }catch(e){}
       return load();
     },
     setDate:function(d){ S.date=d; S.undo=[]; return load(); },
     reload:function(){ return load(true); },
-    undo:undo, addPerson:addPerson, carry:carry, sendAll:sendAll,
+    undo:undo, addPerson:addPerson, carry:carry, sendAll:sendAll, print:print, _printOn:printOn, _printOff:printOff,
     _help:function(){ S.help=!S.help; draw(); }, _det:function(){ store('tw_cb_det',isDet()?'0':'1'); draw(); }, _back:back, _addPicked:addPicked, _save:saveEdit, _del:delEdit, _close:closeDlg, _shift:setShift, _remove:removePerson, _sendOne:sendOne
   };
 })();

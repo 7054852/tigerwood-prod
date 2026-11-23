@@ -139,6 +139,9 @@
     if(TMR) clearInterval(TMR); TMR=0;
     if(MODE==='auto') TMR=setInterval(apply, 300000);
   }
+  // печать — всегда в дневной палитре: цветные плашки ночной темы (--green-bg, --blue-bg…) на бумаге выходили тёмными пятнами
+  root.addEventListener('beforeprint', function(){ if(de.getAttribute('data-theme')==='night') de.setAttribute('data-theme','day'); });
+  root.addEventListener('afterprint', function(){ apply(); });
   function broadcast(){
     var fr=d.getElementsByTagName('iframe');
     for(var i=0;i<fr.length;i++){ try{ fr[i].contentWindow.postMessage({tw:'theme',mode:MODE},'*'); }catch(e){} }
