@@ -120,7 +120,7 @@
     return '<div class="cb-blk'+col+(free?' free':'')+(h&&h.warn?' warn':'')+(noted?' noted':'')+(pct>=100?' done':'')+'" data-id="'+esc(t.id)+'" data-k="'+esc(lc(t.order+'|'+t.detail))+'"'
       +' style="left:'+l.toFixed(3)+'%;width:'+w.toFixed(3)+'%">'
       +(free?('<span class="cb-t cb-t2">'+esc(t.title)+'</span>')
-        :('<span class="cb-t"><b>'+(S.pr&&S.prCh[t.id]?'<i class="cb-ch'+(S.prCh[t.id].late?' late':'')+'">'+S.prCh[t.id].tag+'</i>':'')+(so!==t.op?'<span class="cb-of">'+esc(t.op)+'</span><span class="cb-os">'+esc(so)+'</span>':esc(t.op))+'</b>'+((t.model||t.detail)?'<i class="cb-sep"> · </i><span class="cb-d">'+esc(t.model||t.detail)+'</span>':'')+'</span>'
+        :('<span class="cb-t"><b>'+(S.pr&&S.prCh[t.id]?'<i class="cb-ch k'+S.prCh[t.id].k+'">'+S.prCh[t.id].tag+'</i>':'')+(so!==t.op?'<span class="cb-of">'+esc(t.op)+'</span><span class="cb-os">'+esc(so)+'</span>':esc(t.op))+'</b>'+((t.model||t.detail)?'<i class="cb-sep"> · </i><span class="cb-d">'+esc(t.model||t.detail)+'</span>':'')+'</span>'
           // значок примечания — сразу после партии (владелец 22.11.2026: в правом углу блока его плохо видно); строка сжимается, значок — нет
           +'<span class="cb-s"><span class="cb-sx">'+qtyS(t.qty)+' шт'+(t.order?' · '+esc(t.order):'')+'</span>'+(t.title?'<i class="cb-nb" title="есть примечание">✎</i>':'')+(t.done>0?'<span class="cb-sx"> · сдано '+qtyS(t.done)+'</span>':'')+'</span>'
           +(t.title?'<span class="cb-note"><i>✎</i>'+esc(t.title)+'</span>':'')))
@@ -129,12 +129,14 @@
   function rowHtml(p,sc){
     var c=cfg(), cap=(c.to-c.from)/60, busy=0, rub=0; p.tasks.forEach(function(t){ busy+=t.dur; rub+=t.qty*t.rate; }); busy=busy/60;
     var cls=busy>cap+0.01?' over':(busy>=cap*0.9?' full':'');
+    // на листе линии часов — настоящие элементы: фоновая сетка (градиент) в PDF ложится размытыми полосами не на своих местах
+    var hl='', i; if(S.pr) for(i=1;i<sc.hours;i++) hl+='<i class="cb-hl" style="left:'+(i/sc.hours*100).toFixed(3)+'%"></i>';
     return '<div class="cb-row'+(p.status==='не вышел'?' off':'')+'" data-w="'+esc(p.name)+'">'
       +'<div class="cb-name"><span class="cb-grip" title="перетащите, чтобы переставить человека">⋮⋮</span>'
       +'<span class="cb-nm" title="'+esc(p.name)+(p.home?' · участок: '+esc(p.home):'')+(p.sent?' · задание отправлено':'')+'">'+shIco(p.shift)+esc(narrow()?shortName(p.name):p.name)+(p.sent?' <span class="cb-sent">✓</span>':'')+'</span>'
       +(rub>0?'<span class="cb-rub" title="заработает по расценкам, если сделает всё, что стоит в плане: '+money(rub)+' ₽ (до налогов, без премий)">'+Math.round(rub).toLocaleString('ru-RU')+' ₽</span>':'')
       +'<span class="cb-ld'+cls+'" title="занято часов из '+n1(cap)+'">'+(busy?n1(busy):'—')+'<i>/'+n1(cap)+'</i></span></div>'
-      +'<div class="cb-lane" data-w="'+esc(p.name)+'">'+p.tasks.map(function(t){ return blkHtml(t,sc); }).join('')+'</div></div>';
+      +'<div class="cb-lane" data-w="'+esc(p.name)+'">'+hl+p.tasks.map(function(t){ return blkHtml(t,sc); }).join('')+'</div></div>';
   }
   function draw(){
     if(!S.d) return;
@@ -156,7 +158,7 @@
       +'<div class="cb-head"><div class="cb-name cb-corner"><b>'+ps.length+' чел</b>'+(rubAll>0?'<span class="cb-rub" title="работы в плане по расценкам на всех: '+money(rubAll)+' ₽">'+Math.round(rubAll).toLocaleString('ru-RU')+' ₽</span>':'')+'<span class="cb-ld">'+n1(tot/60)+'<i>/'+n1(ps.length*cap)+' ч</i></span></div>'
       +'<div class="cb-lane cb-hours"><button class="cb-add l" title="добавить час раньше" data-add="l">＋</button>'+hours+'<button class="cb-add r" title="добавить час позже" data-add="r">＋</button></div></div>'
       +ps.map(function(p){ return rowHtml(p,sc); }).join('')+now+'</div></div>'
-      +'<div class="cb-foot"><span class="cb-legend" id="cbLegend">'+legend+'<span class="cb-lg free">текстом</span>'+(S.pr&&S.prChN?'<span class="cb-chl"><i class="cb-ch">А1</i>→<i class="cb-ch">А2</i> — одна деталь идёт по операциям: буква — деталь, цифра — порядок'+(S.prChLate?'; <i class="cb-ch late">!</i> — стоит раньше предыдущей операции':'')+'</span>':'')+'</span><span class="cb-chain" id="cbChain" hidden></span></div>';
+      +'<div class="cb-foot"><span class="cb-legend" id="cbLegend">'+legend+'<span class="cb-lg free">текстом</span>'+(S.pr&&S.prChN?'<span class="cb-chl"><i class="cb-ch k0">А</i><i class="cb-ch k0">А</i> — одинаковый кружок: одна деталь идёт по операциям</span>':'')+'</span><span class="cb-chain" id="cbChain" hidden></span></div>';
     S.over=null; hideTip();
     if(S.pr) fitPrint(); else { fitNames(); fitShort(); fitRows(); }
     if(keep){ var w=$('cbWrap'); w.scrollLeft=keep.x; w.scrollTop=keep.y; }
@@ -225,22 +227,19 @@
     wrap.style.width=PAGE_W+'px'; wrap.style.height=Math.ceil(h)+'px';
   }
   // цепочки на листе (владелец 23.11.2026): на экране цепочку детали показывает наведение, на бумаге его нет. Блоки одной детали одного заказа,
-  // у которых в этот день стоят разные операции, получают метку «буква + шаг» по техпорядку: А1 → А2 → А3. Одиночные блоки — без метки.
+  // у которых в этот день стоят разные операции, получают один кружок — буква и цвет на деталь. Одиночные блоки — без метки.
+  // Номер шага и «!» убраны по его же слову: порядок виден по времени, на листе нужна только связь.
   var CH='АБВГДЕЖИКЛМНПРСТУФХЦЧШЭЮЯ';
   function printChains(){
-    var g={}, keys=[], n=0; S.prCh={}; S.prChN=0; S.prChLate=0;
+    var g={}, keys=[], n=0; S.prCh={}; S.prChN=0;
     people().forEach(function(p){ p.tasks.forEach(function(t){
       if(!t.op||!t.detail) return; var r=refOf(t); if(!r) return;
       var k=lc(t.order+'|'+t.detail); if(!g[k]){ g[k]=[]; keys.push(k); } g[k].push({ t:t, rank:r.rank }); }); });
     keys.forEach(function(k){
       var l=g[k], ranks=[]; l.forEach(function(x){ if(ranks.indexOf(x.rank)<0) ranks.push(x.rank); });
       if(ranks.length<2) return;
-      ranks.sort(function(a,b){ return a-b; });
-      var ltr=CH.charAt(n%CH.length)+(n>=CH.length?Math.floor(n/CH.length)+1:''); n++;
-      l.forEach(function(x){
-        // не по порядку: шаг начинается раньше, чем какая-то из предыдущих операций этой детали
-        var late=l.some(function(y){ return y.rank<x.rank&&y.t.start>x.t.start; });
-        S.prCh[x.t.id]={ tag:ltr+(ranks.indexOf(x.rank)+1)+(late?'!':''), late:late }; if(late) S.prChLate=1; });
+      var ltr=CH.charAt(n%CH.length), ci=n%10; n++;
+      l.forEach(function(x){ S.prCh[x.t.id]={ tag:ltr, k:ci }; });
     });
     S.prChN=n;
   }
