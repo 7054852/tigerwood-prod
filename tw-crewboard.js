@@ -528,6 +528,9 @@
     document.body.appendChild(bg); S.dlg=st||{}; S.dlg.kind=kind; S.dlg.bg=bg;
   }
   function closeDlg(){ if(S.dlg&&S.dlg.bg&&S.dlg.bg.parentNode) S.dlg.bg.parentNode.removeChild(S.dlg.bg); S.dlg=null; }
+  // длинный текст задания виден целиком: поле растёт по содержимому. Enter сохраняет, поэтому текст остаётся одной строкой
+  function grow(el){ var f=function(){ el.style.height='auto'; el.style.height=(el.scrollHeight+2)+'px'; }; el.addEventListener('input',f); f(); }
+  function line(v){ return String(v||'').replace(/\s+/g,' ').trim(); }
   function dlgErr(t){ var m=$('cbErr'); if(m) m.innerHTML=t?'<span class="err">'+esc(t)+'</span>':''; }
 
   // добавить работу: одно поле — поиск по работам всех открытых заказов или текст
@@ -582,17 +585,17 @@
       +'<i>'+esc(r.order)+' · '+esc(r.group)+' · '+String(r.rate).replace('.',',')+' ₽/шт · '+(!(r.left>0)?('по заказу уже сделано '+qtyS(r.done)+' из '+qtyS(r.need)+' — работа пойдёт сверх заказа'):r.prev?('можно '+qtyS(r.avail)+', осталось '+qtyS(r.left)):('по заказу осталось '+qtyS(r.left)))+'</i></span></div>'
       +'<div class="cb-f"><label>Количество, шт</label><input id="cbQty" inputmode="decimal" value="'+String(q0).replace('.',',')+'"><span id="cbDur" class="cb-dur"></span></div>'
       +(fit>0&&(fit<have||!(have>0))?'<div class="cb-hint">до '+hm(end)+' помещается '+qtyS(fit)+' шт</div>':'')
-      +'<div class="cb-f"><label>Примечание</label><input id="cbNote" autocomplete="off" placeholder="необязательно: что учесть"></div>'
+      +'<div class="cb-f"><label>Примечание</label><textarea id="cbNote" rows="1" placeholder="необязательно: что учесть"></textarea></div>'
       +'<div class="dlg-btns"><button class="sec" onclick="twCrewBoard._back()">← другая работа</button><button onclick="twCrewBoard._addPicked()">Поставить</button></div>';
     var qi=$('cbQty'), upd=function(){ $('cbDur').textContent='≈ '+durS(calcDur(num(qi.value),r.rate))+durWhy(num(qi.value),r.rate); };
     qi.addEventListener('input',upd); qi.addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); addPicked(); } }); upd(); qi.focus(); qi.select();
-    $('cbNote').addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); addPicked(); } });
+    $('cbNote').addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); addPicked(); } }); grow($('cbNote'));
   }
   function back(){ var d=S.dlg; if(!d) return; d.pick=null; $('cbPick').innerHTML=''; $('cbTip').innerHTML='Enter — записать текстом · ↓ и Enter — выбрать работу из списка'; dlgList(); $('cbQ').focus(); }
   function addPicked(){
     var d=S.dlg, r=d&&d.pick; if(!r) return;
     var q=num($('cbQty').value); if(!(q>0)){ dlgErr('Укажите количество'); return; }
-    var note=$('cbNote')?$('cbNote').value.trim():'';
+    var note=$('cbNote')?line($('cbNote').value):'';
     create(d.name,{ op:r.op, detail:r.detail, order:r.order, eq:r.eq, model:r.model, rate:r.rate, qty:q, start:d.start, title:note });
   }
   function addText(){ var d=S.dlg, v=$('cbQ').value.trim(); if(!v){ dlgErr('Напишите, что делать, или выберите работу'); return; } create(d.name,{ title:v, start:d.start }); }
@@ -602,13 +605,13 @@
   function openEdit(id){
     var f=taskBy(id); if(!f) return; var t=f.t, free=!t.op, h=hintOf(t);
     var opts=people().map(function(p){ return '<option'+(p.name===f.p.name?' selected':'')+'>'+esc(p.name)+'</option>'; }).join('');
-    openDlg('edit',(free?('<div class="cb-f"><label>Что делать</label><input id="cbTitle" value="'+esc(t.title)+'"></div>')
+    openDlg('edit',(free?('<div class="cb-f wide"><label>Что делать</label><textarea id="cbTitle" rows="1">'+esc(t.title)+'</textarea></div>')
         :('<div class="cb-picked"><span class="cb-dot'+colorOf(t.group)+'" id="cbHeadDot"></span><span id="cbHead"><b>'+esc(t.op)+'</b>'+(t.model?' · '+esc(t.model):(t.detail?' · '+esc(t.detail):''))
           +'<i>'+esc([t.order,t.group,t.rate?String(t.rate).replace('.',',')+' ₽/шт':''].filter(Boolean).join(' · '))+'</i></span>'
           +'<span class="cb-sp"></span><button class="gho sm" id="cbSwapBtn" title="назначили не ту деталь или операцию — выбрать другую, не удаляя блок: время, человек и количество останутся">✎ заменить</button></div>'
           +'<div id="cbSwap" hidden><input id="cbQ2" autocomplete="off" placeholder="деталь, операция, заказ"><div class="cb-list" id="cbList2"></div></div>'
           +'<div class="cb-f"><label>Количество, шт</label><input id="cbQty" inputmode="decimal" value="'+String(t.qty).replace('.',',')+'"><span id="cbDur" class="cb-dur"></span></div>'
-          +'<div class="cb-f"><label>Примечание</label><input id="cbNote" autocomplete="off" value="'+esc(t.title||'')+'" placeholder="необязательно: что учесть"></div>'))
+          +'<div class="cb-f"><label>Примечание</label><textarea id="cbNote" rows="1" placeholder="необязательно: что учесть">'+esc(t.title||'')+'</textarea></div>'))
       +'<div class="cb-f"><label>Время</label><input type="time" id="cbFrom" step="900" value="'+hm2(t.start)+'"><span>—</span><input type="time" id="cbTo" step="900" value="'+hm2(t.start+t.dur)+'">'
         +(free?'':'<button class="gho sm" id="cbAuto" title="поставить длину по расчёту из количества и расценки">по расчёту</button>')+'</div>'
       +'<div class="cb-f"><label>Кому</label><select id="cbWho">'+opts+'</select></div>'
@@ -640,7 +643,8 @@
     $('cbTo').addEventListener('input',function(){ S.dlg.auto=false; S.dlg.touched=true; });
     if($('cbWith')) $('cbWith').addEventListener('change',function(){ var sh=shareOf(t,2); $('cbWithTip').textContent=this.value?(sh.bad?'не делится: всего '+qtyS(t.qty)+' шт':('каждому'+(t.op?' по '+qtyS(sh.qty)+' шт,':'')+' '+durS(sh.dur))):''; });
     S.dlg.bg.addEventListener('keydown',function(e){ if(e.key==='Enter'&&e.target.tagName!=='BUTTON'){ e.preventDefault(); saveEdit(); } });
-    (qi||$('cbTitle')).focus();
+    if($('cbNote')) grow($('cbNote'));
+    if(qi) qi.focus(); else { var ti=$('cbTitle'); grow(ti); ti.focus(); ti.setSelectionRange(ti.value.length,ti.value.length); }
   }
   function tm(v){ var m=/^(\d{1,2}):(\d{2})/.exec(v||''); return m?(+m[1])*60+(+m[2]):null; }
   function setEnd(dur){ var a=tm($('cbFrom').value); if(a!=null) $('cbTo').value=hm2(a+dur); }
@@ -648,9 +652,9 @@
     var d=S.dlg, f=d&&taskBy(d.id); if(!f) return closeDlg(); var t=f.t, patch={}, a=tm($('cbFrom').value), b=tm($('cbTo').value);
     if(a==null||b==null){ dlgErr('Укажите время начала и конца'); return; }
     if(b<=a) b+=1440;   // конец после полуночи
-    if($('cbTitle')){ var v=$('cbTitle').value.trim(); if(!v){ dlgErr('Напишите, что делать'); return; } if(v!==t.title) patch.title=v; }
+    if($('cbTitle')){ var v=line($('cbTitle').value); if(!v){ dlgErr('Напишите, что делать'); return; } if(v!==t.title) patch.title=v; }
     if($('cbQty')){ var q=num($('cbQty').value); if(!(q>0)){ dlgErr('Укажите количество'); return; } if(q!==t.qty) patch.qty=q; }
-    if($('cbNote')){ var nt=$('cbNote').value.trim(); if(nt!==(t.title||'')) patch.title=nt; }
+    if($('cbNote')){ var nt=line($('cbNote').value); if(nt!==(t.title||'')) patch.title=nt; }
     if(a!==t.start) patch.start=a;
     // работу заменили: новая деталь, операция, заказ и расценка — блок, время и человек те же; длину пересчитает сервер, если её не задавали руками
     if(d.ref){ patch.op=d.ref.op; patch.detail=d.ref.detail; patch.order=d.ref.order; patch.eq=d.ref.eq; patch.model=d.ref.model; patch.rate=d.ref.rate; }
