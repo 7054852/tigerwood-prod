@@ -5,7 +5,7 @@
    Запретов нет: «перед операцией нечего брать» — только пометка ⚠. На телефоне блоки не тянут — тап открывает окно с теми же полями.
    twCrewBoard.mount(el, { api, post, date:'гггг-мм-дд', actions:<элемент для кнопок> }); twCrewBoard.setDate(d). */
 (function(){
-  var S={ el:null, o:null, date:'', d:null, refs:null, refsAt:0, undo:[], msg:'', msgT:0, drag:null, dlg:null, touch:false, busy:0 };
+  var S={ el:null, o:null, date:'', d:null, refs:null, refsAt:0, undo:[], msg:'', msgT:0, drag:null, dlg:null, touch:false, busy:0, clip:null, pt:null };
   var esc=function(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); };
   var lc=function(s){ return String(s==null?'':s).trim().toLowerCase().replace(/ё/g,'е'); };
   var num=function(v){ return Number(String(v==null?'':v).replace(/\s/g,'').replace(',','.'))||0; };
@@ -148,13 +148,13 @@
     if(S.pr) printChains();
     var legend=((S.d.sites)||[]).filter(function(s){ return s.name!=='Прочее'; }).map(function(s){ return '<span class="cb-lg'+colorOf(s.name)+'">'+esc(s.name)+'</span>'; }).join('');
     var sc0=$('cbWrap'), keep=sc0?{ x:sc0.scrollLeft, y:sc0.scrollTop }:null;
-    S.el.innerHTML='<div class="cb-msg" id="cbMsg">'+S.msg+'</div>'
+    S.el.innerHTML='<div class="cb-msg" id="cbMsg">'+msgHtml()+'</div>'
       +'<div class="note hint'+(S.help?' show':'')+'" data-hb="1">Щёлкните по пустому месту в строке — добавить работу: начните писать (деталь, операция, заказ) и выберите из списка, или просто впишите текст и нажмите Enter. '
-      +'Блок тянется мышью — по времени и на другого человека; за правый край растягивается. К работе можно дописать примечание — оно видно на блоке (✎), в раскрытии при наведении и уходит рабочему вместе с заданием. Назначили не ту деталь — щёлкните по блоку и нажмите «✎ заменить»: блок, время и человек останутся. Потяните нижний край блока на соседние строки — работа разделится между этими людьми, количество и время поровну. Людей переставляют за ⋮⋮. Длина блока считается из количества и расценки при темпе '
+      +'Блок тянется мышью — по времени и на другого человека; за правый край растягивается. К работе можно дописать примечание — оно видно на блоке (✎), в раскрытии при наведении и уходит рабочему вместе с заданием. Скопировать блок: наведите на него и нажмите Ctrl+C (или щёлкните по блоку → «⧉ Копировать»), затем щёлкните по месту, куда вставить, — у другого человека, на другое время или в другом дне; Esc — убрать из буфера. Назначили не ту деталь — щёлкните по блоку и нажмите «✎ заменить»: блок, время и человек останутся. Потяните нижний край блока на соседние строки — работа разделится между этими людьми, количество и время поровну. Людей переставляют за ⋮⋮. Длина блока считается из количества и расценки при темпе '
       +String(Math.round(c.efficiency*100))+' % от '+String(c.hourRate).replace('.',',')+' ₽/час; растянутый вручную блок помнит свою длину. ⚠ — перед операцией сейчас лежит меньше, чем задано (это подсказка, а не запрет). Наведите на блок — подсветится цепочка этой детали на день: номера шагов по техпорядку, синим — что делается до, серым — после, красным — шаг, стоящий по времени не на своём месте; внизу та же цепочка словами. Если текст в блок не помещается, наведите на него — блок раскроется и покажет текст целиком; кнопка «Компактно / Подробно» переносит текст задач в блоках целиком. Зелёная полоска — сколько уже сдано нарядами. Сумма в ₽ у человека — сколько он заработает по расценкам, если сделает весь план (до налогов, без премий).</div>'
       +(ps.length?'':'<div class="empty">На '+dmy(S.d.date)+' в табеле никого нет — добавьте людей кнопкой «＋ Человек».</div>')
       +(S.pr?'<div class="cb-ph"><b>План на '+ruD(S.d.date)+'</b> ('+WD[new Date(S.d.date+'T00:00:00').getDay()]+') · '+ps.length+' чел · занято '+n1(tot/60)+' из '+n1(ps.length*cap)+' ч</div>':'')
-      +'<div class="cb-wrap'+(S.pr?' pr':' tbl-wrap fill')+'" id="cbWrap"><div class="cb'+(S.pr||isDet()?' det':'')+'" style="--cb-hours:'+sc.hours+(S.nameW?';--cb-name:'+S.nameW+'px':'')+'">'
+      +'<div class="cb-wrap'+(S.pr?' pr':' tbl-wrap fill')+'" id="cbWrap"><div class="cb'+(S.pr||isDet()?' det':'')+(S.clip&&!S.pr?' paste':'')+'" style="--cb-hours:'+sc.hours+(S.nameW?';--cb-name:'+S.nameW+'px':'')+'">'
       +'<div class="cb-head"><div class="cb-name cb-corner"><b>'+ps.length+' чел</b>'+(rubAll>0?'<span class="cb-rub" title="работы в плане по расценкам на всех: '+money(rubAll)+' ₽">'+Math.round(rubAll).toLocaleString('ru-RU')+' ₽</span>':'')+'<span class="cb-ld">'+n1(tot/60)+'<i>/'+n1(ps.length*cap)+' ч</i></span></div>'
       +'<div class="cb-lane cb-hours"><button class="cb-add l" title="добавить час раньше" data-add="l">＋</button>'+hours+'<button class="cb-add r" title="добавить час позже" data-add="r">＋</button></div></div>'
       +ps.map(function(p){ return rowHtml(p,sc); }).join('')+now+'</div></div>'
@@ -273,7 +273,34 @@
     el.style.top=Math.max(8,Math.min(top,window.innerHeight-h-8))+'px';
   }
   function hideTip(){ if(S.tip&&S.tip.parentNode) S.tip.parentNode.removeChild(S.tip); S.tip=null; }
-  function drawMsg(){ var m=$('cbMsg'); if(m) m.innerHTML=S.msg; }
+  function drawMsg(){ var m=$('cbMsg'); if(m) m.innerHTML=msgHtml(); }
+
+  /* ── буфер: скопировать блок и вставить в другое место — другому человеку, на другое время или другой день (владелец 23.11.2026) ──
+     Буфер живёт, пока его не убрали (Esc или «убрать»): одну работу можно вставить несколько раз. Копия — новый блок: та же работа, количество, длина, примечание. */
+  function clipLabel(c){ return c.op?(c.op+((c.model||c.detail)?' · '+(c.model||c.detail):'')+' · '+qtyS(c.qty)+' шт'):c.title; }
+  function msgHtml(){
+    if(!S.clip) return S.msg;
+    return '<span class="cb-clip">📋 Скопировано: <b>'+esc(clipLabel(S.clip))+'</b> — '+(narrow()?'нажмите на место в строке, куда вставить':'щёлкните по месту в строке, куда вставить (или Ctrl+V под курсором)')
+      +' · <a href="javascript:void(0)" onclick="twCrewBoard._clipOff()">убрать</a></span>'+(S.msg?' · '+S.msg:'');
+  }
+  function copyBlk(id){
+    var f=taskBy(id); if(!f) return; var t=f.t;
+    S.clip={ op:t.op, detail:t.detail, order:t.order, eq:t.eq, model:t.model, rate:t.rate, qty:t.qty, title:t.title, dur:t.dur, manual:t.manual };
+    S.msg=''; draw();
+  }
+  function clipOff(){ if(!S.clip) return; S.clip=null; draw(); }
+  function pasteAt(name,start){
+    var c=S.clip; if(!c||!person(name)) return;
+    var pt=c.op?{ op:c.op, detail:c.detail, order:c.order, eq:c.eq, model:c.model, rate:c.rate, qty:c.qty, title:c.title }:{ title:c.title };
+    pt.start=start; pt.dur=c.dur; pt.manual=c.manual;
+    remember(); send({ vapi:'crewtask', date:S.date, worker:name, patch:JSON.stringify(pt) },function(r){ merge(r.rows); });
+  }
+  // Ctrl+V — туда, где сейчас курсор
+  function pasteAtPointer(){
+    var e0=S.pt&&document.elementFromPoint(S.pt.x,S.pt.y), lane=e0&&closest(e0,'cb-lane');
+    if(!lane||lane.classList.contains('cb-hours')||!S.el.contains(lane)){ say('Наведите курсор на строку человека, куда вставить, и нажмите Ctrl+V — или просто щёлкните по месту',1); return; }
+    pasteAt(lane.getAttribute('data-w'),minAt(lane,S.pt.x,scale()));
+  }
   function drawActions(){
     var a=S.o.actions; if(!a) return;
     // на телефоне кнопки короткие и без печати — доска должна начинаться как можно выше
@@ -370,7 +397,7 @@
     var g=S.drag; S.drag=null; if(!g) return;
     if(g.el) g.el.classList.remove('drag');
     if(!g.moved){
-      if(g.mode==='new') openAdd(g.lane.getAttribute('data-w'),minAt(g.lane,e.clientX,g.sc));
+      if(g.mode==='new'){ var w0=g.lane.getAttribute('data-w'), m0=minAt(g.lane,e.clientX,g.sc); if(S.clip) pasteAt(w0,m0); else openAdd(w0,m0); }
       else if(g.mode!=='row') openEdit(g.id);
       return;
     }
@@ -399,7 +426,7 @@
     if(!S.touch) return;
     var blk=closest(t,'cb-blk'), lane=closest(t,'cb-lane');
     if(blk) openEdit(blk.getAttribute('data-id'));
-    else if(lane&&!lane.classList.contains('cb-hours')) openAdd(lane.getAttribute('data-w'),minAt(lane,e.clientX,scale()));
+    else if(lane&&!lane.classList.contains('cb-hours')){ var w1=lane.getAttribute('data-w'), m1=minAt(lane,e.clientX,scale()); if(S.clip) pasteAt(w1,m1); else openAdd(w1,m1); }
   }
   // наведение на блок — цепочка этой детали на сегодня (владелец 22.11.2026: «что должно быть сделано до» — понятнее):
   // блоки той же детали получают номер шага по техпорядку; шаги ДО наведённого — акцентом, ПОСЛЕ — серым, остальные блоки приглушаются;
@@ -443,7 +470,16 @@
   function onKey(e){
     if(!S.el||!document.body.contains(S.el)||!S.el.querySelector('.cb')) return;
     if(e.key==='Escape'&&S.dlg){ closeDlg(); return; }
+    if(e.key==='Escape'&&S.clip){ clipOff(); return; }
     var tag=(e.target&&e.target.tagName)||'';
+    // Ctrl+C — блок под курсором, Ctrl+V — под курсор; по коду клавиши, чтобы работало и в русской раскладке. Выделенный текст и поля ввода не трогаем
+    if((e.ctrlKey||e.metaKey)&&!e.shiftKey&&!e.altKey&&!S.dlg&&tag!=='INPUT'&&tag!=='TEXTAREA'&&tag!=='SELECT'){
+      var sel=''; try{ sel=String(window.getSelection()||''); }catch(x){}
+      // code бывает пустым (экранные клавиатуры) — тогда по букве: латинская или та же клавиша в русской раскладке
+      var k=String(e.key||'').toLowerCase(), isC=e.code?e.code==='KeyC':(k==='c'||k==='с'), isV=e.code?e.code==='KeyV':(k==='v'||k==='м');
+      if(isC&&!sel&&S.over&&!S.over.classList.contains('ghost')){ e.preventDefault(); copyBlk(S.over.getAttribute('data-id')); return; }
+      if(isV&&S.clip){ e.preventDefault(); pasteAtPointer(); return; }
+    }
     if((e.ctrlKey||e.metaKey)&&(e.key==='z'||e.key==='я')&&!S.dlg&&tag!=='INPUT'&&tag!=='TEXTAREA'){ e.preventDefault(); undo(); }
   }
 
@@ -541,7 +577,7 @@
       +'<div class="cb-f"><label>Кому</label><select id="cbWho">'+opts+'</select></div>'
       +(people().length>1?'<div class="cb-f"><label>Вместе с</label><select id="cbWith"><option value="">— делает один —</option>'+people().filter(function(p){ return p.name!==f.p.name; }).map(function(p){ return '<option>'+esc(p.name)+'</option>'; }).join('')+'</select><span class="cb-dur" id="cbWithTip"></span></div>':'')
       +(h?'<div class="cb-hint'+(h.warn?' warn':'')+'">'+esc(hintText(t,h))+'</div>':'')+(t.done>0?'<div class="cb-hint ok">сдано нарядами: '+qtyS(t.done)+' из '+qtyS(t.qty)+' шт</div>':'')
-      +'<div id="cbErr"></div><div class="dlg-btns"><button class="sec danger" onclick="twCrewBoard._del()">Удалить</button><span class="cb-sp"></span>'
+      +'<div id="cbErr"></div><div class="dlg-btns"><button class="sec danger" onclick="twCrewBoard._del()">Удалить</button><button class="sec" onclick="twCrewBoard._copy()" title="скопировать блок, чтобы вставить его в другом месте: у другого человека, на другое время или в другом дне">⧉ Копировать</button><span class="cb-sp"></span>'
       +'<button class="sec" onclick="twCrewBoard._close()">Отмена</button><button onclick="twCrewBoard._save()">Сохранить</button></div>',{ id:id, auto:false, ref:null, list:[], sel:-1 });
     var qi=$('cbQty');
     if(qi){
@@ -627,7 +663,7 @@
     mount:function(el,o){
       S.el=el; S.o=o; S.date=o.date; S.d=null; S.undo=[]; S.msg='';
       el.innerHTML='<div class="center muted">Загрузка…</div>';
-      if(!el._cb){ el._cb=1; el.addEventListener('pointerdown',onDown); el.addEventListener('click',onClick); el.addEventListener('mouseover',onOver);
+      if(!el._cb){ el._cb=1; el.addEventListener('pointerdown',onDown); el.addEventListener('click',onClick); el.addEventListener('mouseover',onOver); el.addEventListener('mousemove',function(e){ S.pt={ x:e.clientX, y:e.clientY }; });
         el.addEventListener('mouseleave',function(){ S.over=null; unrelate(); hideTip(); }); el.addEventListener('scroll',hideTip,true); }
       if(!wired){ wired=true; document.addEventListener('keydown',onKey); window.addEventListener('beforeprint',printOn); window.addEventListener('afterprint',printOff); }
       // шрифт темы догружается после первой отрисовки — имена перемерить ещё раз
@@ -637,6 +673,6 @@
     setDate:function(d){ S.date=d; S.undo=[]; return load(); },
     reload:function(){ return load(true); },
     undo:undo, addPerson:addPerson, carry:carry, sendAll:sendAll, print:print, _printOn:printOn, _printOff:printOff,
-    _help:function(){ S.help=!S.help; draw(); }, _det:function(){ store('tw_cb_det',isDet()?'0':'1'); draw(); }, _back:back, _addPicked:addPicked, _save:saveEdit, _del:delEdit, _close:closeDlg, _shift:setShift, _remove:removePerson, _sendOne:sendOne
+    _help:function(){ S.help=!S.help; draw(); }, _det:function(){ store('tw_cb_det',isDet()?'0':'1'); draw(); }, _back:back, _addPicked:addPicked, _save:saveEdit, _del:delEdit, _copy:function(){ var d=S.dlg; if(!d) return; var id=d.id; closeDlg(); copyBlk(id); }, _clipOff:clipOff, _close:closeDlg, _shift:setShift, _remove:removePerson, _sendOne:sendOne
   };
 })();
