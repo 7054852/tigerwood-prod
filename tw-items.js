@@ -43,7 +43,8 @@ function posFromItems(items){
 }
 /** товар по введённому имени: точное совпадение из datalist, иначе без учёта регистра и пробелов (владелец 04.11.2026: выбрал товар — цена не подтянулась) */
 function findProd(v){ if(PRODBYNAME[v]) return PRODBYNAME[v]; var k=String(v||'').trim().toLowerCase(); if(!k) return null; for(var n in PRODBYNAME) if(n.trim().toLowerCase()===k) return PRODBYNAME[n]; return null; }
-function pickProd(i,v){ var p=findProd(v); if(p){ POS[i].name=p.name; POS[i].sku=p.sku; POS[i].opt=p.opt||null; POS[i].crossbar=prodCb(p); POS[i].options={}; if(!(Number(POS[i].price)>0)) POS[i].price=prodPrice(p)||''; autoPar(); renderPos(); posTot(); } }
+/* цена: пустая или та, что каталог подставил для прежнего товара строки, — меняется вместе с товаром; вписанная руками — остаётся */
+function pickProd(i,v){ var p=findProd(v); if(p){ var was=catOf(POS[i]), auto=!(Number(POS[i].price)>0) || (was>0 && Number(POS[i].price)===was); POS[i].name=p.name; POS[i].sku=p.sku; POS[i].opt=p.opt||null; POS[i].crossbar=prodCb(p); POS[i].options={}; if(auto) POS[i].price=prodPrice(p)||''; autoPar(); renderPos(); posTot(); } }
 /* подсказка каталога (17.11.2026): свой список вместо <datalist> — у владельца тот не показывал вариантов; поиск по словам в названии и артикуле, ↑↓ Enter */
 var TWS={i:-1,list:[],k:0};
 function twSugBox(){
@@ -124,11 +125,11 @@ function renderPos(){
       +'<input type="number" inputmode="decimal" value="'+esc(p.price||'')+'" oninput="POS['+i+'].price=this.value;posTot()" autocomplete="off">'
       +'<div class="lt" id="lt'+i+'">'+money(s)+'</div>'
       +'<button class="ic rm" onclick="rmPos('+i+')" title="удалить позицию">✕</button></div>'
-      +(noPriceHint(p))
+      +(noPriceHint(p))+zeroHint(p,i)+kitHint(p,i)
       +(kid?'<div class="bnote"><span class="kidmark">↳ в комплекте с «'+esc(p.par.name||'')+'»</span></div>':'')
       +(kids?'<div class="bnote">в документах: одной строкой с навесным (сумма '+money(bundleSum(p))+')</div>':'')+optHtml(p,i);
   });
-  h+='<div class="tot">Итого: <span id="posTotal">'+money(tot)+'</span> '+esc(curCode()==='RUB'?'₽':TWI_CUR)+'</div>';
+  h+='<div class="tot">Итого: <span id="posTotal">'+money(tot)+'</span> '+esc(curCode()==='RUB'?'₽':TWI_CUR)+'</div>'+discHtml();
   box.innerHTML=h;
   // документ закрыт для правки (подписан / аннулирован): перерисовка не должна «оживлять» поля — менять можно, сохранить нечем
   var ro=!!(box.closest && box.closest('.ro'));
@@ -147,8 +148,42 @@ function posViewHtml(items, cur){
 }
 /** товар каталога без цены в валюте документа и без цены в строке — скажем прямо, а не оставим пустое поле */
 function noPriceHint(p){ var cp=p.sku?PRODBYSKU[p.sku]:null; if(!cp||Number(p.price)>0||prodPrice(cp)>0) return ''; return '<div class="bnote">⚠️ в каталоге нет цены '+esc(curSign())+' для этого товара — впишите цену в строке</div>'; }
+/* ── сверка с каталогом и скидка (24.11.2026: менеджер вписал всю сумму в комплекс, навесное поставил по 0, взял набор «спецпредложение» и
+   перечислил его состав строками). Цены строк — итоговые, как и раньше; скидка — действие «пересчитать от цен каталога», а не отдельное поле сделки:
+   расхождение с каталогом считается по самим строкам и всегда показано под итогом. */
+var POSDISC='';
+function r2(x){ return Math.round(x*100)/100; }
+/** цена каталога строки в валюте документа; 0 — товара нет в каталоге или у него нет цены */
+function catOf(p){ var cp=p&&p.sku?PRODBYSKU[p.sku]:null; return cp?prodPrice(cp):0; }
+function setPrice(i,v){ POS[i].price=v; renderPos(); posTot(); }
+function zeroHint(p,i){ var c=catOf(p); if(!(c>0) || Number(p.price)>0) return '';
+  return '<div class="bnote">⚠️ цена 0, в каталоге '+money(c)+' '+esc(curSign())+'. Подарок — оставьте так; иначе <a href="#" onclick="setPrice('+i+','+c+');return false">поставить '+money(c)+'</a>, а скидку на заказ задайте под итогом</div>'; }
+/* готовый набор (артикул … SP / … P) с навесным строками: навесное уже в составе набора — в производство уйдёт второй раз */
+function kitBase(p){ return isCx(p) && / (SP|P)$/.test(p.sku||'') ? PRODBYSKU[p.sku.replace(/ (SP|P)$/,' B')]||null : null; }
+function kitHint(p,i){ if(!isCx(p) || !/ (SP|P)$/.test(p.sku||'') || !POS.some(function(k){ return k.par===p; })) return '';
+  return '<div class="bnote">⚠️ это готовый набор: навесное уже входит в его состав и цену, строки ниже уйдут в производство ещё раз. Собираете заказ по позициям — '
+    +(kitBase(p)?'<a href="#" onclick="toBase('+i+');return false">заменить на «база»</a>':'выберите набор «база»')+'</div>'; }
+function toBase(i){ var p=POS[i], b=kitBase(p); if(!b) return; p.name=b.name; p.sku=b.sku; p.opt=b.opt||p.opt; p.crossbar=prodCb(b); p.price=prodPrice(b)||p.price; renderPos(); posTot(); }
+/** итог по ценам каталога (строки без цены каталога — по своей цене); 0 — сверять не с чем */
+function catTotal(){ var t=0, any=false; POS.filter(keepPos).forEach(function(p){ var c=catOf(p); if(c>0) any=true; t+=(Number(p.qty)||0)*((c>0?c:(Number(p.price)||0))+extraOf(p)); }); return any?r2(t):0; }
+function catNote(){ var c=catTotal(), t=posTotalValue(); if(!(c>0) || Math.abs(c-t)<0.005) return '';
+  return 'по каталогу '+money(c)+' · '+(t<c?'скидка ':'дороже на ')+money(Math.abs(c-t))+' ('+String(Math.round(Math.abs(1-t/c)*1000)/10).replace('.',',')+' %)'; }
+/* скидка N %: цены строк с товаром каталога = каталог − N % (0 — вернуть цены каталога); строка с ценой 0 — подарок, не трогаем; своя строка без каталога — как вписана.
+   Итог — до целого рубля, как на сайте (копеек в рознице нет): остаток уходит в самую дорогую строку с количеством 1. */
+function applyDisc(){ var d=Number(String(POSDISC).replace(',','.')); if(String(POSDISC).trim()==='' || !(d>=0 && d<100)) return;
+  var big=null;
+  POS.forEach(function(p){ var c=catOf(p), e=extraOf(p); if(!(c>0) || !(Number(p.price)>0)) return;
+    p.price=r2((c+e)*(1-d/100)-e); if(Number(p.qty)===1 && (!big || p.price>big.price)) big=p; });
+  var t=posTotalValue(), diff=r2(Math.round(t)-t);
+  if(big && diff && curCode()!=='EUR') big.price=r2(big.price+diff);
+  renderPos(); posTot(); }
+function discHtml(){ if(!(catTotal()>0)) return '';
+  return '<div class="bnote ptot"><span id="posCat">'+esc(catNote())+'</span><label>скидка от каталога <input type="number" inputmode="decimal" min="0" max="99" value="'+esc(POSDISC)+'" oninput="POSDISC=this.value" onkeydown="if(event.key===\'Enter\'){event.preventDefault();applyDisc();}" autocomplete="off"> %</label>'
+    +'<a href="#" onclick="applyDisc();return false" title="Цены строк с товаром каталога станут: цена каталога минус скидка. 0 — вернуть цены каталога. Строки с ценой 0 (подарок) и свои строки не меняются.">применить</a></div>'; }
+(function(){ var st=document.createElement('style'); st.textContent='.pos .ptot{display:flex;flex-wrap:wrap;gap:var(--s-2) var(--s-3);justify-content:flex-end;align-items:center;padding:0;margin-top:var(--s-1)}'
+  +'.pos .ptot input{width:8ch}.pos .ptot label{display:inline-flex;gap:var(--s-1);align-items:center}'; document.head.appendChild(st); })();
 function posTotalValue(){ var tot=0; POS.forEach(function(p){ tot+=lineSum(p); }); return Math.round(tot*100)/100; }
-function posTot(){ POS.forEach(function(p,i){ var e=el('lt'+i); if(e) e.textContent=money(lineSum(p)); }); var t=el('posTotal'); if(t) t.textContent=money(posTotalValue()); if(typeof onPosTotal==='function') onPosTotal(); }
+function posTot(){ POS.forEach(function(p,i){ var e=el('lt'+i); if(e) e.textContent=money(lineSum(p)); }); var t=el('posTotal'); if(t) t.textContent=money(posTotalValue()); var c=el('posCat'); if(c) c.textContent=catNote(); if(typeof onPosTotal==='function') onPosTotal(); }
 function addPos(){ POS.push({name:'',qty:1,price:''}); autoPar(); renderPos(); }
 // удалили комплекс — его навесное становится самостоятельным и оставляет канат комплекса
 function rmPos(i){ var g=POS[i]; POS.forEach(function(k){ if(k.par===g){ var r=(g.options||{}).ropeColor; k.par=null; k.options=k.options||{}; if(r) k.options.ropeColor=r; } }); POS.splice(i,1); renderPos(); posTot(); }
