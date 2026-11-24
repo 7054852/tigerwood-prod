@@ -9,7 +9,7 @@
 <script src="tw-waybill.js?v=20261117a"></script>
 <script src="tw-shipping.js?v=20261120c"></script>
 <script src="tw-pay.js?v=20261124a"></script>
-<script src="tw-deliv.js"></script>
+<script src="tw-deliv.js?v=20261124a"></script>
 <script src="tw-intake.js?v=20261117a"></script>
 <script src="tw-newsale.js?v=20261105b"></script>
 <title>Тигервуд — Сделки</title>
@@ -170,7 +170,7 @@
 
   <!-- доставка: сводка из полей сделки (правится в договоре) -->
   <div class="blk" id="s_deliv">
-    <div class="h">🚚 Доставка и передача <span class="sp"><button class="gray sm" id="delivAddrBtn" onclick="editDeliv()">✏️ Изменить адрес</button><a id="delivEditLink" class="sm" href="#">изменить в договоре →</a></span></div>
+    <div class="h">🚚 Доставка и передача <span class="sp"><button class="gray sm" id="delivAddrBtn" onclick="editDeliv()">✏️ Адрес и даты</button><a id="delivEditLink" class="sm" href="#">изменить в договоре →</a></span></div>
     <div class="msg" id="delivMsg"></div>
     <div id="delivView" class="pvbox" style="margin-top:0"></div>
   </div>
@@ -432,7 +432,9 @@ function renderDelivView(){
   h+=infoRow('Срок передачи', d.transferDays!=null?(d.transferDays+' раб. дн. от оплаты'):'');
   h+=infoRow('Гарантия', d.warrantyMonths!=null?(d.warrantyMonths+' мес.'):'');
   h+=infoRow('Доставка в договоре', inc(d.deliveryIncluded, d.deliveryCost)); h+=infoRow('Сборка в договоре', inc(d.assemblyIncluded, d.assemblyCost));
-  h+=infoRow('Дата забора со склада', d.pickupDate||''); h+=infoRow('Дата доставки клиенту', d.deliveryDate||'');
+  // даты видны всегда: пустая — «не указана» (24.11.2026: пустую строку прятали, и не было видно, что дату никто не поставил)
+  var dRow=function(l,v){ return '<div><span class="muted">'+esc(l)+':</span> '+(v?esc(v):'<span class="muted">не указана</span>')+'</div>'; };
+  if(!isClosed(d)||d.pickupDate||d.deliveryDate){ h+=dRow('Дата забора со склада', d.pickupDate||''); h+=dRow('Дата доставки клиенту', d.deliveryDate||''); }
   el('delivView').innerHTML=h||'<div class="muted">Условия передачи не заданы — заполняются в договоре.</div>';
   el('delivEditLink').href=editInContractUrl();
 }
