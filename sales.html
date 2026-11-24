@@ -8,7 +8,7 @@
 <script src="tw-items.js?v=20261123b"></script>
 <script src="tw-waybill.js?v=20261117a"></script>
 <script src="tw-shipping.js?v=20261120c"></script>
-<script src="tw-pay.js?v=20261118d"></script>
+<script src="tw-pay.js?v=20261124a"></script>
 <script src="tw-deliv.js"></script>
 <script src="tw-intake.js?v=20261117a"></script>
 <script src="tw-newsale.js?v=20261105b"></script>
@@ -488,7 +488,9 @@ function render(){
   el('invNewLink').href=billUrl();
   el('invNewLink').className=(closed||d.clientType==='физлицо')?'btn sec sm hide':'btn sec sm';
   renderDealDocs();
-  twPay('dealPay', DEAL.pay, { deal: DEAL.id, canCreate: false, onDone: reload });
+  // ссылку ЕРИП можно создать и отсюда (24.11.2026): менеджер работает в карточке сделки и кнопку в договоре не находила
+  var payC = (DEAL.dealBasis||{}).contract, payOk = !!payC && payC.status!=='cancelled' && ['installment','full_payment','full_on_delivery'].indexOf(payC.kind)>=0;
+  twPay('dealPay', DEAL.pay, { deal: DEAL.id, contract: payOk?payC.id:'', canCreate: payOk, onDone: reload });
   // юрлицо РФ / Европы (11.10.2026): отгрузочный комплект (счёт-фактура или инвойс, упаковочный лист, CMR, ТН) — tw-shipping.js; остальным — накладные РБ
   var exportDeal=(d.market==='ru'||d.market==='eu'||d.market==='other')&&d.clientType!=='физлицо';
   // контракт на услуги (19.10.2026): «отгрузка» — акт выполненных работ, выписывается на странице счёта

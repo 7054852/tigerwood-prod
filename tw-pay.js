@@ -35,6 +35,11 @@ function twPay(boxId, pay, opts){
       + '<span class="sp">' + (live && l.url ? '<button class="sec sm" onclick="twPayCopy(\'' + esc(l.url) + '\')">📋 Скопировать ссылку</button> <a href="' + esc(l.url) + '" target="_blank" rel="noopener">открыть ↗</a>' : '')
       + (o.canCreate && l.status === 'active' && !l.paid ? ' <button class="gho sm" onclick="twPayCancel(\'' + esc(l.id) + '\')">отменить</button>' : '') + '</span></div>';
   }).join('') : '';
+  // 24.11.2026: менеджер назвала клиенту номер «из головы» — взнос по ЕРИП ушёл в чужой заказ. Номер для оплаты выдаёт только ссылка ЕРИП
+  var liveErip = links.some(function(l){ return l.method === 'erip' && (l.status === 'active' || l.status === 'partial'); });
+  if(payable > 0 && !liveErip && pay.configured) h += '<div class="note sm">Клиент платит через ЕРИП? '
+    + (o.canCreate ? 'Нажмите «＋ Ссылка ЕРИП» — система сама выдаст номер заказа: по нему или по ссылке клиент и платит.' : 'Ссылка ЕРИП и номер для оплаты создаются в карточке договора — сначала оформите договор.')
+    + ' Свой номер клиенту не называйте: оплата попадёт в чужой заказ.</div>';
   h += '<div class="row" style="margin-top:var(--s-2)">';
   if(o.canCreate && payable > 0){
     h += '<button class="sec sm" onclick="twPayNew(\'erip\')">＋ Ссылка ЕРИП</button><button class="sec sm" onclick="twPayNew(\'card\')">＋ Ссылка на оплату картой</button>';
