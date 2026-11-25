@@ -5,7 +5,7 @@
    Модуль самодостаточный: свои форматы и своё окно; от страницы — чтение (api), запись (post) и имена маршрутов.
    twPayroll.mount(el, { api, post, who:'finance'|'hr', routes:{ load, set, cash, adjust? }, onChange? }); twPayroll.reload(); twPayroll.open(personId). */
 (function(){
-  var S={ el:null, o:null, d:null, q:'', chip:'', all:false, pid:null, msg:'', loading:0 };
+  var S={ el:null, o:null, d:null, q:'', w:'', chip:'', all:false, pid:null, msg:'', loading:0 };
   var MON=['','январь','февраль','март','апрель','май','июнь','июль','август','сентябрь','октябрь','ноябрь','декабрь'];
   var esc=function(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); };
   var r2=function(x){ return Math.round((Number(x)||0)*100)/100; };
@@ -41,6 +41,22 @@
   function post(q, ok){ say('', ''); return Promise.resolve(S.o.post(q)).then(function(r){ return took(r, ok); }, function(e){ say('bad','Связь оборвалась: '+((e&&e.message)||e)+'. Обновите и проверьте, прошла ли запись.'); return false; }); }
 
   /* ── экран ── */
+  // поле поиска сотрудника — общий tw-pick.js: py — отбор в таблице (S.w — выбранное имя), pd — «кому» в окне «Выдать / отсечка» (обязателен)
+  var HASPICK=!!(window.pkHtml&&window.PICK);
+  if(HASPICK){
+    PICK.py={ val:'pyworker', rows:function(){ return rowsAll().map(function(r){ return { name:r.name }; }); }, done:function(){ S.w=$('pyworker').value; draw(); } };
+    PICK.pd={ val:'pdworker', must:true, rows:function(){ return ((S.d&&S.d.people)||[]).map(function(p){ return { name:p.name }; }); }, done:function(){} };
+  }
+  // таблица перерисовывается целиком — после каждой отрисовки возвращаем выбранного в поле
+  function pySet(){ var v=$('pyworker'); if(v){ v.value=S.w; pkSync('py'); } }
+  // тёзки: имя не скажет, кому выдаём деньги, — тогда в окне остаётся обычный список по людям
+  function pdOk(){ var seen={}, ok=HASPICK; ((S.d&&S.d.people)||[]).forEach(function(p){ if(seen[p.name]) ok=false; seen[p.name]=1; }); return ok; }
+  function pdOpen(){
+    var sel=$('twpP'); if(sel){ twPayroll.open(sel.value); return; }
+    var n=($('pdworker')||{}).value||'', p=((S.d&&S.d.people)||[]).filter(function(x){ return x.name===n; })[0];
+    if(!p){ var q=$('pdq'); if(q){ q.focus(); pkDraw('pd'); } return; }
+    twPayroll.open(p.id);
+  }
   function rowsAll(){ return (S.d&&S.d.rows)||[]; }
   function months(){
     var set={}, cur=S.d.curYm; rowsAll().forEach(function(r){ Object.keys(r.months||{}).forEach(function(m){ if(m<cur) set[m]=1; }); });
@@ -48,10 +64,11 @@
   }
   function visible(r){
     if(S.q && (r.name||'').toLowerCase().indexOf(S.q)<0) return false;
+    if(S.w && r.name!==S.w) return false;
     if(S.chip==='shtat' && !/^штат/.test(r.kind)) return false;
     if(S.chip==='podr' && !isPodr(r)) return false;
     if(S.chip==='nocon' && !noCon(r)) return false;
-    if(S.all || S.q) return true;
+    if(S.all || S.q || S.w) return true;
     var c=r.current||{};
     return (r.debt!==null && Math.abs(r.debt)>0.004) || (c.earned||0)>0.004 || (c.paid||0)>0.004;
   }
@@ -87,12 +104,13 @@
   function draw(){
     if(!S.el) return;
     var o=S.o;
-    var top='<div class="toolbar"><input type="search" class="search" placeholder="Сотрудник" value="'+esc(S.q)+'" oninput="twPayroll._q(this.value)" aria-label="Поиск сотрудника">'
+    // 25.11.2026: то же поле поиска сотрудника, что в выработке и табеле (tw-pick.js); не загрузился — прежний поиск по подстроке
+    var top='<div class="toolbar">'+(HASPICK?pkHtml('py','🔎 Все сотрудники — имя или фамилия'):'<input type="search" class="search" placeholder="Сотрудник" value="'+esc(S.q)+'" oninput="twPayroll._q(this.value)" aria-label="Поиск сотрудника">')
       +'<div class="chips" role="group" aria-label="Вид">'+[['','Все'],['shtat','Штат'],['podr','Подряд'],['nocon','Без договора']].map(function(c){ return '<button type="button" class="chip'+(S.chip===c[0]?' on':'')+'" onclick="twPayroll._chip(\''+c[0]+'\')">'+c[1]+'</button>'; }).join('')+'</div>'
       +'<label><input type="checkbox"'+(S.all?' checked':'')+' onchange="twPayroll._all(this.checked)"> и нулевые</label>'
       +'<div class="end"><button class="sec ib" title="Обновить" aria-label="Обновить" onclick="twPayroll.reload()">↻</button><button onclick="twPayroll.open(\'\')">Выдать / отсечка</button></div></div>'
       +'<div class="note hint"><div><b>Начислено</b> — принятые наряды до налогов, одинаково для штата и подряда. <b>Погашено</b> — сколько долга закрыла выплата: у штата это выплаченная сумма, у подряда — выплачено ÷ 0,86 (подоходный 13 % и пенсионный 1 % удерживаем и платим мы). <b>На руки</b> — что человек получил на карту или наличными. <b>Должны</b> — долг на 13.09 + начислено за закрытые месяцы − всё погашенное; текущий месяц копится и войдёт в долг 1-го числа следующего, а выплаты гасят долг сразу — сверх долга «наперёд». Тот же расчёт — в «Финансах» и в «Кадрах». Нажмите на строку — карточка человека: по месяцам, выплаты, выдача наличными, отсечка.</div></div>';
-    if(!S.d){ S.el.innerHTML=top+'<div class="empty">'+(S.loading?'Считаю…':esc(S.msg||''))+'</div>'; hint(); return; }
+    if(!S.d){ S.el.innerHTML=top+'<div class="empty">'+(S.loading?'Считаю…':esc(S.msg||''))+'</div>'; pySet(); hint(); return; }
     var d=S.d, cur=d.curYm, all=rowsAll(), ms=months(), shown=ms.slice(-2), older=ms.slice(0,-2);
     // показатели — по всем людям (не по фильтру), подписаны: что входит в долг, что копится
     var owed=0, ahead=0, nOwed=0, c={ earned:0, settled:0, paid:0 };
@@ -126,8 +144,9 @@
       +'<td class="num twp-cur" data-l="'+esc(monS(cur))+' · идёт">'+tot(function(r){ var x=mOf(r,cur); return x.earned+x.adj; })+'<span class="sub2">погашено '+tot(function(r){ return mOf(r,cur).settled; })+'</span></td>'
       +'<td class="num" data-l="Должны"><b>'+tot(function(r){ return r.debt||0; })+'</b></td></tr>':'';
     S.el.innerHTML=top+kp+(rows.length?'<div class="tbl-wrap fill"><table class="tbl sm mob twp">'+'<thead>'+head+'</thead><tbody>'+body+foot+'</tbody></table></div>'
-      :'<div class="empty">'+(S.q||S.chip?'Никого не нашлось.':'Долгов нет. «и нулевые» — показать всех.')+'</div>')
+      :'<div class="empty">'+(S.q||S.w||S.chip?'Никого не нашлось.':'Долгов нет. «и нулевые» — показать всех.')+'</div>')
       +(S.msg?'<div class="note bad"><div>'+esc(S.msg)+'</div></div>':'');
+    pySet();
     hint();
   }
   function hint(){ if(window.twFitTables) try{ twFitTables(); }catch(e){} }   // растянуть реестр и поставить «?» у подсказки
@@ -150,10 +169,13 @@
   function card(){
     if(S.pid===null || !S.d) return;
     var bg=dlg(), box=bg.querySelector('.dlg'), d=S.d;
+    // окно выбора человека держим высоким: выпадающий список поиска раскрывается внутри него, а не прокручивает окно
+    box.style.minHeight=(S.pid===''&&pdOk())?'min(72vh, 540px)':'';
     if(S.pid===''){   // выбор человека: выдача наличными, отсечка
       box.innerHTML='<h3>Сотрудник<span class="x" onclick="twPayroll.close()" title="Закрыть">×</span></h3>'
-        +fld('Кому выдаём или пишем долг на 13.09','<select id="twpP" style="width:100%">'+(d.people||[]).map(function(p){ return '<option value="'+p.id+'">'+esc(p.name)+'</option>'; }).join('')+'</select>')
-        +'<div class="dlg-btns"><button class="sec" onclick="twPayroll.close()">Отмена</button><button onclick="twPayroll.open(document.getElementById(\'twpP\').value)">Открыть карточку</button></div>';
+        +(pdOk()?'<div style="'+L+'"><label for="pdq" style="'+SM+'">Кому выдаём или пишем долг на 13.09</label>'+pkHtml('pd','🔎 имя или фамилия')+'</div>'
+          :fld('Кому выдаём или пишем долг на 13.09','<select id="twpP" style="width:100%">'+(d.people||[]).map(function(p){ return '<option value="'+p.id+'">'+esc(p.name)+'</option>'; }).join('')+'</select>'))
+        +'<div class="dlg-btns"><button class="sec" onclick="twPayroll.close()">Отмена</button><button onclick="twPayroll._pd()">Открыть карточку</button></div>';
       bg.style.display='flex'; return;
     }
     var r=rowsAll().filter(function(x){ return x.personId===S.pid; })[0];
@@ -235,6 +257,7 @@
     open:function(pid){ S.pid=pid==null?'':String(pid); S.open=''; card(); },
     close:close,
     _q:function(v){ S.q=String(v||'').trim().toLowerCase(); draw(); var i=S.el.querySelector('input[type=search]'); if(i){ i.focus(); i.setSelectionRange(i.value.length,i.value.length); } },
+    _pd:pdOpen,
     _chip:function(c){ S.chip=c; draw(); },
     _all:function(v){ S.all=!!v; draw(); },
     _sec:function(s){ S.open=s; },

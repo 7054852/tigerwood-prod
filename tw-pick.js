@@ -44,7 +44,8 @@ function pkClose(k){ var b=pkEl(k,'list'); if(!b||b.hidden) return; b.hidden=tru
 function pkKey(k,e){
   var box=pkEl(k,'list'), key=e.key;
   // Escape в поле type=search браузер сам очищает — без preventDefault поле пустело, а отбор по сотруднику оставался
-  if(key==='Escape'){ e.preventDefault(); box.hidden=false; pkClose(k); e.target.blur(); return; }
+  // список открыт внутри окна (зарплата) — Escape закрывает список, а не окно под ним
+  if(key==='Escape'){ e.preventDefault(); if(!box.hidden) e.stopPropagation(); box.hidden=false; pkClose(k); e.target.blur(); return; }
   if(key==='Tab'){ pkClose(k); return; }
   if(key!=='ArrowDown'&&key!=='ArrowUp'&&key!=='Enter') return;
   e.preventDefault();
