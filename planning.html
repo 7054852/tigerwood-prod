@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="tw-theme.js"></script>
 <script src="tw-config.js"></script>
+<script src="tw-pick.js?v=2026112505"></script>
 <script src="tw-crewboard.js?v=2026112502"></script>
 <title>Тигервуд — планирование</title>
 <style>
@@ -162,6 +163,15 @@ function chipHtml(p,i,inZone){
     +'<span class="exp'+(own?' own':(fresh?' fresh':''))+'" title="ожидаемая выработка за смену ('+esc(p.expectSrc||'')+') — нажмите, чтобы поправить" onclick="event.stopPropagation();editExpect('+i+')">⚡'+m0(p.expect)+'</span>'
     +(inZone?'<span class="x" title="вернуть на скамейку" onclick="event.stopPropagation();unassign('+i+')">✕</span>':'')+'</span>';
 }
+// ── поиск бойца во вкладке «День» (25.11.2026) — общее поле tw-pick.js. Нашёл того, кто в смене, — он выбран (как нажатие на него):
+// дальше участок. Нашёл того, кто смену не отметил, — раскрывается «Отметить смену» с одной его строкой.
+var MARKQ='';
+if(window.TWPICK) TWPICK.dp={ val:'dpworker', must:true,
+  rows:function(){ var have={}, out=(R.people||[]).map(function(p){ have[p.name]=1; return { name:p.name, n:p.group||'скамейка' }; });
+    (R.all||[]).forEach(function(w){ if(!have[w.name]) out.push({ name:w.name, n:'не в смене' }); }); return out; },
+  done:function(){ var n=document.getElementById('dpworker').value, on=idxByName(n)>=0;
+    SEL=on?n:''; MARKQ=on?'':n; SHIFTF=''; render();
+    var el=on?document.querySelector('#pane .chip.sel'):document.getElementById('markbox'); if(el&&el.scrollIntoView) el.scrollIntoView({block:'center'}); } };
 function renderDay(){
   var people=R.people||[];
   var bench=people.filter(function(p){ return !p.group; });
@@ -183,6 +193,7 @@ function renderDay(){
   var benchInner=SHIFTS.map(function(x){ return (!SHIFTF||SHIFTF===x[0])?brow(bench.filter(function(p){ return shOf(p)===x[0]; }),x[1],x[2]):''; }).join('');
   var benchBox='<div class="sect">🪑 Скамейка</div>'
     +'<div class="box" style="padding:var(--s-3) 0 var(--s-2)"><div class="row" style="padding:0 var(--s-3) var(--s-1)">'
+    +(window.pkHtml?pkHtml('dp','🔎 найти бойца — имя или фамилия',''):'')
     +'<span class="drophint">нажмите бойца, потом участок (или перетащите)</span>'
     +'<span style="flex:1"></span>'+SHIFTS.map(function(x){ return fbtn(x[0],x[1]); }).join('')+'</div>'
     +(benchInner||'<div class="zrow"><span class="muted">'+(bench.length?'скрыто фильтром':(people.length?'все расставлены 👍':'на эту дату никто не отмечен'))+'</span></div>')+'</div>';
@@ -240,7 +251,10 @@ function markBox(){
   var have={}; (R.people||[]).forEach(function(p){ have[p.name]=1; });
   var free=(R.all||[]).filter(function(w){ return !have[w.name]; });
   if(!free.length) return '';
-  return '<div class="box"><details><summary style="cursor:pointer;font-weight:600">＋ Отметить смену <span class="muted">('+free.length+' не отмечено)</span></summary>'
+  var nAll=free.length, one=MARKQ&&free.some(function(w){ return w.name===MARKQ; });
+  if(one) free=free.filter(function(w){ return w.name===MARKQ; }); else MARKQ='';
+  return '<div class="box" id="markbox"><details'+(one?' open':'')+'><summary style="cursor:pointer;font-weight:600">＋ Отметить смену <span class="muted">('+nAll+' не отмечено)</span>'
+    +(one?' <a href="javascript:void(0)" onclick="event.preventDefault();MARKQ=\'\';render()" style="font-weight:400">показать всех</a>':'')+'</summary>'
     +'<div class="muted" style="margin:var(--s-2) 0">Кто выходит '+ruDate(DATE)+'. Отмеченный сразу попадает на скамейку.</div>'
     +free.map(function(w){
       var n=String(w.name).replace(/'/g,'');

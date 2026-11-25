@@ -7,7 +7,7 @@
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src="tw-theme.js"></script>
 <script src="tw-config.js"></script>
-<script src="tw-pick.js?v=2026112504"></script>
+<script src="tw-pick.js?v=2026112505"></script>
 <style>
   /* оболочка: body без ширины и отступов темы — меню и раздел занимают весь экран */
   html,body{ height:100%; }
@@ -512,15 +512,15 @@ function renderUsers(box,r){
   // ── поиск сотрудника (25.11.2026) — общее поле tw-pick.js; не загрузился (HASPK=false) — экран работает как раньше, со списками ──
   // us — отбор в таблице (архивный находится только поиском и раскрывает блок «Архив»); np и px<i> — «отчёты вносит»: имя → Telegram ID.
   // Тёзки среди тех, кто может вносить отчёты, — остаются обычные списки: имя не скажет, кому отдаём чужие наряды.
-  var HASPK=!!(window.pkHtml&&window.PICK), pxDup=(function(){ var seen={}, d=false; proxyPeople.forEach(function(x){ if(seen[x.name]) d=true; seen[x.name]=1; }); return d; })();
+  var HASPK=!!(window.pkHtml&&window.TWPICK), pxDup=(function(){ var seen={}, d=false; proxyPeople.forEach(function(x){ if(seen[x.name]) d=true; seen[x.name]=1; }); return d; })();
   var PXOK=HASPK&&!pxDup, pxRows=function(){ return proxyPeople.map(function(x){ return { name:x.name }; }); };
   var pxTg=function(n){ return String((proxyPeople.filter(function(x){ return x.name===n; })[0]||{}).tgId||''); };
   var pxName=function(tg){ return (proxyPeople.filter(function(x){ return String(x.tgId)===String(tg||''); })[0]||{}).name||''; };
   if(HASPK){
-    for(var pk in PICK) if(/^px\d+$/.test(pk)) delete PICK[pk];
-    PICK.us={ val:'usworker', rows:function(){ return ulist.map(function(u){ return { name:u.name, n:(r.roleTitles&&r.roleTitles[u.role])||u.role||'', arch:!isActiveJs(u.active)&&!isPendingJs(u.active) }; }); },
+    for(var pk in TWPICK) if(/^px\d+$/.test(pk)) delete TWPICK[pk];
+    TWPICK.us={ val:'usworker', rows:function(){ return ulist.map(function(u){ return { name:u.name, n:(r.roleTitles&&r.roleTitles[u.role])||u.role||'', arch:!isActiveJs(u.active)&&!isPendingJs(u.active) }; }); },
       done:function(){ USW=document.getElementById('usworker').value; usFilter(); } };
-    PICK.np={ val:'ntProxyN', must:true, rows:pxRows, done:function(){ var h=document.getElementById('ntProxy'); if(h) h.value=pxTg(document.getElementById('ntProxyN').value); } };
+    TWPICK.np={ val:'ntProxyN', must:true, rows:pxRows, done:function(){ var h=document.getElementById('ntProxy'); if(h) h.value=pxTg(document.getElementById('ntProxyN').value); } };
   }
   function rowHtml(u,i){
     var archived=!isActiveJs(u.active), pending=isPendingJs(u.active);
@@ -590,7 +590,7 @@ function renderUsers(box,r){
       :(u.tgId?'<span class="pill ok">✓ в системе</span>':'<span class="pill warn">без Telegram</span>');
     var proxyCell='';
     if(!u.tgId){ var pn=(proxyPeople.filter(function(x){ return String(x.tgId)===String(u.proxy||''); })[0]||{}).name||'';
-      if(canManage&&PXOK) PICK['px'+i]={ val:'pxw'+i, allLabel:'— никто —', rows:pxRows, done:function(){ setProxy(nm, pxTg(document.getElementById('pxw'+i).value), i); } };
+      if(canManage&&PXOK) TWPICK['px'+i]={ val:'pxw'+i, allLabel:'— никто —', rows:pxRows, done:function(){ setProxy(nm, pxTg(document.getElementById('pxw'+i).value), i); } };
       proxyCell='<br><span class="small">📝 отчёты вносит: '+(canManage?(PXOK?'<span style="display:inline-block;vertical-align:middle;min-width:200px">'+pkHtml('px'+i,'🔎 никто — имя или фамилия',pn)+'</span>'
         :'<select onchange="setProxy(\''+nm+'\',this.value,'+i+')">'+proxyOpts(u.proxy)+'</select>'):'<b>'+esc(pn||'никто')+'</b>')+'</span>'; }
     var codeCell=u.tgId?'<br><span class="muted small">код: <b class="num">'+esc(u.code||(u.codeSet?'выдан (скрыт)':'—'))+'</b></span>':'';

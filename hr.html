@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="tw-theme.js"></script>
 <script src="tw-config.js"></script>
-<script src="tw-pick.js?v=2026112504"></script>
-<script src="tw-payroll.js?v=2026112501"></script>
+<script src="tw-pick.js?v=2026112505"></script>
+<script src="tw-payroll.js?v=2026112502"></script>
 <title>Тигервуд — Кадры</title>
 <style>
   .card{ margin-bottom:var(--s-4); } .card + .card{ margin-top:0; }
@@ -220,11 +220,11 @@ var CONW='';
 function empDup(){ var seen={}, d=false; (DATA.list||[]).forEach(function(x){ if(seen[x.emp.fio]) d=true; seen[x.emp.fio]=1; }); return d; }
 function empByFio(n){ return ((DATA.list||[]).filter(function(x){ return x.emp.fio===n; })[0]||{}).emp||null; }
 function empRows(){ return (DATA.list||[]).map(function(x){ return { name:x.emp.fio, n:x.emp.pos||x.emp.type||'', arch:isHidden(x.emp) }; }); }
-if(window.PICK){
-  PICK.em={ val:'emworker', must:true, rows:empRows, done:function(){ var e=empByFio($('emworker').value); if(e) openCard(e.id); } };
-  PICK.cn={ val:'cnworker', rows:function(){ var seen={}, out=[]; (DATA.contracts||[]).forEach(function(c){ var e=empByFio2(c.emp); if(e&&!seen[e.fio]){ seen[e.fio]=1; out.push({ name:e.fio, arch:isHidden(e) }); } }); return out; },
+if(window.TWPICK){
+  TWPICK.em={ val:'emworker', must:true, rows:empRows, done:function(){ var e=empByFio($('emworker').value); if(e) openCard(e.id); } };
+  TWPICK.cn={ val:'cnworker', rows:function(){ var seen={}, out=[]; (DATA.contracts||[]).forEach(function(c){ var e=empByFio2(c.emp); if(e&&!seen[e.fio]){ seen[e.fio]=1; out.push({ name:e.fio, arch:isHidden(e) }); } }); return out; },
     done:function(){ CONW=$('cnworker').value; render(); } };
-  PICK.fe={ val:'f_empn', allLabel:'— не указан —', rows:empRows, done:function(){ var e=empByFio($('f_empn').value), h=$('f_emp'); if(h) h.value=e?e.id:''; } };
+  TWPICK.fe={ val:'f_empn', allLabel:'— не указан —', rows:empRows, done:function(){ var e=empByFio($('f_empn').value), h=$('f_emp'); if(h) h.value=e?e.id:''; } };
 }
 function empByFio2(id){ return ((DATA.list||[]).filter(function(x){ return x.emp.id===id; })[0]||{}).emp||null; }
 function empView(){
@@ -1472,10 +1472,10 @@ function payEditView(){
 // ── БЫСТРЫЙ ВВОД ОДНОЙ СУММЫ ──
 // Контрактнику посчитали месяц — заводить ради этого ведомость из одной строки незачем.
 var QUICK=null;
-if(window.PICK){
-  PICK.qf={ val:'qfworker', must:true, rows:function(){ return ((DATA&&DATA.list)||[]).map(function(x){ return { name:x.emp.fio }; }); }, done:function(){ if(QUICK) QUICK.fio=$('qfworker').value; } };
+if(window.TWPICK){
+  TWPICK.qf={ val:'qfworker', must:true, rows:function(){ return ((DATA&&DATA.list)||[]).map(function(x){ return { name:x.emp.fio }; }); }, done:function(){ if(QUICK) QUICK.fio=$('qfworker').value; } };
   // «Реестр выплат»: отбор строк по получателю — только показ, сумма месяца и выгрузка остаются по всем
-  PICK.rg={ val:'rgworker', allLabel:'👥 Все получатели', rows:function(){ var seen={}, out=[]; ((REG&&REG.lines)||[]).forEach(function(l){ if(l.who&&!seen[l.who]){ seen[l.who]=1; out.push({ name:l.who }); } }); return out; },
+  TWPICK.rg={ val:'rgworker', allLabel:'👥 Все получатели', rows:function(){ var seen={}, out=[]; ((REG&&REG.lines)||[]).forEach(function(l){ if(l.who&&!seen[l.who]){ seen[l.who]=1; out.push({ name:l.who }); } }); return out; },
     done:function(){ REGW=$('rgworker').value; render(); } };
 }
 var REGW='';
@@ -1686,7 +1686,7 @@ function conInView(){
     'После заведения скан переезжает в папку сотрудника, пустые реквизиты карточки (паспорт, адрес, счёт) заполняются из договора. Проверьте ФИО и даты перед «Завести».</div></div>';
   if(!CONIN.files.length) return h+'<div class="card"><div class="empty">Во входящей папке пусто — загрузите файлы или положите их в папку на Диске.</div></div>';
   var kinds=['контракт','подряд','нпд','обучение'];
-  if(window.PICK) for(var pk in PICK) if(/^ci\d+$/.test(pk)) delete PICK[pk];   // строк стало меньше — старые поля не должны остаться
+  if(window.TWPICK) for(var pk in TWPICK) if(/^ci\d+$/.test(pk)) delete TWPICK[pk];   // строк стало меньше — старые поля не должны остаться
   h+='<div class="card tbwrap"><table class="tbl mob"><thead><tr><th></th><th>Файл</th><th>Группа</th><th>Сотрудник</th><th>Вид</th><th>№</th><th>Дата</th><th>Окончание</th><th>Работы / должность</th><th>Реквизиты</th></tr></thead><tbody>';
   CONIN.files.forEach(function(x,i){
     var p='CONIN.files['+i+']', r=x.rec, f=r&&r.fields;
@@ -1698,7 +1698,7 @@ function conInView(){
     if(!f){ h+='<td colspan="7" class="muted">'+(r?'':'— ещё не распознан —')+'</td></tr>'; return; }
     h+='<td data-l="Сотрудник">'+(window.pkHtml&&!empDup()?(function(){
           var cur=empByFio2(r.emp);
-          PICK['ci'+i]={ val:'ciw'+i, must:true, rows:empRows, done:function(){ var e=empByFio($('ciw'+i).value); if(e){ CONIN.files[i].rec.emp=e.id; render(); } } };
+          TWPICK['ci'+i]={ val:'ciw'+i, must:true, rows:empRows, done:function(){ var e=empByFio($('ciw'+i).value); if(e){ CONIN.files[i].rec.emp=e.id; render(); } } };
           return '<div style="min-width:200px;max-width:240px">'+pkHtml('ci'+i,'🔎 выберите — имя или фамилия',cur?cur.fio:'')+'</div>'; })()
         :'<select style="max-width:220px" onchange="'+p+'.rec.emp=this.value">'+'<option value="">— выберите —</option>'+
         emps.map(function(e){ return '<option value="'+esc(e.id)+'"'+(e.id===r.emp?' selected':'')+'>'+esc(e.fio)+'</option>'; }).join('')+'</select>')+

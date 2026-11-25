@@ -42,10 +42,10 @@
 
   /* ── экран ── */
   // поле поиска сотрудника — общий tw-pick.js: py — отбор в таблице (S.w — выбранное имя), pd — «кому» в окне «Выдать / отсечка» (обязателен)
-  var HASPICK=!!(window.pkHtml&&window.PICK);
+  var HASPICK=!!(window.pkHtml&&window.TWPICK);
   if(HASPICK){
-    PICK.py={ val:'pyworker', rows:function(){ return rowsAll().map(function(r){ return { name:r.name }; }); }, done:function(){ S.w=$('pyworker').value; draw(); } };
-    PICK.pd={ val:'pdworker', must:true, rows:function(){ return ((S.d&&S.d.people)||[]).map(function(p){ return { name:p.name }; }); }, done:function(){} };
+    TWPICK.py={ val:'pyworker', rows:function(){ return rowsAll().map(function(r){ return { name:r.name }; }); }, done:function(){ S.w=$('pyworker').value; draw(); } };
+    TWPICK.pd={ val:'pdworker', must:true, rows:function(){ return ((S.d&&S.d.people)||[]).map(function(p){ return { name:p.name }; }); }, done:function(){} };
   }
   // таблица перерисовывается целиком — после каждой отрисовки возвращаем выбранного в поле
   function pySet(){ var v=$('pyworker'); if(v){ v.value=S.w; pkSync('py'); } }
