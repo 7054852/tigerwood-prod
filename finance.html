@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="tw-theme.js"></script>
 <script src="tw-config.js"></script>
-<script src="tw-pick.js?v=2026112502"></script>
+<script src="tw-pick.js?v=2026112503"></script>
 <script src="tw-payroll.js?v=2026112501"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <title>Тигервуд — Финансы</title>
@@ -246,7 +246,7 @@
   <div class="tabs" id="salTabs" style="margin-bottom:var(--s-2)"><button data-st="debt" class="on" onclick="salTab('debt')">Долг по сотрудникам</button><button data-st="bank" onclick="salTab('bank')">Выплаты из банка</button><button data-st="month" onclick="salTab('month')">По месяцам</button></div>
   <div id="sal_debt"></div>   <!-- «Долг по сотрудникам» рисует tw-payroll.js — тот же экран в «Кадрах» -->
   <div id="sal_month" class="hide">
-    <div class="toolbar"><input id="smM" type="month" onchange="renderSm()"><label class="mut"><input type="checkbox" id="smCash" onchange="renderSm()"> и наличные</label><span id="smLink" class="sm"></span><div class="end"><button class="sec" id="smGs" onclick="smSheet()">📄 Сформировать Google Таблицу</button><button class="sec" onclick="smExport()">⬇ Скачать Excel</button></div></div><div id="smMsg" class="msg"></div>
+    <div class="toolbar"><input id="smM" type="month" onchange="renderSm()"><div class="pick" id="smpick"><input id="smq" type="search" class="search" placeholder="🔎 Все сотрудники — имя или фамилия" autocomplete="off" oninput="pkDraw('sm',1)" onfocus="this.select();pkDraw('sm')" onclick="pkDraw('sm')" onkeydown="pkKey('sm',event)"><div class="pick-list" id="smlist" hidden></div></div><input type="hidden" id="smworker"><label class="mut"><input type="checkbox" id="smCash" onchange="renderSm()"> и наличные</label><span id="smLink" class="sm"></span><div class="end"><button class="sec" id="smGs" onclick="smSheet()">📄 Сформировать Google Таблицу</button><button class="sec" onclick="smExport()">⬇ Скачать Excel</button></div></div><div id="smMsg" class="msg"></div>
     <div class="note hint">Кому и сколько выплачено за месяц (по дате выплаты). Платёжка банка разложена по сотрудникам; «ЗП за» — месяц из назначения платежа. Неразнесённая часть платёжки — отдельной строкой: её разносят во вкладке «Выплаты из банка».</div>
     <div id="smSum" class="pdsum"></div><div id="smBox"></div>
   </div>
@@ -892,19 +892,27 @@ function smData(){
   var people=Object.keys(P).map(function(k){ return P[k]; }).sort(function(a,b){ return a.name.localeCompare(b.name,'ru'); });
   return { ym:ym, title:MONF[+ym.slice(5,7)]+' '+ym.slice(0,4), regs:regs, people:people, total:Math.round(total*100)/100, rem:Math.round(rem*100)/100 };
 }
+// отбор по сотруднику во вкладке «По месяцам» — только показ: итог месяца, Google Таблица и Excel остаются по всем
+if(window.PICK) PICK.sm={ val:'smworker', rows:function(){ return smData().people.map(function(q){ return { name:q.name }; }); }, done:function(){ renderSm(); } };
 function renderSm(){
   if(!SAL||!el('smBox')) return; var d=smData(), u=SMS[d.ym];
+  var W=(el('smworker')||{}).value||'';
+  // в этом месяце выбранному не платили — поле сбрасывать не будем (перейдёт на другой месяц — отбор останется), просто скажем
+  var regs=!W?d.regs:d.regs.map(function(g){ return { x:g.x, rows:g.rows.filter(function(r){ return !r.un&&r.name===W; }) }; }).filter(function(g){ return g.rows.length; });
+  var people=!W?d.people:d.people.filter(function(q){ return q.name===W; });
   el('smLink').innerHTML=u?'📄 <a href="'+esc(u)+'" target="_blank" rel="noopener">Google Таблица за '+esc(d.title)+'</a>':'';
   el('smGs').textContent=u?'🔄 Обновить Google Таблицу':'📄 Сформировать Google Таблицу';
-  el('smSum').innerHTML='<b>Выплачено за '+esc(d.title)+': '+money(d.total)+'</b> <span class="mut">· платёжек '+d.regs.length+' · сотрудников '+d.people.length+'</span>'+(d.rem>0.004?' · <b class="neg">не разнесено '+money(d.rem)+'</b>':'');
+  el('smSum').innerHTML='<b>Выплачено за '+esc(d.title)+': '+money(d.total)+'</b> <span class="mut">· платёжек '+d.regs.length+' · сотрудников '+d.people.length+'</span>'+(d.rem>0.004?' · <b class="neg">не разнесено '+money(d.rem)+'</b>':'')
+    +(W&&people.length?' · <b>'+esc(W)+': '+money(people[0].sum)+'</b>':'');
   if(!d.regs.length){ el('smBox').innerHTML='<div class="empty">За этот месяц выплат нет.</div>'; return; }
+  if(W&&!regs.length){ el('smBox').innerHTML='<div class="empty">'+esc(W)+': за этот месяц выплат нет. Очистите поиск, чтобы увидеть всех.</div>'; return; }
   el('smBox').innerHTML='<div class="tbl-wrap fill"><table class="tbl sm"><thead><tr><th>Дата</th><th class="num">Платёжка</th><th>ЗП за</th><th>Сотрудник</th><th>Отдел</th><th class="num">Сумма</th></tr></thead><tbody>'
-    +d.regs.map(function(g){ return g.rows.map(function(r,i){ return '<tr'+(i===0?' style="border-top:2px solid var(--line)"':'')+'><td class="n">'+(i?'':dmy(g.x.dateIso))+'</td><td class="num">'+(i?'':money(g.x.total)+(g.x.cash?' <span class="mut">'+esc(g.x.wallet)+'</span>':''))+'</td><td>'+esc(r.per)+'</td>'
+    +regs.map(function(g){ return g.rows.map(function(r,i){ return '<tr'+(i===0?' style="border-top:2px solid var(--line)"':'')+'><td class="n">'+(i?'':dmy(g.x.dateIso))+'</td><td class="num">'+(i?'':money(g.x.total)+(g.x.cash?' <span class="mut">'+esc(g.x.wallet)+'</span>':''))+'</td><td>'+esc(r.per)+'</td>'
       +'<td>'+(r.un?'<span class="pill bad">не разнесено</span>':esc(r.name))+'</td><td class="mut">'+esc(r.dept)+'</td><td class="num">'+money(r.sum)+'</td></tr>'; }).join(''); }).join('')
     +'</tbody></table></div><div class="sect">Итого по сотрудникам</div><div class="tbl-wrap fill"><table class="tbl sm"><thead><tr><th>Сотрудник</th><th>Отдел</th><th class="num">Выплачено</th><th>Выплаты</th></tr></thead><tbody>'
-    +d.people.map(function(q){ return '<tr><td>'+esc(q.name)+'</td><td class="mut">'+esc(q.dept)+'</td><td class="num"><b>'+money(q.sum)+'</b></td><td class="mut">'+esc(q.pays.join('; '))+'</td></tr>'; }).join('')
-    +(d.rem>0.004?'<tr><td><span class="pill bad">не разнесено</span></td><td></td><td class="num">'+money(d.rem)+'</td><td></td></tr>':'')
-    +'<tr><td><b>Итого</b></td><td></td><td class="num"><b>'+money(d.total)+'</b></td><td></td></tr></tbody></table></div>';
+    +people.map(function(q){ return '<tr><td>'+esc(q.name)+'</td><td class="mut">'+esc(q.dept)+'</td><td class="num"><b>'+money(q.sum)+'</b></td><td class="mut">'+esc(q.pays.join('; '))+'</td></tr>'; }).join('')
+    +(W?'</tbody></table></div>':(d.rem>0.004?'<tr><td><span class="pill bad">не разнесено</span></td><td></td><td class="num">'+money(d.rem)+'</td><td></td></tr>':'')
+    +'<tr><td><b>Итого</b></td><td></td><td class="num"><b>'+money(d.total)+'</b></td><td></td></tr></tbody></table></div>');
   if(window.twFitTables) twFitTables();
 }
 var SMS={};   // таблицы месяцев в Google: ym → ссылка (одна на месяц, «Обновить» пишет в неё же)
@@ -939,8 +947,8 @@ function smExport(){
 function salOpen(i){
   SP={ it:SAL.items[i], rows:SAL.items[i].parts.map(function(p){ return { dept:p.dept||'рабочие', personId:p.personId||'', name:p.name, sum:p.sum, period:p.period }; }) }; if(!SP.rows.length) SP.rows.push({dept:'рабочие',personId:'',sum:0});
   dlgOpen('<h3>Выплата '+money(SP.it.total)+' от '+dmy(SP.it.dateIso)+'</h3><div class="mut">'+esc(SP.it.contr)+' · '+esc(SP.it.wallet)+'</div><div id="spHint" class="mut" style="margin:var(--s-2) 0">Ищу подходящие ведомости…</div>'
-    +'<div id="spRows"></div>'
-    +'<button class="sec" onclick="SP.rows.push({dept:\'рабочие\',personId:\'\',sum:0}); salRows()">+ строка</button><div id="spIdent" class="ident"></div>'
+    +'<div style="min-height:min(56vh, 440px)"><div id="spRows"></div>'
+    +'<button class="sec" onclick="SP.rows.push({dept:\'рабочие\',personId:\'\',sum:0}); salRows()">+ строка</button><div id="spIdent" class="ident"></div></div>'
     +'<div id="dlgMsg" class="msg"></div><div class="dlg-btns"><button class="danger sec" style="margin-right:auto" onclick="SP.rows=[]; salSave()">Отменить разнесение</button><button class="sec" onclick="dlgClose()">Отмена</button><button class="primary" onclick="salSave()">Сохранить</button></div>');
   salRows();
   get({vapi:'finsalaryhint', id:SP.it.id}).then(function(r){ var h=el('spHint'); if(!h) return;
@@ -950,9 +958,21 @@ function salOpen(i){
 function salUse(k){ SP.rows=SP.cands[k].lines.map(function(l){ return { dept:l.dept, personId:l.personId, name:l.name, sum:l.sum, period:l.period }; }); salRows(); }
 /* человек — только из списка людей Прохаба (person_id); тот, кого в списке уже нет (архив), остаётся в своей строке */
 function salPeople(r){ var list=SAL.employees.slice(); if(r.personId&&!list.some(function(e){ return e.id===r.personId; })) list.push({ id:r.personId, name:(r.name||'—')+' (архив)', dept:r.dept }); return list; }
+// сотрудник в строке — общее поле поиска (tw-pick.js), по одному на строку: ключ sp<k>, выбранное имя → person_id.
+// Тёзки в списке или файл не загрузился — остаётся обычный список по id: имя не скажет, кому разносим деньги.
+function salPickOk(){ var seen={}, ok=!!(window.pkHtml&&window.PICK); SAL.employees.forEach(function(e){ if(seen[e.name]) ok=false; seen[e.name]=1; }); return ok; }
+function salEmpHtml(r, k){
+  if(!salPickOk()) return '<select onchange="salEmp('+k+',this.value)"><option value="">— сотрудник —</option>'+salPeople(r).map(function(e){ return '<option value="'+e.id+'"'+(e.id===r.personId?' selected':'')+'>'+esc(e.name)+'</option>'; }).join('')+'</select>';
+  var inList=SAL.employees.filter(function(e){ return e.id===r.personId; })[0], cur=r.personId?(inList?inList.name:(r.name||'')):'';
+  PICK['sp'+k]={ val:'spw'+k, must:true,
+    rows:function(){ var l=SAL.employees.map(function(e){ return { name:e.name, n:e.dept||'' }; }); if(r.personId&&!inList&&r.name) l.push({ name:r.name, arch:true }); return l; },
+    done:function(){ var n=el('spw'+k).value, e=SAL.employees.filter(function(x){ return x.name===n; })[0]; if(e) salEmp(k, e.id); } };
+  return pkHtml('sp'+k, '🔎 сотрудник — имя или фамилия', cur);
+}
 function salRows(){
+  for(var pk in PICK) if(/^sp\d+$/.test(pk)) delete PICK[pk];   // строк стало меньше — старые поля не должны остаться в общем списке
   el('spRows').innerHTML=SP.rows.map(function(r, k){ return '<div class="al" style="grid-template-columns:150px 1fr 120px auto"><select onchange="SP.rows['+k+'].dept=this.value">'+SAL.depts.map(function(d){ return '<option'+(d===r.dept?' selected':'')+'>'+d+'</option>'; }).join('')+'</select>'
-    +'<select onchange="salEmp('+k+',this.value)"><option value="">— сотрудник —</option>'+salPeople(r).map(function(e){ return '<option value="'+e.id+'"'+(e.id===r.personId?' selected':'')+'>'+esc(e.name)+'</option>'; }).join('')+'</select>'
+    +salEmpHtml(r, k)
     +'<input inputmode="decimal" placeholder="сумма" value="'+(r.sum?String(r.sum).replace('.',','):'')+'" oninput="SP.rows['+k+'].sum=num(this.value); salIdent()"><button class="sec" onclick="SP.rows.splice('+k+',1); salRows()">×</button></div>'; }).join('');
   salIdent();
 }

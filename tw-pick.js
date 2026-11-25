@@ -7,8 +7,9 @@
 var PICK=window.PICK||{};
 function pkEsc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
 // разметка поля для форм, которые рисуются из кода; подпись — отдельным <label for>, а не обёрткой: клик по строке списка внутри <label> возвращал бы фокус в поле и открывал список снова
-function pkHtml(k,ph){ return '<div class="pick" id="'+k+'pick"><input id="'+k+'q" type="search" class="search" placeholder="'+pkEsc(ph)+'" autocomplete="off" oninput="pkDraw(\''+k+'\',1)" onfocus="this.select();pkDraw(\''+k+'\')" onclick="pkDraw(\''+k+'\')" onkeydown="pkKey(\''+k+'\',event)">'
-  +'<div class="pick-list" id="'+k+'list" hidden></div></div><input type="hidden" id="'+PICK[k].val+'">'; }
+function pkHtml(k,ph,val){ var v=pkEsc(val||'');   // val — уже выбранное имя: для форм, которые перерисовываются целиком
+  return '<div class="pick" id="'+k+'pick"><input id="'+k+'q" type="search" class="search" placeholder="'+pkEsc(ph)+'" value="'+v+'" autocomplete="off" oninput="pkDraw(\''+k+'\',1)" onfocus="this.select();pkDraw(\''+k+'\')" onclick="pkDraw(\''+k+'\')" onkeydown="pkKey(\''+k+'\',event)">'
+  +'<div class="pick-list" id="'+k+'list" hidden></div></div><input type="hidden" id="'+PICK[k].val+'" value="'+v+'">'; }
 function pkEl(k,x){ return document.getElementById(x==='val'?PICK[k].val:k+x); }
 // Пока список закрыт, в поле всегда стоит то, что выбрано на самом деле (иначе в форме подачи поле показывало бы одного, а наряд шёл на другого);
 // открыт — человек печатает, не мешаем: при закрытии pkClose вернёт выбранное.

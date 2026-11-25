@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="tw-theme.js"></script>
 <script src="tw-config.js"></script>
-<script src="tw-pick.js?v=2026112502"></script>
+<script src="tw-pick.js?v=2026112503"></script>
 <script src="tw-payroll.js?v=2026112501"></script>
 <title>Тигервуд — Кадры</title>
 <style>
@@ -1349,7 +1349,7 @@ function payView(){
       '<button class="'+(PAYMODE==='tax'?'on':'')+'" onclick="PAYMODE=\'tax\';render()">🏛 Налоги</button></div>'+
       (reg?'<div class="pnav"><button onclick="regYmShift(-1)" title="предыдущий месяц" aria-label="предыдущий месяц">‹</button>'+
         '<span class="lbl">'+esc(payMonth(REG.ym))+'</span>'+
-        '<button onclick="regYmShift(1)" title="следующий месяц" aria-label="следующий месяц">›</button></div>':'')+
+        '<button onclick="regYmShift(1)" title="следующий месяц" aria-label="следующий месяц">›</button></div>'+(window.pkHtml?pkHtml('rg','🔎 Все получатели — имя или фамилия',REGW):''):'')+
       (docs?'<span class="meta">Excel, фото или PDF — на всех или на одного (подряд, премия)</span>':''),
     (PAYMODE==='reg'?'<button class="btn sec" onclick="REG=null;render()" title="пересчитать">⟳</button>':'')+
     (PAYMODE==='tax'?'<button class="btn sec" onclick="TAXES=null;render()" title="пересчитать">⟳</button>':'')+
@@ -1451,6 +1451,13 @@ function payEditView(){
 // ── БЫСТРЫЙ ВВОД ОДНОЙ СУММЫ ──
 // Контрактнику посчитали месяц — заводить ради этого ведомость из одной строки незачем.
 var QUICK=null;
+if(window.PICK){
+  PICK.qf={ val:'qfworker', must:true, rows:function(){ return ((DATA&&DATA.list)||[]).map(function(x){ return { name:x.emp.fio }; }); }, done:function(){ if(QUICK) QUICK.fio=$('qfworker').value; } };
+  // «Реестр выплат»: отбор строк по получателю — только показ, сумма месяца и выгрузка остаются по всем
+  PICK.rg={ val:'rgworker', allLabel:'👥 Все получатели', rows:function(){ var seen={}, out=[]; ((REG&&REG.lines)||[]).forEach(function(l){ if(l.who&&!seen[l.who]){ seen[l.who]=1; out.push({ name:l.who }); } }); return out; },
+    done:function(){ REGW=$('rgworker').value; render(); } };
+}
+var REGW='';
 function quickOpen(){
   var d=new Date();
   QUICK={fio:'',ym:d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2),kind:'подряд',accr:'',pay:'',note:''};
@@ -1458,9 +1465,12 @@ function quickOpen(){
 }
 function quickForm(){
   var q=QUICK, names=((DATA&&DATA.list)||[]).map(function(x){ return '<option value="'+esc(x.emp.fio)+'">'; }).join('');
+  // 25.11.2026: сотрудник — общим полем поиска (tw-pick.js), только из списка «Кадров»; файл не загрузился — прежнее поле с подсказкой браузера
+  var who=window.pkHtml?'<div style="flex:0 1 300px;min-width:220px"><label for="qfq">Сотрудник</label>'+pkHtml('qf','🔎 имя или фамилия',q.fio)+'</div>'
+    :'<label>Сотрудник <input list="qfio" value="'+esc(q.fio)+'" oninput="QUICK.fio=this.value" style="width:190px"><datalist id="qfio">'+names+'</datalist></label>';
   return '<div class="card"><b>Сумма по контракту</b>'+
     '<div class="row" style="margin-top:var(--s-2);gap:var(--s-3);flex-wrap:wrap;align-items:center">'+
-      '<label>Сотрудник <input list="qfio" value="'+esc(q.fio)+'" oninput="QUICK.fio=this.value" style="width:190px"><datalist id="qfio">'+names+'</datalist></label>'+
+      who+
       '<label>Месяц <input type="month" value="'+esc(q.ym)+'" onchange="QUICK.ym=this.value"></label>'+
       '<label>Вид <select onchange="QUICK.kind=this.value">'+PAYKINDS.map(function(x){ return '<option'+(x===q.kind?' selected':'')+'>'+esc(x)+'</option>'; }).join('')+'</select></label>'+
       '<label>Начислено <input value="'+esc(q.accr)+'" oninput="QUICK.accr=this.value" style="width:90px"></label>'+
@@ -1564,11 +1574,12 @@ function regView(){
       '<td>'+pill(RECST,x.status)+'</td></tr>'; }).join('')+'</tbody></table></div>'
     :'<div class="muted" style="margin-top:var(--s-1)">В этом месяце выплат по ведомостям нет — или ведомости не загружены.</div>')+
     '<div class="muted" style="font:var(--t-small);margin-top:var(--s-1)">Выплата реестром ищется в расходах «Финансов» по сумме и дате: аванс — около 30-го, остаток — в течение месяца; налоги — сумма всех платежей «за месяц» каждого вида (вкладка «🏛 Налоги»).</div></div>';
+  var rgLines=REGW?REG.lines.filter(function(l){ return l.who===REGW; }):REG.lines;
   h+='<div class="card tbwrap"><table class="tbl mob"><thead><tr><th>Срок</th><th>Кому</th><th>На каких условиях</th><th class="num">Сумма</th><th>Статус</th></tr></thead><tbody>'+
-    (REG.lines.length?REG.lines.map(function(l){ return '<tr><td><b>'+esc(l.due)+'</b></td><td data-l="Кому">'+esc(l.who)+'</td>'+
+    (rgLines.length?rgLines.map(function(l){ return '<tr><td><b>'+esc(l.due)+'</b></td><td data-l="Кому">'+esc(l.who)+'</td>'+
       '<td data-l="Условия" style="font:var(--t-small)">'+esc(l.terms)+'</td><td class="num" data-l="Сумма">'+money(l.sum)+'</td>'+
       '<td data-l="Статус">'+pill(REGST,l.status)+(l.fact?' <span class="muted">'+esc(l.fact)+'</span>':'')+(l.plan?' <span class="muted">· будет '+esc(l.plan)+'</span>':'')+'</td></tr>'; }).join('')
-    :'<tr><td colspan="5" class="muted">Выплат на этот месяц нет.</td></tr>')+'</tbody></table></div>';
+    :'<tr><td colspan="5" class="muted">'+(REGW?esc(REGW)+': выплат на этот месяц нет. Очистите поиск, чтобы увидеть всех.':'Выплат на этот месяц нет.')+'</td></tr>')+'</tbody></table></div>';
   return h;
 }
 function regExport(){
