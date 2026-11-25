@@ -237,7 +237,11 @@ function CARD(e){ return '<div style="padding:var(--s-4);line-height:1.5">'
     <button class="sm" onclick="loadJournal()">Показать</button>
   </div>
   <div class="toolbar" id="jwrow" style="display:none">
-    <select id="jworker" onchange="loadJournal()"></select>
+    <div class="pick" id="jwpick">
+      <input id="jwq" type="search" class="search" placeholder="🔎 Все сотрудники — имя или фамилия" autocomplete="off" oninput="jwDraw(1)" onfocus="this.select();jwDraw()" onclick="jwDraw()" onkeydown="jwKey(event)">
+      <div class="pick-list" id="jwlist" hidden></div>
+    </div>
+    <input type="hidden" id="jworker">
   </div>
   <div class="toolbar">
     <select id="jbatch" onchange="renderJournal()"></select>
@@ -336,12 +340,58 @@ function fillJWorkers(){
   if(!row||!sel) return;
   if(!isMaster()){ row.style.display='none'; return; }
   row.style.display='';
-  var keep=sel.value;
-  // в ЖУРНАЛЕ показываем всех: историю уволенного смотреть надо, но видно, что он в архиве
-  sel.innerHTML='<option value="">👥 Все сотрудники</option>'
-    +(DATA.workers||[]).map(function(w){ return '<option value="'+esc(w.name)+'">'+esc(w.name)+(w.active===false?' (архив)':'')+'</option>'; }).join('');
-  if(keep){ sel.value=keep; }
+  // 25.11.2026 (владелец): в списке только работающие — архив занимал две трети списка; поиск по словам в любом порядке.
+  // Историю уволенного смотреть всё равно надо: архивные показываются, только когда их нашёл поиск.
+  var q=document.getElementById('jwq'); if(q && document.activeElement!==q) q.value=sel.value;
 }
+function jwKeyOf(x){ return String(x||'').toLowerCase().replace(/ё/g,'е'); }
+function jwRows(){
+  var ws=jwKeyOf(document.getElementById('jwq').value).split(/\s+/).filter(Boolean), cur=document.getElementById('jworker').value;
+  if(cur && jwKeyOf(cur)===jwKeyOf(document.getElementById('jwq').value).trim()) ws=[];   // в поле стоит выбранный — показываем весь список, а не его одного
+  var all=(DATA.workers||[]).filter(function(w){ var n=jwKeyOf(w.name); return ws.every(function(x){ return n.indexOf(x)>=0; }); })
+    .sort(function(a,b){ return String(a.name).localeCompare(String(b.name),'ru'); });
+  var act=all.filter(function(w){ return w.active===undefined || w.active; });
+  return { q:ws.length>0, act:act, arch:ws.length?all.filter(function(w){ return w.active===false; }):[] };
+}
+function jwDraw(typed){
+  var box=document.getElementById('jwlist'), q=document.getElementById('jwq'), sel=document.getElementById('jworker');
+  if(typed && !q.value && sel.value){ jwPick(''); return; }   // поле очистили (крестик или стёрли) — снова все сотрудники
+  var r=jwRows(), cur=sel.value;
+  var li=function(w,arch){ return '<div class="cb-li'+(w.name===cur?' sel':'')+'" data-n="'+esc(w.name)+'"><span class="cb-lt">'+esc(w.name)+(arch?'<i>в архиве</i>':'')+'</span></div>'; };
+  var h=(r.q?'':'<div class="cb-li'+(cur?'':' sel')+'" data-n=""><span class="cb-lt">👥 Все сотрудники</span></div>')
+    +r.act.map(function(w){ return li(w); }).join('')+r.arch.map(function(w){ return li(w,1); }).join('');
+  box.innerHTML=h||'<div class="cb-li0">Никого не нашлось — проверьте написание</div>';
+  box.hidden=false;
+  if(r.q){ var f=box.querySelector('.cb-li'); if(f){ var s0=box.querySelector('.cb-li.sel'); if(s0) s0.classList.remove('sel'); f.classList.add('sel'); } }
+  var on=box.querySelector('.cb-li.sel'); if(on && on.scrollIntoView) on.scrollIntoView({block:'nearest'});
+}
+function jwPick(name){
+  var q=document.getElementById('jwq'), sel=document.getElementById('jworker'), was=sel.value;
+  sel.value=name; q.value=name; document.getElementById('jwlist').hidden=true;
+  if(name) q.blur();
+  if(was!==name) loadJournal();
+}
+function jwClose(){ var b=document.getElementById('jwlist'), q=document.getElementById('jwq'); if(!b||b.hidden) return; b.hidden=true; q.value=document.getElementById('jworker').value; }
+function jwKey(e){
+  var box=document.getElementById('jwlist'), k=e.key;
+  // Escape в поле type=search браузер сам очищает — без preventDefault поле пустело, а отбор по сотруднику оставался
+  if(k==='Escape'){ e.preventDefault(); document.getElementById('jwlist').hidden=false; jwClose(); e.target.blur(); return; }
+  if(k==='Tab'){ jwClose(); return; }
+  if(k!=='ArrowDown'&&k!=='ArrowUp'&&k!=='Enter') return;
+  e.preventDefault();
+  if(box.hidden){ jwDraw(); return; }
+  var its=box.querySelectorAll('.cb-li'), i=-1; if(!its.length) return;
+  for(var j=0;j<its.length;j++) if(its[j].classList.contains('sel')) i=j;
+  if(k==='Enter'){ if(i>=0) jwPick(its[i].getAttribute('data-n')); return; }
+  if(i>=0) its[i].classList.remove('sel');
+  i=(i+(k==='ArrowDown'?1:-1)+its.length)%its.length; its[i].classList.add('sel'); its[i].scrollIntoView({block:'nearest'});
+}
+document.addEventListener('click',function(e){
+  var p=document.getElementById('jwpick'); if(!p) return;
+  var it=e.target.closest ? e.target.closest('#jwlist .cb-li') : null;
+  if(it){ jwPick(it.getAttribute('data-n')); return; }
+  if(!p.contains(e.target)) jwClose();
+});
 // В ФОРМАХ ПОДАЧИ — только те, кто работает: уволенные и не подтверждённые тянулись из архива
 // и путались в списке. Старый сервер флага не отдаёт — тогда показываем всех, как раньше.
 function actWorkers(){
