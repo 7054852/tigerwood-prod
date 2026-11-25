@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="tw-theme.js"></script>
 <script src="tw-config.js"></script>
+<script src="tw-pick.js?v=2026112501"></script>
 <title>Тигервуд — табель и заработок</title>
 <style>
   .hi{ margin-bottom:var(--s-3); }
@@ -222,6 +223,22 @@ var PLANNOTE='<span class="plan">расстановка и задания — в
 var MN=['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 function showTab(t){ TAB=t; ['w','m','z'].forEach(function(x){ var b=$('tb-'+x); if(b) b.className=(x===t?'active':''); });
   if(t==='z') loadPay(); else if(t==='w') loadWeek(); else loadMonth(); }
+// ── отбор по сотруднику (25.11.2026): то же поле поиска, что в выработке (tw-pick.js). Выбранный держится при смене вкладки и периода.
+// Только показ: строки остальных прячутся, итоги и показатели остаются по всем — об этом подпись рядом с полем.
+var TBW='', TBNAMES=[];
+window.PICK=window.PICK||{};
+PICK.tb={ val:'tbworker', rows:function(){ return TBNAMES.map(function(n){ return { name:n }; }); }, done:function(){ TBW=$('tbworker').value; tbFilter(); } };
+// tw-pick.js не загрузился — табель работает без поиска, а не падает
+function tbHtml(){ return !window.pkHtml?'':pkHtml('tb','🔎 Все сотрудники — имя или фамилия')+'<span class="meta" id="tbnote"></span>'; }
+// после каждой отрисовки вкладки: names — чьи строки в ней есть
+function tbAfter(names){ TBNAMES=names||[]; var v=$('tbworker'); if(!v) return; v.value=TBW; pkSync('tb');
+  $('tbpick').style.display=(TBNAMES.length>1||TBW)?'':'none';   // одна строка (рабочий видит только себя) — искать некого
+  tbFilter(); }
+function tbFilter(){
+  var rows=$('pane').querySelectorAll('[data-wn]'), shown=0;
+  for(var i=0;i<rows.length;i++){ var ok=!TBW||rows[i].getAttribute('data-wn')===TBW; rows[i].style.display=ok?'':'none'; if(ok&&rows[i].tagName==='TR') shown++; }
+  var nt=$('tbnote'); if(nt) nt.textContent=!TBW?'':(shown?'итоги — по всем сотрудникам':'за этот период у него строк нет');
+}
 function reloadCur(silent){ if(TAB==='w') loadWeek(silent); else if(TAB==='m') loadMonth(silent); }
 
 /* ── ТАБЕЛЬ (месяц) ──
@@ -280,7 +297,7 @@ function renderPay(){
   var top='<div class="toolbar"><div class="pnav">'
     +'<button onclick="shiftZ(-1)" title="предыдущий месяц">‹</button>'
     +'<span class="lbl">'+esc(mLabel)+'</span>'
-    +'<button onclick="shiftZ(1)" title="следующий месяц">›</button></div>'
+    +'<button onclick="shiftZ(1)" title="следующий месяц">›</button></div>'+tbHtml()
     +PLANNOTE+'<div class="end"><button class="sec" onclick="togZOnly()">'+(ZONLY?'📅 показать весь месяц':'⚡ только дни с работой')+'</button></div>'
     +'</div>';
   // показатели — одной строкой над ведомостью (правило «сетка сразу под панелью», 16.10.2026); подробности — в title
@@ -301,7 +318,7 @@ function renderPay(){
       +(r.hoursTotal>0?k('Часов', h1(r.hoursTotal)+' ч', '', 'приход и уход из табеля: часы = уход − приход, обед не вычитается'):'')
       +(r.hoursTotal>0?k('₽/час', money(Math.round(r.grand/r.hoursTotal*100)/100)+' ₽'):'')
     +'</div>';
-  if(!r.workers.length){ $('pane').innerHTML=top+tiles+'<div class="empty">За этот месяц подтверждённой выработки нет.</div>'; return; }
+  if(!r.workers.length){ $('pane').innerHTML=top+tiles+'<div class="empty">За этот месяц подтверждённой выработки нет.</div>'; tbAfter([]); return; }
   // ⚠ Инициал вместо второго слова терял ФАМИЛИЮ у половины людей: в «Работниках» имя записано
   // и как «Фамилия Имя», и как «Имя Фамилия», поэтому «Олег Ш.» и «Сергей Ш.» — два разных
   // человека, и в ведомости их не различить. Показываем два слова целиком, отчество убираем.
@@ -336,7 +353,7 @@ function renderPay(){
         +(pnd>0?' · <span class="pnd">⏳ <b>'+money(pnd)+'</b></span>':'')
         +(qcw>0?' · <span class="qcw">🔎 <b>'+money(qcw)+'</b></span>':'')
         +(rej>0?' · <span class="rej">✖ <b>'+money(rej)+'</b></span>':'')+'</span>'):'';
-    return '<tr><td class="nmc" title="'+esc(tip)+'">'+esc(shortName(w.name))
+    return '<tr data-wn="'+esc(w.name)+'"><td class="nmc" title="'+esc(tip)+'">'+esc(shortName(w.name))
         // ⚠ раскрой листов — это НЕ «вне заказа»: работа по заказу есть, просто оплата идёт за лист,
         // а не за детали (детали с листа уходят в разные заказы). Раньше он в подписи не показывался
         // вовсе, и треть зарплаты раскройщика выглядела как деньги ниоткуда.
@@ -360,6 +377,7 @@ function renderPay(){
     +'Под именем, если есть непринятое: ✓ подтверждено · ⏳ на проверке у мастера · 🔎 ждёт ОТК · ✖ отклонено.'
     +(hidden>0&&ZONLY?(' Скрыто дней без выработки: '+hidden+'.'):'')+'</div></div>';
   $('pane').innerHTML=top+note+tiles+'<div class="tbl-wrap paywrap" id="paywrap"><table class="tbl pay">'+cg+th+body+ft+'</table></div>';
+  tbAfter(r.workers.map(function(w){ return w.name; }));
   setTimeout(function(){   // прокрутить к сегодняшнему дню; если его нет — к последним дням с работой
     var wrap=$('paywrap'); if(!wrap) return;
     var cell=wrap.querySelector('thead th.tdy');
@@ -471,7 +489,7 @@ function renderMonth(){
     var pfh=pf?(' <span class="pill '+(/новичок/.test(pf.src)?'mute':'info')+'" style="font:var(--t-tiny);padding:0 6px" title="'
       +esc('средняя выработка за смену: '+money(pf.rub)+' ₽ ('+pf.src+'). Считается по 7 последним сменам с выработкой больше 30 ₽ по поданным нарядам; меньше трёх таких смен — новичок, 50 ₽')
       +'">⚡'+Math.round(pf.rub)+(/новичок/.test(pf.src)?' нов.':'')+'</span>'):'';
-    return '<tr><td class="nm">'+esc(w)+pfh+' <span class="muted">('+cnt+(was?' · был '+was:'')+')</span>'
+    return '<tr data-wn="'+esc(w)+'"><td class="nm">'+esc(w)+pfh+' <span class="muted">('+cnt+(was?' · был '+was:'')+')</span>'
       +(ex>0?' <span class="muted" style="font:var(--t-tiny)" title="'+esc('ожидаем за смену '+money(expPerDay(w))+' ₽ ('+(pf?pf.src:(xi?xi.src:'новичок 50 ₽'))+')'+(xi&&(xi.factSub||xi.fact)?('\nподано '+money(xi.factSub||0)+' ₽ · принято '+money(xi.fact||0)+' ₽'):''))+'">≈'+Math.round(ex).toLocaleString('ru-RU')+' ₽</span>':'')+'</td>'+tds+'</tr>';
   }).join('');
   var modeSeg='<div class="seg mmode">'
@@ -483,10 +501,11 @@ function renderMonth(){
       : 'Клик по клетке: ☀️ 1-я смена → 🌇 2-я смена → 🌙 ночь → пусто (если выход уже отмечен — снова ☀️) · зелёная рамка — вышел, красная — не вышел · серые колонки — выходные, розовые — праздники')
     +'<div style="margin-top:var(--s-1)">Бледная <b class="fk auto" style="font:var(--t-small);font-weight:600">✓</b> — отметки нет, но за этот день подан наряд: значит был на работе. Зелёная клетка без солнышка — наряд есть, а смена в графике не проставлена. <b class="fk warn" style="font:var(--t-small);font-weight:600">!</b> — отмечен «не вышел», но наряд есть.</div>'
     +'</div></div>';
-  $('pane').innerHTML='<div class="toolbar"><div class="pnav"><button onclick="shiftMonth(-1)">‹</button><span class="lbl">'+esc(MN[mo-1]+' '+y)+'</span><button onclick="shiftMonth(1)">›</button></div>'
+  $('pane').innerHTML='<div class="toolbar"><div class="pnav"><button onclick="shiftMonth(-1)">‹</button><span class="lbl">'+esc(MN[mo-1]+' '+y)+'</span><button onclick="shiftMonth(1)">›</button></div>'+tbHtml()
     +'<span id="sv" class="meta"></span>'+PLANNOTE+'<div class="end">'+modeSeg+'</div></div>'
     +legend+expHtml(EC)
     +'<div class="card mgrid" style="overflow-x:auto"><table class="tbl" id="mtbl"><colgroup>'+Array(M.days+2).join('<col>')+'</colgroup>'+thead+body+'</table></div>';
+  tbAfter(M.workers);
   var tbl=$('mtbl');
   if(tbl){
     tbl.addEventListener('click', monthCellClick);
@@ -636,7 +655,7 @@ function renderWeek(){
     +'<button class="'+(MMODE==='fact'?'on':'')+'" onclick="setMMode(\'fact\')">✅ Отмечаю выход</button></div>';
   var k=function(t,v,st,tip){ return '<span class="k"'+(tip?(' title="'+esc(tip)+'"'):'')+'>'+t+'<b'+(st?(' style="color:'+st+'"'):'')+'>'+v+'</b></span>'; };
   var h='<div class="toolbar"><div class="pnav"><button onclick="shiftWeek(-1)" title="прошлая неделя">‹</button><span class="lbl">'+esc(lbl)+'</span><button onclick="shiftWeek(1)" title="следующая неделя">›</button></div>'
-    +(WK!==mondayOf(td)?'<button class="sec" onclick="shiftWeek(0)">сегодня</button>':'')
+    +(WK!==mondayOf(td)?'<button class="sec" onclick="shiftWeek(0)">сегодня</button>':'')+tbHtml()
     +'<span id="sv" class="meta"></span>'+PLANNOTE+'<div class="end">'+modeSeg+'</div></div>'
     +'<div class="note hint"><div>В клетке — смена (☀️ 1-я, 🌇 2-я, 🌙 ночь; ✓ вышел, ✕ не вышел) и заработок за день по принятым нарядам. Клик по клетке — как в табеле месяца: '
     +(MMODE==='fact'?'<b>по графику → ✓ вышел → ✕ не вышел</b>.':'<b>пусто → ☀️ → 🌇 → 🌙 → пусто</b>.')
@@ -648,27 +667,28 @@ function renderWeek(){
       +(withRule?k('Премию набрали', got+' из '+withRule):'')
       +(granted>0?k('Премий начислено', money(granted)+' ₽', 'var(--green)'):'')
       +(B.closed?k('Неделя', 'закрыта', '', 'после вторника премия за неделю не меняется'):'')+'</div>';
-  if(!D.names.length){ $('pane').innerHTML=h+'<div class="empty">На этой неделе ни смен, ни нарядов.</div>'; return; }
+  if(!D.names.length){ $('pane').innerHTML=h+'<div class="empty">На этой неделе ни смен, ни нарядов.</div>'; tbAfter([]); return; }
   // таблица — компьютер
   var th='<tr><th>Рабочий</th>'+D.dates.map(function(iso,i){ var we=D.off[iso]||D.hol[iso];
       return '<th class="'+(D.hol[iso]?'we hol':(we?'we':''))+(iso===td?' hl':'')+'" title="'+esc(D.hol[iso]||'')+'">'+DOW[i]+' '+Number(iso.slice(8))+'</th>'; }).join('')
     +'<th>Итого</th><th style="text-align:left" title="порог за неделю → премия; полоса — сколько набрано">Порог → премия</th></tr>';
   var body=D.names.map(function(n,ni){
     var hb=wbCell(n), on=hb&&hb.threshold>0&&hb.amount>0;
-    return '<tr'+(on?' class="hasb"':'')+'><td class="nm"'+(on?' title="недельная премия назначена"':'')+'>'+esc(n)+'</td>'+D.dates.map(function(iso,i){ var c=wkCellInfo(n,iso);
+    return '<tr data-wn="'+esc(n)+'"'+(on?' class="hasb"':'')+'><td class="nm"'+(on?' title="недельная премия назначена"':'')+'>'+esc(n)+'</td>'+D.dates.map(function(iso,i){ var c=wkCellInfo(n,iso);
         return '<td class="'+c.cls+'" data-n="'+ni+'" data-i="'+i+'" title="'+esc(c.tip)+'">'+c.ic+'<span class="rb'+(c.v?'':' z')+'">'+(c.v?Math.round(c.v):'')+'</span></td>'; }).join('')
       +'<td class="tot" title="'+money(rowTot(n))+' ₽">'+Math.round(rowTot(n))+'</td><td class="wb">'+wbHtml(n)+'</td></tr>';
   }).join('');
   // карточки — телефон
   var cards=D.names.map(function(n,ni){
     var hb=wbCell(n), on=hb&&hb.threshold>0&&hb.amount>0;
-    return '<div class="wcard'+(on?' hasb':'')+'"><div class="hd"><span>'+esc(n)+'</span><span>'+Math.round(rowTot(n))+' ₽</span></div><div class="dd">'
+    return '<div data-wn="'+esc(n)+'" class="wcard'+(on?' hasb':'')+'"><div class="hd"><span>'+esc(n)+'</span><span>'+Math.round(rowTot(n))+' ₽</span></div><div class="dd">'
       +D.dates.map(function(iso,i){ var c=wkCellInfo(n,iso);
         return '<div class="'+c.cls+'" data-n="'+ni+'" data-i="'+i+'">'+DOW[i]+' '+c.ic+'<span class="rv"'+(c.v?'':' style="color:var(--line2);font-weight:400"')+'>'+(c.v?Math.round(c.v):'·')+'</span></div>'; }).join('')
       +'</div>'+wbHtml(n,1)+'</div>';
   }).join('');
   $('pane').innerHTML=h+'<div class="card mgrid wk wk-tbl" style="overflow-x:auto"><table class="tbl" id="wtbl">'+th+body+'</table></div><div class="wk-cards" id="wcards">'+cards+'</div>';
   $('wtbl').addEventListener('click', wkCellClick); $('wcards').addEventListener('click', wkCellClick);
+  tbAfter(D.names);
 }
 function wkCellClick(ev){
   var el=ev.target.closest?ev.target.closest('[data-i]'):null; if(!el) return;
