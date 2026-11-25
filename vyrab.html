@@ -349,15 +349,20 @@ function fillJWorkers(){
   row.style.display='';
   // 25.11.2026 (владелец): в списке только работающие — архив занимал две трети списка; поиск по словам в любом порядке.
   // Историю уволенного смотреть всё равно надо: архивные показываются, только когда их нашёл поиск.
-  var q=document.getElementById('jwq'); if(q && document.activeElement!==q) q.value=sel.value;
+  pkSync('jw');
 }
 // Поле «сотрудник с поиском» (.pick) — одно на журнал (jw) и на проверку (mw). У каждого: val — скрытое поле с выбранным именем,
+// must — выбор обязателен (форма подачи, ww): строки «Все сотрудники» нет, пустое поле ничего не сбрасывает;
 // rows() — кого предлагать ({name, n — подпись справа, arch — в архиве: виден только когда его нашёл поиск}), done() — что сделать после выбора.
 var PICK={
   jw:{ val:'jworker', rows:function(){ return (DATA.workers||[]).map(function(w){ return { name:w.name, arch:w.active===false }; }); }, done:function(){ loadJournal(); } },
+  ww:{ val:'worker', must:true, rows:function(){ return actWorkers().map(function(w){ return { name:w.name, n:w.site||'' }; }); }, done:function(){ onWorkerChange(); } },
   mw:{ val:'mworker', rows:function(){ return mwRows(); }, all:function(){ var n=((PEND&&PEND.reports)||[]).length; return n?'<span class="cb-ln">'+n+'</span>':''; }, done:function(){ if(PEND) renderPending(PEND); } }
 };
 function pkEl(k,x){ return document.getElementById(x==='val'?PICK[k].val:k+x); }
+// Пока список закрыт, в поле всегда стоит то, что выбрано на самом деле (иначе в форме подачи поле показывало бы одного, а наряд шёл на другого);
+// открыт — человек печатает, не мешаем: при закрытии pkClose вернёт выбранное.
+function pkSync(k){ var q=pkEl(k,'q'), v=pkEl(k,'val'), b=pkEl(k,'list'); if(q && v && (!b || b.hidden)) q.value=v.value; }
 function pkKeyOf(x){ return String(x||'').toLowerCase().replace(/ё/g,'е'); }
 function pkRows(k){
   var ws=pkKeyOf(pkEl(k,'q').value).split(/\s+/).filter(Boolean), cur=pkEl(k,'val').value;
@@ -368,10 +373,10 @@ function pkRows(k){
 }
 function pkDraw(k,typed){
   var box=pkEl(k,'list'), q=pkEl(k,'q'), sel=pkEl(k,'val');
-  if(typed && !q.value && sel.value){ pkPick(k,''); return; }   // поле очистили (крестик или стёрли) — снова все сотрудники
+  if(typed && !q.value && sel.value && !PICK[k].must){ pkPick(k,''); return; }   // поле очистили (крестик или стёрли) — снова все сотрудники
   var r=pkRows(k), cur=sel.value;
   var li=function(w){ return '<div class="cb-li'+(w.name===cur?' sel':'')+'" data-n="'+esc(w.name)+'"><span class="cb-lt">'+esc(w.name)+(w.arch?'<i>в архиве</i>':'')+'</span>'+(w.n?'<span class="cb-ln">'+esc(w.n)+'</span>':'')+'</div>'; };
-  var h=(r.q?'':'<div class="cb-li'+(cur?'':' sel')+'" data-n=""><span class="cb-lt">👥 Все сотрудники</span>'+(PICK[k].all?PICK[k].all():'')+'</div>')
+  var h=(r.q||PICK[k].must?'':'<div class="cb-li'+(cur?'':' sel')+'" data-n=""><span class="cb-lt">👥 Все сотрудники</span>'+(PICK[k].all?PICK[k].all():'')+'</div>')
     +r.act.map(li).join('')+r.arch.map(li).join('');
   box.innerHTML=h||'<div class="cb-li0">Никого не нашлось — проверьте написание</div>';
   box.hidden=false;
@@ -380,6 +385,7 @@ function pkDraw(k,typed){
 }
 function pkPick(k,name){
   var q=pkEl(k,'q'), sel=pkEl(k,'val'), was=sel.value;
+  if(!name && PICK[k].must){ pkClose(k); return; }
   sel.value=name; q.value=name; pkEl(k,'list').hidden=true;
   if(name) q.blur();
   if(was!==name) PICK[k].done();
@@ -708,13 +714,16 @@ function load(){
       document.getElementById('who').textContent='';
       var wsOld=document.getElementById('worker');
       var keepW=(wsOld&&wsOld.value)||DRAFT.worker||DATA.worker||'';   // НЕ теряем, за кого вводим: свернул приложение — вернулся, тот же сотрудник
-      var opts=actWorkers().map(function(w){return '<option value="'+esc(w.name)+'">'+esc(w.name)+'</option>';}).join('');
       document.getElementById('wsel').innerHTML='';
-      // селектор общий для вкладок «Выработка» и «Раскрой» — один элемент в #whead под вкладками
-      if(!wsOld) document.getElementById('wsel-top').innerHTML='<div class="toolbar"><label for="worker">Сотрудник (за кого наряд)</label><select id="worker" onchange="onWorkerChange()">'+(opts||opt('','нет сотрудников'))+'</select></div>';
+      // селектор общий для вкладок «Выработка» и «Раскрой» — один элемент в #whead под вкладками.
+      // 25.11.2026: поле с поиском (.pick, как в журнале) вместо списка на всех; выбранный хранится в скрытом #worker — его читает вся форма.
+      if(!wsOld) document.getElementById('wsel-top').innerHTML='<div class="toolbar"><label for="wwq">Сотрудник (за кого наряд)</label><div class="pick" id="wwpick">'
+        +'<input id="wwq" type="search" class="search" placeholder="🔎 имя или фамилия" autocomplete="off" oninput="pkDraw(\'ww\',1)" onfocus="this.select();pkDraw(\'ww\')" onclick="pkDraw(\'ww\')" onkeydown="pkKey(\'ww\',event)">'
+        +'<div class="pick-list" id="wwlist" hidden></div></div><input type="hidden" id="worker"></div>';
       var ws=document.getElementById('worker');
-      if(ws){ if(!wsOld) ws.innerHTML=opts||opt('','нет сотрудников');
-              if(keepW){ ws.value=keepW; if(!ws.value) ws.value=DATA.worker||''; } }
+      // у списка браузер сам не давал выбрать того, кого в нём нет; скрытому полю это правило задаём сами
+      if(ws){ var okW=function(n){ return !!n && actWorkers().some(function(w){ return w.name===n; }); };
+              ws.value=okW(keepW)?keepW:(okW(DATA.worker)?DATA.worker:''); pkSync('ww'); }
       renderWhoBar(); renderTotals();   // селектор готов — обновляем подпись «за кого» в панели отправки
     }
     else if(DATA.worker && hasProxy()){
@@ -1047,7 +1056,7 @@ function renderWhoBar(){
     +(self?'':'<button class="sm sec" onclick="backToSelf()">за себя</button>')+'</div>';
 }
 function backToSelf(){ var ws=document.getElementById('worker'); if(ws){ ws.value=DATA.worker||''; onWorkerChange(); } }
-function onWorkerChange(){ siteForWorker(); renderWhoBar(); renderTotals(); saveDraft(); renderDayTime(); if(hasProxy()){ try{ loadPending(); }catch(e){} } }
+function onWorkerChange(){ pkSync('ww'); siteForWorker(); renderWhoBar(); renderTotals(); saveDraft(); renderDayTime(); if(hasProxy()){ try{ loadPending(); }catch(e){} } }
 
 // ── ДОПОЛНЕНИЕ НАРЯДА: рабочий вспомнил операции, пока мастер не проверил ──
 var ADDTO='', ADDINFO='';
@@ -1357,13 +1366,13 @@ function renderPending0(r){
     var reps=(r&&r.reports)||[];
     // отбор по сотруднику (25.11.2026): поле видно проверяющему, когда нарядов больше, чем от одного человека; у выбранного нарядов не осталось — снова все
     PEND=r;
-    var mrow=document.getElementById('mwrow'), msel=document.getElementById('mworker'), mq=document.getElementById('mwq');
+    var mrow=document.getElementById('mwrow'), msel=document.getElementById('mworker');
     if(mrow&&msel){
       var who=mwRows();
       if(msel.value && !who.some(function(w){ return w.name===msel.value; })) msel.value='';
       mrow.style.display=(master&&who.length>1)?'':'none';
       if(mrow.style.display==='none') msel.value='';
-      if(mq && document.activeElement!==mq) mq.value=msel.value;
+      pkSync('mw');
       if(msel.value) reps=reps.filter(function(rp){ return rp.worker===msel.value; });
     }
     if(!reps.length){ el.innerHTML='<div class="muted">'+(master?'Нет нарядов на проверке.':'У вас нет нарядов на проверке — всё обработано.')+'</div>'; return; }
