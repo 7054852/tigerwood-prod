@@ -83,11 +83,11 @@
     });
   }
   function say(t,err){ S.msg=t?('<span class="'+(err?'err':'ok')+'">'+t+'</span>'):''; clearTimeout(S.msgT); if(t&&!err) S.msgT=setTimeout(function(){ S.msg=''; drawMsg(); },7000); drawMsg(); }
-  function send(p, ok){
+  function send(p, ok, fail){
     S.busy++; S.rev++;
     return S.o.post(p).then(function(r){
       S.busy--;
-      if(!r||!r.ok){ say(esc((r&&r.error)||'не сохранилось'),1); return load(true).then(function(){ return null; }); }
+      if(!r||!r.ok){ if(fail){ fail((r&&r.error)||'не сохранилось'); return null; } say(esc((r&&r.error)||'не сохранилось'),1); return load(true).then(function(){ return null; }); }
       if(ok) ok(r); return r;
     }).catch(function(){ S.busy--; say('Связь оборвалась — изменение не сохранено',1); return load(true).then(function(){ return null; }); });
   }
@@ -687,14 +687,27 @@
   function sendAll(){ send({ vapi:'plantasks', date:ruD(S.date), worker:'' },function(r){ say('Отправлено: '+(r.sent||0)+(r.noTg?' · без Telegram: '+r.noTg:'')+(r.skipped?' · без задания: '+r.skipped:'')); load(true); }); }
   function addPerson(){
     // окно не закрывается после каждого: утром на доску ставят сразу всех
-    openDlg('addp','<div class="cb-dh"><b>Добавить на '+dmy(S.date)+'</b> · поставит 1-ю смену в табеле</div><input id="cbPQ" autocomplete="off" placeholder="фамилия"><div class="cb-list" id="cbPL"></div>'
-      +'<div class="dlg-btns"><span class="cb-sp"></span><button onclick="twCrewBoard._close()">Готово</button></div>',{ added:{} });
-    var q=$('cbPQ'), drawL=function(){ var d=S.dlg; if(!d||d.kind!=='addp') return;
-      var v=lc(q.value), l=((S.d&&S.d.rest)||[]).filter(function(n){ return !d.added[n]&&lc(n).indexOf(v)>=0; });
-      $('cbPL').innerHTML=l.length?l.map(function(n){ return '<div class="cb-li" data-n="'+esc(n)+'"><span class="cb-lt"><b>'+esc(n)+'</b></span><span class="cb-ln">＋</span></div>'; }).join(''):'<div class="muted cb-li0">'+(v?'никого не нашлось':'все уже на доске')+'</div>';
-      var li=$('cbPL').querySelectorAll('.cb-li'); for(var i=0;i<li.length;i++) li[i].addEventListener('click',function(){ var n=this.getAttribute('data-n'); d.added[n]=1; q.value=''; drawL(); q.focus();
-        send({ vapi:'planset', date:ruD(S.date), worker:n, patch:JSON.stringify({ shift:'день' }) },function(){ load(true); }); }); };
-    q.addEventListener('input',drawL); drawL(); q.focus();
+    openDlg('addp','<div class="cb-dh"><b>Добавить на '+dmy(S.date)+'</b> · поставит 1-ю смену в табеле</div><input id="cbPQ" autocomplete="off" placeholder="фамилия и имя"><div class="cb-list" id="cbPL"></div>'
+      +'<div id="cbErr"></div><div class="dlg-btns"><span class="cb-sp"></span><button onclick="twCrewBoard._close()">Готово</button></div>',{ added:{} });
+    var q=$('cbPQ'), note=function(t){ var m=$('cbErr'); if(m) m.innerHTML=t?'<span class="ok">'+t+'</span>':''; },
+      put=function(n){ var d=S.dlg; if(d&&d.kind==='addp'){ d.added[n]=1; q.value=''; drawL(); q.focus(); }
+        send({ vapi:'planset', date:ruD(S.date), worker:n, patch:JSON.stringify({ shift:'день' }) },function(){ load(true); }); },
+      // человека нет ни в «Доступах», ни в кадрах (новенький, помощник на день) — заводим его рабочим без Telegram тем же действием,
+      // что «Сотрудник без телефона» в «Доступах», и сразу ставим на доску (владелец 25.11.2026)
+      mk=function(nm){ dlgErr(''); send({ vapi:'crewperson', date:S.date, name:nm },function(r){ var d=S.dlg; if(d&&d.kind==='addp'){ d.added[r.name]=1; q.value=''; drawL(); q.focus(); }
+          note('«'+esc(r.name)+'» заведён рабочим без Telegram и поставлен на доску. '+(r.proxyName?'Наряды за него вносит '+esc(r.proxyName)+' — поменять можно в «Доступах».':'Кто вносит за него наряды — назначьте в «Доступах».')); load(true); },
+        function(e){ dlgErr(/уже есть/.test(e)?'«'+nm+'» уже есть в «Доступах», но не среди действующих сотрудников цеха (архив или другая роль) — верните его там':/нет прав/.test(e)?'Нового человека заводит админ, директор или мастер — у вас такого права нет':e); }); },
+      drawL=function(){ var d=S.dlg; if(!d||d.kind!=='addp') return;
+        var nm=q.value.replace(/\s+/g,' ').trim(), v=lc(nm), same=function(n){ return lc(n)===v; },
+          l=((S.d&&S.d.rest)||[]).filter(function(n){ return !d.added[n]&&lc(n).indexOf(v)>=0; }),
+          on=people().some(function(p){ return same(p.name); })||Object.keys(d.added).some(same);
+        $('cbPL').innerHTML=l.map(function(n){ return '<div class="cb-li" data-n="'+esc(n)+'"><span class="cb-lt"><b>'+esc(n)+'</b></span><span class="cb-ln">＋</span></div>'; }).join('')
+          +(nm&&!on&&!l.some(same)?'<div class="cb-li" data-new="1"><span class="cb-lt"><b>＋ Новый человек: '+esc(nm)+'</b><i>его нет в «Доступах» — заведём рабочим без Telegram и поставим на доску</i></span></div>'
+            :l.length?'':'<div class="muted cb-li0">'+(on?'уже на доске':'все уже на доске — впишите фамилию и имя, чтобы добавить нового')+'</div>');
+        var li=$('cbPL').querySelectorAll('.cb-li'); for(var i=0;i<li.length;i++) li[i].addEventListener('click',function(){ if(this.getAttribute('data-new')) mk(nm); else { note(''); dlgErr(''); put(this.getAttribute('data-n')); } }); };
+    q.addEventListener('input',drawL);
+    q.addEventListener('keydown',function(e){ var f=e.key==='Enter'&&$('cbPL').querySelector('.cb-li'); if(f) f.click(); });
+    drawL(); q.focus();
   }
   function carry(){ remember(); send({ vapi:'crewcarry', date:S.date },function(r){ if(r.added){ merge(r.rows); say('Перенесено с '+dmy(r.from)+': '+r.added+(r.noShift?' · не перенесено '+r.noShift+' — человек сегодня не в смене':'')); }
     else { S.undo.pop(); drawActions(); say(r.from?('С '+dmy(r.from)+' переносить нечего'+(r.noShift?' ('+r.noShift+' не перенесено — человек сегодня не в смене)':'')):'За прошлую неделю заданий не было'); } }); }
