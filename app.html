@@ -7,6 +7,7 @@
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src="tw-theme.js"></script>
 <script src="tw-config.js"></script>
+<script src="tw-pick.js?v=2026112504"></script>
 <style>
   /* оболочка: body без ширины и отступов темы — меню и раздел занимают весь экран */
   html,body{ height:100%; }
@@ -508,6 +509,19 @@ function renderUsers(box,r){
   var ulist=(r.users||[]).slice().sort(function(a,b){   // сначала те, кто ждёт подтверждения
     return (isPendingJs(b.active)?1:0)-(isPendingJs(a.active)?1:0); });
   var nPend=ulist.filter(function(u){ return isPendingJs(u.active); }).length;
+  // ── поиск сотрудника (25.11.2026) — общее поле tw-pick.js; не загрузился (HASPK=false) — экран работает как раньше, со списками ──
+  // us — отбор в таблице (архивный находится только поиском и раскрывает блок «Архив»); np и px<i> — «отчёты вносит»: имя → Telegram ID.
+  // Тёзки среди тех, кто может вносить отчёты, — остаются обычные списки: имя не скажет, кому отдаём чужие наряды.
+  var HASPK=!!(window.pkHtml&&window.PICK), pxDup=(function(){ var seen={}, d=false; proxyPeople.forEach(function(x){ if(seen[x.name]) d=true; seen[x.name]=1; }); return d; })();
+  var PXOK=HASPK&&!pxDup, pxRows=function(){ return proxyPeople.map(function(x){ return { name:x.name }; }); };
+  var pxTg=function(n){ return String((proxyPeople.filter(function(x){ return x.name===n; })[0]||{}).tgId||''); };
+  var pxName=function(tg){ return (proxyPeople.filter(function(x){ return String(x.tgId)===String(tg||''); })[0]||{}).name||''; };
+  if(HASPK){
+    for(var pk in PICK) if(/^px\d+$/.test(pk)) delete PICK[pk];
+    PICK.us={ val:'usworker', rows:function(){ return ulist.map(function(u){ return { name:u.name, n:(r.roleTitles&&r.roleTitles[u.role])||u.role||'', arch:!isActiveJs(u.active)&&!isPendingJs(u.active) }; }); },
+      done:function(){ USW=document.getElementById('usworker').value; usFilter(); } };
+    PICK.np={ val:'ntProxyN', must:true, rows:pxRows, done:function(){ var h=document.getElementById('ntProxy'); if(h) h.value=pxTg(document.getElementById('ntProxyN').value); } };
+  }
   function rowHtml(u,i){
     var archived=!isActiveJs(u.active), pending=isPendingJs(u.active);
     var self=!!u.tgId && String(u.tgId)===myTg;
@@ -576,9 +590,11 @@ function renderUsers(box,r){
       :(u.tgId?'<span class="pill ok">✓ в системе</span>':'<span class="pill warn">без Telegram</span>');
     var proxyCell='';
     if(!u.tgId){ var pn=(proxyPeople.filter(function(x){ return String(x.tgId)===String(u.proxy||''); })[0]||{}).name||'';
-      proxyCell='<br><span class="small">📝 отчёты вносит: '+(canManage?'<select onchange="setProxy(\''+nm+'\',this.value,'+i+')">'+proxyOpts(u.proxy)+'</select>':'<b>'+esc(pn||'никто')+'</b>')+'</span>'; }
+      if(canManage&&PXOK) PICK['px'+i]={ val:'pxw'+i, allLabel:'— никто —', rows:pxRows, done:function(){ setProxy(nm, pxTg(document.getElementById('pxw'+i).value), i); } };
+      proxyCell='<br><span class="small">📝 отчёты вносит: '+(canManage?(PXOK?'<span style="display:inline-block;vertical-align:middle;min-width:200px">'+pkHtml('px'+i,'🔎 никто — имя или фамилия',pn)+'</span>'
+        :'<select onchange="setProxy(\''+nm+'\',this.value,'+i+')">'+proxyOpts(u.proxy)+'</select>'):'<b>'+esc(pn||'никто')+'</b>')+'</span>'; }
     var codeCell=u.tgId?'<br><span class="muted small">код: <b class="num">'+esc(u.code||(u.codeSet?'выдан (скрыт)':'—'))+'</b></span>':'';
-    return '<tr'+(archived?' style="opacity:.6"':'')+'><td><b>'+esc(u.name)+'</b><br><span class="muted small num">'+esc(u.tgId||'')+'</span>'+codeCell+proxyCell+'</td><td>'+roleCell+'</td><td>'+masterCell+'</td><td>'+cutCell+'</td><td>'+otkCell+'</td><td>'+apprCell+'</td><td>'+snabCell+'</td><td>'+reg+'</td><td><span class="msg" id="um'+i+'"></span> '+acts+'</td></tr>';
+    return '<tr data-wn="'+esc(u.name)+'"'+(archived?' style="opacity:.6"':'')+'><td><b>'+esc(u.name)+'</b><br><span class="muted small num">'+esc(u.tgId||'')+'</span>'+codeCell+proxyCell+'</td><td>'+roleCell+'</td><td>'+masterCell+'</td><td>'+cutCell+'</td><td>'+otkCell+'</td><td>'+apprCell+'</td><td>'+snabCell+'</td><td>'+reg+'</td><td><span class="msg" id="um'+i+'"></span> '+acts+'</td></tr>';
   }
   // архивные — из общего списка вон, отдельным свёрнутым блоком внизу.
   // ⚠ индекс i сквозной по ulist: на нём завязаны id полей (ro/ma/cu/um) и saveUser(i,…)
@@ -621,7 +637,8 @@ function renderUsers(box,r){
       +'<div class="muted" style="margin-bottom:var(--s-3)">Для того, у кого нет Telegram. Заводится сразу рабочим; наряды за него подаёт выбранный сотрудник — у того в «Выработке» появится выбор «За кого наряд». Появится Telegram — человек зарегистрируется под тем же ФИО и привяжется сам.</div>'
       +'<div style="display:flex;gap:var(--s-3);flex-wrap:wrap;align-items:flex-end">'
         +'<div><span class="fl">Фамилия Имя</span><input id="ntFio" placeholder="Иванова Мария" style="min-width:200px"></div>'
-        +'<div><span class="fl">Отчёты за него вносит</span><select id="ntProxy" style="min-width:200px">'+proxyOpts(myTg)+'</select></div>'
+        +'<div><span class="fl">Отчёты за него вносит</span>'+(PXOK?'<div style="min-width:220px">'+pkHtml('np','🔎 имя или фамилия',pxName(myTg))+'<input type="hidden" id="ntProxy" value="'+esc(pxName(myTg)?myTg:'')+'"></div>'
+          :'<select id="ntProxy" style="min-width:200px">'+proxyOpts(myTg)+'</select>')+'</div>'
         +'<button onclick="addNoTg()">Завести</button>'
       +'</div><div class="msg" id="ntMsg" style="margin-top:var(--s-2)"></div></div>';
   }
@@ -629,10 +646,21 @@ function renderUsers(box,r){
     :(isMaster?'Ваши рабочие. Пригласите нового по ссылке — он сразу попадёт к вам в бригаду.'
     :(canInvite?'Сотрудники в системе. Пригласите нового рабочего по ссылке и выберите ему мастера или участок в колонке «Мастер/участок» — роли назначает директор.':'Все, кто зарегистрировался через бота.'));
   box.innerHTML='<div class="pad"><div class="hi">'+pageTitle+'</div><p class="muted">'+intro+'</p>'+alert_+invite
+    +(HASPK?'<div class="toolbar" style="margin-bottom:var(--s-2)">'+pkHtml('us','🔎 Все сотрудники — имя или фамилия',USW)+'<span class="meta" id="usnote"></span></div>':'')
     +'<div class="box tbwrap" style="padding:var(--s-2) 0"><table class="tbl">'+head+'<tbody>'+(rows||'<tr><td colspan=9 class="muted">пусто</td></tr>')+'</tbody></table></div>'
     +archBlock+'</div>';
+  usFilter();
 }
-function reloadUsersView(){ if(typeof usersView==='function') usersView(); else if(typeof loadUsers==='function') loadUsers(); else location.reload(); }
+// отбор таблицы «Сотрудники и доступы» по выбранному в поиске; выбранный держится при перезагрузке списка (после сохранения роли и т. п.)
+var USW='';
+function usFilter(){
+  var rows=document.querySelectorAll('#app tr[data-wn]'), shown=0, inArch=false, a=document.getElementById('uarch');
+  for(var i=0;i<rows.length;i++){ var ok=!USW||rows[i].getAttribute('data-wn')===USW; rows[i].style.display=ok?'':'none'; if(ok){ shown++; if(USW&&a&&a.contains(rows[i])) inArch=true; } }
+  if(inArch&&a&&a.style.display==='none') toggleUArch();   // нашли архивного — раскрываем блок «Архив», иначе строки не видно
+  var nt=document.getElementById('usnote'); if(nt) nt.textContent=!USW?'':(shown?(inArch?'в архиве — строка ниже, в блоке «Архив»':''):'такого сотрудника в списке уже нет — очистите поиск');
+}
+// 25.11.2026: звала usersView() без контейнера — после «Завести» (сотрудник без телефона) список падал с ошибкой и не обновлялся
+function reloadUsersView(){ reloadUsers(); }
 function addNoTg(){
   var f=String((document.getElementById('ntFio')||{}).value||'').trim(), p=(document.getElementById('ntProxy')||{}).value||'', m=document.getElementById('ntMsg');
   if(f.split(/\s+/).length<2){ m.innerHTML='<span class="err">Нужны фамилия и имя</span>'; return; }
