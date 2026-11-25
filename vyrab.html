@@ -357,8 +357,15 @@ function fillJWorkers(){
 var PICK={
   jw:{ val:'jworker', rows:function(){ return (DATA.workers||[]).map(function(w){ return { name:w.name, arch:w.active===false }; }); }, done:function(){ loadJournal(); } },
   ww:{ val:'worker', must:true, rows:function(){ return actWorkers().map(function(w){ return { name:w.name, n:w.site||'' }; }); }, done:function(){ onWorkerChange(); } },
+  // «Приёмка»: за кого вносим работу (обязателен, сначала пусто — раньше в списке молча стоял первый по порядку) и чья ошибка при возврате маляру (пусто = «не знаю»)
+  oa:{ val:'oa_w', must:true, rows:function(){ return actWorkers().map(function(w){ return { name:w.name, n:w.site||'' }; }); }, done:function(){} },
+  // ключ rp, а не rw: id «rwq» занят полем «На переделку, шт» в форме подачи
+  rp:{ val:'rw_p', allLabel:'🤷 не знаю', rows:function(){ return actWorkers().map(function(w){ return { name:w.name }; }); }, done:function(){} },
   mw:{ val:'mworker', rows:function(){ return mwRows(); }, all:function(){ var n=((PEND&&PEND.reports)||[]).length; return n?'<span class="cb-ln">'+n+'</span>':''; }, done:function(){ if(PEND) renderPending(PEND); } }
 };
+// разметка поля для форм, которые рисуются из кода; подпись — отдельным <label for>, а не обёрткой: клик по строке списка внутри <label> возвращал бы фокус в поле и открывал список снова
+function pkHtml(k,ph){ return '<div class="pick" id="'+k+'pick"><input id="'+k+'q" type="search" class="search" placeholder="'+esc(ph)+'" autocomplete="off" oninput="pkDraw(\''+k+'\',1)" onfocus="this.select();pkDraw(\''+k+'\')" onclick="pkDraw(\''+k+'\')" onkeydown="pkKey(\''+k+'\',event)">'
+  +'<div class="pick-list" id="'+k+'list" hidden></div></div><input type="hidden" id="'+PICK[k].val+'">'; }
 function pkEl(k,x){ return document.getElementById(x==='val'?PICK[k].val:k+x); }
 // Пока список закрыт, в поле всегда стоит то, что выбрано на самом деле (иначе в форме подачи поле показывало бы одного, а наряд шёл на другого);
 // открыт — человек печатает, не мешаем: при закрытии pkClose вернёт выбранное.
@@ -376,7 +383,7 @@ function pkDraw(k,typed){
   if(typed && !q.value && sel.value && !PICK[k].must){ pkPick(k,''); return; }   // поле очистили (крестик или стёрли) — снова все сотрудники
   var r=pkRows(k), cur=sel.value;
   var li=function(w){ return '<div class="cb-li'+(w.name===cur?' sel':'')+'" data-n="'+esc(w.name)+'"><span class="cb-lt">'+esc(w.name)+(w.arch?'<i>в архиве</i>':'')+'</span>'+(w.n?'<span class="cb-ln">'+esc(w.n)+'</span>':'')+'</div>'; };
-  var h=(r.q||PICK[k].must?'':'<div class="cb-li'+(cur?'':' sel')+'" data-n=""><span class="cb-lt">👥 Все сотрудники</span>'+(PICK[k].all?PICK[k].all():'')+'</div>')
+  var h=(r.q||PICK[k].must?'':'<div class="cb-li'+(cur?'':' sel')+'" data-n=""><span class="cb-lt">'+(PICK[k].allLabel||'👥 Все сотрудники')+'</span>'+(PICK[k].all?PICK[k].all():'')+'</div>')
     +r.act.map(li).join('')+r.arch.map(li).join('');
   box.innerHTML=h||'<div class="cb-li0">Никого не нашлось — проверьте написание</div>';
   box.hidden=false;
@@ -2034,11 +2041,10 @@ function renderOtkAdd(){
   var b=document.getElementById('oadd');
   var eqs=otkEquips();
   if(!eqs.length){ b.innerHTML='<div class="card muted">Каталог ещё грузится — откройте вкладку «Выработка» и вернитесь.</div>'; return; }
-  var wopts=actWorkers().map(function(w){ return opt(w.name); }).join('')||opt('','нет сотрудников');
   var bopts=(DATA.batches||[]).map(function(x){ return opt(x.id,x.num+' · '+x.name); }).join('')+opt('','🧰 Вне заказа');
   b.innerHTML='<div class="card"><b>Внести работу за рабочего</b>'
     +'<div class="muted" style="font:var(--t-small);margin:var(--s-1) 0">Рабочий сложил детали в зону сдачи и не заводил наряд. Запись пойдёт отдельным нарядом с пометкой «внесён ОТК», ему придёт уведомление.</div>'
-    +'<label>Сотрудник<select id="oa_w">'+wopts+'</select></label>'
+    +'<label for="oaq">Сотрудник</label>'+pkHtml('oa','🔎 имя или фамилия')
     // ⚠ ДАТА ПРИЁМКИ. Контролёр часто вносит вчерашнюю смену (сдали под вечер, принял утром);
     // без выбора даты работа падала на сегодня и портила табель и «выработку по дням».
     +'<label>Дата приёмки<input id="oa_dt" type="date" value="'+attr(todayIso())+'" max="'+attr(todayIso())+'"></label>'
@@ -2245,7 +2251,6 @@ function rwToggle(){ RWOPEN=!RWOPEN; var b=document.getElementById('orw'); b.sty
 function rwRender(){
   var b=document.getElementById('orw');
   var bs=(DATA.batches||[]).map(function(x){ return opt(x.id,x.num+' · '+x.name); }).join('');
-  var ws=actWorkers().map(function(w){ return opt(w.name); }).join('');
   b.innerHTML='<div class="card"><b>🔁 Вернуть покрашенные детали на переделку</b>'
     +'<div class="muted" style="font:var(--t-small);margin:var(--s-1) 0">Покраска по ним остаётся засчитанной. Шлифовщику переделку платим долей шлифовки детали, маляр перекрашивает бесплатно.</div>'
     +'<label>Заказ<select id="rw_b" onchange="rwLoadComp()">'+bs+'</select></label>'
@@ -2255,7 +2260,7 @@ function rwRender(){
     +'<div class="row" style="margin:var(--s-2) 0;justify-content:flex-start"><div class="seg">'
     +'<button id="rw_as" onclick="rwArea(\'sand\')">на шлифовку — материал</button>'
     +'<button id="rw_ap" onclick="rwArea(\'paint\')">маляру — его ошибка</button></div></div>'
-    +'<label id="rw_pl">Чья ошибка (маляр)<select id="rw_p">'+opt('','не знаю')+ws+'</select></label>'
+    +'<div id="rw_pl"><label for="rpq">Чья ошибка (маляр)</label>'+pkHtml('rp','🔎 не знаю — имя или фамилия')+'</div>'
     +'<label>Примечание<input id="rw_n" placeholder="что не так"></label>'
     +'<div class="row"><button onclick="rwGo()">Вернуть на переделку</button><span class="msg" id="rw_m"></span></div></div>'
     +'<div id="rw_list"><div class="card muted">Загрузка…</div></div>';
