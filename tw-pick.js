@@ -26,7 +26,9 @@ function pkDraw(k,typed){
   var box=pkEl(k,'list'), q=pkEl(k,'q'), sel=pkEl(k,'val');
   if(typed && !q.value && sel.value && !PICK[k].must){ pkPick(k,''); return; }   // поле очистили (крестик или стёрли) — снова все сотрудники
   var r=pkRows(k), cur=sel.value;
-  var li=function(w){ return '<div class="cb-li'+(w.name===cur?' sel':'')+'" data-n="'+pkEsc(w.name)+'"><span class="cb-lt">'+pkEsc(w.name)+(w.arch?'<i>в архиве</i>':'')+'</span>'+(w.n?'<span class="cb-ln">'+pkEsc(w.n)+'</span>':'')+'</div>'; };
+  // подпись справа — только короткая (число нарядов, участок); длинная (должность) уходит второй строкой под имя, иначе наезжает на него
+  var li=function(w){ var n=String(w.n||''), long=n.length>12, sub=[w.arch?'в архиве':'', long?n:''].filter(Boolean).join(' · ');
+    return '<div class="cb-li'+(w.name===cur?' sel':'')+'" data-n="'+pkEsc(w.name)+'"><span class="cb-lt">'+pkEsc(w.name)+(sub?'<i>'+pkEsc(sub)+'</i>':'')+'</span>'+(n&&!long?'<span class="cb-ln">'+pkEsc(n)+'</span>':'')+'</div>'; };
   var h=(r.q||PICK[k].must?'':'<div class="cb-li'+(cur?'':' sel')+'" data-n=""><span class="cb-lt">'+(PICK[k].allLabel||'👥 Все сотрудники')+'</span>'+(PICK[k].all?PICK[k].all():'')+'</div>')
     +r.act.map(li).join('')+r.arch.map(li).join('');
   box.innerHTML=h||'<div class="cb-li0">Никого не нашлось — проверьте написание</div>';

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="tw-theme.js"></script>
 <script src="tw-config.js"></script>
-<script src="tw-pick.js?v=2026112503"></script>
+<script src="tw-pick.js?v=2026112504"></script>
 <script src="tw-payroll.js?v=2026112501"></script>
 <title>Тигервуд — Кадры</title>
 <style>
@@ -212,6 +212,21 @@ function empRank(e){
   return e.status==='завершён'?4:5;
 }
 function isHidden(e){ return e.status==='уволен'||e.status==='завершён'; }
+// ── поиск сотрудника в «Кадрах» (25.11.2026) — общее поле tw-pick.js ──
+// em — вкладка «Сотрудники»: нашёл — сразу карточка (скрытые видны, только когда их нашёл поиск);
+// cn — реестр договоров: отбор строк по человеку; fe — «Сотрудник» в формах приказа и топлива (имя → id в скрытом #f_emp);
+// ci<k> — сотрудник в строке распознанного договора.
+var CONW='';
+function empDup(){ var seen={}, d=false; (DATA.list||[]).forEach(function(x){ if(seen[x.emp.fio]) d=true; seen[x.emp.fio]=1; }); return d; }
+function empByFio(n){ return ((DATA.list||[]).filter(function(x){ return x.emp.fio===n; })[0]||{}).emp||null; }
+function empRows(){ return (DATA.list||[]).map(function(x){ return { name:x.emp.fio, n:x.emp.pos||x.emp.type||'', arch:isHidden(x.emp) }; }); }
+if(window.PICK){
+  PICK.em={ val:'emworker', must:true, rows:empRows, done:function(){ var e=empByFio($('emworker').value); if(e) openCard(e.id); } };
+  PICK.cn={ val:'cnworker', rows:function(){ var seen={}, out=[]; (DATA.contracts||[]).forEach(function(c){ var e=empByFio2(c.emp); if(e&&!seen[e.fio]){ seen[e.fio]=1; out.push({ name:e.fio, arch:isHidden(e) }); } }); return out; },
+    done:function(){ CONW=$('cnworker').value; render(); } };
+  PICK.fe={ val:'f_empn', allLabel:'— не указан —', rows:empRows, done:function(){ var e=empByFio($('f_empn').value), h=$('f_emp'); if(h) h.value=e?e.id:''; } };
+}
+function empByFio2(id){ return ((DATA.list||[]).filter(function(x){ return x.emp.id===id; })[0]||{}).emp||null; }
 function empView(){
   var all=(DATA.list||[]).slice().sort(function(a,b){
     var r=empRank(a.emp)-empRank(b.emp); if(r) return r;
@@ -219,7 +234,7 @@ function empView(){
   });
   var hid=all.filter(function(x){ return isHidden(x.emp); });
   var l=SHOWHIDDEN?all:all.filter(function(x){ return !isHidden(x.emp); });
-  var h=tb('<span class="meta">активных: '+(all.length-hid.length)+'</span>'+
+  var h=tb((window.pkHtml?pkHtml('em','🔎 имя или фамилия — открыть карточку',''):'')+'<span class="meta">активных: '+(all.length-hid.length)+'</span>'+
         (hid.length?'<span class="sw'+(SHOWHIDDEN?' on':'')+'" onclick="toggleHidden()"><i></i>показать скрытых ('+hid.length+')</span>':''),
         '<button class="btn pri" onclick="newEmp()">+ Сотрудник</button>');
   h+='<div class="card tbwrap"><table class="tbl emplist"><thead><tr><th></th><th>ФИО</th><th>Тип</th><th>Должность</th><th>Договор</th><th>Окончание</th><th>Оформление</th><th>Статус</th></tr></thead><tbody>';
@@ -1134,7 +1149,7 @@ function numKey(x){ var m=String(x||'').match(/(\d+)/); return m?+m[1]:0; }
 function dot(miss){ return (miss&&miss.length)?'<span title="не заполнено: '+esc(miss.join(', '))+'" style="color:var(--red);font:var(--t-heading);line-height:1">●</span>':''; }
 function conRegView(){
   var all=(DATA.contracts||[]).slice();
-  var l=all.filter(function(c){ return CONFILTER==='all'||c.kind===CONFILTER; });
+  var l=all.filter(function(c){ return (CONFILTER==='all'||c.kind===CONFILTER) && (!CONW||(empByFio2(c.emp)||{}).fio===CONW); });
   // контракты идут подряд по номеру внутри года, подряды — по дате заключения
   l.sort(function(a,b){
     if(a.kind!==b.kind) return a.kind==='контракт'?-1:1;
@@ -1146,7 +1161,8 @@ function conRegView(){
   var h=tb('<div class="seg">'+
     ['all','контракт','подряд','обучение'].map(function(v){ return '<button class="'+(CONFILTER===v?'on':'')+'" onclick="conFilter(\''+v+'\')">'+
       (v==='all'?'все':(v==='контракт'?'контракты':(v==='подряд'?'подряд':'обучение')))+'</button>'; }).join('')+'</div>'+
-    '<span class="meta">всего: '+all.length+'</span>',
+    (window.pkHtml?pkHtml('cn','🔎 Все сотрудники — имя или фамилия',CONW):'')+
+    '<span class="meta">всего: '+all.length+(CONW?' · показано: '+l.length:'')+'</span>',
     '<button class="btn pri" onclick="conInOpen()" title="подписанные договоры (PDF, фото страниц, Word) → распознать → завести в систему">📥 Загрузить договоры</button>');
   h+='<div class="card tbwrap"><table class="tbl mob"><thead><tr><th></th><th>№</th><th>Дата</th><th>Вид</th><th>ФИО</th><th>Должность / работа</th><th>Окончание</th><th>Статус</th><th>Документ</th></tr></thead><tbody>';
   h+=l.map(function(c){
@@ -1165,8 +1181,13 @@ function conRegView(){
 function dt(ru){ var p=String(ru||'').split('.'); return p.length===3?new Date(+p[2],+p[1]-1,+p[0]).getTime():0; }
 
 /* ─── реестры ─── */
-function empOpts(v){ return '<div><label class="f">Сотрудник</label><select id="f_emp"><option value="">—</option>'+
-  (DATA.list||[]).map(function(x){ return '<option value="'+x.emp.id+'"'+(x.emp.id===v?' selected':'')+'>'+esc(x.emp.fio)+'</option>'; }).join('')+'</select></div>'; }
+function empOpts(v){
+  // тёзки или не загрузился tw-pick.js — обычный список по id: имя не скажет, на кого пишем приказ или топливо
+  if(!window.pkHtml||empDup()) return '<div><label class="f">Сотрудник</label><select id="f_emp"><option value="">—</option>'+
+    (DATA.list||[]).map(function(x){ return '<option value="'+x.emp.id+'"'+(x.emp.id===v?' selected':'')+'>'+esc(x.emp.fio)+'</option>'; }).join('')+'</select></div>';
+  var cur=empByFio2(v);
+  return '<div><label class="f" for="feq">Сотрудник</label>'+pkHtml('fe','🔎 не указан — имя или фамилия',cur?cur.fio:'')+'<input type="hidden" id="f_emp" value="'+esc(cur?cur.id:'')+'"></div>';
+}
 function ordForm(o){
   o=o||{};
   saveOrd=function(then){
@@ -1665,6 +1686,7 @@ function conInView(){
     'После заведения скан переезжает в папку сотрудника, пустые реквизиты карточки (паспорт, адрес, счёт) заполняются из договора. Проверьте ФИО и даты перед «Завести».</div></div>';
   if(!CONIN.files.length) return h+'<div class="card"><div class="empty">Во входящей папке пусто — загрузите файлы или положите их в папку на Диске.</div></div>';
   var kinds=['контракт','подряд','нпд','обучение'];
+  if(window.PICK) for(var pk in PICK) if(/^ci\d+$/.test(pk)) delete PICK[pk];   // строк стало меньше — старые поля не должны остаться
   h+='<div class="card tbwrap"><table class="tbl mob"><thead><tr><th></th><th>Файл</th><th>Группа</th><th>Сотрудник</th><th>Вид</th><th>№</th><th>Дата</th><th>Окончание</th><th>Работы / должность</th><th>Реквизиты</th></tr></thead><tbody>';
   CONIN.files.forEach(function(x,i){
     var p='CONIN.files['+i+']', r=x.rec, f=r&&r.fields;
@@ -1674,8 +1696,12 @@ function conInView(){
         (r&&r.error?'<div style="color:var(--red);font:var(--t-small)">'+esc(r.error)+'</div>':'')+'</td>'+
       '<td data-l="Группа"><input value="'+esc(x.grp)+'" placeholder="фото: №" style="width:46px" oninput="'+p+'.grp=this.value"></td>';
     if(!f){ h+='<td colspan="7" class="muted">'+(r?'':'— ещё не распознан —')+'</td></tr>'; return; }
-    h+='<td data-l="Сотрудник"><select style="max-width:220px" onchange="'+p+'.rec.emp=this.value">'+'<option value="">— выберите —</option>'+
-        emps.map(function(e){ return '<option value="'+esc(e.id)+'"'+(e.id===r.emp?' selected':'')+'>'+esc(e.fio)+'</option>'; }).join('')+'</select>'+
+    h+='<td data-l="Сотрудник">'+(window.pkHtml&&!empDup()?(function(){
+          var cur=empByFio2(r.emp);
+          PICK['ci'+i]={ val:'ciw'+i, must:true, rows:empRows, done:function(){ var e=empByFio($('ciw'+i).value); if(e){ CONIN.files[i].rec.emp=e.id; render(); } } };
+          return '<div style="min-width:200px;max-width:240px">'+pkHtml('ci'+i,'🔎 выберите — имя или фамилия',cur?cur.fio:'')+'</div>'; })()
+        :'<select style="max-width:220px" onchange="'+p+'.rec.emp=this.value">'+'<option value="">— выберите —</option>'+
+        emps.map(function(e){ return '<option value="'+esc(e.id)+'"'+(e.id===r.emp?' selected':'')+'>'+esc(e.fio)+'</option>'; }).join('')+'</select>')+
         (r.emp?(r.sure?'':'<div class="muted" style="font:var(--t-small)">не уверен — проверьте</div>'):'<div style="color:var(--red);font:var(--t-small)">в договоре: '+esc(f.fio||'?')+' — карточки нет</div>')+'</td>'+
       '<td data-l="Вид"><select onchange="'+p+'.rec.fields.kind=this.value">'+kinds.map(function(k){ return '<option'+(k===f.kind?' selected':'')+'>'+k+'</option>'; }).join('')+'</select></td>'+
       '<td data-l="№">'+cell('num',70)+'</td><td data-l="Дата">'+cell('date',96)+'</td><td data-l="Окончание">'+cell('end',96)+'</td>'+
