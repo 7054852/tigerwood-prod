@@ -650,12 +650,27 @@ function stRefresh(){
 }
 var EXPX={};
 // «за сотрудника» (ОПИ и т. п.): по статье «ОПИ и другие выплаты за сотрудников» выбирается человек — оплата считается его выплаченной зарплатой
-function forEmpSel(i, pid){ return '<select id="ex_p'+i+'" title="за кого платим: оплата посчитается выплаченной ему зарплатой"><option value="">— за кого? —</option>'+(EXPX.people||[]).map(function(x){ return '<option value="'+esc(x.id)+'"'+(x.id===pid?' selected':'')+'>'+esc(x.name)+'</option>'; }).join('')+'</select>'; }
-function forEmpToggle(i){ var s=el('ex_s'+i), w=el('ex_pw'+i); if(s&&w) w.style.display=(EXPX.forEmpCategoryId&&s.value===EXPX.forEmpCategoryId)?'':'none'; }
+// 26.11.2026: «за кого платим» — то же поле поиска, что в зарплате (tw-pick.js). id человека лежит в скрытом ex_p<i>,
+// поэтому сохранение (expApply) не меняется. Тёзки или файл не загрузился — обычный список по id: имя не скажет, чья это выплата.
+function forEmpOk(){ var seen={}, ok=!!(window.pkHtml&&window.TWPICK); (EXPX.people||[]).forEach(function(x){ if(seen[x.name]) ok=false; seen[x.name]=1; }); return ok; }
+function forEmpSel(i, pid){
+  if(!forEmpOk()) return '<select id="ex_p'+i+'" title="за кого платим: оплата посчитается выплаченной ему зарплатой"><option value="">— за кого? —</option>'+(EXPX.people||[]).map(function(x){ return '<option value="'+esc(x.id)+'"'+(x.id===pid?' selected':'')+'>'+esc(x.name)+'</option>'; }).join('')+'</select>';
+  var cur=(EXPX.people||[]).filter(function(x){ return x.id===pid; })[0];
+  TWPICK['fp'+i]={ val:'fpn'+i, must:true,
+    rows:function(){ return (EXPX.people||[]).map(function(x){ return { name:x.name }; }); },
+    done:function(){ var n=el('fpn'+i).value, e=(EXPX.people||[]).filter(function(x){ return x.name===n; })[0]; el('ex_p'+i).value=e?e.id:''; } };
+  return pkHtml('fp'+i, '🔎 за кого платим — имя или фамилия', cur?cur.name:'')+'<input type="hidden" id="ex_p'+i+'" value="'+esc(cur?cur.id:'')+'">';
+}
+// список раскрывается внутри рамки таблицы (у неё своя прокрутка): пока поле видно, держим рамке высоту
+function forEmpRoom(){ var w=el('expBox').querySelector('.tbl-wrap'), on=false; if(!w) return;
+  EXP.forEach(function(p, i){ var x=el('ex_pw'+i); if(x&&x.style.display!=='none'&&x.querySelector('.pick')) on=true; });
+  w.style.minHeight=on?'min(56vh, 440px)':''; }
+function forEmpToggle(i){ var s=el('ex_s'+i), w=el('ex_pw'+i); if(s&&w) w.style.display=(EXPX.forEmpCategoryId&&s.value===EXPX.forEmpCategoryId)?'':'none'; forEmpRoom(); }
 var ACT={ match:'закрыть карточку', partial:'частичная оплата', recognize:'новый расход', create:'новый расход', ambiguous:'выбрать карточку', multi:'закрыть несколько карточек' };
 function renderExp(){
   el('expCnt').textContent=EXP.length?EXP.length+' строк':'';
   if(!EXP.length){ el('expBox').innerHTML='<div class="empty">Все расходные строки выписки разнесены.</div>'; el('expGo').className='primary hide'; el('expHint').className='mut hide'; return; }
+  if(window.TWPICK) for(var pk in TWPICK) if(/^fp\d+$/.test(pk)) delete TWPICK[pk];
   var h='<div class="tbl-wrap"><table class="reg"><thead><tr><th></th><th>Дата</th><th>Контрагент</th><th class="num">Сумма</th><th>Что сделать</th><th>Статья</th><th>Назначение</th></tr></thead><tbody>';
   EXP.forEach(function(p, i){
     var canSplit=(p.action==='create'||p.action==='recognize')&&!p.hoz;
@@ -678,7 +693,7 @@ function renderExp(){
       +'<td>'+(p.hoz?'<span class="mut">перевод</span>':sp?'<span class="mut">по частям</span>':'<select id="ex_s'+i+'" onchange="forEmpToggle('+i+')">'+catOpts(cat,'expense')+'</select>'
         +((p.action==='create'||p.action==='recognize')?'<div id="ex_pw'+i+'" style="margin-top:4px;'+(EXPX.forEmpCategoryId&&cat===EXPX.forEmpCategoryId?'':'display:none')+'">'+forEmpSel(i, p.forPersonId||'')+'</div>':''))+'</td><td class="purp">'+esc(p.purpose)+'</td></tr>';
   });
-  el('expBox').innerHTML=h+'</tbody></table></div>'; el('expGo').className='primary'; el('expHint').className='mut';
+  el('expBox').innerHTML=h+'</tbody></table></div>'; el('expGo').className='primary'; el('expHint').className='mut'; forEmpRoom();
 }
 var SPLIT={}, SPI=-1;
 function catName(id){ for(var k=0;k<(REF.categories||[]).length;k++) if(REF.categories[k].id===id) return REF.categories[k].name; return ''; }
@@ -970,7 +985,7 @@ function salEmpHtml(r, k){
   return pkHtml('sp'+k, '🔎 сотрудник — имя или фамилия', cur);
 }
 function salRows(){
-  for(var pk in TWPICK) if(/^sp\d+$/.test(pk)) delete TWPICK[pk];   // строк стало меньше — старые поля не должны остаться в общем списке
+  if(window.TWPICK) for(var pk in TWPICK) if(/^sp\d+$/.test(pk)) delete TWPICK[pk];   // строк стало меньше — старые поля не должны остаться в общем списке
   el('spRows').innerHTML=SP.rows.map(function(r, k){ return '<div class="al" style="grid-template-columns:150px 1fr 120px auto"><select onchange="SP.rows['+k+'].dept=this.value">'+SAL.depts.map(function(d){ return '<option'+(d===r.dept?' selected':'')+'>'+d+'</option>'; }).join('')+'</select>'
     +salEmpHtml(r, k)
     +'<input inputmode="decimal" placeholder="сумма" value="'+(r.sum?String(r.sum).replace('.',','):'')+'" oninput="SP.rows['+k+'].sum=num(this.value); salIdent()"><button class="sec" onclick="SP.rows.splice('+k+',1); salRows()">×</button></div>'; }).join('');
