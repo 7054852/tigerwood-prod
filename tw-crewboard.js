@@ -692,19 +692,25 @@
     var q=$('cbPQ'), note=function(t){ var m=$('cbErr'); if(m) m.innerHTML=t?'<span class="ok">'+t+'</span>':''; },
       put=function(n){ var d=S.dlg; if(d&&d.kind==='addp'){ d.added[n]=1; q.value=''; drawL(); q.focus(); }
         send({ vapi:'planset', date:ruD(S.date), worker:n, patch:JSON.stringify({ shift:'день' }) },function(){ load(true); }); },
-      // человека нет ни в «Доступах», ни в кадрах (новенький, помощник на день) — заводим его рабочим без Telegram тем же действием,
-      // что «Сотрудник без телефона» в «Доступах», и сразу ставим на доску (владелец 25.11.2026)
-      mk=function(nm){ dlgErr(''); send({ vapi:'crewperson', date:S.date, name:nm },function(r){ var d=S.dlg; if(d&&d.kind==='addp'){ d.added[r.name]=1; q.value=''; drawL(); q.focus(); }
-          note('«'+esc(r.name)+'» заведён рабочим без Telegram и поставлен на доску. '+(r.proxyName?'Наряды за него вносит '+esc(r.proxyName)+' — поменять можно в «Доступах».':'Кто вносит за него наряды — назначьте в «Доступах».')); load(true); },
-        function(e){ dlgErr(/уже есть/.test(e)?'«'+nm+'» уже есть в «Доступах», но не среди действующих сотрудников цеха (архив или другая роль) — верните его там':/нет прав/.test(e)?'Нового человека заводит админ, директор или мастер — у вас такого права нет':e); }); },
+      // кого нет в обычном списке: сотрудник не из цеха (директор, менеджер…) встаёт на доску на этот день; кого нет нигде (новенький, помощник
+      // на день) — заводится рабочим без Telegram, как «Сотрудник без телефона» в «Доступах». Оба случая — маршрут crewperson (владелец 25.11.2026)
+      mk=function(nm){ dlgErr(''); note(''); send({ vapi:'crewperson', date:S.date, name:nm },function(r){ var d=S.dlg; if(d&&d.kind==='addp'){ d.added[r.name]=1; q.value=''; drawL(); q.focus(); }
+          note(r.existed?'«'+esc(r.name)+'»'+(r.role?' ('+esc(r.role)+')':'')+' поставлен на доску на '+dmy(S.date)+'.'
+            :'«'+esc(r.name)+'» заведён рабочим без Telegram и поставлен на доску. '+(r.proxyName?'Наряды за него вносит '+esc(r.proxyName)+' — поменять можно в «Доступах».':'Кто вносит за него наряды — назначьте в «Доступах».')); load(true); },
+        function(e){ dlgErr(/нет прав/.test(e)?'Нового человека заводит админ, директор или мастер — у вас такого права нет':e); }); },
+      // имя ищем по словам в любом порядке: «Евгений Миронов» находит «Миронов Евгений»
+      wkey=function(n){ return lc(n).split(/\s+/).filter(Boolean).sort().join(' '); },
       drawL=function(){ var d=S.dlg; if(!d||d.kind!=='addp') return;
-        var nm=q.value.replace(/\s+/g,' ').trim(), v=lc(nm), same=function(n){ return lc(n)===v; },
-          l=((S.d&&S.d.rest)||[]).filter(function(n){ return !d.added[n]&&lc(n).indexOf(v)>=0; }),
+        var nm=q.value.replace(/\s+/g,' ').trim(), ws=lc(nm).split(' ').filter(Boolean), k=wkey(nm), same=function(n){ return wkey(n)===k; },
+          hit=function(n){ var x=lc(n); return !d.added[n]&&ws.every(function(w){ return x.indexOf(w)>=0; }); },
+          l=((S.d&&S.d.rest)||[]).filter(hit), o=nm.length>1?((S.d&&S.d.others)||[]).filter(function(p){ return hit(p.name); }):[],
           on=people().some(function(p){ return same(p.name); })||Object.keys(d.added).some(same);
         $('cbPL').innerHTML=l.map(function(n){ return '<div class="cb-li" data-n="'+esc(n)+'"><span class="cb-lt"><b>'+esc(n)+'</b></span><span class="cb-ln">＋</span></div>'; }).join('')
-          +(nm&&!on&&!l.some(same)?'<div class="cb-li" data-new="1"><span class="cb-lt"><b>＋ Новый человек: '+esc(nm)+'</b><i>его нет в «Доступах» — заведём рабочим без Telegram и поставим на доску</i></span></div>'
-            :l.length?'':'<div class="muted cb-li0">'+(on?'уже на доске':'все уже на доске — впишите фамилию и имя, чтобы добавить нового')+'</div>');
-        var li=$('cbPL').querySelectorAll('.cb-li'); for(var i=0;i<li.length;i++) li[i].addEventListener('click',function(){ if(this.getAttribute('data-new')) mk(nm); else { note(''); dlgErr(''); put(this.getAttribute('data-n')); } }); };
+          +o.map(function(p){ return '<div class="cb-li" data-o="'+esc(p.name)+'"><span class="cb-lt"><b>'+esc(p.name)+'</b><i>'+esc(p.role||'без роли в сервисе')+' · не из цеха — поставить на доску на этот день</i></span><span class="cb-ln">＋</span></div>'; }).join('')
+          +(nm&&!on&&!l.some(same)&&!o.some(function(p){ return same(p.name); })?'<div class="cb-li" data-new="1"><span class="cb-lt"><b>＋ Новый человек: '+esc(nm)+'</b><i>его нет в «Доступах» — заведём рабочим без Telegram и поставим на доску</i></span></div>'
+            :l.length||o.length?'':'<div class="muted cb-li0">'+(on?'уже на доске':'все уже на доске — впишите фамилию и имя, чтобы добавить другого сотрудника или нового человека')+'</div>');
+        var li=$('cbPL').querySelectorAll('.cb-li'); for(var i=0;i<li.length;i++) li[i].addEventListener('click',function(){
+          if(this.getAttribute('data-new')) mk(nm); else if(this.getAttribute('data-o')) mk(this.getAttribute('data-o')); else { note(''); dlgErr(''); put(this.getAttribute('data-n')); } }); };
     q.addEventListener('input',drawL);
     q.addEventListener('keydown',function(e){ var f=e.key==='Enter'&&$('cbPL').querySelector('.cb-li'); if(f) f.click(); });
     drawL(); q.focus();
