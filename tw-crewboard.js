@@ -166,7 +166,7 @@
     var cls=busy>cap+0.01?' over':(busy>=cap*0.9?' full':'');
     // на листе линии часов — настоящие элементы: фоновая сетка (градиент) в PDF ложится размытыми полосами не на своих местах
     var hl='', i; if(S.pr) for(i=1;i<sc.hours;i++) hl+='<i class="cb-hl" style="left:'+(i/sc.hours*100).toFixed(3)+'%"></i>';
-    return '<div class="cb-row'+(p.status==='не вышел'?' off':'')+'" data-w="'+esc(p.name)+'">'
+    return '<div class="cb-row'+(p.status==='не вышел'?' off':'')+(!S.pr&&S.find===p.name?' find':'')+'" data-w="'+esc(p.name)+'">'
       +'<div class="cb-name"><span class="cb-grip" title="перетащите, чтобы переставить человека">⋮⋮</span>'
       +'<span class="cb-nm" title="'+esc(p.name)+(p.home?' · участок: '+esc(p.home):'')+(p.sent?' · задание отправлено':'')+'">'+shIco(p.shift)+esc(narrow()?shortName(p.name):p.name)+(p.sent?' <span class="cb-sent">✓</span>':'')+'</span>'
       +(rub>0?'<span class="cb-rub" title="заработает по расценкам, если сделает всё, что стоит в плане: '+money(rub)+' ₽ (до налогов, без премий)">'+Math.round(rub).toLocaleString('ru-RU')+' ₽</span>':'')
@@ -175,6 +175,8 @@
   }
   function draw(){
     if(!S.d) return;
+    // найденного в этом дне нет (сменили дату, убрали из смены) — поле поиска очищается, а не показывает имя без строки
+    if(S.find&&!person(S.find)) S.find='';
     var sc=scale(), c=cfg(), ps=people(), cap=(c.to-c.from)/60, tot=0;
     var rubAll=0; ps.forEach(function(p){ p.tasks.forEach(function(t){ tot+=t.dur; rubAll+=t.qty*t.rate; }); });
     var hours=''; for(var h=sc.from;h<sc.to;h+=60) hours+='<span class="cb-h" style="left:'+((h-sc.from)/sc.span*100).toFixed(3)+'%;width:'+(60/sc.span*100).toFixed(3)+'%">'+(Math.floor(h/60)%24)+'</span>';
@@ -338,6 +340,16 @@
   }
   function drawActions(){
     var a=S.o.actions; if(!a) return;
+    // 26.11.2026: «найти человека» — то же поле поиска, что в выработке и табеле (tw-pick.js). Строка найденного подсвечивается, остальные остаются:
+    // работу по-прежнему можно тянуть к соседям. Поле стоит перед кнопками и создаётся один раз — кнопки перерисовываются при каждом действии и
+    // при подтягивании чужих правок, а в поле в это время могут печатать.
+    if(window.pkHtml&&window.TWPICK){
+      if(!$('cbfpick')){
+        TWPICK.cbf={ val:'cbFind', allLabel:'👥 Все', rows:function(){ return people().map(function(p){ return { name:p.name, n:p.home||'' }; }); },
+          done:function(){ S.find=$('cbFind').value; draw(); var r=S.el.querySelector('.cb-row.find'); if(r&&r.scrollIntoView) r.scrollIntoView({ block:'center' }); } };
+        a.insertAdjacentHTML('beforebegin',pkHtml('cbf',narrow()?'🔎 человек':'🔎 найти человека',S.find||''));
+      } else if($('cbFind').value!==(S.find||'')){ $('cbFind').value=S.find||''; pkSync('cbf'); }
+    }
     // на телефоне кнопки короткие и без печати — доска должна начинаться как можно выше
     var n=narrow(), det=isDet();
     a.innerHTML='<button class="sec sm" onclick="twCrewBoard._det()" title="'+(det?'сейчас подробно: текст задач целиком, строки выше — нажмите, чтобы вернуть компактный вид':'сейчас компактно: все люди на экране — нажмите, чтобы показать текст задач целиком')+'">'+(det?'▤ Подробно':'☰ Компактно')+'</button>'
