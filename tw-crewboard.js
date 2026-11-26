@@ -605,6 +605,14 @@
   function openEdit(id){
     var f=taskBy(id); if(!f) return; var t=f.t, free=!t.op, h=hintOf(t);
     var opts=people().map(function(p){ return '<option'+(p.name===f.p.name?' selected':'')+'>'+esc(p.name)+'</option>'; }).join('');
+    // 26.11.2026: «Кому» и «Вместе с» — то же поле поиска, что в выработке и зарплате (tw-pick.js); имя лежит в скрытых cbWho / cbWith, сохранение не меняется.
+    // Файл поиска не загрузился — остаются обычные списки.
+    var pk=!!(window.pkHtml&&window.TWPICK), names=function(skip){ return people().filter(function(p){ return p.name!==skip; }).map(function(p){ return { name:p.name, n:p.home||'' }; }); },
+      withTip=function(){ var w=$('cbWith'), sh=shareOf(t,2); if(w) $('cbWithTip').textContent=w.value?(sh.bad?'не делится: всего '+qtyS(t.qty)+' шт':('каждому'+(t.op?' по '+qtyS(sh.qty)+' шт,':'')+' '+durS(sh.dur))):''; };
+    if(pk){
+      TWPICK.cbw={ val:'cbWho', must:true, rows:function(){ return names(); }, done:function(){} };
+      TWPICK.cbv={ val:'cbWith', allLabel:'— делает один —', rows:function(){ return names($('cbWho').value); }, done:withTip };
+    }
     openDlg('edit',(free?('<div class="cb-f wide"><label>Что делать</label><textarea id="cbTitle" rows="1">'+esc(t.title)+'</textarea></div>')
         :('<div class="cb-picked"><span class="cb-dot'+colorOf(t.group)+'" id="cbHeadDot"></span><span id="cbHead"><b>'+esc(t.op)+'</b>'+(t.model?' · '+esc(t.model):(t.detail?' · '+esc(t.detail):''))
           +'<i>'+esc([t.order,t.group,t.rate?String(t.rate).replace('.',',')+' ₽/шт':''].filter(Boolean).join(' · '))+'</i></span>'
@@ -614,8 +622,9 @@
           +'<div class="cb-f"><label>Примечание</label><textarea id="cbNote" rows="1" placeholder="необязательно: что учесть">'+esc(t.title||'')+'</textarea></div>'))
       +'<div class="cb-f"><label>Время</label><input type="time" id="cbFrom" step="900" value="'+hm2(t.start)+'"><span>—</span><input type="time" id="cbTo" step="900" value="'+hm2(t.start+t.dur)+'">'
         +(free?'':'<button class="gho sm" id="cbAuto" title="поставить длину по расчёту из количества и расценки">по расчёту</button>')+'</div>'
-      +'<div class="cb-f"><label>Кому</label><select id="cbWho">'+opts+'</select></div>'
-      +(people().length>1?'<div class="cb-f"><label>Вместе с</label><select id="cbWith"><option value="">— делает один —</option>'+people().filter(function(p){ return p.name!==f.p.name; }).map(function(p){ return '<option>'+esc(p.name)+'</option>'; }).join('')+'</select><span class="cb-dur" id="cbWithTip"></span></div>':'')
+      +'<div class="cb-f"><label for="cbwq">Кому</label>'+(pk?pkHtml('cbw','🔎 имя или фамилия',f.p.name):'<select id="cbWho">'+opts+'</select>')+'</div>'
+      +(people().length>1?'<div class="cb-f"><label for="cbvq">Вместе с</label>'+(pk?pkHtml('cbv','— делает один —','')
+        :'<select id="cbWith"><option value="">— делает один —</option>'+people().filter(function(p){ return p.name!==f.p.name; }).map(function(p){ return '<option>'+esc(p.name)+'</option>'; }).join('')+'</select>')+'<span class="cb-dur" id="cbWithTip"></span></div>':'')
       +(h?'<div class="cb-hint'+(h.warn?' warn':'')+'">'+esc(hintText(t,h))+'</div>':'')+(t.done>0?'<div class="cb-hint ok">сдано нарядами: '+qtyS(t.done)+' из '+qtyS(t.qty)+' шт</div>':'')
       +'<div id="cbErr"></div><div class="dlg-btns"><button class="sec danger" onclick="twCrewBoard._del()">Удалить</button><button class="sec" onclick="twCrewBoard._copy()" title="скопировать блок, чтобы вставить его в другом месте: у другого человека, на другое время или в другом дне">⧉ Копировать</button><span class="cb-sp"></span>'
       +'<button class="sec" onclick="twCrewBoard._close()">Отмена</button><button onclick="twCrewBoard._save()">Сохранить</button></div>',{ id:id, auto:false, ref:null, list:[], sel:-1 });
@@ -641,8 +650,9 @@
         else if(e.key==='Enter'){ e.preventDefault(); e.stopPropagation(); swapPick(d.sel>=0?d.sel:0); } });
     }
     $('cbTo').addEventListener('input',function(){ S.dlg.auto=false; S.dlg.touched=true; });
-    if($('cbWith')) $('cbWith').addEventListener('change',function(){ var sh=shareOf(t,2); $('cbWithTip').textContent=this.value?(sh.bad?'не делится: всего '+qtyS(t.qty)+' шт':('каждому'+(t.op?' по '+qtyS(sh.qty)+' шт,':'')+' '+durS(sh.dur))):''; });
-    S.dlg.bg.addEventListener('keydown',function(e){ if(e.key==='Enter'&&e.target.tagName!=='BUTTON'){ e.preventDefault(); saveEdit(); } });
+    if($('cbWith')&&!pk) $('cbWith').addEventListener('change',withTip);
+    // Enter в поле поиска выбирает человека из списка, а не сохраняет окно
+    S.dlg.bg.addEventListener('keydown',function(e){ if(e.key==='Enter'&&e.target.tagName!=='BUTTON'&&!(e.target.closest&&e.target.closest('.pick'))){ e.preventDefault(); saveEdit(); } });
     if($('cbNote')) grow($('cbNote'));
     if(qi) qi.focus(); else { var ti=$('cbTitle'); grow(ti); ti.focus(); ti.setSelectionRange(ti.value.length,ti.value.length); }
   }
