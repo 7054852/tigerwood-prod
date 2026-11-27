@@ -161,16 +161,26 @@
           +(t.title?'<span class="cb-note"><i>✎</i>'+esc(t.title)+'</span>':'')))
       +(pct?'<i class="cb-fill" style="width:'+pct+'%"></i>':'')+'<span class="cb-rv" title="потяните вниз или вверх — разделить работу с соседями"></span><span class="cb-rz"></span></div>';
   }
+  // наряд за день (владелец 27.11.2026): '' — судить не о чем (день впереди, «не вышел», окладник, сервер ещё не отдаёт признак),
+  // 'ok' — наряд сдан, 'no' — день прошёл, человек стоял в смене, наряда нет. За сегодня «нет» не пишем: наряд сдают вечером.
+  function repOf(p){
+    if(!S.d||!('rep' in p)||S.d.date>S.d.today||p.status==='не вышел'||p.sal) return '';
+    return p.rep?'ok':(S.d.date<S.d.today?'no':'');
+  }
   function rowHtml(p,sc){
     var c=cfg(), cap=(c.to-c.from)/60, busy=0, rub=0; p.tasks.forEach(function(t){ busy+=t.dur; rub+=t.qty*t.rate; }); busy=busy/60;
     var cls=busy>cap+0.01?' over':(busy>=cap*0.9?' full':'');
     // на листе линии часов — настоящие элементы: фоновая сетка (градиент) в PDF ложится размытыми полосами не на своих местах
+    var rp=S.pr?'':repOf(p), nar=narrow();
+    var repT=p.sal?' · на окладе — наряд не обязателен':(rp==='ok'?' · наряд за день: '+p.rep.n+' стр. на '+money(p.rep.rub)+' ₽':(rp==='no'?' · наряд за этот день не сдан':''));
     var hl='', i; if(S.pr) for(i=1;i<sc.hours;i++) hl+='<i class="cb-hl" style="left:'+(i/sc.hours*100).toFixed(3)+'%"></i>';
     return '<div class="cb-row'+(p.status==='не вышел'?' off':'')+(!S.pr&&S.find===p.name?' find':'')+'" data-w="'+esc(p.name)+'">'
       +'<div class="cb-name"><span class="cb-grip" title="перетащите, чтобы переставить человека">⋮⋮</span>'
-      +'<span class="cb-nm" title="'+esc(p.name)+(p.home?' · участок: '+esc(p.home):'')+(p.sent?' · задание отправлено':'')+'">'+shIco(p.shift)+esc(narrow()?shortName(p.name):p.name)+(p.sent?' <span class="cb-sent">✓</span>':'')+'</span>'
-      +(rub>0?'<span class="cb-rub" title="заработает по расценкам, если сделает всё, что стоит в плане: '+money(rub)+' ₽ (до налогов, без премий)">'+Math.round(rub).toLocaleString('ru-RU')+' ₽</span>':'')
-      +'<span class="cb-ld'+cls+'" title="занято часов из '+n1(cap)+'">'+(busy?n1(busy):'—')+'<i>/'+n1(cap)+'</i></span></div>'
+      +'<span class="cb-nm" title="'+esc(p.name)+(p.home?' · участок: '+esc(p.home):'')+(p.sent?' · задание отправлено':'')+repT+'">'+shIco(p.shift)+esc(nar?shortName(p.name):p.name)+(p.sent?' <span class="cb-sent">✓</span>':'')+'</span>'
+      +(rp==='no'?'<span class="cb-nr" title="стоял в смене, а наряда за этот день нет. Не работал — отметьте в табеле «не вышел»">нет наряда</span>':'')
+      +(rub>0&&!(nar&&rp==='no')?'<span class="cb-rub" title="заработает по расценкам, если сделает всё, что стоит в плане: '+money(rub)+' ₽ (до налогов, без премий)">'+Math.round(rub).toLocaleString('ru-RU')+' ₽</span>':'')
+      // на телефоне в ячейке имени две строки: в прошедшем дне без наряда вторую занимает пометка, а не план в ₽ и часах
+      +(nar&&rp==='no'?'':'<span class="cb-ld'+cls+'" title="занято часов из '+n1(cap)+'">'+(busy?n1(busy):'—')+'<i>/'+n1(cap)+'</i></span>')+'</div>'
       +'<div class="cb-lane" data-w="'+esc(p.name)+'">'+hl+p.tasks.map(function(t){ return blkHtml(t,sc); }).join('')+'</div></div>';
   }
   function draw(){
@@ -183,6 +193,7 @@
     var now='';
     if(S.d.date===S.d.today){ var d=new Date(), m=d.getHours()*60+d.getMinutes(); if(m>sc.from&&m<sc.to) now='<i class="cb-now" style="left:calc(var(--cb-name) + (100% - var(--cb-name)) * '+((m-sc.from)/sc.span).toFixed(4)+')"></i>'; }
     if(S.pr) printChains();
+    var noRep=S.pr?[]:ps.filter(function(p){ return repOf(p)==='no'; }).map(function(p){ return p.name; });
     var legend=((S.d.sites)||[]).filter(function(s){ return s.name!=='Прочее'; }).map(function(s){ return '<span class="cb-lg'+colorOf(s.name)+'">'+esc(s.name)+'</span>'; }).join('');
     var sc0=$('cbWrap'), keep=sc0?{ x:sc0.scrollLeft, y:sc0.scrollTop }:null;
     S.el.innerHTML='<div class="cb-msg" id="cbMsg">'+msgHtml()+'</div>'
@@ -192,7 +203,7 @@
       +(ps.length?'':'<div class="empty">На '+dmy(S.d.date)+' в табеле никого нет — добавьте людей кнопкой «＋ Человек».</div>')
       +(S.pr?'<div class="cb-ph"><b>План на '+ruD(S.d.date)+'</b> ('+WD[new Date(S.d.date+'T00:00:00').getDay()]+') · '+ps.length+' чел · занято '+n1(tot/60)+' из '+n1(ps.length*cap)+' ч</div>':'')
       +'<div class="cb-wrap'+(S.pr?' pr':' tbl-wrap fill')+'" id="cbWrap"><div class="cb'+(S.pr||isDet()?' det':'')+(S.clip&&!S.pr?' paste':'')+'" style="--cb-hours:'+sc.hours+(S.nameW?';--cb-name:'+S.nameW+'px':'')+'">'
-      +'<div class="cb-head"><div class="cb-name cb-corner"><b>'+ps.length+' чел</b>'+(rubAll>0?'<span class="cb-rub" title="работы в плане по расценкам на всех: '+money(rubAll)+' ₽">'+Math.round(rubAll).toLocaleString('ru-RU')+' ₽</span>':'')+'<span class="cb-ld">'+n1(tot/60)+'<i>/'+n1(ps.length*cap)+' ч</i></span></div>'
+      +'<div class="cb-head"><div class="cb-name cb-corner"><b>'+ps.length+' чел</b>'+(noRep.length?'<span class="cb-nr" title="нет наряда за этот день: '+esc(noRep.join(', '))+'">'+noRep.length+' без наряда</span>':'')+(rubAll>0&&!(noRep.length&&narrow())?'<span class="cb-rub" title="работы в плане по расценкам на всех: '+money(rubAll)+' ₽">'+Math.round(rubAll).toLocaleString('ru-RU')+' ₽</span>':'')+(noRep.length&&narrow()?'':'<span class="cb-ld">'+n1(tot/60)+'<i>/'+n1(ps.length*cap)+' ч</i></span>')+'</div>'
       +'<div class="cb-lane cb-hours"><button class="cb-add l" title="добавить час раньше" data-add="l">＋</button>'+hours+'<button class="cb-add r" title="добавить час позже" data-add="r">＋</button></div></div>'
       +ps.map(function(p){ return rowHtml(p,sc); }).join('')+now+'</div></div>'
       +'<div class="cb-foot"><span class="cb-legend" id="cbLegend">'+legend+'<span class="cb-lg free">текстом</span>'+(S.pr&&S.prChN?'<span class="cb-chl"><i class="cb-ch k0">А</i><i class="cb-ch k0">А</i> — одинаковый кружок: одна деталь идёт по операциям</span>':'')+'</span><span class="cb-chain" id="cbChain" hidden></span></div>';
