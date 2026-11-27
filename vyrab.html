@@ -141,7 +141,12 @@
   #myshifts .tk input.kin{ margin-left:0; }
   @media (max-width:640px){ #myshifts .tk input.kin{ width:76px; min-height:var(--h-ctl); } #myshifts .tk button, #brdmine .tk button{ min-height:var(--h-ctl); } }
   #askbox{ position:fixed; left:0; top:0; right:0; bottom:0; background:var(--scrim); z-index:60; display:flex; align-items:flex-end; }
-  #askbox .ab{ width:100%; margin:0; border-radius:var(--r-card) var(--r-card) 0 0; padding:var(--s-3) var(--s-4) var(--s-5); }
+  #askbox .ab{ width:100%; margin:0; border-radius:var(--r-card) var(--r-card) 0 0; padding:var(--s-3) var(--s-4) var(--s-5); max-height:88vh; overflow-y:auto; }
+  /* «мастер уже записал эту работу»: по строке наряда — два крупных варианта, выбранный отмечен */
+  .bdl{ display:flex; flex-direction:column; gap:var(--s-1); padding:var(--s-2) 0; border-top:1px solid var(--line); }
+  .bdo{ width:100%; min-height:var(--h-ctl); text-align:left; white-space:normal; }
+  .bdo.on{ border-color:var(--accent); box-shadow:inset 0 0 0 1px var(--accent); color:var(--fg); }
+  .bdo.on::before{ content:'✓ '; color:var(--accent-text); }
   #askbox .abt{ font:var(--t-heading); margin-bottom:var(--s-2); white-space:pre-line; }
 </style>
 </head>
@@ -1122,6 +1127,7 @@ function sendLock(on){
 }
 function sendWork(){
   if(SENDING) return;                    // уже отправляем — повторное нажатие игнорируем
+  var again=BOARDOK; BOARDOK=false;      // повтор после вопроса «мастер уже записал»: подтверждения уже даны
   twSay('Отправляю наряд мастеру…');
   var worker=curWorker();
   if(!worker){ wmsg('<span class="err">Не выбран рабочий</span>'); return; }
@@ -1130,7 +1136,7 @@ function sendWork(){
   var work=items.filter(function(x){ return !x.dev; });   // часы разработки всегда вне заказа — вопрос «точно без заказа?» не про них
   // ⚠ Наряд, целиком ушедший «вне заказа», не двигает выполнение заказа — и это заметили
   // только на проверке, через полдня. Спрашиваем прямо перед отправкой.
-  if(work.length && work.every(function(x){ return !x.batch; })){
+  if(!again && work.length && work.every(function(x){ return !x.batch; })){
     var known=(DATA.batches||[]).length;
     if(!known){ wmsg('<span class="err">Список заказов ещё не загрузился — подождите пару секунд и отправьте снова</span>'); return; }
     if(!confirm('Все '+work.length+' операций записаны БЕЗ заказа (🧰 вне заказа).\n\n'
@@ -1139,7 +1145,7 @@ function sendWork(){
   }
   // ⚠ деталь, которую оплачивает лист, поданная обычной формой = ноль в наряде (так вышло 11.09)
   var byLeaf=CART.filter(function(x){ return x.paid===false; });
-  if(byLeaf.length && !confirm('В наряде операций с оплатой ЗА ЛИСТ: '+byLeaf.length+'\n'
+  if(!again && byLeaf.length && !confirm('В наряде операций с оплатой ЗА ЛИСТ: '+byLeaf.length+'\n'
     +byLeaf.slice(0,3).map(function(x){ return '· '+(x.label||x.detail)+' · '+x.op; }).join('\n')+(byLeaf.length>3?'\n· …':'')
     +'\n\nЗа них начислится 0 р. Такие детали подают во вкладке «🪚 Раскрой» вместе с листом — тогда платит строка листа.'
     +'\n\nВсё равно отправить?')) return;
@@ -1165,8 +1171,10 @@ function sendWork(){
   var p={vapi:'submitwork',worker:worker,date:dRu,shift:SHIFT,
          items:JSON.stringify(items), sheets:JSON.stringify(sheets), saw:JSON.stringify(saw)};
   if(ADDTO) p.addto=ADDTO;
+  if(again) p.boardok='1';
   apiPost(p).then(function(r){
     sendLock(false);
+    if(r&&r.needBoard&&(r.board||[]).length){ wmsg(''); askBoard(r.board); return; }
     if(r&&r.dup){ wmsg('<span class="ok">✅ Этот наряд уже отправлен — повтор пропущен</span>');
       CART=[]; ADDTO=''; clearDraft(); cutReset();
       renderAddBanner(); renderCart(); try{ loadPending(); }catch(e){} return; }
@@ -1180,6 +1188,47 @@ function sendWork(){
     }
     else wmsg('<span class="err">⚠️ '+esc((r&&r.error)||'ошибка')+'</span>');
   }).catch(function(){ sendLock(false); wmsg('<span class="err">Ошибка отправки — проверьте связь и нажмите ещё раз</span>'); });
+}
+// Мастер уже записал эту работу с доски, а рабочий сдаёт её своим нарядом — 27.11.2026 так задвоились три работы за день.
+// Сервер возвращает такие строки (needBoard), здесь по каждой выбирают: те же детали (убрать или досдать разницу) или сверх записанного.
+// Умолчание — без задвоения; если в наряде меньше, чем записал мастер (это может быть и остаток, и те же детали), умолчания нет — выбирают сами.
+// Повторная отправка идёт с boardok и больше не спрашивает.
+var BOARDOK=false;
+function askBoard(hits){
+  var old=document.getElementById('askbox'); if(old) old.parentNode.removeChild(old);
+  var n2=function(v){ return Math.round(v*100)/100; }, pick=hits.map(function(h){ return h.qty<h.have?-1:0; });
+  var d=document.createElement('div'); d.id='askbox';
+  d.innerHTML='<div class="ab card"><div class="abt">Мастер уже записал эту работу</div>'
+    +'<div class="muted" style="margin-bottom:var(--s-2)">Отметьте по каждой строке, как было, — иначе работа запишется дважды.</div>'
+    +hits.map(function(h,n){
+      return '<div class="bdl"><div><b>'+esc(h.op)+'</b> · '+esc(h.detail)+'</div>'
+        +'<div class="muted">мастер записал '+n2(h.have)+' шт · в наряде '+n2(h.qty)+' шт</div>'
+        +'<button class="sec bdo'+(pick[n]===0?' on':'')+'" data-n="'+n+'" data-v="0">'+(h.qty>h.have?'Всего сделано '+n2(h.qty)+' — досдать '+n2(h.qty-h.have)+' шт':'Это те же детали — не сдавать')+'</button>'
+        +'<button class="sec bdo" data-n="'+n+'" data-v="1">Ещё '+n2(h.qty)+' шт сверх записанных мастером '+n2(h.have)+'</button></div>';
+    }).join('')
+    +'<div class="msg err" id="bdmsg"></div><div class="row" style="margin-top:var(--s-3)"><button id="askok">Отправить наряд</button><button class="sec" id="askno">Отмена</button></div></div>';
+  document.body.appendChild(d);
+  function close(){ if(d.parentNode) d.parentNode.removeChild(d); }
+  d.onclick=function(e){
+    var b=e.target&&e.target.closest?e.target.closest('.bdo'):null;
+    if(b){ var n=+b.getAttribute('data-n'); pick[n]=+b.getAttribute('data-v');
+      var all=d.querySelectorAll('.bdo[data-n="'+n+'"]'); for(var i=0;i<all.length;i++) all[i].classList.toggle('on', all[i]===b); }
+  };
+  document.getElementById('askno').onclick=function(){ close(); wmsg('Наряд не отправлен — строки остались в списке'); };
+  document.getElementById('askok').onclick=function(){
+    if(pick.indexOf(-1)>=0){ document.getElementById('bdmsg').textContent='Выберите вариант в каждой строке'; return; }
+    close();
+    // с конца, чтобы удаление строки не сдвигало номера остальных
+    hits.slice().sort(function(a,b){ return b.i-a.i; }).forEach(function(h){
+      var x=CART[h.i]; if(pick[hits.indexOf(h)]===1 || !x || x.dev || x.op!==h.op) return;
+      if(h.qty>h.have){ var q=n2(h.qty-h.have); x.sum=n2((x.sum||0)*q/(x.qty||q)); x.qty=q; }
+      else CART.splice(h.i,1);
+    });
+    renderCart(); saveDraft(); drawMyShifts();
+    var cp=cutPayload();
+    if(!CART.length && !(cp.sheets||[]).length && !(cp.saw||[]).length){ wmsg('<span class="ok">✅ Всё это уже записал мастер — отправлять нечего</span>'); return; }
+    BOARDOK=true; sendWork();
+  };
 }
 // ⚠ системный диалог ввода в Telegram WebView на телефоне работает ненадёжно (у директора «замирал»
 // экран на карандаше) — числа и текст спрашиваем своей плашкой внизу экрана. Enter = ОК, тап мимо = отмена.
@@ -1441,6 +1490,8 @@ function renderPending0(r){
         }
         // ⚠ дубль виден сразу: сверять наряды глазами мастер не должен
         var dupb=l.dup?(' <span class="pill bad" title="'+esc(l.dup)+'">⚠ дубль</span>'):'';
+        // то же уже подтверждено в другом наряде другим количеством (обычно мастер записал с доски) — одобрение прибавит сверху
+        if(!l.dup&&l.also&&l.also.qty>0) note.push('<span class="pill warn" title="наряд '+esc(l.also.rep)+'">⚠ за этот день уже подтверждено '+l.also.qty+' шт — эта строка прибавится сверху</span>');
         var ord=batchTag(l), sameO=(ord===pOrd)?' rep':'', sameP=(!x.wide&&sameO&&x.prod===pProd)?' rep':''; pOrd=ord; pProd=x.wide?null:x.prod;
         return '<div class="'+mcls+'">'
           +(x.wide?'<span class="jd wide">'+x.wide+'</span>':'<span class="jd">'+kindBadge(l)+x.det+dupb+'</span>')
