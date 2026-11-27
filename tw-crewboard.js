@@ -832,7 +832,7 @@
     doneBusy(true);
     send(p,function(r){
       closeDlg(); merge(r.rows);
-      if(r.same){ say(esc(f.p.name)+': '+esc(t.op)+' — уже записано '+esc(what)+', без изменений'); return; }
+      if(r.same){ say(esc(f.p.name)+': '+esc(t.op)+' — уже записано '+esc(what)+(r.cleared?'. Пометка «не согласен» снята — рабочий подтвердит запись заново':', без изменений')); return; }
       say('✓ '+esc(f.p.name)+': '+esc(t.op?(t.op+' — '+(r.fixed?'исправлено: было '+qtyS(r.was)+' → стало ':(r.was>0?'было '+qtyS(r.was)+' → всего ':''))+what):what)+(r.sum?' · '+qtyS(r.sum)+' р.':'')
         +(r.dup?' — уже записано, повтор пропущен':r.status==='qc_wait'?' — ждёт приёмку ОТК':r.status==='pending'?' — на проверке у мастера':'')
         +((r.warnings||[]).length?'<br><span class="err">'+esc(r.warnings.join(' · '))+'</span>':''));
