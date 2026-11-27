@@ -63,6 +63,16 @@
   /* коэффициент строки в проверке — поле прямо в строке, сохраняется вместе с нарядом */
   input.kin{ width:64px; display:inline-block; min-height:var(--h-sm); padding:0 var(--s-1); text-align:right; margin-left:var(--s-1); }
   input.kin.chg{ border-color:var(--amber); background:var(--amber-bg); }
+  /* журнал: сжатые карточки нарядов (владелец 27.11.2026) — шапка в одну строку, работы мелким шрифтом, правка по кнопке ✎ */
+  .card.jc{ padding:var(--s-2) var(--s-3); margin-bottom:var(--s-1); } .card.jc + .card.jc{ margin-top:var(--s-1); }
+  #jview{ flex:0 0 auto; } #jview button{ flex:0 0 auto; white-space:nowrap; }
+  .jc .jh{ flex-wrap:nowrap; align-items:baseline; } .jc .jh>span:first-child{ min-width:0; }
+  .jc .jsum{ display:inline-flex; align-items:center; gap:var(--s-2); white-space:nowrap; }
+  .jc .jl{ border-top:1px solid var(--line); margin-top:var(--s-1); padding-top:var(--s-1); font:var(--t-small); }
+  .jc .jl .row{ flex-wrap:nowrap; align-items:baseline; } .jc .jl .row>span:first-child{ min-width:0; } .jc .jl .row>span:last-child{ white-space:nowrap; }
+  .jc .jr{ border-top:1px solid var(--line); margin-top:var(--s-2); padding-top:var(--s-1); }
+  .jc .jr .jl:first-of-type{ border-top:0; margin-top:0; }
+  @media (max-width:640px){ .jc .jl .row{ flex-wrap:wrap; } }
   /* задание → наряд: количество и кнопка держатся вместе, на телефоне — под пальцем */
   #myshifts .tk, #brdmine .tk{ display:flex; align-items:center; gap:var(--s-2); margin-left:auto; }
   #myshifts .tk input.kin{ margin-left:0; }
@@ -260,6 +270,10 @@ function CARD(e){ return '<div style="padding:var(--s-4);line-height:1.5">'
     <select id="jbatch" onchange="renderJournal()"></select>
     <select id="jop" onchange="renderJournal()"></select>
     <select id="jdet" onchange="renderJournal()"></select>
+    <div class="seg" id="jview" title="как показывать наряды">
+      <button data-v="time" onclick="jSetView('time')" title="наряды подряд, как их подавали: новые сверху">🕐 По времени</button>
+      <button data-v="day" onclick="jSetView('day')" title="один блок на сотрудника и день, внутри — по времени подачи">👤 По сотрудникам</button>
+    </div>
   </div>
   <div class="sect">Журнал выработки</div>
   <div id="jpay"></div>
@@ -1655,6 +1669,18 @@ function fillJDetails(){
   if(keep){ sel.value=keep; if(!sel.value) sel.value=''; }
 }
 // перерисовка без запроса к серверу: фильтры по заказу, операции и детали применяются к уже полученным строкам
+// вид журнала помним в браузере; открытые на правку наряды — до перезагрузки страницы
+var JOPEN={};
+function jView(){ var v=''; try{ v=localStorage.getItem('tw_jview')||''; }catch(e){} return v==='time'?'time':'day'; }
+function jSetView(v){ try{ localStorage.setItem('tw_jview',v); }catch(e){} renderJournal(); }
+// открыть/свернуть правку наряда; набранные, но не сохранённые коэффициенты в других нарядах не теряем
+function jOpen(k){
+  var keep={}, q='#jlist input.kin', i, e, a=document.querySelectorAll(q+'.chg');
+  for(i=0;i<a.length;i++) keep[a[i].getAttribute('data-line')]=a[i].value;
+  JOPEN[k]=!JOPEN[k]; renderJournal();
+  a=document.querySelectorAll(q);
+  for(i=0;i<a.length;i++){ e=a[i]; if(keep[e.getAttribute('data-line')]!=null){ e.value=keep[e.getAttribute('data-line')]; kinChg(e); } }
+}
 function renderJournal(){ keepY(renderJournal0); }
 function renderJournal0(){
   var lst=document.getElementById('jlist'), pay=document.getElementById('jpay');
@@ -1697,13 +1723,16 @@ function renderJournal0(){
       if(gidx[key]==null){ gidx[key]=groups.length; groups.push({key:key,single:!it.report,worker:it.worker,date:it.date,submitted:it.submitted||'',shift:it.shift||'день',batch:it.batch,sum:0,lines:[]}); }
       var g=groups[gidx[key]]; g.sum+=it.sum; g.lines.push(it);
     });
-    // один наряд: inDay — он стоит внутри блока дня сотрудника (шапка с именем и датой — у блока, у наряда — время подачи и его сумма)
+    // Наряд показан сжато (владелец 27.11.2026: карточки были слишком большими): строка-шапка — кто, когда, заказ, сумма — и строки работ.
+    // Правка (смена, дата, коэффициенты, премия, количество, удаление) открывается кнопкой ✎ у наряда.
+    // inDay — наряд стоит внутри блока дня сотрудника: имя и дата — у блока.
     var repHtml=function(g,inDay){
       var rep=g.lines[0]&&g.lines[0].report||'', gsh=(g.lines[0]&&g.lines[0].shift)||'день', night=(gsh==='ночь');
+      var open=master&&!!JOPEN[g.key];
       var lines=g.lines.map(function(it){
-        var koef=kOf(it.koef), kbadge=(!master&&koef!==1)?' <span class="muted" style="font:var(--t-small)">×'+koef+'</span>':'';   // мастеру — поле в строке
+        var koef=kOf(it.koef), kbadge=(!open&&koef!==1)?' <span class="muted" style="font:var(--t-small)">×'+koef+'</span>':'';   // мастеру — поле в строке
         var acts = '';
-        if(master){
+        if(open){
           var del='<button class="sm sec" onclick="delJournal(\''+esc(it.id)+'\')">🗑</button><span id="jm-'+esc(it.id)+'" class="msg"></span>';
           acts = (it.kind==='подряд')       // сумма подрядчику и долг живут вместе — правим их в реестре
             ? ' <button class="sm sec" onclick="showTab(\'s\')" title="правка и удаление — во вкладке «Подряд», вместе с долгом в Фин.гении">🤝 в реестр</button>'
@@ -1725,16 +1754,16 @@ function renderJournal0(){
           ? '<div class="muted" style="font:var(--t-small)">🔎 принял '+esc(it.qcBy)+(it.qcAt?(' · '+esc(it.qcAt)):'')
             +(it.qcBad>0?(' · <span class="err">на переделку '+it.qcBad+' шт</span>'):'')+'</div>'
           : '';
-        return '<div id="j-'+esc(it.id)+'" style="border-top:1px solid var(--line);padding-top:var(--s-1)">'
+        return '<div id="j-'+esc(it.id)+'" class="jl">'
           +'<div class="row"><span>'+body+'</span><span>'+money+' '+acts+'</span></div>'+qc+'</div>';
       }).join('');
       var bonRid = rep||('_'+g.lines[0].id);
       // наряд подрядчика: премия, смена и дата управляют надбавками к ЗП, которой тут нет —
       // показывать их значит предлагать кнопки, на которые сервер ответит отказом
       var isSub = g.lines.length && g.lines.every(function(L){ return L.kind==='подряд'; });
-      var bonBtn = (master && !isSub) ? '<button class="sm sec" onclick="addBonus(\''+esc(bonRid)+'\',\''+esc(g.worker)+'\',\'j\')" title="премия за наряд">🎁 + премия</button>' : '';
-      var dateBtn = (master && !isSub) ? '<button class="sm sec" onclick="setRepDate(\''+esc(g.key)+'\',\''+esc(g.date)+'\',loadJournal)" title="за какой день работа">📅 дата</button>' : '';
-      var shiftCtl = isSub ? '' : (master && !g.single && rep)
+      var bonBtn = (open && !isSub) ? '<button class="sm sec" onclick="addBonus(\''+esc(bonRid)+'\',\''+esc(g.worker)+'\',\'j\')" title="премия за наряд">🎁 + премия</button>' : '';
+      var dateBtn = (open && !isSub) ? '<button class="sm sec" onclick="setRepDate(\''+esc(g.key)+'\',\''+esc(g.date)+'\',loadJournal)" title="за какой день работа">📅 дата</button>' : '';
+      var shiftCtl = (isSub||!open) ? '' : (master && !g.single && rep)
         ? '<div class="row" style="margin:var(--s-2) 0 0;justify-content:flex-start">'+shSeg(gsh,'setRepShiftJ',rep)+dateBtn+'</div>'
         : (master?('<div class="row" style="margin:var(--s-2) 0 0;justify-content:flex-start">'+(gsh!=='день'?'<span class="muted" style="font:var(--t-small);margin-right:var(--s-2)">'+shLbl(gsh)+'</span>':'')+dateBtn+'</div>')
                  : (gsh!=='день'?'<div class="muted" style="font:var(--t-small)">'+shLbl(gsh)+'</div>':''));
@@ -1757,41 +1786,38 @@ function renderJournal0(){
       // дата смены — заметной, как в приёмке и у мастера. Тут ничего не «горит», поэтому без
       // красного: журнал листают, чтобы найти нужный день, а не чтобы поймать просрочку.
       var what=((g.lines||[]).some(isCutLine)?batchTag({kind:'лист'}):((g.lines[0]&&g.lines[0].free)?batchTag(g.lines[0]):esc(g.batch)))
-          +(g.single?'':' · наряд')+' · '+g.lines.length+' оп.';
+          +' · '+g.lines.length+' оп.';
       // к оплате по наряду: подрядчик в зарплату не идёт; при фильтре (показана часть наряда) — сумма показанных принятых строк
       var total=isSub?0:(cut?g.lines.reduce(function(a,L){ return a+((L.status==='подтверждено'&&L.paid!==false)?(L.sum||0):0); },0):gbd.total);
-      if(inDay){
-        // время подачи: тот же день — только часы и минуты
-        var sb=String(g.submitted||''), tm=sb.indexOf(g.date)===0?sb.slice(g.date.length).trim():sb;
-        var extra=isSub||cut||gbd.premium>0||gbd.night>0||gbd.bonus>0;
-        return {total:total, html:'<div class="row"><span style="font:var(--t-small)">'+(tm?'<b>🕐 '+esc(tm)+'</b> · ':'')+'<span class="muted">'+what+(gsh!=='день'?' · '+shLbl(gsh):'')+'</span></span>'
-          +'<span>'+(isSub?'':'<b class="num">'+(Math.round(total*100)/100)+' р.</b> ')+bonBtn+'</span></div>'
-          +'<div id="bonbox-j-'+bonKey(bonRid)+'"></div>'
-          +shiftCtl+lines+koefCtl(g)+qcNote+(extra?bdHtml:'')};
-      }
-      return {total:total, html:'<div class="row"><b>'+esc(g.worker)+'</b>'
-        +'<span style="font:var(--t-small)">📅 <b>'+esc(g.date)+'</b> <span class="muted">'+shLbl(gsh)+'</span></span>'+bonBtn+'</div>'
-        +'<div class="muted" style="font:var(--t-small)">'+dayLine(g.worker,g.date)
-        +(g.submitted?'подан '+esc(g.submitted)+' · ':'')+what+'</div>'
+      // время подачи: в тот же день — только часы и минуты
+      var sb=String(g.submitted||''), tm=sb.indexOf(g.date)===0?sb.slice(g.date.length).trim():sb;
+      var extra=isSub||cut||gbd.premium>0||gbd.night>0||gbd.bonus>0;
+      var gear=master?'<button class="sm sec" onclick="jOpen(\''+esc(g.key)+'\')" title="'+(open?'свернуть правку':'править наряд: смена, дата, коэффициенты, премия, количество, удаление')+'">'+(open?'✕':'✎')+'</button>':'';
+      var dl=(open&&!inDay)?dayLine(g.worker,g.date):'';
+      return {total:total, html:'<div class="row jh"><span>'+(inDay?'':'<b>'+esc(g.worker)+'</b> <span class="muted">· '+esc(g.date)+' · </span>')
+          +'<span class="muted">'+(tm?'🕐 '+esc(tm)+' · ':'')+what+(gsh!=='день'?' · '+shLbl(gsh):'')+'</span></span>'
+          +'<span class="jsum">'+(isSub?'':'<b class="num">'+(Math.round(total*100)/100)+' р.</b>')+gear+'</span></div>'
+        +(dl?'<div class="muted" style="font:var(--t-small)">'+dl.replace(/ · $/,'')+'</div>':'')
+        +(open&&bonBtn?'<div class="row" style="justify-content:flex-start;margin-top:var(--s-1)">'+bonBtn+'</div>':'')
         +'<div id="bonbox-j-'+bonKey(bonRid)+'"></div>'
-        +shiftCtl+lines+koefCtl(g)+qcNote+bdHtml};
+        +shiftCtl+lines+(open?koefCtl(g):'')+qcNote+((extra||open)?bdHtml:'')};
     };
-    // Блок дня сотрудника (владелец 27.11.2026): наряды одного человека за один день — одним блоком, внутри — по времени подачи.
-    // Наряды остаются отдельными (у каждого своя проверка, смена, коэффициенты и премия) — сливается только показ.
+    // Вид журнала (владелец 27.11.2026): «по времени» — наряды подряд, как их подавали (новые сверху);
+    // «по сотрудникам» — блок на человека и день, внутри — по времени подачи. Наряды остаются отдельными
+    // (у каждого своя проверка, смена, коэффициенты и премия) — меняется только показ.
+    var byDay=jView()==='day', vb=document.querySelectorAll('#jview button');
+    for(var vi=0;vi<vb.length;vi++) vb[vi].className=(vb[vi].getAttribute('data-v')===(byDay?'day':'time'))?'on':'';
+    if(!byDay){ lst.innerHTML=groups.map(function(g){ return '<div class="card jc">'+repHtml(g,false).html+'</div>'; }).join(''); return; }
     var days=[], didx={}, nW=function(n){ var a=n%10, b=n%100; return (a===1&&b!==11)?'наряд':((a>=2&&a<=4&&(b<10||b>=20))?'наряда':'нарядов'); };
     groups.forEach(function(g){ var k=g.worker+'|'+g.date; if(didx[k]==null){ didx[k]=days.length; days.push({worker:g.worker,date:g.date,gs:[]}); } days[didx[k]].gs.push(g); });
     lst.innerHTML=days.map(function(d){
-      if(d.gs.length===1) return '<div class="card">'+repHtml(d.gs[0],false).html+'</div>';
       // журнал идёт от новых к старым; внутри дня — от первого наряда к последнему
       d.gs.reverse();
-      var tot=0, ops=0, parts=d.gs.map(function(g){ var x=repHtml(g,true); tot+=x.total; ops+=g.lines.length;
-        return '<div style="border-top:1px solid var(--line);margin-top:var(--s-3);padding-top:var(--s-2)">'+x.html+'</div>'; }).join('');
+      var tot=0, ops=0, parts=d.gs.map(function(g){ var x=repHtml(g,true); tot+=x.total; ops+=g.lines.length; return '<div class="jr">'+x.html+'</div>'; }).join('');
       // строка дня (приход–уход) уже несёт «за день N р» по всем нарядам — второе такое же число рядом не ставим; при фильтре — сумма показанного
       var dl=dayLine(d.worker,d.date), flt=!!(bf||of||df);
-      return '<div class="card"><div class="row"><b>'+esc(d.worker)+'</b>'
-        +'<span style="font:var(--t-small)">📅 <b>'+esc(d.date)+'</b></span>'
-        +(dl&&!flt?'<span></span>':'<span title="принято к оплате за день по показанным нарядам; то, что ждёт ОТК, не входит">'+((bf||of||df)?'по фильтру':'за день')+' <b class="ok num" style="font:var(--t-heading)">'+(Math.round(tot*100)/100)+' р.</b></span>')+'</div>'
-        +'<div class="muted" style="font:var(--t-small)">'+dl+d.gs.length+' '+nW(d.gs.length)+' · '+ops+' оп.</div>'
+      return '<div class="card jc"><div class="row jh"><span><b>'+esc(d.worker)+'</b> <span class="muted">· '+esc(d.date)+' · '+(dl?dl:'')+d.gs.length+' '+nW(d.gs.length)+' · '+ops+' оп.</span></span>'
+        +(dl&&!flt?'':'<span class="jsum" title="принято к оплате за день по показанным нарядам; то, что ждёт ОТК, не входит"><span class="muted">'+(flt?'по фильтру':'за день')+'</span> <b class="ok num">'+(Math.round(tot*100)/100)+' р.</b></span>')+'</div>'
         +parts+'</div>';
     }).join('');
   })();
