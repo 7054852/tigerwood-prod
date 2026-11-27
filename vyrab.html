@@ -63,6 +63,10 @@
   /* коэффициент строки в проверке — поле прямо в строке, сохраняется вместе с нарядом */
   input.kin{ width:64px; display:inline-block; min-height:var(--h-sm); padding:0 var(--s-1); text-align:right; margin-left:var(--s-1); }
   input.kin.chg{ border-color:var(--amber); background:var(--amber-bg); }
+  /* задание → наряд: количество и кнопка держатся вместе, на телефоне — под пальцем */
+  #myshifts .tk{ display:flex; align-items:center; gap:var(--s-2); margin-left:auto; }
+  #myshifts .tk input.kin{ margin-left:0; }
+  @media (max-width:640px){ #myshifts .tk input.kin{ width:76px; min-height:var(--h-ctl); } #myshifts .tk button{ min-height:var(--h-ctl); } }
   #askbox{ position:fixed; left:0; top:0; right:0; bottom:0; background:var(--scrim); z-index:60; display:flex; align-items:flex-end; }
   #askbox .ab{ width:100%; margin:0; border-radius:var(--r-card) var(--r-card) 0 0; padding:var(--s-3) var(--s-4) var(--s-5); }
   #askbox .abt{ font:var(--t-heading); margin-bottom:var(--s-2); white-space:pre-line; }
@@ -837,7 +841,7 @@ function setDate(off){ var d=new Date(); d.setDate(d.getDate()+off);
   var s=d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());
   var el=document.getElementById('wdate'); if(el) el.value=s; updateWhen(); saveDraft(); }
 // наглядно: за какую дату и смену будет отчёт
-function updateWhen(){ try{ renderDayTime(); }catch(e){} var el=document.getElementById('whenline'); if(!el) return;
+function updateWhen(){ try{ renderDayTime(); }catch(e){} try{ drawMyShifts(); }catch(e1){} var el=document.getElementById('whenline'); if(!el) return;
   var wd=(document.getElementById('wdate')||{}).value||'';
   var human=wd?wd.split('-').reverse().slice(0,2).join('.'):'—';
   el.innerHTML='📅 Отчёт за <b>'+human+'</b> · '+shLbl(SHIFT); }
@@ -908,7 +912,7 @@ function addDev(){
   document.getElementById('devh').value=''; document.getElementById('devnote').value=''; document.getElementById('devon').checked=false; devTgl();
   wmsg(''); renderCart(); saveDraft();
 }
-function rmCart(i){ CART.splice(i,1); renderCart(); saveDraft(); }
+function rmCart(i){ CART.splice(i,1); renderCart(); saveDraft(); drawMyShifts(); }
 function renderCart(){
   var c=document.getElementById('cart');
   if(!CART.length){ c.innerHTML=''; renderTotals(); return; }
@@ -1006,7 +1010,7 @@ function renderWhoBar(){
     +(self?'':'<button class="sm sec" onclick="backToSelf()">за себя</button>')+'</div>';
 }
 function backToSelf(){ var ws=document.getElementById('worker'); if(ws){ ws.value=DATA.worker||''; onWorkerChange(); } }
-function onWorkerChange(){ pkSync('ww'); siteForWorker(); renderWhoBar(); renderTotals(); saveDraft(); renderDayTime(); if(hasProxy()){ try{ loadPending(); }catch(e){} } }
+function onWorkerChange(){ pkSync('ww'); siteForWorker(); renderWhoBar(); renderTotals(); saveDraft(); renderDayTime(); loadMyShifts(); if(hasProxy()){ try{ loadPending(); }catch(e){} } }
 
 // ── ДОПОЛНЕНИЕ НАРЯДА: рабочий вспомнил операции, пока мастер не проверил ──
 var ADDTO='', ADDINFO='';
@@ -1094,7 +1098,7 @@ function sendWork(){
       var w=(r.warnings&&r.warnings.length)?('<br><span class="muted">'+r.warnings.map(esc).join('<br>')+'</span>'):'';
       wmsg('<span class="ok">✅ '+(r.added?'Добавлено в наряд: ':'Наряд отправлен: ')+parts.join(' + ')+' на <b>'+r.sum+' руб.</b> (на проверке)</span>'+w);
       CART=[]; ADDTO=''; ADDINFO=''; clearDraft(); cutReset();
-      renderAddBanner(); renderCart(); loadMySummary(); loadCutLog();
+      renderAddBanner(); renderCart(); loadMySummary(); loadCutLog(); MYSIG=''; loadMyShifts();
       try{ loadPending(); }catch(e){}
     }
     else wmsg('<span class="err">⚠️ '+esc((r&&r.error)||'ошибка')+'</span>');
@@ -2575,64 +2579,94 @@ function doRegister(){
   document.getElementById('jfrom').value=n.getFullYear()+'-'+m+'-01';
   document.getElementById('jto').value=today;
   document.getElementById('wdate').value=today; updateWhen(); })();
-// «Мои смены» из табеля: работник видит, когда ему выходить (день/ночь) и отметку выхода
+// «Мои смены» из табеля: работник видит, когда ему выходить (день/ночь) и отметку выхода.
+// 27.11.2026: наряд вносят за рабочего — показываем ЕГО задание; количество правится перед «＋ в наряд»;
+// задания, добавленные на доске днём, подтягиваются сами (раз в минуту и при возврате на раздел).
+var MYTASK=null, MYDATA=null, MYSIG='';
+function taskOther(){ var w=curWorker(); return (w&&w!==DATA.worker)?w:''; }
 function loadMyShifts(){
-  var el=document.getElementById('myshifts'); if(!el||!TGID) return;
-  api({vapi:'myshifts',tgid:TGID}).then(function(r){
-    var sh=(r&&r.shifts)||[]; if(!sh.length){ el.innerHTML=''; return; }
-    var today=r.today||'';
-    var chips=sh.map(function(s){
-      var p=s.date.split('-'), lbl=(s.date===today)?'сегодня':(p[2]+'.'+p[1]);
-      var st=(s.status==='вышел')?' ✅':(s.status==='не вышел'?' ✖':'');
-      return '<span class="pill '+(s.shift==='ночь'?'info':'warn')+'" style="margin:0 var(--s-1) var(--s-1) 0">'
-        +shIco(s.shift)+' '+lbl+st+(s.group?(' · '+esc(s.group)):'')+'</span>';
-    }).join('');
-    // ЗАДАНИЕ. Мастер расставляет работу с вечера, но до сих пор рабочий этого не видел —
-    // расстановка оставалась заметкой в таблице. Теперь задание здесь, и его можно взять в наряд.
-    var task='';
-    for(var i=0;i<sh.length;i++){
-      var s=sh[i]; if(!s.tasks||!s.tasks.length) continue;
-      if(s.date<today) continue;                        // вчерашнее задание уже не выдаём
-      var p=s.date.split('-'), when=(s.date===today)?'сегодня':('на '+p[2]+'.'+p[1]);
-      MYTASK=s;
-      var rows=s.tasks.map(function(t,j){
-        var done=(t.factQty>0)?('<span class="ok" style="font:var(--t-small)">сдал '+t.factQty+'</span> '):'';
-        // задание с доски расстановки: со временем; бывает просто текстом — его в наряд не взять
-        var hm=function(m){ return (Math.floor(m/60)%24)+':'+('0'+(m%60)).slice(-2); };
-        var tm=(t.start!=null&&t.dur)?('<span class="muted">'+hm(t.start)+'–'+hm(t.start+t.dur)+'</span> '):'';
-        if(!t.op) return '<div class="row" style="align-items:center;gap:var(--s-2)"><span style="flex:1;min-width:150px">'+tm+esc(t.title||'')+'</span></div>';
-        return '<div class="row" style="align-items:center;gap:var(--s-2)"><span style="flex:1;min-width:150px">'
-          +tm+esc(t.op)+(t.detail?(' · <b>'+esc(t.detail)+'</b>'):'')+' — '+t.qty+' шт'+(t.title?('<br><i class="muted">✎ '+esc(t.title)+'</i>'):'')+'</span>'
-          +done+'<button class="sm sec" onclick="takeTask('+j+')">＋ в наряд</button></div>';
-      }).join('');
-      task='<div class="card" style="margin-bottom:var(--s-3);background:var(--accent-bg);border-color:transparent">'
-        +'<div class="row"><b>📋 Задание '+when+'</b>'
-        +'<span class="muted" style="margin-left:auto">'+shLbl(s.shift)+(s.group?(' · '+esc(s.group)):'')+'</span></div>'
-        +rows
-        +'<div class="row" style="margin-top:var(--s-2)"><span class="muted" style="flex:1">примерно '+(s.planRub||0)+' р.'
-        +((s.factRub>0)?(' · сдано на '+s.factRub+' р.'):'')+'</span>'
-        +'<button class="sm" onclick="takeAllTasks()">Взять всё в наряд</button></div></div>';
-      break;
-    }
-    el.innerHTML=task+'<div class="card" style="margin-bottom:var(--s-3)"><b>📅 Мои смены</b><div style="margin-top:var(--s-1)">'+chips+'</div></div>';
+  // без проверки TGID: вошедший по коду (без Telegram) тоже вносит наряды за рабочих; кто спрашивает — решает сервер
+  var el=document.getElementById('myshifts'); if(!el) return;
+  var other=taskOther(), q={vapi:'myshifts'}; if(other) q.worker=other;
+  api(q).then(function(r){
+    // пока шёл ответ, выбрали другого человека
+    if(other!==taskOther()) return;
+    // сервер не подтвердил, чьё задание (старая версия вернула бы моё) — чужое не показываем
+    if(other&&(!r||r.worker!==other)) r={shifts:[]};
+    var sig=other+'|'+JSON.stringify((r&&r.shifts)||[]);
+    if(sig===MYSIG) return;
+    // человек вводит количество — не перерисовываем под пальцем, подтянем следующим заходом
+    var a=document.activeElement; if(a&&a.tagName==='INPUT'&&el.contains(a)) return;
+    MYSIG=sig; MYDATA={r:r||{},other:other}; drawMyShifts();
   }).catch(function(){});
 }
+function taskInCart(t){ for(var i=0;i<CART.length;i++) if(t.id&&CART[i].task===t.id) return CART[i]; return null; }
+function drawMyShifts(){
+  var el=document.getElementById('myshifts'); if(!el||!MYDATA) return;
+  var r=MYDATA.r, other=MYDATA.other, sh=r.shifts||[]; MYTASK=null;
+  if(!sh.length){ el.innerHTML=''; return; }
+  var today=r.today||'';
+  var chips=other?'':sh.map(function(s){
+    var p=s.date.split('-'), lbl=(s.date===today)?'сегодня':(p[2]+'.'+p[1]);
+    var st=(s.status==='вышел')?' ✅':(s.status==='не вышел'?' ✖':'');
+    return '<span class="pill '+(s.shift==='ночь'?'info':'warn')+'" style="margin:0 var(--s-1) var(--s-1) 0">'
+      +shIco(s.shift)+' '+lbl+st+(s.group?(' · '+esc(s.group)):'')+'</span>';
+  }).join('');
+  // задание того дня, за который вносят наряд (дата в форме); иначе — ближайшее от сегодня. Вчерашнее само не выдаём.
+  var wd=document.getElementById('wdate'), fd=(wd&&wd.value)||'', pick=null, i;
+  for(i=0;i<sh.length;i++) if(sh[i].date===fd&&sh[i].tasks&&sh[i].tasks.length){ pick=sh[i]; break; }
+  if(!pick) for(i=0;i<sh.length;i++) if(sh[i].date>=today&&sh[i].tasks&&sh[i].tasks.length){ pick=sh[i]; break; }
+  var task='';
+  if(pick){
+    var s=pick, p=s.date.split('-'), when=(s.date===today)?'сегодня':('на '+p[2]+'.'+p[1]);
+    MYTASK=s;
+    var hm=function(m){ return (Math.floor(m/60)%24)+':'+('0'+(m%60)).slice(-2); };
+    var rows=s.tasks.map(function(t,j){
+      // задание с доски расстановки: со временем; бывает просто текстом — его в наряд не взять
+      var tm=(t.start!=null&&t.dur)?('<span class="muted">'+hm(t.start)+'–'+hm(t.start+t.dur)+'</span> '):'';
+      if(!t.op) return '<div class="row" style="align-items:center;gap:var(--s-2)"><span style="flex:1;min-width:150px">'+tm+esc(t.title||'')+'</span></div>';
+      var c=taskInCart(t), left=(t.factQty>0)?Math.max(0,t.qty-t.factQty):t.qty;
+      var done=(t.factQty>0)?('<span class="ok" style="font:var(--t-small)">сдано '+t.factQty+'</span>'):'';
+      return '<div class="row" style="align-items:center;gap:var(--s-2)"><span style="flex:1;min-width:150px">'
+        +tm+esc(t.op)+(t.detail?(' · <b>'+esc(t.detail)+'</b>'):'')+' — '+t.qty+' шт'+(t.title?('<br><i class="muted">✎ '+esc(t.title)+'</i>'):'')+'</span>'
+        +'<span class="tk">'+done+'<input class="kin" id="tq-'+j+'" type="number" inputmode="decimal" min="0" step="any" value="'+(c?c.qty:(left||''))+'" title="сколько сделано" aria-label="сколько сделано, шт">'
+        +'<button class="sm'+(c?'':' sec')+'" onclick="takeTask('+j+')">'+(c?'✓ в наряде':'＋ в наряд')+'</button></span></div>';
+    }).join('');
+    task='<div class="card" style="margin-bottom:var(--s-3);background:var(--accent-bg);border-color:transparent">'
+      +'<div class="row"><b>📋 Задание '+(other?(esc(other)+' · '):'')+when+'</b>'
+      +'<span class="muted" style="margin-left:auto">'+shLbl(s.shift)+(s.group?(' · '+esc(s.group)):'')+'</span></div>'
+      +rows
+      +'<div class="row" style="margin-top:var(--s-2)"><span class="muted" style="flex:1">примерно '+(s.planRub||0)+' р.'
+      +((s.factRub>0)?(' · сдано на '+s.factRub+' р.'):'')+' · количество можно поправить</span>'
+      +'<button class="sm" onclick="takeAllTasks()">Взять всё в наряд</button></div></div>';
+  }
+  el.innerHTML=task+(chips?('<div class="card" style="margin-bottom:var(--s-3)"><b>📅 Мои смены</b><div style="margin-top:var(--s-1)">'+chips+'</div></div>'):'');
+}
 // задание → корзина наряда. Расценку и партию всё равно пересчитает сервер при подаче,
-// поэтому здесь достаточно оборудования, детали, операции и количества.
-var MYTASK=null;
-function takeTask(j){
+// поэтому здесь достаточно оборудования, детали, операции и количества (расценка плана — чтобы сумма в наряде была не нулевой).
+function takeTask(j,quiet){
   if(!MYTASK||!MYTASK.tasks[j]) return;
   var t=MYTASK.tasks[j]; if(!t.op) return;
-  var left=(t.factQty>0)?Math.max(0,t.qty-t.factQty):t.qty;
-  if(!(left>0)){ wmsg('<span class="muted">по этой работе задание уже сдано</span>'); return; }
-  var eq=t.eq||'', bsel=document.getElementById('batch');
-  CART.push({equip:eq, detail:t.detail, op:t.op, qty:left, rate:0, sum:0,
-             batch:t.order||'', batchName:t.order?'':'🧰 вне заказа', fromTask:1});
-  renderCart(); saveDraft();
-  wmsg('<span class="ok">Добавлено в наряд: '+esc(t.op)+' · '+left+' шт</span>');
+  var inp=document.getElementById('tq-'+j), q=inp?Number(String(inp.value).replace(',','.')):NaN;
+  if(!(q>0)){ if(!quiet) wmsg(inp&&String(inp.value).trim()?'<span class="err">Количество — число больше нуля</span>':'<span class="muted">По этой работе задание уже сдано — впишите количество, если сделано ещё</span>'); return; }
+  var eq=t.eq||'', bsel=document.getElementById('batch'), bn='', k;
+  if(t.order&&bsel) for(k=0;k<bsel.options.length;k++) if(bsel.options[k].value===t.order) bn=bsel.options[k].text;
+  var rate=Number(t.rate)||0, it={equip:eq, detail:t.detail, op:t.op, qty:q, rate:rate, sum:Math.round(q*rate*100)/100,
+             batch:t.order||'', batchName:t.order?bn:'🧰 вне заказа', fromTask:1, task:t.id||''};
+  // повторное нажатие меняет количество, а не добавляет вторую строку
+  var c=taskInCart(t);
+  if(c){ c.qty=q; c.sum=it.sum; } else CART.push(it);
+  renderCart(); saveDraft(); drawMyShifts();
+  wmsg('<span class="ok">'+(c?'В наряде исправлено: ':'Добавлено в наряд: ')+esc(t.op)+' · '+q+' шт</span>');
   if(!eq) wmsg('<span class="err">Проверьте изделие у строки — в задании оно не указано</span>');
 }
-function takeAllTasks(){ if(!MYTASK) return; for(var j=0;j<MYTASK.tasks.length;j++) takeTask(j); }
+function takeAllTasks(){
+  if(!MYTASK) return;
+  // сначала читаем все поля: первое же добавление перерисовывает карточку
+  var v=[], j, e; for(j=0;j<MYTASK.tasks.length;j++){ e=document.getElementById('tq-'+j); v.push(e?e.value:''); }
+  for(j=0;j<MYTASK.tasks.length;j++){ e=document.getElementById('tq-'+j); if(e){ e.value=v[j]; takeTask(j,1); } }
+}
+setInterval(function(){ if(!document.hidden&&CURTAB==='w') loadMyShifts(); },60000);
 MODE = (WANT_CHECK && DATA.canCheck) ? 'master' : 'my';   // из кэша прошлого входа
 applyMode();
 if(WANT_CHECK && DATA.canCheck){ TABSET=1; showTab('m'); }   // мастеру сразу «Проверка», без перескока
@@ -2692,7 +2726,7 @@ loadMyShifts();
 (function(){
   try{ var m=/[?&]twsec=([^&]+)/.exec(location.search); window.top.postMessage({tw:'hello',sec:m?decodeURIComponent(m[1]):''},'*'); }catch(e){}
   window.addEventListener('message',function(e){ var d=e&&e.data; if(d&&d.tw==='refresh'){ try{ 
-load();try{if(document.getElementById("pane-m").style.display!=="none")loadPending();}catch(e2){}try{if(document.getElementById("pane-j").style.display!=="none")loadJournal();}catch(e3){} }catch(err){} } });
+load();try{loadMyShifts();}catch(e0){}try{if(document.getElementById("pane-m").style.display!=="none")loadPending();}catch(e2){}try{if(document.getElementById("pane-j").style.display!=="none")loadJournal();}catch(e3){} }catch(err){} } });
 })();
 </script>
 </body>
