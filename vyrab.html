@@ -64,9 +64,9 @@
   input.kin{ width:64px; display:inline-block; min-height:var(--h-sm); padding:0 var(--s-1); text-align:right; margin-left:var(--s-1); }
   input.kin.chg{ border-color:var(--amber); background:var(--amber-bg); }
   /* задание → наряд: количество и кнопка держатся вместе, на телефоне — под пальцем */
-  #myshifts .tk{ display:flex; align-items:center; gap:var(--s-2); margin-left:auto; }
+  #myshifts .tk, #brdmine .tk{ display:flex; align-items:center; gap:var(--s-2); margin-left:auto; }
   #myshifts .tk input.kin{ margin-left:0; }
-  @media (max-width:640px){ #myshifts .tk input.kin{ width:76px; min-height:var(--h-ctl); } #myshifts .tk button{ min-height:var(--h-ctl); } }
+  @media (max-width:640px){ #myshifts .tk input.kin{ width:76px; min-height:var(--h-ctl); } #myshifts .tk button, #brdmine .tk button{ min-height:var(--h-ctl); } }
   #askbox{ position:fixed; left:0; top:0; right:0; bottom:0; background:var(--scrim); z-index:60; display:flex; align-items:flex-end; }
   #askbox .ab{ width:100%; margin:0; border-radius:var(--r-card) var(--r-card) 0 0; padding:var(--s-3) var(--s-4) var(--s-5); }
   #askbox .abt{ font:var(--t-heading); margin-bottom:var(--s-2); white-space:pre-line; }
@@ -161,6 +161,7 @@ function CARD(e){ return '<div style="padding:var(--s-4);line-height:1.5">'
 <div id="pane-w">
   <div id="addbanner"></div>
   <div id="mysum"></div>
+  <div id="brdmine"></div>
   <div id="myshifts"></div>
   <div class="sect">Новый наряд</div>
   <div class="meta" id="who"></div>
@@ -2666,7 +2667,47 @@ function takeAllTasks(){
   var v=[], j, e; for(j=0;j<MYTASK.tasks.length;j++){ e=document.getElementById('tq-'+j); v.push(e?e.value:''); }
   for(j=0;j<MYTASK.tasks.length;j++){ e=document.getElementById('tq-'+j); if(e){ e.value=v[j]; takeTask(j,1); } }
 }
-setInterval(function(){ if(!document.hidden&&CURTAB==='w') loadMyShifts(); },60000);
+// «Вам записали» (владелец 27.11.2026): работу отметили выполненной с доски расстановки — она уже в наряде.
+// Рабочий видит запись и отвечает «верно» или «не так» (с пояснением — оно уходит тому, кто записал).
+var BRD=[];
+function loadBoardMine(){
+  var el=document.getElementById('brdmine'); if(!el) return;
+  api({vapi:'crewmine'}).then(function(r){
+    var a=document.activeElement; if(a&&a.tagName==='INPUT'&&el.contains(a)) return;
+    BRD=(r&&r.reports)||[];
+    if(!BRD.length){ el.innerHTML=''; return; }
+    var rows=BRD.map(function(g,i){
+      var p=g.date.split('-'), what=g.lines.map(function(l){
+        return (l.op?(esc(l.op)+(l.detail?(' · <b>'+esc(l.detail)+'</b>'):'')+' — '+l.qty+' шт'):esc(l.note||'работа'))+(l.wait?(' <span class="muted">(ждёт: '+esc(l.wait)+')</span>'):'');
+      }).join('<br>');
+      return '<div class="row" style="border-top:1px solid var(--line);padding-top:var(--s-2);align-items:center;gap:var(--s-2)">'
+        +'<span style="flex:1;min-width:150px">'+what+'<br><span class="muted" style="font:var(--t-small)">'+p[2]+'.'+p[1]+' · '+String(Math.round(g.sum*100)/100).replace('.',',')+' р. · записал(а) '+esc(g.by)+'</span></span>'
+        +'<span class="tk"><button class="sm" onclick="brdAck('+i+',1)">✅ Верно</button><button class="sm sec" onclick="brdNo('+i+')">✋ Не так</button></span>'
+        +'<div id="bno-'+i+'" hidden style="flex-basis:100%;display:none;gap:var(--s-2)"><input id="bnt-'+i+'" placeholder="что не так: сколько сделано на самом деле" style="flex:1;min-width:0"><button class="sm" onclick="brdAck('+i+',0)">Отправить</button></div>'
+        +'<span class="msg" id="bms-'+i+'" style="flex-basis:100%"></span></div>';
+    }).join('');
+    el.innerHTML='<div class="card" id="brdcard" style="margin-bottom:var(--s-3);background:var(--blue-bg);border-color:transparent">'
+      +'<div class="row"><b>📝 Вам записали</b><span class="muted" style="margin-left:auto">работа уже в наряде — проверьте</span></div>'+rows
+      +(BRD.length>1?'<div class="row" style="margin-top:var(--s-2);justify-content:flex-end"><button class="sm" onclick="brdAckAll()">✅ Всё верно ('+BRD.length+')</button></div>':'')+'</div>';
+  }).catch(function(){});
+}
+function brdNo(i){ var b=document.getElementById('bno-'+i); if(!b) return; b.hidden=false; b.style.display='flex'; var t=document.getElementById('bnt-'+i); if(t) t.focus(); }
+function brdAck(i,ok){
+  var g=BRD[i], m=document.getElementById('bms-'+i); if(!g) return;
+  var q={vapi:'crewack',report:g.report,ok:ok?1:0};
+  if(!ok){ var t=document.getElementById('bnt-'+i), v=t?t.value.trim():''; if(!v){ if(m) m.innerHTML='<span class="err">Напишите, что не так</span>'; return; } q.note=v; }
+  if(m) m.textContent='…';
+  return api(q).then(function(r){
+    if(!r||!r.ok){ if(m) m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; return; }
+    if(document.activeElement&&document.activeElement.blur) document.activeElement.blur();
+    loadBoardMine();
+  }).catch(function(){ if(m) m.innerHTML='<span class="err">ошибка сети</span>'; });
+}
+function brdAckAll(){
+  var list=BRD.slice(), i=0;
+  (function next(){ if(i>=list.length){ loadBoardMine(); return; } api({vapi:'crewack',report:list[i++].report,ok:1}).then(next).catch(function(){ loadBoardMine(); }); })();
+}
+setInterval(function(){ if(!document.hidden&&CURTAB==='w'){ loadMyShifts(); loadBoardMine(); } },60000);
 MODE = (WANT_CHECK && DATA.canCheck) ? 'master' : 'my';   // из кэша прошлого входа
 applyMode();
 if(WANT_CHECK && DATA.canCheck){ TABSET=1; showTab('m'); }   // мастеру сразу «Проверка», без перескока
@@ -2720,13 +2761,13 @@ document.addEventListener('click',function(e){
 })();
 
 load();          // сервер уточнит права и, если надо, поправит экран
-loadMyShifts();
+loadMyShifts(); loadBoardMine();
 
 // авто-обновление: оболочка шлёт «refresh» при возврате на раздел — перечитываем данные без перезагрузки страницы
 (function(){
   try{ var m=/[?&]twsec=([^&]+)/.exec(location.search); window.top.postMessage({tw:'hello',sec:m?decodeURIComponent(m[1]):''},'*'); }catch(e){}
   window.addEventListener('message',function(e){ var d=e&&e.data; if(d&&d.tw==='refresh'){ try{ 
-load();try{loadMyShifts();}catch(e0){}try{if(document.getElementById("pane-m").style.display!=="none")loadPending();}catch(e2){}try{if(document.getElementById("pane-j").style.display!=="none")loadJournal();}catch(e3){} }catch(err){} } });
+load();try{loadMyShifts();loadBoardMine();}catch(e0){}try{if(document.getElementById("pane-m").style.display!=="none")loadPending();}catch(e2){}try{if(document.getElementById("pane-j").style.display!=="none")loadJournal();}catch(e3){} }catch(err){} } });
 })();
 </script>
 </body>

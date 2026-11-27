@@ -11,6 +11,7 @@
   var num=function(v){ return Number(String(v==null?'':v).replace(/\s/g,'').replace(',','.'))||0; };
   var n1=function(x){ return (Math.round(x*10)/10).toLocaleString('ru-RU'); };
   var money=function(x){ return (Math.round(x*100)/100).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2}); };
+  var r2=function(x){ return Math.round(x*100)/100; };
   var qtyS=function(x){ return (Math.round(x*100)/100).toLocaleString('ru-RU'); };
   var hm=function(m){ m=Math.round(m); return (Math.floor(m/60)%24)+':'+('0'+(m%60)).slice(-2); };
   var hm2=function(m){ return ('0'+(Math.floor(m/60)%24)).slice(-2)+':'+('0'+(m%60)).slice(-2); };
@@ -150,16 +151,18 @@
   function blkHtml(t,sc){
     var free=!t.op, h=hintOf(t), col=free?'':colorOf(t.group);
     var l=(t.start-sc.from)/sc.span*100, w=t.dur/sc.span*100;
-    var pct=(!free&&t.qty>0&&t.done>0)?Math.min(100,Math.round(t.done/t.qty*100)):0;
+    // сделанная часть блока (владелец 27.11.2026): блок делится на «сделано» и остаток; текстовая работа — отмечена целиком
+    var pct=free?(t.dn>0?100:0):((t.qty>0&&t.done>0)?Math.min(100,Math.round(t.done/t.qty*100)):0);
+    var left=(!free&&pct<100&&t.done>0)?Math.max(0,t.qty-t.done):0, over=(!free&&t.done>t.qty)?(t.done-t.qty):0;
     var noted=!free&&!!t.title, so=free?'':shortOp(t.op);
-    return '<div class="cb-blk'+col+(free?' free':'')+(h&&h.warn?' warn':'')+(noted?' noted':'')+(pct>=100?' done':'')+'" data-id="'+esc(t.id)+'" data-k="'+esc(lc(t.order+'|'+t.detail))+'"'
+    return '<div class="cb-blk'+col+(free?' free':'')+(h&&h.warn?' warn':'')+(noted?' noted':'')+(pct>=100?' done':(pct?' part':''))+(t.nack?' nack':'')+'" data-id="'+esc(t.id)+'" data-k="'+esc(lc(t.order+'|'+t.detail))+'"'
       +' style="left:'+l.toFixed(3)+'%;width:'+w.toFixed(3)+'%">'
-      +(free?('<span class="cb-t cb-t2">'+esc(t.title)+'</span>')
+      +(free?('<span class="cb-t cb-t2">'+(pct?'<i class="cb-ok">✓</i>':'')+esc(t.title)+(t.rub>0?' <i class="cb-rub">'+qtyS(t.rub)+' р.</i>':'')+'</span>')
         :('<span class="cb-t"><b>'+(S.pr&&S.prCh[t.id]?'<i class="cb-ch k'+S.prCh[t.id].k+'">'+S.prCh[t.id].tag+'</i>':'')+(so!==t.op?'<span class="cb-of">'+esc(t.op)+'</span><span class="cb-os">'+esc(so)+'</span>':esc(t.op))+'</b>'+((t.model||t.detail)?'<i class="cb-sep"> · </i><span class="cb-d">'+esc(t.model||t.detail)+'</span>':'')+'</span>'
           // значок примечания — сразу после партии (владелец 22.11.2026: в правом углу блока его плохо видно); строка сжимается, значок — нет
-          +'<span class="cb-s"><span class="cb-sx">'+qtyS(t.qty)+' шт'+(t.order?' · '+esc(t.order):'')+'</span>'+(t.title?'<i class="cb-nb" title="есть примечание">✎</i>':'')+(t.done>0?'<span class="cb-sx"> · сдано '+qtyS(t.done)+'</span>':'')+'</span>'
+          +'<span class="cb-s"><span class="cb-sx">'+qtyS(t.qty)+' шт'+(t.order?' · '+esc(t.order):'')+'</span>'+(t.title?'<i class="cb-nb" title="есть примечание">✎</i>':'')+(t.done>0?'<span class="cb-sx cb-dn"> · ✓ '+qtyS(t.done)+(left?' · <b>ост. '+qtyS(left)+'</b>':(over?' · +'+qtyS(over):''))+'</span>':'')+'</span>'
           +(t.title?'<span class="cb-note"><i>✎</i>'+esc(t.title)+'</span>':'')))
-      +(pct?'<i class="cb-fill" style="width:'+pct+'%"></i>':'')+'<span class="cb-rv" title="потяните вниз или вверх — разделить работу с соседями"></span><span class="cb-rz"></span></div>';
+      +(pct?'<i class="cb-fill" style="width:'+(pct>=100?'100%':'min('+pct+'%, calc(100% - 9px))')+'"></i>':'')+'<span class="cb-rv" title="потяните вниз или вверх — разделить работу с соседями"></span><span class="cb-rz"></span></div>';
   }
   // наряд за день (владелец 27.11.2026): '' — судить не о чем (день впереди, «не вышел», окладник, сервер ещё не отдаёт признак),
   // 'ok' — наряд сдан, 'no' — день прошёл, человек стоял в смене, наряда нет. За сегодня «нет» не пишем: наряд сдают вечером.
@@ -707,7 +710,22 @@
       TWPICK.cbw={ val:'cbWho', must:true, rows:function(){ return names(); }, done:function(){} };
       TWPICK.cbv={ val:'cbWith', allLabel:'— делает один —', rows:function(){ return names($('cbWho').value); }, done:withTip };
     }
-    openDlg('edit',(free?('<div class="cb-f wide"><label>Что делать</label><textarea id="cbTitle" rows="1">'+esc(t.title)+'</textarea></div>')
+    // «✓ Выполнено» (владелец 27.11.2026): отметка — строка наряда за рабочего; количество может отличаться от плана.
+    // Работа текстом — сумма вручную (пусто — без оплаты). День впереди — отмечать нечего.
+    var canDone=!!(S.d&&S.d.can)&&S.d.date<=S.d.today, left=free?0:Math.max(0,r2(t.qty-(t.done||0))), doneHtml='';
+    if(canDone){
+      var undoB=t.board?'<button class="gho sm" onclick="twCrewBoard._undone()" title="убрать последнюю запись, сделанную с доски">снять отметку</button>':'';
+      if(free) doneHtml=t.dn>0
+        ?'<div class="cb-donebox"><span class="cb-hint ok">✓ Отмечено'+(t.rub>0?' · '+qtyS(t.rub)+' р.':' · без оплаты')+'</span><span class="cb-sp"></span>'+undoB+'</div>'
+        :'<div class="cb-donebox"><label for="cbSum">Сумма, р.</label><input id="cbSum" inputmode="decimal" autocomplete="off" placeholder="без оплаты"'+(S.d.can.approve?'':' disabled title="сумму ставит тот, кто одобряет наряды"')+'>'
+          +'<button class="green" id="cbDoneBtn" onclick="twCrewBoard._done()">✓ Выполнено</button></div>';
+      else doneHtml='<div class="cb-donebox"><label for="cbDone">Сделано, шт</label><span class="cb-step"><button class="sec" data-st="-1" aria-label="меньше">−</button>'
+          +'<input id="cbDone" inputmode="decimal" autocomplete="off" value="'+(left?String(left).replace('.',','):'')+'"><button class="sec" data-st="1" aria-label="больше">＋</button></span>'
+          +'<button class="green" id="cbDoneBtn" onclick="twCrewBoard._done()">✓ Выполнено</button>'
+          +(t.done>0?'<div class="cb-hint ok wide">записано '+qtyS(t.done)+' из '+qtyS(t.qty)+' шт'+(t.wait?' · ждёт: '+esc(t.wait):'')+' '+undoB+'</div>':'')
+          +(t.nack?'<div class="cb-hint warn wide">рабочий ответил «не так» — проверьте количество</div>':'')+'</div>';
+    }
+    openDlg('edit',doneHtml+(free?('<div class="cb-f wide"><label>Что делать</label><textarea id="cbTitle" rows="1">'+esc(t.title)+'</textarea></div>')
         :('<div class="cb-picked"><span class="cb-dot'+colorOf(t.group)+'" id="cbHeadDot"></span><span id="cbHead"><b>'+esc(t.op)+'</b>'+(t.model?' · '+esc(t.model):(t.detail?' · '+esc(t.detail):''))
           +'<i>'+esc([t.order,t.group,t.rate?String(t.rate).replace('.',',')+' ₽/шт':''].filter(Boolean).join(' · '))+'</i></span>'
           +'<span class="cb-sp"></span><button class="gho sm" id="cbSwapBtn" title="назначили не ту деталь или операцию — выбрать другую, не удаляя блок: время, человек и количество останутся">✎ заменить</button></div>'
@@ -719,7 +737,7 @@
       +'<div class="cb-f"><label for="cbwq">Кому</label>'+(pk?pkHtml('cbw','🔎 имя или фамилия',f.p.name):'<select id="cbWho">'+opts+'</select>')+'</div>'
       +(people().length>1?'<div class="cb-f"><label for="cbvq">Вместе с</label>'+(pk?pkHtml('cbv','— делает один —','')
         :'<select id="cbWith"><option value="">— делает один —</option>'+people().filter(function(p){ return p.name!==f.p.name; }).map(function(p){ return '<option>'+esc(p.name)+'</option>'; }).join('')+'</select>')+'<span class="cb-dur" id="cbWithTip"></span></div>':'')
-      +(h?'<div class="cb-hint'+(h.warn?' warn':'')+'">'+esc(hintText(t,h))+'</div>':'')+(t.done>0?'<div class="cb-hint ok">сдано нарядами: '+qtyS(t.done)+' из '+qtyS(t.qty)+' шт</div>':'')
+      +(h?'<div class="cb-hint'+(h.warn?' warn':'')+'">'+esc(hintText(t,h))+'</div>':'')+(t.done>0&&!canDone?'<div class="cb-hint ok">сдано нарядами: '+qtyS(t.done)+' из '+qtyS(t.qty)+' шт</div>':'')
       +'<div id="cbErr"></div><div class="dlg-btns"><button class="sec danger" onclick="twCrewBoard._del()">Удалить</button><button class="sec" onclick="twCrewBoard._copy()" title="скопировать блок, чтобы вставить его в другом месте: у другого человека, на другое время или в другом дне">⧉ Копировать</button><span class="cb-sp"></span>'
       +'<button class="sec" onclick="twCrewBoard._close()">Отмена</button><button onclick="twCrewBoard._save()">Сохранить</button></div>',{ id:id, auto:false, ref:null, list:[], sel:-1 });
     var qi=$('cbQty');
@@ -746,10 +764,36 @@
     $('cbTo').addEventListener('input',function(){ S.dlg.auto=false; S.dlg.touched=true; });
     if($('cbWith')&&!pk) $('cbWith').addEventListener('change',withTip);
     // Enter в поле поиска выбирает человека из списка, а не сохраняет окно
-    S.dlg.bg.addEventListener('keydown',function(e){ if(e.key==='Enter'&&e.target.tagName!=='BUTTON'&&!(e.target.closest&&e.target.closest('.pick'))){ e.preventDefault(); saveEdit(); } });
+    S.dlg.bg.addEventListener('keydown',function(e){ if(e.key==='Enter'&&e.target.tagName!=='BUTTON'&&!(e.target.closest&&e.target.closest('.pick'))){ e.preventDefault(); if(e.target.id==='cbDone'||e.target.id==='cbSum') doneSend(); else saveEdit(); } });
     if($('cbNote')) grow($('cbNote'));
-    if(qi) qi.focus(); else { var ti=$('cbTitle'); grow(ti); ti.focus(); ti.setSelectionRange(ti.value.length,ti.value.length); }
+    // кнопки «− / ＋» у количества: под палец, без клавиатуры
+    var st=S.dlg.bg.querySelectorAll('.cb-step button');
+    for(var si=0;si<st.length;si++) st[si].addEventListener('click',function(){ var e=$('cbDone'), v=num(e.value); e.value=String(Math.max(0,r2((v>0?v:0)+(+this.getAttribute('data-st'))))).replace('.',','); });
+    // на телефоне поле не занимаем сразу: клавиатура закрыла бы «Выполнено»
+    if(narrow()){ var ti0=$('cbTitle'); if(ti0) grow(ti0); }
+    else if(qi) qi.focus(); else { var ti=$('cbTitle'); grow(ti); ti.focus(); ti.setSelectionRange(ti.value.length,ti.value.length); }
   }
+  // отметить сделанное: сервер создаёт строку наряда (тот, кто одобряет наряды, — сразу принятую; контрольная операция — в «ждёт ОТК»)
+  function doneSend(){
+    var d=S.dlg, f=d&&taskBy(d.id); if(!f) return closeDlg(); if(d.sending) return;
+    var t=f.t, p={ vapi:'crewdone', date:S.date, id:t.id }, what;
+    if(t.op){ var q=num($('cbDone').value); if(!(q>0)){ dlgErr('Укажите, сколько сделано'); return; } p.qty=String(q); what=qtyS(q)+' шт'; }
+    else { var sv=$('cbSum')?String($('cbSum').value).trim():''; if(sv&&!/^\d+([.,]\d+)?$/.test(sv.replace(/\s/g,''))){ dlgErr('Сумма — число (пусто — без оплаты)'); return; } p.sum=sv?String(num(sv)):''; what=t.title; }
+    doneBusy(true);
+    send(p,function(r){
+      closeDlg(); merge(r.rows);
+      say('✓ '+esc(f.p.name)+': '+esc(t.op?(t.op+' — '+what):what)+(r.sum?' · '+qtyS(r.sum)+' р.':'')
+        +(r.dup?' — уже записано, повтор пропущен':r.status==='qc_wait'?' — ждёт приёмку ОТК':r.status==='pending'?' — на проверке у мастера':'')
+        +((r.warnings||[]).length?'<br><span class="err">'+esc(r.warnings.join(' · '))+'</span>':''));
+    },function(err){ doneBusy(false); dlgErr(err); });
+  }
+  function doneUndo(){
+    var d=S.dlg, f=d&&taskBy(d.id); if(!f) return closeDlg(); if(d.sending) return;
+    doneBusy(true);
+    send({ vapi:'crewundone', date:S.date, id:f.t.id },function(r){ closeDlg(); merge(r.rows); say('Отметка снята: '+esc(f.p.name)+' · '+esc(f.t.op||f.t.title)); },function(err){ doneBusy(false); dlgErr(err); });
+  }
+  // запись идёт пару секунд: второе нажатие не должно создать вторую строку наряда
+  function doneBusy(on){ var d=S.dlg; if(!d) return; d.sending=on; var b=d.bg.querySelectorAll('button'); for(var i=0;i<b.length;i++) b[i].disabled=on; var x=$('cbDoneBtn'); if(x) x.textContent=on?'Записываю…':'✓ Выполнено'; }
   function tm(v){ var m=/^(\d{1,2}):(\d{2})/.exec(v||''); return m?(+m[1])*60+(+m[2]):null; }
   function setEnd(dur){ var a=tm($('cbFrom').value); if(a!=null) $('cbTo').value=hm2(a+dur); }
   function saveEdit(){
@@ -843,6 +887,6 @@
     // оболочка просит обновиться при возврате на вкладку: день подтягиваем на месте (прокрутка и «↶» остаются), а не собираем доску заново
     refresh:function(){ if(S.d&&S.el.querySelector('.cb')) poll(); else load(true); },
     undo:undo, addPerson:addPerson, carry:carry, sendAll:sendAll, print:print, _printOn:printOn, _printOff:printOff,
-    _help:function(){ S.help=!S.help; draw(); }, _det:function(){ store('tw_cb_det',isDet()?'0':'1'); draw(); }, _back:back, _addPicked:addPicked, _save:saveEdit, _del:delEdit, _copy:function(){ var d=S.dlg; if(!d) return; var id=d.id; closeDlg(); copyBlk(id); }, _clipOff:clipOff, _rebase:rebase, _close:closeDlg, _shift:setShift, _remove:removePerson, _sendOne:sendOne
+    _help:function(){ S.help=!S.help; draw(); }, _det:function(){ store('tw_cb_det',isDet()?'0':'1'); draw(); }, _back:back, _addPicked:addPicked, _save:saveEdit, _edit:openEdit, _done:doneSend, _undone:doneUndo, _del:delEdit, _copy:function(){ var d=S.dlg; if(!d) return; var id=d.id; closeDlg(); copyBlk(id); }, _clipOff:clipOff, _rebase:rebase, _close:closeDlg, _shift:setShift, _remove:removePerson, _sendOne:sendOne
   };
 })();
