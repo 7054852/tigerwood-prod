@@ -63,16 +63,54 @@
   /* коэффициент строки в проверке — поле прямо в строке, сохраняется вместе с нарядом */
   input.kin{ width:64px; display:inline-block; min-height:var(--h-sm); padding:0 var(--s-1); text-align:right; margin-left:var(--s-1); }
   input.kin.chg{ border-color:var(--amber); background:var(--amber-bg); }
-  /* журнал: сжатые карточки нарядов (владелец 27.11.2026) — шапка в одну строку, работы мелким шрифтом, правка по кнопке ✎ */
-  .card.jc{ padding:var(--s-2) var(--s-3); margin-bottom:var(--s-1); } .card.jc + .card.jc{ margin-top:var(--s-1); }
+  /* журнал — таблица нарядов (владелец 27.11.2026: «всё сливается, ни даты, ни изделия не видно»):
+     дата — липким заголовком с подписями колонок, блок на сотрудника, строка на работу с колонками
+     «время · заказ · изделие · деталь · операция · кол-во · сумма». На телефоне строка складывается в две. */
   #jview{ flex:0 0 auto; } #jview button{ flex:0 0 auto; white-space:nowrap; }
-  .jc .jh{ flex-wrap:nowrap; align-items:baseline; } .jc .jh>span:first-child{ min-width:0; }
-  .jc .jsum{ display:inline-flex; align-items:center; gap:var(--s-2); white-space:nowrap; }
-  .jc .jl{ border-top:1px solid var(--line); margin-top:var(--s-1); padding-top:var(--s-1); font:var(--t-small); }
-  .jc .jl .row{ flex-wrap:nowrap; align-items:baseline; } .jc .jl .row>span:first-child{ min-width:0; } .jc .jl .row>span:last-child{ white-space:nowrap; }
-  .jc .jr{ border-top:1px solid var(--line); margin-top:var(--s-2); padding-top:var(--s-1); }
-  .jc .jr .jl:first-of-type{ border-top:0; margin-top:0; }
-  @media (max-width:640px){ .jc .jl .row{ flex-wrap:wrap; } }
+  .jhead{ align-items:baseline; margin-top:var(--s-4); } .jhead .sect{ margin:0; } #jpay{ font:var(--t-small); }
+  #jlist{ max-width:1180px; }
+  .jdh{ position:sticky; top:0; z-index:2; background:var(--bg); margin-top:var(--s-5); padding-top:var(--s-2); }
+  .jdh:first-child{ margin-top:0; }
+  .jdl{ display:flex; align-items:baseline; gap:var(--s-2); flex-wrap:wrap; padding-bottom:var(--s-1); }
+  .jdl b{ font:var(--t-heading); } .jdl .jdt{ margin-left:auto; font:var(--t-small); color:var(--muted); } .jdl .jdt b{ font:var(--t-strong); color:var(--fg); }
+  .card.jcard{ padding:0; margin:0 0 var(--s-2); overflow:hidden; }
+  .jwh{ display:flex; align-items:baseline; justify-content:space-between; gap:var(--s-1) var(--s-3); flex-wrap:wrap; padding:var(--s-2) var(--s-3); background:var(--card2); border-bottom:1px solid var(--line); }
+  .jwh .jwn{ display:flex; align-items:baseline; gap:var(--s-1) var(--s-3); flex-wrap:wrap; min-width:0; } .jwh .jwn b{ font:var(--t-strong); font-weight:600; }
+  .jwh .jwn span, .jwh .jwt span{ font:var(--t-small); } .jwh .jwt{ display:flex; align-items:baseline; gap:var(--s-2); white-space:nowrap; margin-left:auto; } .jwh .jwt b{ font:var(--t-strong); font-weight:600; }
+  .jrep + .jrep{ border-top:1px solid var(--line2); } .jrep .jrow + .jrow{ border-top:1px solid var(--line); } .jrep .jrow.jnr{ border-top:0; padding-top:0; }
+  .jrow{ display:grid; grid-template-columns:48px 124px minmax(0,1fr) minmax(0,1.3fr) minmax(0,1.1fr) 76px 84px 28px;
+    grid-template-areas:"t o m d p q s a" ". . n n n n n ."; column-gap:var(--s-3); align-items:start; padding:var(--s-1) var(--s-3); font:var(--t-small); }
+  .jrow.tw{ grid-template-columns:48px minmax(0,.9fr) 124px minmax(0,1fr) minmax(0,1.3fr) minmax(0,1.1fr) 76px 84px 28px;
+    grid-template-areas:"t w o m d p q s a" ". . . n n n n n ."; }
+  .jrep .jrow:first-child{ padding-top:var(--s-2); } .jrep .jrow:last-child{ padding-bottom:var(--s-2); }
+  .jrep .jrow:hover{ background:var(--card2); }
+  .jrow > *{ min-width:0; overflow-wrap:anywhere; } .jrow > .jx{ display:contents; } .jx > *{ min-width:0; overflow-wrap:anywhere; }
+  .jt{ grid-area:t; color:var(--muted); font-variant-numeric:tabular-nums; } .jwk{ grid-area:w; font-weight:500; }
+  .jo{ grid-area:o; color:var(--fg2); font-weight:500; } .jm{ grid-area:m; color:var(--fg2); } .jd{ grid-area:d; } .jp{ grid-area:p; }
+  .jd.wide{ grid-column:m-start / p-end; }
+  /* заказ и изделие те же, что строкой выше в этом наряде, — приглушены: глаз видит, где начинается другое изделие */
+  .jx > .rep{ color:var(--muted); font-weight:400; }
+  .jq{ grid-area:q; text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; } .jq small{ font:inherit; color:var(--muted); }
+  .js{ grid-area:s; text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; } .js.off{ color:var(--muted); } .js small{ font:var(--t-tiny); color:var(--muted); }
+  .ja{ grid-area:a; text-align:right; } .ja button{ min-height:0; height:24px; width:28px; padding:0; margin:-3px 0; }
+  .jn{ grid-area:n; color:var(--muted); }
+  .jrow .pill{ font:var(--t-tiny); }
+  .jrow.jlab{ padding-top:0; padding-bottom:var(--s-1); padding-left:calc(var(--s-3) + 1px); padding-right:calc(var(--s-3) + 1px); font:var(--t-label); color:var(--muted); }
+  .jrow.jlab > *, .jrow.jlab .jx > *{ color:inherit; font-weight:inherit; }
+  /* наряд, открытый на правку: прежний подробный вид со всеми кнопками */
+  .jedit{ padding:var(--s-2) var(--s-3); background:var(--accent-bg); box-shadow:inset 0 0 0 1px var(--accent); }
+  .jedit .jh{ flex-wrap:nowrap; align-items:baseline; } .jedit .jh>span:first-child{ min-width:0; }
+  .jedit .jsum{ display:inline-flex; align-items:center; gap:var(--s-2); white-space:nowrap; }
+  .jedit .jl{ border-top:1px solid var(--line2); margin-top:var(--s-1); padding-top:var(--s-1); font:var(--t-small); }
+  .jedit .jl .row{ flex-wrap:nowrap; align-items:baseline; } .jedit .jl .row>span:first-child{ min-width:0; } .jedit .jl .row>span:last-child{ white-space:nowrap; }
+  @media (max-width:760px){
+    .jrow, .jrow.tw{ grid-template-columns:minmax(0,1fr) auto auto auto; grid-template-areas:"w w w w" "d q s a" "x x x x" "n n n n"; column-gap:var(--s-2); padding:var(--s-2) var(--s-3); }
+    .jrow > .jx{ display:block; grid-area:x; color:var(--muted); } .jx > span{ color:inherit; font-weight:inherit; }
+    .jx > .jp{ color:var(--fg2); } .jx > span:not(:empty) ~ span:not(:empty)::before{ content:' · '; color:var(--muted); }
+    .jrow .jd.wide{ grid-column:auto; grid-area:d; } .jwk:empty{ display:none; } .jwk{ font-weight:600; }
+    .jrow.jlab{ display:none; } .ja button{ height:var(--h-sm); width:var(--h-sm); margin:-6px 0; }
+    .jedit .jl .row{ flex-wrap:wrap; }
+  }
   /* задание → наряд: количество и кнопка держатся вместе, на телефоне — под пальцем */
   #myshifts .tk, #brdmine .tk{ display:flex; align-items:center; gap:var(--s-2); margin-left:auto; }
   #myshifts .tk input.kin{ margin-left:0; }
@@ -275,9 +313,8 @@ function CARD(e){ return '<div style="padding:var(--s-4);line-height:1.5">'
       <button data-v="day" onclick="jSetView('day')" title="один блок на сотрудника и день, внутри — по времени подачи">👤 По сотрудникам</button>
     </div>
   </div>
-  <div class="sect">Журнал выработки</div>
-  <div id="jpay"></div>
-  <div id="jlist" style="margin-top:var(--s-3)"></div>
+  <div class="row jhead"><div class="sect">Журнал выработки</div><div id="jpay"></div></div>
+  <div id="jlist"></div>
 </div>
 <script>
 // две цифры с ведущим нулём — вместо padStart (его нет в старых Android-браузерах, страница падала)
@@ -1697,22 +1734,21 @@ function renderJournal0(){
   if(bf) items=items.filter(function(it){ return bf==='__free__' ? !!it.free : (!it.free && it.batch===bf); });
   if(of) items=items.filter(function(it){ return it.op===of; });
   if(df) items=items.filter(function(it){ return jDet(it)===df; });
-  // ЗП считаем по ПОКАЗАННЫМ строкам — иначе при фильтре по заказу итог не сойдётся со списком
-  var pm={}, pord=[];
+  var flt=!!(bf||of||df);
+  // Итог периода — одной строкой. Перечень «кто сколько заработал» отсюда убран (владелец 27.11.2026): он есть в табеле.
+  // Считаем по ПОКАЗАННЫМ строкам — иначе при фильтре по заказу итог не сойдётся со списком.
+  var ptot=0, pw={}, pn=0;
   items.forEach(function(it){ if(it.status!=='подтверждено') return;   // ждущее приёмку в ЗП не входит
     if(it.kind==='подряд') return;   // подрядчик — не работник: его деньги идут расходом в Фин.гений
-    if(pm[it.worker]==null){ pm[it.worker]=0; pord.push(it.worker); } pm[it.worker]+=it.sum||0; });
-  var pr=pord.map(function(w){ return {worker:w, sum:Math.round(pm[w]*100)/100}; }).sort(function(a,b){ return b.sum-a.sum; });
+    if(!pw[it.worker]){ pw[it.worker]=1; pn++; } ptot+=it.sum||0; });
   pay.innerHTML='';
-  if(pr.length){
-    var tot=pr.reduce(function(s,p){return s+p.sum;},0);
-    // часы за период по табелю: «450 р · 64 ч · 7 р/ч»
-    var hw={}, hall=0, hk=(r&&r.hours)||{};
-    Object.keys(hk).forEach(function(k){ var w=k.split('|')[0], h=Number(hk[k].h)||0;
-      if(!h) return; hw[w]=Math.round(((hw[w]||0)+h)*10)/10; hall=Math.round((hall+h)*10)/10; });
-    var hTxt=function(h,sum){ return h?(' <span class="muted">· '+String(h).replace('.',',')+' ч'+(sum?(' · '+(Math.round(sum/h*100)/100)+' р/ч'):'')+'</span>'):''; };
-    pay.innerHTML='<div class="card"><div class="row"><b>💰 ЗП за период (подтв.)'+((bf||of||df)?' · по фильтру':'')+'</b><b class="ok">'+(Math.round(tot*100)/100)+' руб.'+hTxt(hall,tot)+'</b></div>'
-      +pr.map(function(p){return '<div class="row"><span>'+esc(p.worker)+'</span><span>'+p.sum+' руб.'+hTxt(hw[p.worker],p.sum)+'</span></div>';}).join('')+'</div>';
+  if(pn){
+    // часы по табелю — только без фильтра: при фильтре по заказу или операции «р/ч» делил бы часть денег на все часы
+    var hall=0, hk=(r&&r.hours)||{};
+    if(!flt) Object.keys(hk).forEach(function(k){ if(pw[k.split('|')[0]]) hall+=Number(hk[k].h)||0; });
+    hall=Math.round(hall*10)/10;
+    pay.innerHTML='<span class="muted" title="принятые наряды за выбранный период; то, что ждёт ОТК, и работа подрядчиков не входят">Принято за период'+(flt?' по фильтру':'')+': </span><b class="num">'+jMoney(ptot)+' р.</b>'
+      +'<span class="muted">'+(hall?(' · '+hFmt(hall)+' · '+jMoney(ptot/hall)+' р/ч'):'')+(pn>1?(' · '+pn+' чел.'):'')+'</span>';
   }
   (function(){
     if(!items.length){ lst.innerHTML='<div class="muted">Нет принятых нарядов за период.</div>'; return; }
@@ -1723,33 +1759,87 @@ function renderJournal0(){
       if(gidx[key]==null){ gidx[key]=groups.length; groups.push({key:key,single:!it.report,worker:it.worker,date:it.date,submitted:it.submitted||'',shift:it.shift||'день',batch:it.batch,sum:0,lines:[]}); }
       var g=groups[gidx[key]]; g.sum+=it.sum; g.lines.push(it);
     });
-    // Наряд показан сжато (владелец 27.11.2026: карточки были слишком большими): строка-шапка — кто, когда, заказ, сумма — и строки работ.
-    // Правка (смена, дата, коэффициенты, премия, количество, удаление) открывается кнопкой ✎ у наряда.
-    // inDay — наряд стоит внутри блока дня сотрудника: имя и дата — у блока.
-    var repHtml=function(g,inDay){
+    // расчёт наряда: надбавки, итог к оплате, время подачи
+    var calc=function(g){
       var rep=g.lines[0]&&g.lines[0].report||'', gsh=(g.lines[0]&&g.lines[0].shift)||'день', night=(gsh==='ночь');
-      var open=master&&!!JOPEN[g.key];
-      var lines=g.lines.map(function(it){
-        var koef=kOf(it.koef), kbadge=(!open&&koef!==1)?' <span class="muted" style="font:var(--t-small)">×'+koef+'</span>':'';   // мастеру — поле в строке
-        var acts = '';
-        if(open){
-          var del='<button class="sm sec" onclick="delJournal(\''+esc(it.id)+'\')">🗑</button><span id="jm-'+esc(it.id)+'" class="msg"></span>';
-          acts = (it.kind==='подряд')       // сумма подрядчику и долг живут вместе — правим их в реестре
-            ? ' <button class="sm sec" onclick="showTab(\'s\')" title="правка и удаление — во вкладке «Подряд», вместе с долгом в Фин.гении">🤝 в реестр</button>'
-            : (it.kind==='повременно' && !isDev(it))   // у доплаты правится СУММА (кол-во у неё всегда 1); у разработки — минуты, как у строки
-            ? ' <button class="sm sec" onclick="editTimePay(\''+esc(it.id)+'\','+it.sum+',\''+esc(it.note||'')+'\')" title="изменить сумму">✏️</button>'+del
-            : ' <button class="sm sec" onclick="editJournal(\''+esc(it.id)+'\','+it.qty+',\''+esc(it.date)+'\')">✏️</button>'
-              +(it.kind==='премия'?'':'<input class="kin" type="number" step="0.05" min="0" inputmode="decimal" value="'+koef+'" data-rep="'+esc(g.key)+'" data-line="'+esc(it.id)+'" data-k0="'+koef+'" oninput="kinChg(this)" title="коэффициент к сумме: сохраняется кнопкой «💾 Сохранить» у наряда">')+del;
+      // наряд подрядчика: премия, смена и дата управляют надбавками к ЗП, которой тут нет
+      var isSub=g.lines.length && g.lines.every(function(L){ return L.kind==='подряд'; });
+      var effBase=0, gbon=0, nQC=0;
+      g.lines.forEach(function(L){
+        if(L.status==='ждёт ОТК'){ nQC++; return; }   // ещё не засчитано — в разбивку наряда не берём
+        if(L.kind==='премия') gbon+=L.sum||0; else if(L.paid!==false) effBase+=(L.base||0)*kOf(L.koef); });
+      var gbd=computeBreakdown(effBase, night, g.date);
+      if(gbon){ gbd.bonus=Math.round(gbon*100)/100; gbd.total=Math.round((gbd.total+gbon)*100)/100; }
+      // ⚠ премия за наряд и ночная считаются от ВСЕГО наряда. Если фильтр показал только часть строк,
+      // разбивка была бы враньём — вместо неё говорим прямо, а к оплате показываем сумму показанных принятых строк.
+      var cut=(full[g.key]||g.lines.length)>g.lines.length;
+      var total=isSub?0:(cut?g.lines.reduce(function(a,L){ return a+((L.status==='подтверждено'&&L.paid!==false)?(L.sum||0):0); },0):gbd.total);
+      // время подачи: в тот же день — только часы и минуты, в другой — «дд.мм чч:мм»
+      var sb=String(g.submitted||''), tm=sb.indexOf(g.date)===0?sb.slice(g.date.length).trim():sb.replace(/^(\d\d\.\d\d)\.\d{4}/,'$1');
+      return {rep:rep, gsh:gsh, night:night, isSub:isSub, gbd:gbd, cut:cut, nQC:nQC, total:total, tm:tm, extra:gbd.premium>0||gbd.night>0||gbd.bonus>0};
+    };
+    // Наряд в журнале — строки таблицы: по строке на работу; время (и сотрудник — в виде «по времени») стоят у первой строки наряда.
+    // Правка (смена, дата, коэффициенты, премия, количество, удаление) открывается кнопкой ✎ у наряда.
+    var rowsHtml=function(g,c,showW){
+      var cls='jrow'+(showW?' tw':'');
+      var gear=master?'<button class="sm sec" onclick="jOpen(\''+esc(g.key)+'\')" title="править наряд: смена, дата, коэффициенты, премия, количество, удаление">✎</button>':'';
+      var pOrd=null, pProd=null;
+      var h=g.lines.map(function(it,i){
+        var first=i===0, koef=kOf(it.koef), p=String(it.detail||'').split(' — '), prod=p[0], det=p.slice(1).join(' — '), wide='', qty='';
+        if(it.kind==='повременно' && !isDev(it)) wide=kindBadge(it)+esc(it.note||it.detail);
+        else if(it.kind==='премия') wide='🎁 <b>Премия</b>'+(it.note?(' — '+esc(it.note)):'');
+        else if(isDev(it)){ wide='🧪 '+esc(it.detail)+(it.note?(' — '+esc(it.note)):''); qty=devMin(Number(it.qty)||0); }
+        else {
+          // операция изделия (упаковка): детали нет или «деталь» — само изделие; тогда показываем модель товара
+          if(!det || det.trim()===prod.trim()) det=(it.model && String(it.detail).indexOf(it.model)<0)?esc(it.model):'<span class="muted">изделие целиком</span>'; else det=esc(det);
+          qty=it.qty+' <small>'+(isCutLine(it)?'л':'шт')+'</small>';
         }
+        var off=it.status==='ждёт ОТК'||it.paid===false;
+        var money=(it.paid===false&&it.status!=='ждёт ОТК')?jMoney(0):((koef!==1?'<small title="коэффициент мастера к сумме">×'+String(koef).replace('.',',')+'</small> ':'')+jMoney(it.sum));
+        var st=it.status==='ждёт ОТК'?' <span class="pill warn" title="принято мастером, ждёт приёмку ОТК — сумма в итог пока не входит">🔎 ждёт ОТК</span>':'';
+        // почему строка без оплаты, говорит плашка у детали («с листа», «свой брак», «подряд») и подсказка у нуля;
+        // отдельной строкой — только ошибка ввода: деталь оплачивается листом, а листа в наряде нет
+        var unpaid=it.paid===false&&it.status!=='ждёт ОТК', noSheet=unpaid&&it.kind!=='подряд'&&it.kind!=='лист'&&it.redo!=='свой брак'&&!it.sheet;
+        if(unpaid) money='<span title="без оплаты: '+esc(payNote(it))+'">'+money+'</span>';
+        // след приёмки: кто принял и сколько вернул — видно и рабочему, и мастеру; у неоплаченной строки — причина
+        var note=(it.qcBy?('🔎 принял '+esc(it.qcBy)+(it.qcAt?(' · '+esc(it.qcAt)):'')+(it.qcBad>0?(' · <span class="err">на переделку '+it.qcBad+' шт</span>'):'')):'')
+          +(noSheet?((it.qcBy?' · ':'')+'<span class="warn">⚠ '+payNote(it)+'</span>'):'');
+        var ord=batchTag(it), sameO=(ord===pOrd)?' rep':'', sameP=(!wide&&sameO&&prod===pProd)?' rep':''; pOrd=ord; pProd=wide?null:prod;
+        return '<div id="j-'+esc(it.id)+'" class="'+cls+'">'
+          +(showW?'<span class="jwk">'+(first?esc(g.worker):'')+'</span>':'')
+          +(wide?'<span class="jd wide">'+wide+'</span>':'<span class="jd">'+kindBadge(it)+det+'</span>')
+          +'<span class="jq">'+qty+'</span><span class="js'+(off?' off':'')+'">'+money+'</span><span class="ja">'+(first?gear:'')+'</span>'
+          +'<span class="jx"><span class="jp">'+(wide?'':esc(it.op)+st)+'</span><span class="jo'+sameO+'">'+ord+'</span><span class="jm'+sameP+'">'+(wide?'':esc(prod))+'</span><span class="jt">'+(first?esc(c.tm):'')+'</span></span>'
+          +(note?'<span class="jn">'+note+'</span>':'')+'</div>';
+      }).join('');
+      var notes=[];
+      if(c.gsh!=='день') notes.push(shLbl(c.gsh));
+      if(c.isSub) notes.push('🤝 работа подрядчика: в зарплату не идёт, сумма к оплате и долг — во вкладке «Подряд»');
+      else if(c.cut) notes.push('показана часть наряда ('+g.lines.length+' из '+full[g.key]+' оп.) — надбавки считаются по всему наряду, снимите фильтр');
+      else if(c.extra) notes.push('к оплате по наряду <b>'+jMoney(c.gbd.total)+' р.</b>: сдельно '+jMoney(c.gbd.base)
+        +(c.gbd.premium>0?' · премия за наряд +'+jMoney(c.gbd.premium):'')+(c.gbd.night>0?' · ночная +'+jMoney(c.gbd.night):'')+(c.gbd.bonus>0?' · премия мастера +'+jMoney(c.gbd.bonus):''));
+      return h+(notes.length?'<div class="'+cls+' jnr"><span class="jn">'+notes.join(' · ')+'</span></div>':'');
+    };
+    // наряд, открытый на правку (✎): подробный вид со всеми кнопками
+    var editHtml=function(g,c){
+      var rep=c.rep, gsh=c.gsh;
+      var lines=g.lines.map(function(it){
+        var koef=kOf(it.koef);
+        var del='<button class="sm sec" onclick="delJournal(\''+esc(it.id)+'\')">🗑</button><span id="jm-'+esc(it.id)+'" class="msg"></span>';
+        var acts = (it.kind==='подряд')       // сумма подрядчику и долг живут вместе — правим их в реестре
+          ? ' <button class="sm sec" onclick="showTab(\'s\')" title="правка и удаление — во вкладке «Подряд», вместе с долгом в Фин.гении">🤝 в реестр</button>'
+          : (it.kind==='повременно' && !isDev(it))   // у доплаты правится СУММА (кол-во у неё всегда 1); у разработки — минуты, как у строки
+          ? ' <button class="sm sec" onclick="editTimePay(\''+esc(it.id)+'\','+it.sum+',\''+esc(it.note||'')+'\')" title="изменить сумму">✏️</button>'+del
+          : ' <button class="sm sec" onclick="editJournal(\''+esc(it.id)+'\','+it.qty+',\''+esc(it.date)+'\')">✏️</button>'
+            +(it.kind==='премия'?'':'<input class="kin" type="number" step="0.05" min="0" inputmode="decimal" value="'+koef+'" data-rep="'+esc(g.key)+'" data-line="'+esc(it.id)+'" data-k0="'+koef+'" oninput="kinChg(this)" title="коэффициент к сумме: сохраняется кнопкой «💾 Сохранить» у наряда">')+del;
         var body = (it.kind==='повременно' && !isDev(it))
           ? kindBadge(it)+esc(it.note||it.detail)
           : (it.kind==='премия')
             ? ('🎁 <b>Премия</b>'+(it.note?(' — '+esc(it.note)):''))
-            : kindBadge(it)+lineTxt(it)+kbadge;
+            : kindBadge(it)+lineTxt(it)+lineOrd(it);
         var money = (it.status==='ждёт ОТК')
           ? '<span class="muted">'+it.sum+' р · 🔎 ждёт ОТК</span>'
           : '<span class="'+(it.paid===false?'muted':'ok')+'">'+(it.paid===false?'0 р · '+payNote(it):(it.sum+' р'))+'</span>';
-        // след приёмки: кто принял и сколько вернул — видно и рабочему, и мастеру
         var qc = it.qcBy
           ? '<div class="muted" style="font:var(--t-small)">🔎 принял '+esc(it.qcBy)+(it.qcAt?(' · '+esc(it.qcAt)):'')
             +(it.qcBad>0?(' · <span class="err">на переделку '+it.qcBad+' шт</span>'):'')+'</div>'
@@ -1758,70 +1848,72 @@ function renderJournal0(){
           +'<div class="row"><span>'+body+'</span><span>'+money+' '+acts+'</span></div>'+qc+'</div>';
       }).join('');
       var bonRid = rep||('_'+g.lines[0].id);
-      // наряд подрядчика: премия, смена и дата управляют надбавками к ЗП, которой тут нет —
-      // показывать их значит предлагать кнопки, на которые сервер ответит отказом
-      var isSub = g.lines.length && g.lines.every(function(L){ return L.kind==='подряд'; });
-      var bonBtn = (open && !isSub) ? '<button class="sm sec" onclick="addBonus(\''+esc(bonRid)+'\',\''+esc(g.worker)+'\',\'j\')" title="премия за наряд">🎁 + премия</button>' : '';
-      var dateBtn = (open && !isSub) ? '<button class="sm sec" onclick="setRepDate(\''+esc(g.key)+'\',\''+esc(g.date)+'\',loadJournal)" title="за какой день работа">📅 дата</button>' : '';
-      var shiftCtl = (isSub||!open) ? '' : (master && !g.single && rep)
-        ? '<div class="row" style="margin:var(--s-2) 0 0;justify-content:flex-start">'+shSeg(gsh,'setRepShiftJ',rep)+dateBtn+'</div>'
-        : (master?('<div class="row" style="margin:var(--s-2) 0 0;justify-content:flex-start">'+(gsh!=='день'?'<span class="muted" style="font:var(--t-small);margin-right:var(--s-2)">'+shLbl(gsh)+'</span>':'')+dateBtn+'</div>')
-                 : (gsh!=='день'?'<div class="muted" style="font:var(--t-small)">'+shLbl(gsh)+'</div>':''));
-      var effBase=0, gbon=0;
-      for(var q=0;q<g.lines.length;q++){ var L=g.lines[q];
-        if(L.status==='ждёт ОТК') continue;   // ещё не засчитано — в разбивку наряда не берём
-        if(L.kind==='премия') gbon+=L.sum||0; else if(L.paid!==false) effBase+=(L.base||0)*kOf(L.koef); }
-      var gbd=computeBreakdown(effBase, night, g.date);
-      if(gbon){ gbd.bonus=Math.round(gbon*100)/100; gbd.total=Math.round((gbd.total+gbon)*100)/100; }
-      // ⚠ премия за наряд и ночная считаются от ВСЕГО наряда. Если фильтр показал только часть строк,
-      // разбивка была бы враньём (порог 100 ₽ на куске не наберётся) — вместо неё говорим прямо.
-      var nQC=0; for(var qq=0;qq<g.lines.length;qq++) if(g.lines[qq].status==='ждёт ОТК') nQC++;
-      var cut=(full[g.key]||g.lines.length)>g.lines.length;
-      var qcNote = nQC ? '<div class="muted" style="font:var(--t-small);border-top:1px solid var(--line);padding-top:var(--s-1)">🔎 '+nQC+' из '+g.lines.length+' поз. ждут приёмку ОТК — их сумма в итог пока не входит</div>' : '';
-      var bdHtml = isSub
-        ? '<div class="muted" style="font:var(--t-small);border-top:1px solid var(--line);padding-top:var(--s-1)">🤝 работа подрядчика: в зарплату не идёт, сумма к оплате и долг — во вкладке «Подряд»</div>'
-        : (cut
-        ? '<div class="muted" style="font:var(--t-small);border-top:1px solid var(--line);padding-top:var(--s-1)">показана часть наряда ('+g.lines.length+' из '+full[g.key]+' оп.) — надбавки считаются по всему наряду, снимите фильтр</div>'
-        : bonusBlockHtml(gbd));
-      // дата смены — заметной, как в приёмке и у мастера. Тут ничего не «горит», поэтому без
-      // красного: журнал листают, чтобы найти нужный день, а не чтобы поймать просрочку.
-      var what=((g.lines||[]).some(isCutLine)?batchTag({kind:'лист'}):((g.lines[0]&&g.lines[0].free)?batchTag(g.lines[0]):esc(g.batch)))
-          +' · '+g.lines.length+' оп.';
-      // к оплате по наряду: подрядчик в зарплату не идёт; при фильтре (показана часть наряда) — сумма показанных принятых строк
-      var total=isSub?0:(cut?g.lines.reduce(function(a,L){ return a+((L.status==='подтверждено'&&L.paid!==false)?(L.sum||0):0); },0):gbd.total);
-      // время подачи: в тот же день — только часы и минуты
-      var sb=String(g.submitted||''), tm=sb.indexOf(g.date)===0?sb.slice(g.date.length).trim():sb;
-      var extra=isSub||cut||gbd.premium>0||gbd.night>0||gbd.bonus>0;
-      var gear=master?'<button class="sm sec" onclick="jOpen(\''+esc(g.key)+'\')" title="'+(open?'свернуть правку':'править наряд: смена, дата, коэффициенты, премия, количество, удаление')+'">'+(open?'✕':'✎')+'</button>':'';
-      var dl=(open&&!inDay)?dayLine(g.worker,g.date):'';
-      return {total:total, html:'<div class="row jh"><span>'+(inDay?'':'<b>'+esc(g.worker)+'</b> <span class="muted">· '+esc(g.date)+' · </span>')
-          +'<span class="muted">'+(tm?'🕐 '+esc(tm)+' · ':'')+what+(gsh!=='день'?' · '+shLbl(gsh):'')+'</span></span>'
-          +'<span class="jsum">'+(isSub?'':'<b class="num">'+(Math.round(total*100)/100)+' р.</b>')+gear+'</span></div>'
+      // наряд подрядчика: показывать премию, смену и дату значит предлагать кнопки, на которые сервер ответит отказом
+      var bonBtn = c.isSub ? '' : '<button class="sm sec" onclick="addBonus(\''+esc(bonRid)+'\',\''+esc(g.worker)+'\',\'j\')" title="премия за наряд">🎁 + премия</button>';
+      var dateBtn = c.isSub ? '' : '<button class="sm sec" onclick="setRepDate(\''+esc(g.key)+'\',\''+esc(g.date)+'\',loadJournal)" title="за какой день работа">📅 дата</button>';
+      var shiftCtl = c.isSub ? '' : '<div class="row" style="margin:var(--s-2) 0 0;justify-content:flex-start">'
+        +((!g.single && rep)?shSeg(gsh,'setRepShiftJ',rep):(gsh!=='день'?'<span class="muted" style="font:var(--t-small);margin-right:var(--s-2)">'+shLbl(gsh)+'</span>':''))+dateBtn+bonBtn+'</div>';
+      var noteCss='class="muted" style="font:var(--t-small);border-top:1px solid var(--line2);margin-top:var(--s-1);padding-top:var(--s-1)"';
+      var qcNote = c.nQC ? '<div '+noteCss+'>🔎 '+c.nQC+' из '+g.lines.length+' поз. ждут приёмку ОТК — их сумма в итог пока не входит</div>' : '';
+      var bdHtml = c.isSub
+        ? '<div '+noteCss+'>🤝 работа подрядчика: в зарплату не идёт, сумма к оплате и долг — во вкладке «Подряд»</div>'
+        : (c.cut
+        ? '<div '+noteCss+'>показана часть наряда ('+g.lines.length+' из '+full[g.key]+' оп.) — надбавки считаются по всему наряду, снимите фильтр</div>'
+        : bonusBlockHtml(c.gbd));
+      var dl=dayLine(g.worker,g.date);
+      return '<div class="jedit"><div class="row jh"><span><b>✎ '+esc(g.worker)+'</b> <span class="muted">· '+esc(g.date)+(c.tm?' · 🕐 '+esc(c.tm):'')+' · '+g.lines.length+' оп.</span></span>'
+          +'<span class="jsum">'+(c.isSub?'':'<b class="num">'+jMoney(c.total)+' р.</b>')+'<button class="sm sec" onclick="jOpen(\''+esc(g.key)+'\')" title="свернуть правку">✕</button></span></div>'
         +(dl?'<div class="muted" style="font:var(--t-small)">'+dl.replace(/ · $/,'')+'</div>':'')
-        +(open&&bonBtn?'<div class="row" style="justify-content:flex-start;margin-top:var(--s-1)">'+bonBtn+'</div>':'')
         +'<div id="bonbox-j-'+bonKey(bonRid)+'"></div>'
-        +shiftCtl+lines+(open?koefCtl(g):'')+qcNote+((extra||open)?bdHtml:'')};
+        +shiftCtl+lines+koefCtl(g)+qcNote+bdHtml+'</div>';
     };
+    var repHtml=function(g,showW){ return '<div class="jrep">'+((master&&JOPEN[g.key])?editHtml(g,g.c):rowsHtml(g,g.c,showW))+'</div>'; };
+    // подписи колонок — в липком заголовке даты
+    var labHtml=function(showW){ return '<div class="jrow jlab'+(showW?' tw':'')+'">'+(showW?'<span class="jwk">Сотрудник</span>':'')
+      +'<span class="jd">Деталь</span><span class="jq">Кол-во</span><span class="js">Сумма, р.</span><span class="ja"></span>'
+      +'<span class="jx"><span class="jp">Операция</span><span class="jo">Заказ</span><span class="jm">Изделие</span><span class="jt">Время</span></span></div>'; };
     // Вид журнала (владелец 27.11.2026): «по времени» — наряды подряд, как их подавали (новые сверху);
-    // «по сотрудникам» — блок на человека и день, внутри — по времени подачи. Наряды остаются отдельными
-    // (у каждого своя проверка, смена, коэффициенты и премия) — меняется только показ.
+    // «по сотрудникам» — блок на человека, внутри — по времени подачи. В обоих видах дни идут заголовками, от новых к старым.
+    // Наряды остаются отдельными (у каждого своя проверка, смена, коэффициенты и премия) — меняется только показ.
     var byDay=jView()==='day', vb=document.querySelectorAll('#jview button');
     for(var vi=0;vi<vb.length;vi++) vb[vi].className=(vb[vi].getAttribute('data-v')===(byDay?'day':'time'))?'on':'';
-    if(!byDay){ lst.innerHTML=groups.map(function(g){ return '<div class="card jc">'+repHtml(g,false).html+'</div>'; }).join(''); return; }
-    var days=[], didx={}, nW=function(n){ var a=n%10, b=n%100; return (a===1&&b!==11)?'наряд':((a>=2&&a<=4&&(b<10||b>=20))?'наряда':'нарядов'); };
-    groups.forEach(function(g){ var k=g.worker+'|'+g.date; if(didx[k]==null){ didx[k]=days.length; days.push({worker:g.worker,date:g.date,gs:[]}); } days[didx[k]].gs.push(g); });
-    lst.innerHTML=days.map(function(d){
-      // журнал идёт от новых к старым; внутри дня — от первого наряда к последнему
-      d.gs.reverse();
-      var tot=0, ops=0, parts=d.gs.map(function(g){ var x=repHtml(g,true); tot+=x.total; ops+=g.lines.length; return '<div class="jr">'+x.html+'</div>'; }).join('');
-      // строка дня (приход–уход) уже несёт «за день N р» по всем нарядам — второе такое же число рядом не ставим; при фильтре — сумма показанного
-      var dl=dayLine(d.worker,d.date), flt=!!(bf||of||df);
-      return '<div class="card jc"><div class="row jh"><span><b>'+esc(d.worker)+'</b> <span class="muted">· '+esc(d.date)+' · '+(dl?dl:'')+d.gs.length+' '+nW(d.gs.length)+' · '+ops+' оп.</span></span>'
-        +(dl&&!flt?'':'<span class="jsum" title="принято к оплате за день по показанным нарядам; то, что ждёт ОТК, не входит"><span class="muted">'+(flt?'по фильтру':'за день')+'</span> <b class="ok num">'+(Math.round(tot*100)/100)+' р.</b></span>')+'</div>'
-        +parts+'</div>';
+    var nW=function(n){ var a=n%10, b=n%100; return (a===1&&b!==11)?'наряд':((a>=2&&a<=4&&(b<10||b>=20))?'наряда':'нарядов'); };
+    var dates=[], dix={};
+    groups.forEach(function(g){ g.c=calc(g); if(dix[g.date]==null){ dix[g.date]=dates.length; dates.push({date:g.date,gs:[]}); } dates[dix[g.date]].gs.push(g); });
+    dates.sort(function(a,b){ var ka=jSortKey(a.date), kb=jSortKey(b.date); return ka<kb?1:(ka>kb?-1:0); });
+    lst.innerHTML=dates.map(function(D){
+      var tot=0, wl=[], wix={}, body;
+      D.gs.forEach(function(g){ tot+=g.c.total; if(wix[g.worker]==null){ wix[g.worker]=wl.length; wl.push({worker:g.worker,gs:[]}); } wl[wix[g.worker]].gs.push(g); });
+      if(!byDay) body='<div class="card jcard">'+D.gs.map(function(g){ return repHtml(g,true); }).join('')+'</div>';
+      else {
+        // сотрудники внутри дня — по алфавиту: так проще найти нужного
+        wl.sort(function(a,b){ return String(a.worker).localeCompare(String(b.worker),'ru'); });
+        body=wl.map(function(W){
+          // журнал идёт от новых к старым; внутри блока сотрудника — от первого наряда к последнему
+          W.gs.reverse();
+          var wt=0, ops=0, pend=0, qc=0; W.gs.forEach(function(g){ wt+=g.c.total; ops+=g.lines.length; });
+          var t=((r&&r.hours)||{})[tKey(W.worker,D.date)]||{}, hh=Number(t.h)||0, meta=[];
+          if(t['in']) meta.push('🕘 '+esc(t['in'])+(t.out?('–'+esc(t.out)):'')+(hh?(' · '+hFmt(hh)):' · уход не отмечен'));
+          meta.push(W.gs.length+' '+nW(W.gs.length)+' · '+ops+' оп.');
+          if(!flt) (r.items||[]).forEach(function(x){ if(x.worker!==W.worker||x.date!==D.date) return;
+            if(x.status==='на проверке') pend+=Number(x.sum)||0; else if(x.status==='ждёт ОТК') qc+=Number(x.sum)||0; });
+          return '<div class="card jcard"><div class="jwh"><div class="jwn"><b>'+esc(W.worker)+'</b><span class="muted">'+meta.join(' · ')+'</span>'
+              +(pend?'<span class="warn">+'+jMoney(pend)+' р. на проверке</span>':'')+(qc?'<span class="warn">+'+jMoney(qc)+' р. ждёт ОТК</span>':'')+'</div>'
+            +'<div class="jwt" title="принято к оплате за день по показанным нарядам; то, что ждёт ОТК, не входит">'
+              +'<span class="muted">'+(flt?'по фильтру':((hh&&wt)?(jMoney(wt/hh)+' р/ч ·'):'')+' за день')+'</span><b class="ok num">'+jMoney(wt)+' р.</b></div></div>'
+            +W.gs.map(function(g){ return repHtml(g,false); }).join('')+'</div>';
+        }).join('');
+      }
+      return '<div class="jdh"><div class="jdl"><b>'+esc(D.date)+'</b><span class="muted">'+jWeekday(D.date)+'</span>'
+          +'<span class="jdt">'+wl.length+' чел. · '+D.gs.length+' '+nW(D.gs.length)+' · <b class="num">'+jMoney(tot)+' р.</b></span></div>'+labHtml(!byDay)+'</div>'+body;
     }).join('');
   })();
 }
+// деньги в журнале: всегда два знака и запятая — колонку сумм читают сверху вниз
+function jMoney(v){ var s=(Math.round((Number(v)||0)*100)/100).toFixed(2).split('.'); return s[0].replace(/\B(?=(\d{3})+(?!\d))/g,' ')+','+s[1]; }
+function jSortKey(dRu){ var p=String(dRu||'').split('.'); return p.length<3?String(dRu||''):(p[2]+p[1]+p[0]); }
+function jWeekday(dRu){ var p=String(dRu||'').split('.'); if(p.length<3) return '';
+  var d=new Date(Number(p[2]),Number(p[1])-1,Number(p[0])); return isNaN(d.getTime())?'':['воскресенье','понедельник','вторник','среда','четверг','пятница','суббота'][d.getDay()]; }
 // ═══════════ 🔎 ПРИЁМКА ОТК ═══════════
 // Контролёр стоит у зоны сдачи с телефоном. 90% нажатий — «принять как заявлено»,
 // поэтому она первой кнопкой и на группу, и на строку. Брак — второй экран, с причиной.
