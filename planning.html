@@ -6,7 +6,7 @@
 <script src="tw-theme.js"></script>
 <script src="tw-config.js"></script>
 <script src="tw-pick.js?v=2026112505"></script>
-<script src="tw-crewboard.js?v=2026112704"></script>
+<script src="tw-crewboard.js?v=2026112705"></script>
 <title>Тигервуд — планирование</title>
 <style>
   .box{ margin-bottom:var(--s-3); }
@@ -53,7 +53,16 @@
   .drophint{ color:var(--muted); font:var(--t-small); }
   /* вкладка «Люди» — доска tw-crewboard.js (стили в теме); печать — альбомный лист, только доска */
   /* телефон: дату листают стрелками, поле даты не занимает отдельную строку */
-  @media (max-width:640px){ .toolbar input[type=date]{ display:none; } .toolbar{ margin-bottom:var(--s-2); } }
+  /* и встаёт в строку с вкладками, а поиск с кнопками — одной строкой под ними (владелец 27.11.2026: больше места доске) */
+  .pnav .ds{ display:none; }
+  @media (max-width:640px){ .toolbar input[type=date]{ display:none; }
+    #head{ display:flex; flex-wrap:wrap; align-items:center; gap:var(--s-1) var(--s-2); margin-bottom:var(--s-1); }
+    #head .tabs{ order:1; flex:1 1 0; min-width:0; margin:0; border-bottom:0; } #head .tabs button{ padding:0 var(--s-2); }
+    #head .toolbar{ display:contents; } #head .toolbar>*{ order:4; }
+    #head .pnav{ order:2; } #head .pnav .lbl{ min-width:0; padding:0 2px; } .pnav .dl{ display:none; } .pnav .ds{ display:inline; }
+    /* разрыв строки после даты: без него поиск встал бы в строку с вкладками */
+    #head .toolbar::before{ content:''; order:3; flex:0 0 100%; height:0; }
+    #head .end{ margin-left:0; flex-wrap:nowrap; gap:var(--s-1); } #head .end button.sm{ padding:0 var(--s-2); } }
   @media print{ @page{ size:A4 landscape; margin:8mm; } .hi, .tabs, .toolbar input, .toolbar .end, .toolbar .pnav button, .note{ display:none !important; } }
   /* ── волны ── */
   .wave{ border:1px solid var(--line); border-radius:var(--r-card); background:var(--card); box-shadow:var(--shadow-card); margin-bottom:var(--s-3); padding:var(--s-4); }
@@ -112,7 +121,9 @@ var GORDER=['Механика','Шлифовка','Покрытие','Сборк
 var VIEW=qp('view')||'crew';   // раздел открывается с доски расстановки людей (владелец 22.11.2026)
 // открывается на сегодня, а с 18:00 — уже на завтра (владелец 23.11.2026): днём на доске людей смотрят идущий день,
 // вечером расставляют следующий. Час — по часам этого компьютера.
-var DATE=(function(){ var d=new Date(); if(d.getHours()>=18) d.setDate(d.getDate()+1); return isoOf(d); })();
+function defDate(){ var d=new Date(); if(d.getHours()>=18) d.setDate(d.getDate()+1); return isoOf(d); }
+// DATEAUTO — дату не выбирали руками: страница живёт в оболочке сутками, наутро вчерашний день сам сменяется сегодняшним (см. обработчик refresh)
+var DATE=defDate(), DATEAUTO=DATE;
 var OID=qp('batch')||'', R=null, SEL='', PICK='', SHIFTF='', PLAN=null;
 
 function load(){
@@ -126,7 +137,7 @@ function load(){
   }).catch(function(){ $('pane').innerHTML='<div class="center err">Связь оборвалась. <a href="javascript:void(0)" onclick="load()">Повторить</a></div>'; });
 }
 function setView(v){ VIEW=v; SEL=''; PICK=''; load(); }
-function setDate(v){ DATE=v; SEL=''; PICK=''; load(); }
+function setDate(v){ DATE=v; DATEAUTO=''; SEL=''; PICK=''; load(); }
 function renderHead(){
   var opts=(R.orders||[]).map(function(b){ return '<option value="'+esc(b.id)+'"'+(b.id===OID?' selected':'')+'>'+esc(b.num)+' · '+esc(b.name||'')+'</option>'; }).join('');
   var tabs=[['crew','Люди'],['horizon','Горизонт'],['day','День']].map(function(t){
@@ -135,7 +146,7 @@ function renderHead(){
   $('head').innerHTML='<div class="tabs">'+tabs+'</div>'
     +'<div class="toolbar">'
     +'<div class="pnav"><button onclick="setDate(shiftDate(DATE,-1))">‹</button>'
-    +'<span class="lbl">'+ruDate(DATE)+' ('+dayName(DATE)+')</span>'
+    +'<span class="lbl"><span class="dl">'+ruDate(DATE)+' ('+dayName(DATE)+')</span><span class="ds">'+dayName(DATE)+' '+ruDate(DATE).slice(0,5)+'</span></span>'
     +'<button onclick="setDate(shiftDate(DATE,1))">›</button></div>'
     +'<input type="date" value="'+DATE+'" onchange="setDate(this.value)">'
     +(VIEW==='crew'?'<div class="end" id="cbAct"></div>'   // доска людей — по всем заказам сразу; её кнопки ставит tw-crewboard.js
@@ -571,7 +582,13 @@ document.addEventListener('click',function(e){
 load();
 (function(){
   try{ var m=/[?&]twsec=([^&]+)/.exec(location.search); window.top.postMessage({tw:'hello',sec:m?decodeURIComponent(m[1]):''},'*'); }catch(e){}
-  window.addEventListener('message',function(e){ var d=e&&e.data; if(d&&d.tw==='refresh'){ try{ load(); }catch(err){} } });
+  window.addEventListener('message',function(e){ var d=e&&e.data; if(!d||d.tw!=='refresh') return;
+    try{
+      // день сменился, а дату руками не трогали — открыть новый день; доска «Люди» подтягивает правки на месте, без пересборки
+      // (пересборка сбрасывала прокрутку в начало при каждом возврате на вкладку — владелец 27.11.2026)
+      if(DATEAUTO&&DATEAUTO===DATE&&defDate()!==DATE){ DATE=DATEAUTO=defDate(); load(); }
+      else if(VIEW==='crew'&&twCrewBoard.refresh) twCrewBoard.refresh(); else load();
+    }catch(err){} });
 })();
 </script>
 </body>

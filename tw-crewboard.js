@@ -5,7 +5,7 @@
    Запретов нет: «перед операцией нечего брать» — только пометка ⚠. На телефоне блоки не тянут — тап открывает окно с теми же полями.
    twCrewBoard.mount(el, { api, post, date:'гггг-мм-дд', actions:<элемент для кнопок> }); twCrewBoard.setDate(d). */
 (function(){
-  var S={ el:null, o:null, date:'', d:null, refs:null, refsAt:0, undo:[], msg:'', msgT:0, drag:null, dlg:null, touch:false, busy:0, clip:null, pt:null, rev:0, pollT:0, polling:0 };
+  var S={ el:null, o:null, date:'', d:null, refs:null, refsAt:0, undo:[], msg:'', msgT:0, drag:null, dlg:null, touch:false, busy:0, clip:null, pt:null, rev:0, pollT:0, polling:0, actAt:0, lastX:0, lastY:0 };
   var esc=function(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); };
   var lc=function(s){ return String(s==null?'':s).trim().toLowerCase().replace(/ё/g,'е'); };
   var num=function(v){ return Number(String(v==null?'':v).replace(/\s/g,'').replace(',','.'))||0; };
@@ -193,9 +193,11 @@
     var hl='', i; if(S.pr) for(i=1;i<sc.hours;i++) hl+='<i class="cb-hl" style="left:'+(i/sc.hours*100).toFixed(3)+'%"></i>';
     return '<div class="cb-row'+(p.status==='не вышел'?' off':'')+(!S.pr&&S.find===p.name?' find':'')+'" data-w="'+esc(p.name)+'">'
       +'<div class="cb-name"><span class="cb-grip" title="перетащите, чтобы переставить человека">⋮⋮</span>'
-      +'<span class="cb-nm" title="'+esc(p.name)+(p.home?' · участок: '+esc(p.home):'')+(p.sent?' · задание отправлено':'')+repT+'">'+(rp==='no'?'<i class="cb-nr"></i>':'')+shIco(p.shift)+esc(nar?shortName(p.name):p.name)+(p.sent?' <span class="cb-sent">✓</span>':'')+'</span>'
+      +'<span class="cb-nm" title="'+esc(p.name)+(p.home?' · участок: '+esc(p.home):'')+(p.sent?' · задание отправлено':'')+repT+'">'+(rp==='no'?'<i class="cb-nr"></i>':'')+shIco(p.shift)+esc(nar?shortName(p.name):p.name)+(p.sent&&!nar?' <span class="cb-sent">✓</span>':'')+'</span>'
       +(rub>0?'<span class="cb-rub" title="заработает по расценкам, если сделает всё, что стоит в плане: '+money(rub)+' ₽ (до налогов, без премий)">'+Math.round(rub).toLocaleString('ru-RU')+' ₽</span>':'')
-      +'<span class="cb-ld'+cls+'" title="занято часов из '+n1(cap)+'">'+(busy?n1(busy):'—')+'<i>/'+n1(cap)+'</i></span></div>'
+      +'<span class="cb-ld'+cls+'" title="занято часов из '+n1(cap)+'">'+(busy?n1(busy):'—')+'<i>/'+n1(cap)+'</i></span>'
+      // на телефоне «✓ отправлено» — у правого края второй строки (место задаёт тема): в строке имени оно съедало место у фамилии
+      +(p.sent&&nar?'<span class="cb-sent" title="задание отправлено">✓</span>':'')+'</div>'
       +'<div class="cb-lane" data-w="'+esc(p.name)+'">'+hl+p.tasks.map(function(t){ return blkHtml(t,sc); }).join('')+'</div></div>';
   }
   function draw(){
@@ -205,28 +207,82 @@
     var sc=scale(), c=cfg(), ps=people(), cap=(c.to-c.from)/60, tot=0;
     var rubAll=0; ps.forEach(function(p){ p.tasks.forEach(function(t){ tot+=t.dur; rubAll+=t.qty*t.rate; }); });
     var hours=''; for(var h=sc.from;h<sc.to;h+=60) hours+='<span class="cb-h" style="left:'+((h-sc.from)/sc.span*100).toFixed(3)+'%;width:'+(60/sc.span*100).toFixed(3)+'%">'+(Math.floor(h/60)%24)+'</span>';
-    var now='';
-    if(S.d.date===S.d.today){ var d=new Date(), m=d.getHours()*60+d.getMinutes(); if(m>sc.from&&m<sc.to) now='<i class="cb-now" style="left:calc(var(--cb-name) + (100% - var(--cb-name)) * '+((m-sc.from)/sc.span).toFixed(4)+')"></i>'; }
+    var nf=nowFrac(sc), now=nf<0?'':'<i class="cb-now" style="left:'+nowLeft(nf)+'"></i>';
     if(S.pr) printChains();
     var noRep=S.pr?[]:ps.filter(function(p){ return repOf(p)==='no'; }).map(function(p){ return p.name; });
     var legend=((S.d.sites)||[]).filter(function(s){ return s.name!=='Прочее'; }).map(function(s){ return '<span class="cb-lg'+colorOf(s.name)+'">'+esc(s.name)+'</span>'; }).join('');
-    var sc0=$('cbWrap'), keep=sc0?{ x:sc0.scrollLeft, y:sc0.scrollTop }:null;
+    var sc0=$('cbWrap'), keep=sc0?{ x:sc0.scrollLeft, y:sc0.scrollTop }:null, py=window.pageYOffset;
+    if(sc0) touched(sc0);
+    // высоту держим на время перерисовки: пока строки не домерены, страница короче — Safari сразу поджимает прокрутку, и экран прыгал в начало (владелец 27.11.2026)
+    S.el.style.minHeight=S.el.offsetHeight+'px';
     S.el.innerHTML='<div class="cb-msg" id="cbMsg">'+msgHtml()+'</div>'+sumHtml(ps)
       +'<div class="note hint'+(S.help?' show':'')+'" data-hb="1">Щёлкните по пустому месту в строке — добавить работу: начните писать (деталь, операция, заказ) и выберите из списка, или просто впишите текст и нажмите Enter. '
       +'Блок тянется мышью — по времени и на другого человека; за правый край растягивается. К работе можно дописать примечание — оно видно на блоке (✎), в раскрытии при наведении и уходит рабочему вместе с заданием. Скопировать блок: наведите на него и нажмите Ctrl+C (или щёлкните по блоку → «⧉ Копировать»), затем щёлкните по месту, куда вставить, — у другого человека, на другое время или в другом дне; Esc — убрать из буфера. Назначили не ту деталь — щёлкните по блоку и нажмите «✎ заменить»: блок, время и человек останутся. Потяните нижний край блока на соседние строки — работа разделится между этими людьми, количество и время поровну. Людей переставляют за ⋮⋮. Длина блока считается из количества и расценки при темпе '
       +String(Math.round(c.efficiency*100))+' % от '+String(c.hourRate).replace('.',',')+' ₽/час; растянутый вручную блок помнит свою длину. ⚠ — перед операцией сейчас лежит меньше, чем задано (это подсказка, а не запрет). Наведите на блок — подсветится цепочка этой детали на день: номера шагов по техпорядку, синим — что делается до, серым — после, красным — шаг, стоящий по времени не на своём месте; внизу та же цепочка словами. Если текст в блок не помещается, наведите на него — блок раскроется и покажет текст целиком; кнопка «Компактно / Подробно» переносит текст задач в блоках целиком. Зелёная полоска — сколько уже сдано нарядами. Сумма в ₽ у человека — сколько он заработает по расценкам, если сделает весь план (до налогов, без премий).</div>'
       +(ps.length?'':'<div class="empty">На '+dmy(S.d.date)+' в табеле никого нет — добавьте людей кнопкой «＋ Человек».</div>')
       +(S.pr?'<div class="cb-ph"><b>План на '+ruD(S.d.date)+'</b> ('+WD[new Date(S.d.date+'T00:00:00').getDay()]+') · '+ps.length+' чел · занято '+n1(tot/60)+' из '+n1(ps.length*cap)+' ч</div>':'')
-      +'<div class="cb-wrap'+(S.pr?' pr':' tbl-wrap fill')+'" id="cbWrap"><div class="cb'+(S.pr||isDet()?' det':'')+(S.clip&&!S.pr?' paste':'')+'" style="--cb-hours:'+sc.hours+(S.nameW?';--cb-name:'+S.nameW+'px':'')+'">'
+      +'<div class="cb-wrap'+(S.pr?' pr':(narrow()?' tbl-wrap':' tbl-wrap fill'))+'" id="cbWrap"><div class="cb'+(S.pr||isDet()?' det':'')+(S.clip&&!S.pr?' paste':'')+'" style="--cb-hours:'+sc.hours+(S.nameW?';--cb-name:'+S.nameW+'px':'')+'">'
       +'<div class="cb-head"><div class="cb-name cb-corner"><b>'+ps.length+' чел</b>'+(noRep.length?'<span class="cb-nrc" title="нет наряда за этот день: '+esc(noRep.join(', '))+'"><i class="cb-nr"></i>'+noRep.length+'</span>':'')+(rubAll>0?'<span class="cb-rub" title="работы в плане по расценкам на всех: '+money(rubAll)+' ₽">'+Math.round(rubAll).toLocaleString('ru-RU')+' ₽</span>':'')+'<span class="cb-ld">'+n1(tot/60)+'<i>/'+n1(ps.length*cap)+' ч</i></span></div>'
       +'<div class="cb-lane cb-hours"><button class="cb-add l" title="добавить час раньше" data-add="l">＋</button>'+hours+'<button class="cb-add r" title="добавить час позже" data-add="r">＋</button></div></div>'
       +ps.map(function(p){ return rowHtml(p,sc); }).join('')+now+'</div></div>'
       +'<div class="cb-foot"><span class="cb-legend" id="cbLegend">'+legend+'<span class="cb-lg free">текстом</span>'+(noRep.length?'<span class="cb-nrc"><i class="cb-nr"></i>нет наряда</span>':'')+(S.pr&&S.prChN?'<span class="cb-chl"><i class="cb-ch k0">А</i><i class="cb-ch k0">А</i> — одинаковый кружок: одна деталь идёт по операциям</span>':'')+'</span><span class="cb-chain" id="cbChain" hidden></span></div>';
     S.over=null; hideTip();
     if(S.pr) fitPrint(); else { fitNames(); fitShort(); fitRows(); }
-    if(keep){ var w=$('cbWrap'); w.scrollLeft=keep.x; w.scrollTop=keep.y; }
-    drawActions();
+    drawActions(); fitBox();
+    var w=$('cbWrap'); if(keep){ w.scrollLeft=keep.x; w.scrollTop=keep.y; }
+    S.el.style.minHeight=''; if(window.pageYOffset!==py) window.scrollTo(0,py);
+    S.lastX=w.scrollLeft; S.lastY=w.scrollTop;
+    // день открыли заново — сразу к линии «сейчас»; при перерисовке — только если экран давно не трогали
+    follow(!keep); stick();
     if(window.twFit) try{ twFit(); }catch(e){}
+  }
+  /* ── телефон (владелец 27.11.2026): доска занимает остаток экрана и прокручивается внутри — шкала часов и имена всегда на месте;
+     линия «сейчас» двигается раз в полминуты, и доска идёт за ней, если экран не трогали полторы минуты (иначе того, кто смотрит план
+     на вечер, отбрасывало бы назад). Линия стоит на трети видимой шкалы: немного прошедшего и больше предстоящего. ── */
+  var FOLLOW_MS=90000;
+  function nowFrac(sc){ if(!S.d||S.d.date!==S.d.today) return -1; var d=new Date(), m=d.getHours()*60+d.getMinutes(); return (m>sc.from&&m<sc.to)?(m-sc.from)/sc.span:-1; }
+  function nowLeft(f){ return 'calc(var(--cb-name) + (100% - var(--cb-name)) * '+f.toFixed(4)+')'; }
+  function fitBox(){
+    var w=$('cbWrap'); if(!w||S.pr||!narrow()) return;
+    w.style.maxHeight='none';
+    // что под доской (легенда, поля страницы) от её высоты не зависит
+    var r=w.getBoundingClientRect(), below=Math.min(120,Math.max(8,Math.round(document.body.getBoundingClientRect().bottom-r.bottom)));
+    w.style.maxHeight=Math.max(240,window.innerHeight-(r.top+window.pageYOffset)-below)+'px';
+  }
+  function follow(force){
+    var w=$('cbWrap'), cb=w&&w.querySelector('.cb'), nm=cb&&cb.querySelector('.cb-name'); if(!nm||S.pr||!narrow()) return;
+    touched(w);
+    var f=nowFrac(scale()); if(f<0||(!force&&Date.now()-S.actAt<FOLLOW_MS)) return;
+    var name=nm.offsetWidth;
+    w.scrollLeft=Math.max(0,Math.round((cb.offsetWidth-name)*f-(w.clientWidth-name)*0.33)); S.lastX=w.scrollLeft; stick();
+  }
+  function nowTick(){
+    if(!idle()) return;
+    var f=nowFrac(scale()), ln=S.el.querySelector('.cb-now');
+    // линия появилась (началась смена) или ушла за край шкалы — перерисовать; иначе просто сдвинуть
+    if((f>=0)!==!!ln){ draw(); return; }
+    if(ln) ln.style.left=nowLeft(f);
+    follow();
+  }
+  // работа началась левее видимой шкалы — её текст едет за левым краем доски: иначе там, где доска стоит на «сейчас»,
+  // от идущих работ видны одни цветные полосы без подписи. Сдвиг — transform: переносы текста и высоты строк не меняются.
+  function stick(){
+    var w=$('cbWrap'); S.stickT=0; if(!w||S.pr) return;
+    var x=w.scrollLeft, bl=w.querySelectorAll('.cb-row .cb-blk'), v=[], i;
+    for(i=0;i<bl.length;i++){ var d=x-bl[i].offsetLeft; v.push(d>0?Math.min(d,Math.max(0,bl[i].offsetWidth-48)):0); }
+    for(i=0;i<bl.length;i++) if((bl[i]._sx||0)!==v[i]){ bl[i]._sx=v[i]; bl[i].style.setProperty('--sx',v[i]+'px'); }
+  }
+  // своя прокрутка и касания — «экран трогали»; прокрутку, которую поставили сами (возврат после перерисовки, шаг за линией), не считаем
+  function onScroll(e){
+    hideTip(); var w=$('cbWrap'); if(!w||e.target!==w) return;
+    // не rAF: в скрытом iframe оболочки он не срабатывает, и метка «уже запланировано» осталась бы навсегда
+    if(!S.stickT) S.stickT=setTimeout(stick,16);
+    touched(w);
+  }
+  // событие прокрутки приходит не всегда (страница в фоне не рисует кадры) — поэтому то же сравнение делаем перед перерисовкой и перед шагом за линией
+  function touched(w){
+    if(Math.abs(w.scrollLeft-S.lastX)>1||Math.abs(w.scrollTop-S.lastY)>1) S.actAt=Date.now();
+    S.lastX=w.scrollLeft; S.lastY=w.scrollTop;
   }
   // колонка имён — по самому длинному имени: фамилии должны читаться целиком (на телефоне колонка узкая, имя — в подсказке)
   function fitNames(){
@@ -378,8 +434,8 @@
     }
     // на телефоне кнопки короткие и без печати — доска должна начинаться как можно выше
     var n=narrow(), det=isDet();
-    a.innerHTML='<button class="sec sm" onclick="twCrewBoard._det()" title="'+(det?'сейчас подробно: текст задач целиком, строки выше — нажмите, чтобы вернуть компактный вид':'сейчас компактно: все люди на экране — нажмите, чтобы показать текст задач целиком')+'">'+(det?'▤ Подробно':'☰ Компактно')+'</button>'
-      +'<button class="sec sm" onclick="twCrewBoard.addPerson()" title="добавить человека на этот день">'+(n?'＋ Чел.':'＋ Человек')+'</button>'
+    a.innerHTML='<button class="sec sm" onclick="twCrewBoard._det()" title="'+(det?'сейчас подробно: текст задач целиком, строки выше — нажмите, чтобы вернуть компактный вид':'сейчас компактно: все люди на экране — нажмите, чтобы показать текст задач целиком')+'">'+(n?(det?'▤':'☰'):(det?'▤ Подробно':'☰ Компактно'))+'</button>'
+      +'<button class="sec sm" onclick="twCrewBoard.addPerson()" title="добавить человека на этот день">'+(n?'＋👤':'＋ Человек')+'</button>'
       +'<button class="sec sm" onclick="twCrewBoard.carry()" title="перенести на этот день работу, которую вчера не доделали">'+(n?'↪':'↪ Недоделанное')+'</button>'
       +'<button class="sec sm" onclick="twCrewBoard.sendAll()" title="разослать задания в Telegram">'+(n?'📨':'📨 Разослать')+'</button>'
       +(n?'':'<button class="sec sm" onclick="twCrewBoard.print()" title="печать: подробный вид на один альбомный лист A4">🖨</button>')
@@ -420,7 +476,7 @@
   /* ── мышь: перетаскивание блока, растягивание, перестановка людей; щелчок — окно ── */
   function minAt(lane,x,sc){ var r=lane.getBoundingClientRect(), c=cfg(); return Math.round((sc.from+(x-r.left)/r.width*sc.span)/c.snap)*c.snap; }
   function onDown(e){
-    S.touch=(e.pointerType==='touch'); hideTip(); unrelate(); S.over=null;
+    S.touch=(e.pointerType==='touch'); S.actAt=Date.now(); hideTip(); unrelate(); S.over=null;
     if(S.touch||e.button||S.dlg) return;
     var t=e.target, add=t.getAttribute&&t.getAttribute('data-add'); if(add) return;
     var grip=closest(t,'cb-grip'), blk=closest(t,'cb-blk'), lane=closest(t,'cb-lane'), sc=scale();
@@ -769,11 +825,14 @@
   var wired=false;
   window.twCrewBoard={
     mount:function(el,o){
-      S.el=el; S.o=o; S.date=o.date; S.d=null; S.undo=[]; S.msg='';
+      S.el=el; S.o=o; S.date=o.date; S.d=null; S.undo=[]; S.msg=''; S.actAt=0;
       el.innerHTML='<div class="center muted">Загрузка…</div>';
       if(!el._cb){ el._cb=1; el.addEventListener('pointerdown',onDown); el.addEventListener('click',onClick); el.addEventListener('mouseover',onOver); el.addEventListener('mousemove',function(e){ S.pt={ x:e.clientX, y:e.clientY }; });
-        el.addEventListener('mouseleave',function(){ S.over=null; unrelate(); hideTip(); }); el.addEventListener('scroll',hideTip,true); }
-      if(!wired){ wired=true; document.addEventListener('keydown',onKey); document.addEventListener('visibilitychange',poll); window.addEventListener('focus',poll); window.addEventListener('beforeprint',printOn); window.addEventListener('afterprint',printOff); }
+        el.addEventListener('mouseleave',function(){ S.over=null; unrelate(); hideTip(); }); el.addEventListener('scroll',onScroll,true); }
+      if(!wired){ wired=true; document.addEventListener('keydown',onKey); document.addEventListener('visibilitychange',poll); window.addEventListener('focus',poll); window.addEventListener('beforeprint',printOn); window.addEventListener('afterprint',printOff);
+        window.addEventListener('resize',function(){ if(S.d&&narrow()) fitBox(); }); setInterval(nowTick,30000); document.addEventListener('visibilitychange',nowTick);
+        // раздел в оболочке мог отрисоваться скрытым (высота окна 0) — когда его показали, высоту доски и место линии считаем заново
+        window.addEventListener('message',function(e){ if(e&&e.data&&e.data.tw==='show'&&S.d) setTimeout(function(){ fitBox(); nowTick(); },30); }); }
       // шрифт темы догружается после первой отрисовки — имена перемерить ещё раз
       try{ if(document.fonts&&document.fonts.ready) document.fonts.ready.then(function(){ if(S.d){ fitNames(); fitShort(); fitRows(); } }); }catch(e){}
       clearTimeout(S.pollT); S.pollT=setTimeout(poll,POLL_MS);
@@ -781,6 +840,8 @@
     },
     setDate:function(d){ S.date=d; S.undo=[]; return load(); },
     reload:function(){ return load(true); },
+    // оболочка просит обновиться при возврате на вкладку: день подтягиваем на месте (прокрутка и «↶» остаются), а не собираем доску заново
+    refresh:function(){ if(S.d&&S.el.querySelector('.cb')) poll(); else load(true); },
     undo:undo, addPerson:addPerson, carry:carry, sendAll:sendAll, print:print, _printOn:printOn, _printOff:printOff,
     _help:function(){ S.help=!S.help; draw(); }, _det:function(){ store('tw_cb_det',isDet()?'0':'1'); draw(); }, _back:back, _addPicked:addPicked, _save:saveEdit, _del:delEdit, _copy:function(){ var d=S.dlg; if(!d) return; var id=d.id; closeDlg(); copyBlk(id); }, _clipOff:clipOff, _rebase:rebase, _close:closeDlg, _shift:setShift, _remove:removePerson, _sendOne:sendOne
   };
