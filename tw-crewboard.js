@@ -192,7 +192,7 @@
   function nackHtml(ps){
     var h='';
     ps.forEach(function(p){ p.tasks.forEach(function(t){ if(!t.nack) return;
-      h+='<button class="cb-nack" onclick="twCrewBoard._edit(\''+esc(t.id)+'\')" title="открыть блок: снять отметку и отметить заново с верным количеством">⚠ <b>'+esc(p.name)+'</b> не согласен: '
+      h+='<button class="cb-nack" onclick="twCrewBoard._edit(\''+esc(t.id)+'\')" title="открыть блок: впишите верное количество в «Сделано всего» — запись исправится">⚠ <b>'+esc(p.name)+'</b> не согласен: '
         +esc(t.op?(t.op+((t.model||t.detail)?' · '+(t.model||t.detail):'')+' — записано '+qtyS(t.done)+' шт'):t.title)+(t.nackNote?', он пишет: «'+esc(t.nackNote)+'»':'')+'</button>'; }); });
     return h?'<div class="cb-nacks">'+h+'</div>':'';
   }
@@ -721,21 +721,24 @@
     }
     // «✓ Выполнено» (владелец 27.11.2026): отметка — строка наряда за рабочего; количество может отличаться от плана.
     // Работа текстом — сумма вручную (пусто — без оплаты). День впереди — отмечать нечего.
-    var canDone=!!(S.d&&S.d.can)&&S.d.date<=S.d.today, left=free?0:Math.max(0,r2(t.qty-(t.done||0))), doneHtml='';
+    // Поле — «сделано ВСЕГО по блоку» (владелец 27.11.2026: вписал число рабочего — оно прибавилось сверху): сервер сам дописывает разницу
+    // или убирает лишнее, повтор с тем же числом ничего не меняет. Подставляем: число из ответа «не так», иначе план (или записанное, если оно больше).
+    var nk=(t.nack&&/^\d+([.,]\d+)?$/.test(String(t.nackNote||'').replace(/\s/g,'')))?num(t.nackNote):0;
+    var canDone=!!(S.d&&S.d.can)&&S.d.date<=S.d.today, tot=free?0:(nk||Math.max(t.qty||0,t.done||0)), doneLbl=(!free&&t.done>0)?'✓ Записать':'✓ Выполнено', doneHtml='';
     if(canDone){
       var undoB=t.board?'<button class="gho sm" onclick="twCrewBoard._undone()" title="убрать последнюю запись, сделанную с доски">снять отметку</button>':'';
       if(free) doneHtml=t.dn>0
         ?'<div class="cb-donebox"><span class="cb-hint ok">✓ Отмечено'+(t.rub>0?' · '+qtyS(t.rub)+' р.':' · без оплаты')+'</span><span class="cb-sp"></span>'+undoB+'</div>'
         :'<div class="cb-donebox"><label for="cbSum">Сумма, р.</label><input id="cbSum" inputmode="decimal" autocomplete="off" placeholder="без оплаты"'+(S.d.can.approve?'':' disabled title="сумму ставит тот, кто одобряет наряды"')+'>'
           +'<button class="green" id="cbDoneBtn" onclick="twCrewBoard._done()">✓ Выполнено</button></div>';
-      else doneHtml='<div class="cb-donebox"><label for="cbDone">Сделано, шт</label><span class="cb-step"><button class="sec" data-st="-1" aria-label="меньше">−</button>'
-          +'<input id="cbDone" inputmode="decimal" autocomplete="off" value="'+(left?String(left).replace('.',','):'')+'"><button class="sec" data-st="1" aria-label="больше">＋</button></span>'
+      else doneHtml='<div class="cb-donebox"><label for="cbDone">Сделано всего, шт</label><span class="cb-step"><button class="sec" data-st="-1" aria-label="меньше">−</button>'
+          +'<input id="cbDone" inputmode="decimal" autocomplete="off" value="'+(tot?String(tot).replace('.',','):'')+'"><button class="sec" data-st="1" aria-label="больше">＋</button></span>'
           // раскрой (владелец 27.11.2026): форматка — оплата за детали; ЧПУ — выбирают лист и число листов, оплата за листы
           +(t.cut?'<div class="cb-cut wide"><label for="cbMat">Как резали</label><select id="cbMat"></select>'
             +'<span id="cbShW" hidden><label for="cbSh">Листов</label><input id="cbSh" inputmode="decimal" autocomplete="off"></span><div class="cb-hint" id="cbCutTip"></div></div>':'')
-          +'<button class="green" id="cbDoneBtn" onclick="twCrewBoard._done()">✓ Выполнено</button>'
-          +(t.done>0?'<div class="cb-hint ok wide">записано '+qtyS(t.done)+' из '+qtyS(t.qty)+' шт'+(t.wait?' · ждёт: '+esc(t.wait):'')+' '+undoB+'</div>':'')
-          +(t.nack?'<div class="cb-hint bad wide">рабочий не согласен'+(t.nackNote?': «'+esc(t.nackNote)+'»':'')+'. Снимите отметку и отметьте заново с верным количеством</div>':'')+'</div>';
+          +'<button class="green" id="cbDoneBtn" data-l="'+doneLbl+'" onclick="twCrewBoard._done()">'+doneLbl+'</button>'
+          +(t.done>0?'<div class="cb-hint ok wide">сейчас записано '+qtyS(t.done)+' из '+qtyS(t.qty)+' шт'+(t.wait?' · ждёт: '+esc(t.wait):'')+'. Впишите, сколько сделано всего, — запись исправится '+undoB+'</div>':'')
+          +(t.nack?'<div class="cb-hint bad wide">рабочий не согласен'+(t.nackNote?': «'+esc(t.nackNote)+'»':'')+'. Впишите верное количество и нажмите «Записать» — лишнее уберётся само</div>':'')+'</div>';
     }
     openDlg('edit',doneHtml+(free?('<div class="cb-f wide"><label>Что делать</label><textarea id="cbTitle" rows="1">'+esc(t.title)+'</textarea></div>')
         :('<div class="cb-picked"><span class="cb-dot'+colorOf(t.group)+'" id="cbHeadDot"></span><span id="cbHead"><b>'+esc(t.op)+'</b>'+(t.model?' · '+esc(t.model):(t.detail?' · '+esc(t.detail):''))
@@ -819,7 +822,7 @@
   function doneSend(){
     var d=S.dlg, f=d&&taskBy(d.id); if(!f) return closeDlg(); if(d.sending) return;
     var t=f.t, p={ vapi:'crewdone', date:S.date, id:t.id }, what;
-    if(t.op){ var q=num($('cbDone').value); if(!(q>0)){ dlgErr('Укажите, сколько сделано'); return; } p.qty=String(q); what=qtyS(q)+' шт';
+    if(t.op){ var q=num($('cbDone').value); if(!(q>0)){ dlgErr('Укажите, сколько сделано всего'+(t.board?' (убрать запись совсем — «снять отметку»)':'')); return; } p.total=String(q); what=qtyS(q)+' шт';
       if($('cbMat')){ var m=$('cbMat').value;
         if(m==='-') p.nosheet='1';
         else if(m){ var ns=num($('cbSh').value); if(!(ns>0)){ dlgErr('Укажите, сколько листов раскроили'); return; } p.mat=m; p.sheets=String(ns); what+=' · листов '+qtyS(ns); }
@@ -829,7 +832,8 @@
     doneBusy(true);
     send(p,function(r){
       closeDlg(); merge(r.rows);
-      say('✓ '+esc(f.p.name)+': '+esc(t.op?(t.op+' — '+what):what)+(r.sum?' · '+qtyS(r.sum)+' р.':'')
+      if(r.same){ say(esc(f.p.name)+': '+esc(t.op)+' — уже записано '+esc(what)+', без изменений'); return; }
+      say('✓ '+esc(f.p.name)+': '+esc(t.op?(t.op+' — '+(r.fixed?'исправлено: было '+qtyS(r.was)+' → стало ':(r.was>0?'было '+qtyS(r.was)+' → всего ':''))+what):what)+(r.sum?' · '+qtyS(r.sum)+' р.':'')
         +(r.dup?' — уже записано, повтор пропущен':r.status==='qc_wait'?' — ждёт приёмку ОТК':r.status==='pending'?' — на проверке у мастера':'')
         +((r.warnings||[]).length?'<br><span class="err">'+esc(r.warnings.join(' · '))+'</span>':''));
     },function(err){ doneBusy(false); dlgErr(err); });
@@ -840,7 +844,7 @@
     send({ vapi:'crewundone', date:S.date, id:f.t.id },function(r){ closeDlg(); merge(r.rows); say('Отметка снята: '+esc(f.p.name)+' · '+esc(f.t.op||f.t.title)); },function(err){ doneBusy(false); dlgErr(err); });
   }
   // запись идёт пару секунд: второе нажатие не должно создать вторую строку наряда
-  function doneBusy(on){ var d=S.dlg; if(!d) return; d.sending=on; var b=d.bg.querySelectorAll('button'); for(var i=0;i<b.length;i++) b[i].disabled=on; var x=$('cbDoneBtn'); if(x) x.textContent=on?'Записываю…':'✓ Выполнено'; }
+  function doneBusy(on){ var d=S.dlg; if(!d) return; d.sending=on; var b=d.bg.querySelectorAll('button'); for(var i=0;i<b.length;i++) b[i].disabled=on; var x=$('cbDoneBtn'); if(x) x.textContent=on?'Записываю…':(x.getAttribute('data-l')||'✓ Выполнено'); }
   function tm(v){ var m=/^(\d{1,2}):(\d{2})/.exec(v||''); return m?(+m[1])*60+(+m[2]):null; }
   function setEnd(dur){ var a=tm($('cbFrom').value); if(a!=null) $('cbTo').value=hm2(a+dur); }
   function saveEdit(){
