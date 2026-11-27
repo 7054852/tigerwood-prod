@@ -103,6 +103,20 @@
   .jedit .jsum{ display:inline-flex; align-items:center; gap:var(--s-2); white-space:nowrap; }
   .jedit .jl{ border-top:1px solid var(--line2); margin-top:var(--s-1); padding-top:var(--s-1); font:var(--t-small); }
   .jedit .jl .row{ flex-wrap:nowrap; align-items:baseline; } .jedit .jl .row>span:first-child{ min-width:0; } .jedit .jl .row>span:last-child{ white-space:nowrap; }
+  /* «Проверка» — та же таблица (владелец 27.11.2026): день — липким заголовком, наряд — карточка с шапкой,
+     строки работ с теми же колонками; правка строки (✏️ · коэффициент · ✖) — в последней колонке, действия с нарядом — полосой снизу */
+  #mlist{ max-width:1180px; }
+  .jrow.pm{ grid-template-columns:124px minmax(0,1fr) minmax(0,1.3fr) minmax(0,1.1fr) 70px 84px 156px; grid-template-areas:"o m d p q s a" ". n n n n n n"; }
+  .jrow.pm.my{ grid-template-columns:124px minmax(0,1fr) minmax(0,1.3fr) minmax(0,1.1fr) 70px 84px 64px; }
+  .jrow.pm .ja{ display:flex; justify-content:flex-end; align-items:center; gap:var(--s-1); } .jrow.pm .ja button{ flex:none; }
+  .jrow.pm .ja input.kin{ width:52px; min-height:0; height:24px; margin:-3px 0; }
+  .jrow > .jle{ grid-column:1 / -1; } .jrow > .jle:empty{ display:none; }
+  .jrow .jn select.vsel{ width:auto; max-width:100%; min-height:0; height:26px; padding:0 var(--s-2); font:inherit; }
+  .jwh button.sm{ min-height:0; height:24px; padding:0 var(--s-2); }
+  .pact{ display:flex; align-items:center; gap:var(--s-2); flex-wrap:wrap; padding:var(--s-2) var(--s-3); border-top:1px solid var(--line); }
+  .pact .pgo{ display:flex; align-items:center; gap:var(--s-2); flex-wrap:wrap; margin-left:auto; }
+  .pbon:not(:empty){ padding:0 var(--s-3) var(--s-2); }
+  .pact .msg, .jrow .msg{ margin:0; font:var(--t-small); text-align:left; }
   @media (max-width:760px){
     .jrow, .jrow.tw{ grid-template-columns:minmax(0,1fr) auto auto auto; grid-template-areas:"w w w w" "d q s a" "x x x x" "n n n n"; column-gap:var(--s-2); padding:var(--s-2) var(--s-3); }
     .jrow > .jx{ display:block; grid-area:x; color:var(--muted); } .jx > span{ color:inherit; font-weight:inherit; }
@@ -110,6 +124,17 @@
     .jrow .jd.wide{ grid-column:auto; grid-area:d; } .jwk:empty{ display:none; } .jwk{ font-weight:600; }
     .jrow.jlab{ display:none; } .ja button{ height:var(--h-sm); width:var(--h-sm); margin:-6px 0; }
     .jedit .jl .row{ flex-wrap:wrap; }
+    .jrow.pm{ grid-template-columns:minmax(0,1fr) auto auto; grid-template-areas:"d q s" "x x x" "a a a" "n n n"; }
+    .jrow.pm.my{ grid-template-columns:minmax(0,1fr) auto auto; grid-template-areas:"d q s" "x x a" "n n n"; }
+    .jrow.pm .ja{ align-self:center; } .jrow.pm .ja button{ margin:0; } .jrow.pm .ja input.kin{ width:64px; height:var(--h-sm); margin:0; }
+    .jrow.pm .ja:empty{ display:none; } .jwh button.sm{ height:var(--h-sm); }
+    .jrow .jn select.vsel{ height:var(--h-sm); }
+    /* телефон: «Одобрить» — первой и во всю ширину, под большим пальцем; «Сохранить» и «Отклонить» — строкой ниже */
+    .pact .pgo{ width:100%; margin-left:0; } .pact .pgo button{ flex:1 1 0; } .pact .pgo button:nth-of-type(2){ order:-1; flex-basis:100%; min-height:var(--h-ctl); }
+    .pact .pgo .msg:empty{ display:none; } .pact .pgo .msg{ order:-2; flex-basis:100%; }
+    /* шапка наряда: имя и сумма — одной строкой, часы и «подан» — под ними */
+    .jcard.pm .jwh{ display:grid; grid-template-columns:minmax(0,1fr) auto; gap:2px var(--s-3); }
+    .jcard.pm .jwn{ display:contents; } .jcard.pm .jwn > b{ grid-column:1; grid-row:1; } .jcard.pm .jwn > span{ grid-column:1 / -1; } .jcard.pm .jwt{ grid-column:2; grid-row:1; margin:0; }
   }
   /* задание → наряд: количество и кнопка держатся вместе, на телефоне — под пальцем */
   #myshifts .tk, #brdmine .tk{ display:flex; align-items:center; gap:var(--s-2); margin-left:auto; }
@@ -613,10 +638,10 @@ function subDel(id){
     loadSub();
   });
 }
-function payFixBtn(master,l,rid){
+function payFixBtn(master,l,rid,ic){
   if(!master || !l || l.paid!==false || l.kind==='лист' || !l.detail || l.redo) return '';
   return ' <button class="sm sec" onclick="payByDetail(\''+attr(l.detail)+'\',\''+attr(l.op)+'\',\''+esc(rid)+'\')"'
-    +' title="эту деталь распускают вручную, а не на ЧПУ — платить по расценке детали">💸 платить за деталь</button>';
+    +' title="'+(ic?'платить за деталь: ':'')+'эту деталь распускают вручную, а не на ЧПУ — платить по расценке детали">💸'+(ic?'':' платить за деталь')+'</button>';
 }
 function payByDetail(detail,op,rid){
   if(!confirm('Платить за «'+detail+' · '+op+'» по расценке детали?\n\nПравило запомнится: эту деталь распускают вручную, а не на ЧПУ. Лист за неё оплачиваться не будет. Наряд пересчитается сразу.')) return;
@@ -1382,75 +1407,95 @@ function renderPending0(r){
       if(msel.value) reps=reps.filter(function(rp){ return rp.worker===msel.value; });
     }
     if(!reps.length){ el.innerHTML='<div class="muted">'+(master?'Нет нарядов на проверке.':'У вас нет нарядов на проверке — всё обработано.')+'</div>'; return; }
-    el.innerHTML=reps.map(function(rp){
-      var rid=rp.report;
-      var hasCut=(rp.lines||[]).some(isCutLine);
-      // ⚠ строки разных заказов (владелец 28.10.2026): шапка тогда пишет «Раскрой»/«сборный» — заказ видно у каждой строки
-      var perLine=hasCut||rp.mixed;
-      var lines=rp.lines.map(function(l){
-        var koef=kOf(l.koef), kbadge=(!master&&koef!==1)?' <span class="muted" style="font:var(--t-small)">×'+koef+'</span>':'';   // мастеру коэффициент виден в поле строки
-        // подрядчик привёз эту операцию «предварительно» (заказ не двигал) — рабочий доделывает, диспетчер ставит ×0,75/×0,5 (владелец 02.10.2026)
-        if(master&&l.afterSub>0) kbadge+=' <span class="pill warn" title="по этой детали и операции подрядчик привёз '+l.afterSub+' шт предварительно: заказ не двигал, рабочий доделывает — снижайте только выплату">после подрядчика · предв. '+l.afterSub+' шт — поставьте ×k</span>';
-        // ⚠ дубль виден сразу: сверять наряды глазами мастер не должен
-        var dupb=l.dup?(' <span class="pill bad" title="'+esc(l.dup)+'">⚠ дубль</span>'):'';
-        var acts='';
-        if(master){
-          acts=(isDev(l)?' ':' <button class="sm sec" onclick="lineEditOpen(\''+esc(l.id)+'\',\''+attr(l.detail)+'\',\''+attr(l.op)+'\','+l.qty+',\''+attr(l.kind||'')+'\',\''+attr(l.batchId||'')+'\','+(l.toStock?1:0)+')" title="изменить строку: деталь, операция, количество, заказ">✏️</button>')
+    var mcls='jrow pm'+(master?'':' my');
+    var tmOf=function(rp){ var sb=String(rp.submitted||''); return sb.indexOf(rp.date)===0?sb.slice(rp.date.length).trim():sb.replace(/^(\d\d\.\d\d)\.\d{4}/,'$1'); };
+    var totOf=function(rp){ var b=rp.breakdown||{}; return b.total!=null?b.total:(rp.sum||0); };
+    // наряд — карточка: шапка (кто, часы, когда подан, к оплате), строки работ, полоса действий
+    var repHtml=function(rp){
+      var rid=rp.report, K=bonKey(rid), pOrd=null, pProd=null;
+      var rows=rp.lines.map(function(l){
+        var koef=kOf(l.koef), x=jCells(l), unpaid=l.paid===false;
+        // деталь оплачивается листом, а листа в наряде нет — ошибка ввода, говорим о ней строкой; обычное «оплачено листом» — подсказкой у нуля
+        var noSheet=unpaid&&l.kind!=='подряд'&&l.kind!=='лист'&&l.redo!=='свой брак'&&!l.sheet;
+        var money=unpaid?'<span title="без оплаты: '+esc(payNote(l))+'">'+jMoney(0)+'</span>'
+          :(((!master&&koef!==1)?'<small title="коэффициент мастера к сумме">×'+String(koef).replace('.',',')+'</small> ':'')+jMoney(l.sum));
+        var acts='', note=[];
+        if(l.kind==='премия'){
+          if(master){ acts='<button class="sm sec" onclick="delJournal(\''+esc(l.id)+'\',loadPending)" title="убрать премию">🗑</button>'; note.push('<span id="jm-'+esc(l.id)+'" class="msg"></span>'); }
+        } else if(master){
+          acts=payFixBtn(master,l,rid,1)
+            +(isDev(l)?'':'<button class="sm sec" onclick="lineEditOpen(\''+esc(l.id)+'\',\''+attr(l.detail)+'\',\''+attr(l.op)+'\','+l.qty+',\''+attr(l.kind||'')+'\',\''+attr(l.batchId||'')+'\','+(l.toStock?1:0)+')" title="изменить строку: деталь, операция, количество, заказ">✏️</button>')
             +'<input class="kin" type="number" step="0.05" min="0" inputmode="decimal" value="'+koef+'" data-rep="'+esc(rid)+'" data-line="'+esc(l.id)+'" data-k0="'+koef+'" oninput="kinChg(this)" title="коэффициент к сумме: 1 — без изменений, 1.2 — +20 %, 0.8 — −20 %. Сохраняется кнопкой «Сохранить» или вместе с «Одобрить»">'
             +'<button class="sm sec" onclick="appr(\''+esc(l.id)+'\',0)" title="убрать эту строку из наряда">✖</button>';
         } else {   // свой наряд на проверке — можно поправить, пока мастер не подтвердил
-          acts=' <button class="sm sec" onclick="myEdit(\''+esc(l.id)+'\','+l.qty+')" title="изменить количество">✏️</button>'
+          acts='<button class="sm sec" onclick="myEdit(\''+esc(l.id)+'\','+l.qty+')" title="изменить количество">✏️</button>'
             +'<button class="sm sec" onclick="myDel(\''+esc(l.id)+'\')" title="убрать операцию">🗑</button>';
         }
-        var vsel='';
+        // подрядчик привёз эту операцию «предварительно» (заказ не двигал) — рабочий доделывает, диспетчер ставит ×0,75/×0,5 (владелец 02.10.2026)
+        if(master&&l.afterSub>0) note.push('<span class="pill warn" title="по этой детали и операции подрядчик привёз '+l.afterSub+' шт предварительно: заказ не двигал, рабочий доделывает — снижайте только выплату">после подрядчика · предв. '+l.afterSub+' шт — поставьте коэффициент</span>');
+        if(noSheet) note.push('<span class="warn">⚠ '+payNote(l)+(master?' — добавьте лист в наряд или нажмите 💸 «платить за деталь»':'')+'</span>');
         if(master && l.targets && l.targets.length>1){   // деталь есть в нескольких изделиях/цветах — мастер может закрепить вручную
           var cur=l.curTarget||'';
-          var opts='<option value="">↔ распределить по заказу (авто)</option>'+l.targets.map(function(t){ var lbl=t.eq+(t.model?' · '+t.model:''); return '<option value="'+esc(t.id)+'"'+(t.id===cur?' selected':'')+'>'+esc(lbl)+'</option>'; }).join('');
-          vsel='<div class="row" style="margin-top:var(--s-1)"><span class="muted" style="font:var(--t-small)">изделие:</span>'
-            +'<select class="vsel" onchange="setOutTarget(\''+esc(l.id)+'\',this.value,this)">'+opts+'</select></div>';
+          note.push('<span class="muted">изделие:</span> <select class="vsel" onchange="setOutTarget(\''+esc(l.id)+'\',this.value,this)"><option value="">↔ распределить по заказу (авто)</option>'
+            +l.targets.map(function(t){ var lbl=t.eq+(t.model?' · '+t.model:''); return '<option value="'+esc(t.id)+'"'+(t.id===cur?' selected':'')+'>'+esc(lbl)+'</option>'; }).join('')+'</select>');
         }
-        if(l.kind==='премия'){
-          return '<div style="border-top:1px solid var(--line);padding-top:var(--s-1)"><div class="row">'
-            +'<span>🎁 <b>Премия</b>'+(l.note?(' — '+esc(l.note)):'')+'</span>'
-            +'<span class="ok">+'+l.sum+' р.'+(master?(' <button class="sm sec" onclick="delJournal(\''+esc(l.id)+'\')" title="убрать премию">🗑</button><span id="jm-'+esc(l.id)+'" class="msg"></span>'):'')+'</span></div></div>';
-        }
-        return '<div style="border-top:1px solid var(--line);padding-top:var(--s-1)">'
-          +'<div class="row"><span>'+kindBadge(l)+lineTxt(l)+(perLine?lineOrd(l):'')+kbadge+dupb+'</span>'
-          +'<span>'+(l.paid===false?'<span class="muted">0 р. · '+payNote(l)+'</span>'+payFixBtn(master,l,rid):(l.sum+' р.'))+acts+'</span></div>'
-          +vsel+'<div id="le-'+esc(l.id)+'"></div></div>';
+        // ⚠ дубль виден сразу: сверять наряды глазами мастер не должен
+        var dupb=l.dup?(' <span class="pill bad" title="'+esc(l.dup)+'">⚠ дубль</span>'):'';
+        var ord=batchTag(l), sameO=(ord===pOrd)?' rep':'', sameP=(!x.wide&&sameO&&x.prod===pProd)?' rep':''; pOrd=ord; pProd=x.wide?null:x.prod;
+        return '<div class="'+mcls+'">'
+          +(x.wide?'<span class="jd wide">'+x.wide+'</span>':'<span class="jd">'+kindBadge(l)+x.det+dupb+'</span>')
+          +'<span class="jq">'+x.qty+'</span><span class="js'+(unpaid?' off':'')+'">'+money+'</span><span class="ja">'+acts+'</span>'
+          +'<span class="jx"><span class="jp">'+(x.wide?'':esc(l.op))+'</span><span class="jo'+sameO+'">'+(l.kind==='премия'?'':ord)+'</span><span class="jm'+sameP+'">'+(x.wide?'':esc(x.prod))+'</span></span>'
+          +(note.length?'<span class="jn">'+note.join(' ')+'</span>':'')
+          +'<div class="jle" id="le-'+esc(l.id)+'"></div></div>';
       }).join('');
-      var night=(rp.shift==='ночь');
+      var bd=rp.breakdown||{}, ex=[], notes=[];
+      if(bd.premium>0) ex.push('премия за наряд +'+jMoney(bd.premium));
+      if(bd.night>0) ex.push('ночная +'+jMoney(bd.night));
+      if(bd.bonus>0) ex.push('премия мастера +'+jMoney(bd.bonus));
+      if(bd.time>0) ex.push('разработка +'+jMoney(bd.time));
+      if(!master && rp.shift && rp.shift!=='день') notes.push(shLbl(rp.shift));
+      if(ex.length) notes.push('к оплате по наряду <b>'+jMoney(totOf(rp))+' р.</b>: сдельно '+jMoney(bd.base||0)+' · '+ex.join(' · '));
+      if(notes.length) rows+='<div class="'+mcls+' jnr"><span class="jn">'+notes.join(' · ')+'</span></div>';
       var koefs=rp.lines.map(function(l){return kOf(l.koef);});
       var uniK=(koefs.length&&koefs.every(function(k){return k===koefs[0];}))?koefs[0]:null;
       var koefLbl='коэффициент'+(uniK!=null?(uniK!==1?' ×'+uniK:''):' (разный)');
-      var ctrls = master
-        ? '<div class="row" style="margin:var(--s-2) 0 0;justify-content:flex-start">'
+      var bar = master
+        ? '<div class="pbon" id="bonbox-m-'+K+'"></div>'
+          +'<div class="pact" id="acts-m-'+K+'">'
           +(rp.single?'':shSeg(rp.shift,'setRepShift',rid))
-          +'<button class="sm sec" onclick="setRepKoef(\''+esc(rid)+'\','+(uniK!=null?uniK:1)+')">'+koefLbl+'</button>'
-          +'<button class="sm sec" onclick="setRepDate(\''+esc(rid)+'\',\''+esc(rp.date)+'\',loadPending)" title="за какой день работа">📅 дата</button></div>'
-        : (rp.shift&&rp.shift!=='день'?'<div class="muted" style="font:var(--t-small)">'+shLbl(rp.shift)+'</div>':'');
-      var footer = master
-        ? '<div id="bonbox-m-'+bonKey(rid)+'"></div>'
-          +'<div class="row" style="margin-top:var(--s-3)" id="acts-m-'+bonKey(rid)+'"><button class="sm sec" onclick="addBonus(\''+esc(rid)+'\',\''+esc(rp.worker)+'\',\'m\')" title="премия рабочему за этот наряд">🎁 + премия</button>'
+          +'<button class="sm sec" onclick="setRepKoef(\''+esc(rid)+'\','+(uniK!=null?uniK:1)+')" title="подставить один коэффициент во все строки наряда">'+koefLbl+'</button>'
+          +'<button class="sm sec" onclick="setRepDate(\''+esc(rid)+'\',\''+esc(rp.date)+'\',loadPending)" title="за какой день работа">📅 дата</button>'
+          +'<button class="sm sec" onclick="addBonus(\''+esc(rid)+'\',\''+esc(rp.worker)+'\',\'m\')" title="премия рабочему за этот наряд">🎁 + премия</button>'
+          +'<span class="pgo"><span id="rm-'+esc(rid)+'" class="msg"></span>'
           +'<button class="sm sec" onclick="saveKoefs(\''+esc(rid)+'\')" title="записать коэффициенты строк, не одобряя">💾 Сохранить</button>'
-          +'<button class="sm" onclick="apprRep(\''+esc(rid)+'\',1)" title="записать коэффициенты и одобрить">✅ Одобрить'+(rp.single?'':' наряд')+'</button>'
-          +'<button class="sm danger sec" onclick="rejectRep(\''+esc(rid)+'\',\''+esc(rp.worker)+'\','+rp.sum+','+rp.lines.length+')" title="отклонить ВЕСЬ наряд">✖ Отклонить наряд</button>'
-          +'<span id="rm-'+esc(rid)+'" class="msg"></span></div>'
-        : '<div class="row" style="margin-top:var(--s-2)">'
+          +'<button class="sm" onclick="apprRep(\''+esc(rid)+'\',1)" title="записать коэффициенты и одобрить">✅ Одобрить</button>'
+          +'<button class="sm danger sec" onclick="rejectRep(\''+esc(rid)+'\',\''+esc(rp.worker)+'\','+rp.sum+','+rp.lines.length+')" title="отклонить ВЕСЬ наряд">✖ Отклонить</button></span></div>'
+        : '<div class="pact">'
           +(rp.single?'':'<button class="sm" onclick="startAdd(\''+esc(rid)+'\',\''+esc(rp.date+' · '+rp.batch)+'\')">➕ Дополнить наряд</button>')
           +'<span class="muted" style="font:var(--t-small)">⏳ ждёт подтверждения мастера</span></div>';
-      var bTag=hasCut?batchTag({kind:'лист'})
-        :(rp.mixed?'<span class="pill info" title="в наряде строки разных заказов">🧩 сборный</span>':batchTag(rp));
-      // ⚠ ДАТА СМЕНЫ — ЗАМЕТНОЙ, а не серым хвостиком после ФИО. Мастеру важно, за какой день
-      // наряд и сколько он уже лежит: вчерашний подтверждают не глядя, недельный — разбирают.
-      var ageH=ruAgeH(rp.date), oldN=(ageH>48);
-      return '<div class="card"><div class="row"><b>'+esc(rp.worker)+'</b>'
-        +'<span class="'+(oldN?'err':'muted')+'" style="font:var(--t-small)">📅 <b>'+esc(rp.date)+'</b></span>'+bTag+'</div>'
-        +'<div class="muted">'+timeLine(rp.worker,rp.date,rp.time,!!DATA.canCheck)
-        +(rp.single?'одиночная запись':'наряд')+': '+rp.lines.length+' оп.'
-        +(ageH>=24?(' · <span class="'+(oldN?'err':'muted')+'">лежит '+otkAge(ageH)+'</span>'):'')
-        +(rp.submitted?' · подан '+esc(rp.submitted):'')+'</div>'
-        +ctrls+lines+bonusBlockHtml(rp.breakdown||{})+footer+'</div>';
+      var tm=tmOf(rp);
+      return '<div class="card jcard pm"><div class="jwh"><div class="jwn"><b>'+esc(rp.worker)+'</b>'
+          +'<span>'+timeLine(rp.worker,rp.date,rp.time,master).replace(/ · $/,'')+'</span>'
+          +'<span class="muted">'+rp.lines.length+' оп.'+(tm?(' · подан '+esc(tm)):'')+'</span></div>'
+        +'<div class="jwt" title="сумма наряда с надбавками — будет начислена после одобрения"><span class="muted">к оплате</span><b class="num">'+jMoney(totOf(rp))+' р.</b></div></div>'
+        +'<div class="jrep">'+rows+'</div>'+bar+'</div>';
+    };
+    var lab='<div class="'+mcls+' jlab"><span class="jd">Деталь</span><span class="jq">Кол-во</span><span class="js">Сумма, р.</span><span class="ja"></span>'
+      +'<span class="jx"><span class="jp">Операция</span><span class="jo">Заказ</span><span class="jm">Изделие</span></span></div>';
+    // дни — заголовками, от новых к старым; внутри дня — по алфавиту, как в журнале
+    var dates=[], dix={};
+    reps.forEach(function(rp){ if(dix[rp.date]==null){ dix[rp.date]=dates.length; dates.push({date:rp.date,rs:[]}); } dates[dix[rp.date]].rs.push(rp); });
+    dates.sort(function(a,b){ var ka=jSortKey(a.date), kb=jSortKey(b.date); return ka<kb?1:(ka>kb?-1:0); });
+    el.innerHTML=dates.map(function(D){
+      var tot=0, ws={}, wn=0, ageH=ruAgeH(D.date);
+      D.rs.forEach(function(rp){ tot+=totOf(rp); if(!ws[rp.worker]){ ws[rp.worker]=1; wn++; } });
+      D.rs.sort(function(a,b){ return String(a.worker).localeCompare(String(b.worker),'ru'); });
+      // ⚠ мастеру важно, сколько наряд уже лежит: вчерашний подтверждают не глядя, недельный — разбирают
+      return '<div class="jdh"><div class="jdl"><b>'+esc(D.date)+'</b><span class="muted">'+jWeekday(D.date)+'</span>'
+          +(ageH>=24?('<span class="'+(ageH>48?'err':'muted')+'">лежит '+otkAge(ageH)+'</span>'):'')
+          +'<span class="jdt">'+(master?(wn+' чел. · '):'')+D.rs.length+' '+jNar(D.rs.length)+' · <b class="num">'+jMoney(tot)+' р.</b></span></div>'+lab+'</div>'
+        +D.rs.map(repHtml).join('');
     }).join('');
   })();
 }
@@ -1530,11 +1575,11 @@ function editJournal(id,curQty,curDate){
     }, true);
   });
 }
-function delJournal(id){
+function delJournal(id,after){
   if(!confirm('Удалить эту запись выработки? Пересчитается выполнение заказа.')) return;
   var m=document.getElementById('jm-'+id); if(m) m.textContent='…';
   api({vapi:'deloutput',id:id}).then(function(r){
-    if(r&&r.ok){ var c=document.getElementById('j-'+id); if(c) c.style.opacity=.3; loadJournal(); }
+    if(r&&r.ok){ var c=document.getElementById('j-'+id); if(c) c.style.opacity=.3; (after||loadJournal)(); }
     else if(m){ m.innerHTML='<span class="err">'+esc((r&&r.error)||'ошибка')+'</span>'; }
   });
 }
@@ -1785,15 +1830,7 @@ function renderJournal0(){
       var gear=master?'<button class="sm sec" onclick="jOpen(\''+esc(g.key)+'\')" title="править наряд: смена, дата, коэффициенты, премия, количество, удаление">✎</button>':'';
       var pOrd=null, pProd=null;
       var h=g.lines.map(function(it,i){
-        var first=i===0, koef=kOf(it.koef), p=String(it.detail||'').split(' — '), prod=p[0], det=p.slice(1).join(' — '), wide='', qty='';
-        if(it.kind==='повременно' && !isDev(it)) wide=kindBadge(it)+esc(it.note||it.detail);
-        else if(it.kind==='премия') wide='🎁 <b>Премия</b>'+(it.note?(' — '+esc(it.note)):'');
-        else if(isDev(it)){ wide='🧪 '+esc(it.detail)+(it.note?(' — '+esc(it.note)):''); qty=devMin(Number(it.qty)||0); }
-        else {
-          // операция изделия (упаковка): детали нет или «деталь» — само изделие; тогда показываем модель товара
-          if(!det || det.trim()===prod.trim()) det=(it.model && String(it.detail).indexOf(it.model)<0)?esc(it.model):'<span class="muted">изделие целиком</span>'; else det=esc(det);
-          qty=it.qty+' <small>'+(isCutLine(it)?'л':'шт')+'</small>';
-        }
+        var first=i===0, koef=kOf(it.koef), x=jCells(it), prod=x.prod, det=x.det, wide=x.wide, qty=x.qty;
         var off=it.status==='ждёт ОТК'||it.paid===false;
         var money=(it.paid===false&&it.status!=='ждёт ОТК')?jMoney(0):((koef!==1?'<small title="коэффициент мастера к сумме">×'+String(koef).replace('.',',')+'</small> ':'')+jMoney(it.sum));
         var st=it.status==='ждёт ОТК'?' <span class="pill warn" title="принято мастером, ждёт приёмку ОТК — сумма в итог пока не входит">🔎 ждёт ОТК</span>':'';
@@ -1877,7 +1914,7 @@ function renderJournal0(){
     // Наряды остаются отдельными (у каждого своя проверка, смена, коэффициенты и премия) — меняется только показ.
     var byDay=jView()==='day', vb=document.querySelectorAll('#jview button');
     for(var vi=0;vi<vb.length;vi++) vb[vi].className=(vb[vi].getAttribute('data-v')===(byDay?'day':'time'))?'on':'';
-    var nW=function(n){ var a=n%10, b=n%100; return (a===1&&b!==11)?'наряд':((a>=2&&a<=4&&(b<10||b>=20))?'наряда':'нарядов'); };
+    var nW=jNar;
     var dates=[], dix={};
     groups.forEach(function(g){ g.c=calc(g); if(dix[g.date]==null){ dix[g.date]=dates.length; dates.push({date:g.date,gs:[]}); } dates[dix[g.date]].gs.push(g); });
     dates.sort(function(a,b){ var ka=jSortKey(a.date), kb=jSortKey(b.date); return ka<kb?1:(ka>kb?-1:0); });
@@ -1909,6 +1946,21 @@ function renderJournal0(){
     }).join('');
   })();
 }
+// ячейки строки работы — общие для журнала и «Проверки»: изделие и деталь из «Изделие — Деталь», количество с единицей;
+// премия, доплата и разработка занимают колонки «изделие · деталь · операция» одной широкой ячейкой
+function jCells(it){
+  var p=String(it.detail||'').split(' — '), prod=p[0], det=p.slice(1).join(' — '), wide='', qty='';
+  if(it.kind==='повременно' && !isDev(it)) wide=kindBadge(it)+esc(it.note||it.detail);
+  else if(it.kind==='премия') wide='🎁 <b>Премия</b>'+(it.note?(' — '+esc(it.note)):'');
+  else if(isDev(it)){ wide='🧪 '+esc(it.detail)+(it.note?(' — '+esc(it.note)):''); qty=devMin(Number(it.qty)||0); }
+  else {
+    // операция изделия (упаковка): детали нет или «деталь» — само изделие; тогда показываем модель товара
+    if(!det || det.trim()===prod.trim()) det=(it.model && String(it.detail).indexOf(it.model)<0)?esc(it.model):'<span class="muted">изделие целиком</span>'; else det=esc(det);
+    qty=it.qty+' <small>'+(isCutLine(it)?'л':'шт')+'</small>';
+  }
+  return {wide:wide, prod:prod, det:det, qty:qty};
+}
+function jNar(n){ var a=n%10, b=n%100; return (a===1&&b!==11)?'наряд':((a>=2&&a<=4&&(b<10||b>=20))?'наряда':'нарядов'); }
 // деньги в журнале: всегда два знака и запятая — колонку сумм читают сверху вниз
 function jMoney(v){ var s=(Math.round((Number(v)||0)*100)/100).toFixed(2).split('.'); return s[0].replace(/\B(?=(\d{3})+(?!\d))/g,' ')+','+s[1]; }
 function jSortKey(dRu){ var p=String(dRu||'').split('.'); return p.length<3?String(dRu||''):(p[2]+p[1]+p[0]); }
