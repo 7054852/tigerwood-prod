@@ -721,6 +721,9 @@
           +'<button class="green" id="cbDoneBtn" onclick="twCrewBoard._done()">✓ Выполнено</button></div>';
       else doneHtml='<div class="cb-donebox"><label for="cbDone">Сделано, шт</label><span class="cb-step"><button class="sec" data-st="-1" aria-label="меньше">−</button>'
           +'<input id="cbDone" inputmode="decimal" autocomplete="off" value="'+(left?String(left).replace('.',','):'')+'"><button class="sec" data-st="1" aria-label="больше">＋</button></span>'
+          // раскрой (владелец 27.11.2026): форматка — оплата за детали; ЧПУ — выбирают лист и число листов, оплата за листы
+          +(t.cut?'<div class="cb-cut wide"><label for="cbMat">Как резали</label><select id="cbMat"></select>'
+            +'<span id="cbShW" hidden><label for="cbSh">Листов</label><input id="cbSh" inputmode="decimal" autocomplete="off"></span><div class="cb-hint" id="cbCutTip"></div></div>':'')
           +'<button class="green" id="cbDoneBtn" onclick="twCrewBoard._done()">✓ Выполнено</button>'
           +(t.done>0?'<div class="cb-hint ok wide">записано '+qtyS(t.done)+' из '+qtyS(t.qty)+' шт'+(t.wait?' · ждёт: '+esc(t.wait):'')+' '+undoB+'</div>':'')
           +(t.nack?'<div class="cb-hint warn wide">рабочий ответил «не так» — проверьте количество</div>':'')+'</div>';
@@ -762,9 +765,10 @@
         else if(e.key==='Enter'){ e.preventDefault(); e.stopPropagation(); swapPick(d.sel>=0?d.sel:0); } });
     }
     $('cbTo').addEventListener('input',function(){ S.dlg.auto=false; S.dlg.touched=true; });
+    if($('cbMat')) cutFill(t);
     if($('cbWith')&&!pk) $('cbWith').addEventListener('change',withTip);
     // Enter в поле поиска выбирает человека из списка, а не сохраняет окно
-    S.dlg.bg.addEventListener('keydown',function(e){ if(e.key==='Enter'&&e.target.tagName!=='BUTTON'&&!(e.target.closest&&e.target.closest('.pick'))){ e.preventDefault(); if(e.target.id==='cbDone'||e.target.id==='cbSum') doneSend(); else saveEdit(); } });
+    S.dlg.bg.addEventListener('keydown',function(e){ if(e.key==='Enter'&&e.target.tagName!=='BUTTON'&&!(e.target.closest&&e.target.closest('.pick'))){ e.preventDefault(); if(e.target.id==='cbDone'||e.target.id==='cbSum'||e.target.id==='cbSh') doneSend(); else saveEdit(); } });
     if($('cbNote')) grow($('cbNote'));
     // кнопки «− / ＋» у количества: под палец, без клавиатуры
     var st=S.dlg.bg.querySelectorAll('.cb-step button');
@@ -773,11 +777,45 @@
     if(narrow()){ var ti0=$('cbTitle'); if(ti0) grow(ti0); }
     else if(qi) qi.focus(); else { var ti=$('cbTitle'); grow(ti); ti.focus(); ti.setSelectionRange(ti.value.length,ti.value.length); }
   }
+  // раскрой в окне блока: список листов ЧПУ с ценой (один запрос на сеанс), выбранный лист помним по детали
+  function cutFill(t){
+    var sel=$('cbMat'), byLeaf=t.pay==='за лист', keep=store('tw_cb_mat|'+t.detail)||'';
+    var fill=function(){
+      if(!S.dlg||S.dlg.id!==t.id||!$('cbMat')) return;
+      var sh=S.cutSheets, h='<option value="">'+(byLeaf?'— выберите лист ЧПУ —':'Форматка — оплата за детали')+'</option>'
+        +(byLeaf?'<option value="-">ЧПУ: листы уже записаны в другом блоке</option>':'');
+      if(!sh) h+='<option disabled>листы ЧПУ загружаются…</option>';
+      else for(var i=0;i<sh.length;i++) h+='<option value="'+esc(sh[i].name)+'">ЧПУ · '+esc(sh[i].name)+' · '+qtyS(sh[i].rate)+' ₽/лист</option>';
+      sel.innerHTML=h;
+      if(sh&&keep) for(var j=0;j<sh.length;j++) if(sh[j].name===keep) sel.value=keep;
+      tip();
+    };
+    var tip=function(){
+      var m=sel.value, n=num($('cbSh').value), r=0, i, sh=S.cutSheets||[], tx='';
+      for(i=0;i<sh.length;i++) if(sh[i].name===m) r=sh[i].rate;
+      $('cbShW').hidden=!m||m==='-';
+      if(m==='-') tx='без оплаты: листы оплачены в другом блоке';
+      else if(!m) tx=byLeaf?'деталь оплачивается за лист — выберите лист':'';
+      else if(t.pay==='за деталь') tx='деталь — за штуку; лист только для учёта';
+      else tx=(n>0?'= '+qtyS(n*r)+' ₽ за листы':qtyS(r)+' ₽ за лист')+(t.pay==='за лист и деталь'?' + детали за штуку':'')+'; общие с другими деталями листы — только в одном блоке';
+      $('cbCutTip').textContent=tx;
+    };
+    sel.addEventListener('change',function(){ dlgErr(''); tip(); if(!$('cbShW').hidden&&!narrow()) $('cbSh').focus(); });
+    $('cbSh').addEventListener('input',tip);
+    fill();
+    if(!S.cutSheets&&!S.cutLoad){ S.cutLoad=true;
+      S.o.api({ vapi:'crewcut' }).then(function(r){ S.cutLoad=false; if(r&&r.ok){ S.cutSheets=r.sheets||[]; fill(); } }).catch(function(){ S.cutLoad=false; }); }
+  }
   // отметить сделанное: сервер создаёт строку наряда (тот, кто одобряет наряды, — сразу принятую; контрольная операция — в «ждёт ОТК»)
   function doneSend(){
     var d=S.dlg, f=d&&taskBy(d.id); if(!f) return closeDlg(); if(d.sending) return;
     var t=f.t, p={ vapi:'crewdone', date:S.date, id:t.id }, what;
-    if(t.op){ var q=num($('cbDone').value); if(!(q>0)){ dlgErr('Укажите, сколько сделано'); return; } p.qty=String(q); what=qtyS(q)+' шт'; }
+    if(t.op){ var q=num($('cbDone').value); if(!(q>0)){ dlgErr('Укажите, сколько сделано'); return; } p.qty=String(q); what=qtyS(q)+' шт';
+      if($('cbMat')){ var m=$('cbMat').value;
+        if(m==='-') p.nosheet='1';
+        else if(m){ var ns=num($('cbSh').value); if(!(ns>0)){ dlgErr('Укажите, сколько листов раскроили'); return; } p.mat=m; p.sheets=String(ns); what+=' · листов '+qtyS(ns); }
+        else if(t.pay==='за лист'){ dlgErr('Эта деталь оплачивается за лист — выберите лист ЧПУ'); return; }
+        store('tw_cb_mat|'+t.detail,m==='-'?'':m); } }
     else { var sv=$('cbSum')?String($('cbSum').value).trim():''; if(sv&&!/^\d+([.,]\d+)?$/.test(sv.replace(/\s/g,''))){ dlgErr('Сумма — число (пусто — без оплаты)'); return; } p.sum=sv?String(num(sv)):''; what=t.title; }
     doneBusy(true);
     send(p,function(r){
